@@ -1,0 +1,152 @@
+/**
+ * 运行时适配层契约(Runtime Adapter Contract)
+ * ------------------------------------------------------------------
+ * 前端**永远只依赖这组接口**,绝不直接 fetch 外网、绝不直接碰 SQLite
+ * 表结构或密钥。两端各有一套实现:
+ *   · 桌面(desktop) → Tauri invoke → Rust 核(SQLite / 钥匙串 / reqwest / sidecar)
+ *   · 网页(web)     → 后端代理 / IndexedDB / 会话内存
+ *
+ * 铁律(从类型层面固化):
+ *   1. 密钥与隐私字段**永不进前端**。{@link SecretApi} 故意没有 `get()`——
+ *      明文无法从类型上回到 WebView;前端只能 `status()` 看到 configured/empty。
+ *   2. 能力缺失时,适配器让 `available()` 返回 false,UI 优雅隐藏入口,
+ *      而不是抛错。具体方法被调用时若该端不支持,才抛 {@link NotImplementedError}。
+ *
+ * M0:仅定义契约 + 空实现。真实落地见 #1(ai)/#3(db)/#2(capability)/#4(secret)。
+ */
+
+export type Platform = 'desktop' | 'web';
+
+/** 可探测的能力键;`available()` 据此决定 UI 是否显示入口。 */
+export type Feature =
+  | 'db'
+  | 'ai'
+  | 'secret'
+  | 'capability'
+  | 'voice'
+  | 'tray'
+  | 'globalShortcut'
+  | 'deepLink'
+  | 'autoUpdate';
+
+// ── 数据仓库(rt.db)──────────────────────────────────────────────
+// 弹性 schema:每条记录 = 骨架列 + data_json(见「数据层与迁移方案」)。
+// 前端只认「集合名 + 记录」,不认表结构。
+
+/** 业务集合名(对应数据层的表/仓库)。domain 通过它定位数据,不碰 SQL。 */
+export type Collection =
+  | 'jobs'
+  | 'skills'
+  | 'actions'
+  | 'resumes'
+  | 'iv_records'
+  | 'messages'
+  | 'settings';
+//  注:'profile'(隐私字段)与 'secrets'(密钥)**不在此**——前者走独立隔离仓库、
+//  AI 永不读取;后者只进钥匙串(见 SecretApi)。
+
+export interface Record {
+  id: string;
+  [field: string]: unknown;
+}
+
+export interface Query {
+  /** 过滤条件(字段精确匹配);复杂查询后续扩展。 */
+  where?: { [field: string]: unknown };
+  orderBy?: string;
+  desc?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DbApi {
+  list(collection: Collection, query?: Query): Promise<Record[]>;
+  get(collection: Collection, id: string): Promise<Record | null>;
+  /** 新增或更新(无 id 则创建)。返回写入后的完整记录。 */
+  upsert(collection: Collection, record: Partial<Record>): Promise<Record>;
+  /**
+   * 删除——**破坏性操作**。必经 platform/guardrail:预览 + 确认 + 可撤销。
+   * 无论调用者是 UI、Agent 还是 widget,都走同一护栏。
+   */
+  remove(collection: Collection, id: string): Promise<void>;
+}
+
+// ── AI 网关(rt.ai)───────────────────────────────────────────────
+// 前端只发文字、收 token 流;出网与密钥都在 Rust。提示组装时**排除 profile**。
+
+export interface AiRequest {
+  /** 任务类型(智能匹配 / 简历改写 / 面试反馈 …),由 domain/prompts 配置驱动。 */
+  task: string;
+  /** 上下文(业务数据);网关组装提示时**显式剔除隐私字段**。 */
+  context?: unknown;
+}
+
+export interface AiResult {
+  text: string;
+  /** 模型返回的工具调用(交给 Rust 工具层执行,含 show_widget)。 */
+  toolCalls?: Array<{ id: string; name: string; input: unknown }>;
+}
+
+export interface AiStreamHandlers {
+  onToken?: (token: string) => void;
+  onDone?: (result: AiResult) => void;
+  onError?: (err: Error) => void;
+}
+
+/** 流式调用的句柄:可取消;`done` 在结束时 resolve。 */
+export interface AiStream {
+  cancel(): void;
+  done: Promise<AiResult>;
+}
+
+export interface AiApi {
+  /** 流式补全(SSE/chunk → 逐 token 回灌)。 */
+  stream(req: AiRequest, handlers?: AiStreamHandlers): AiStream;
+  /** 非流式补全。 */
+  complete(req: AiRequest): Promise<AiResult>;
+}
+
+// ── 密钥(rt.secret)── 隐私红线 ─────────────────────────────────
+// 明文密钥**只进系统钥匙串**,绝不回前端。故此接口**没有 get()**。
+
+export type SecretStatus = 'configured' | 'empty';
+
+export interface SecretApi {
+  /** 前端只能查「是否已配置」,拿不到明文。 */
+  status(key: string): Promise<SecretStatus>;
+  /** 写入(value 直送 Rust → 钥匙串,绝不被回显 / 入库 / 进日志)。 */
+  set(key: string, value: string): Promise<void>;
+  clear(key: string): Promise<void>;
+  // ⚠️ 故意不提供 get():明文从类型层面就无法回到 WebView。
+}
+
+// ── 能力层(rt.capability)──────────────────────────────────────
+// RAG/记忆/向量/MCP/ACP/Skills/show_widget 均实现统一 Capability 契约,注册即生效。
+
+export interface CapabilityInfo {
+  id: string;
+  available: boolean;
+  /** 暴露给 LLM 的工具描述(JSON Schema)。 */
+  schema?: unknown;
+}
+
+export interface CapabilityApi {
+  list(): Promise<CapabilityInfo[]>;
+  available(id: string): Promise<boolean>;
+  invoke(id: string, input: unknown): Promise<unknown>;
+}
+
+// ── 顶层 Runtime ────────────────────────────────────────────────
+
+export interface RuntimeApi {
+  readonly platform: Platform;
+  /** 该端是否支持某能力;false → UI 优雅隐藏入口(不报错)。 */
+  available(feature: Feature): boolean;
+  readonly db: DbApi;
+  readonly ai: AiApi;
+  readonly secret: SecretApi;
+  readonly capability: CapabilityApi;
+}
+
+// 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与
+// ./errors.js 用 JSDoc 提供并绑定到以上类型;本文件只承载纯类型契约。
