@@ -1,0 +1,34 @@
+# ── Rust / Tauri ──────────────────────────────────────────
+/src-tauri/target/
+**/*.rs.bk
+*.pdb
+
+# ── Node ──────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Build output ──────────────────────────────────────────
+/dist/
+/build/
+
+# ── Secrets — NEVER commit ────────────────────────────────
+# 密钥只进系统钥匙串 / CI 加密 secrets;updater 私钥、证书等一律排除
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.minisign
+
+# ── OS / Editor ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
