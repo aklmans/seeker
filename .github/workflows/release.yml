@@ -1,0 +1,69 @@
+# 发布构建:打 tag(vX.Y.Z)触发,双端(mac/win)出已签名包 + 更新清单。
+# 对应「构建签名发布方案」P1(最小可签发)+ 为 P2(自动更新)预留 updater 签名。
+#
+# ⚠️ M0 现状:这是**骨架**。签名所需的真实凭据尚未具备,以 secrets 占位:
+#   · 未配置 secrets 时,tauri-action 会出**未签名**包(可用于内测),不会失败。
+#   · 证书/账号就绪后,在仓库 Settings → Secrets 填入下方变量即自动启用签名/公证。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: build (${{ matrix.platform }})
+    permissions:
+      contents: write # 创建 Release、上传产物
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target universal-apple-darwin' # arm64 + x64 通用包
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Build + (sign) + release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ── updater 签名:私钥来自本机 `tauri signer generate`,只存 CI secrets ──
+          # 公钥见 docs/RELEASE.md,P2 接 updater 插件时写入 tauri.conf.json。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+          # ── macOS 代码签名 + 公证(TODO:Apple 开发者账号 + Developer ID 证书就绪后填)──
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }} # app-specific password
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          # ── Windows 代码签名(TODO:OV/EV 证书就绪后,见 docs/RELEASE.md 的两种接法)──
+          # 方案 A(Azure Trusted Signing / 证书指纹):在 tauri.conf.json 配 bundle.windows;
+          # 方案 B(自带 pfx):用下方 secrets + 自定义 signCommand。
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Seeker ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
