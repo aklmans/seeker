@@ -37,3 +37,20 @@ jobs:
 
       - name: build (debug, no bundle)
         run: cargo build --manifest-path src-tauri/Cargo.toml
+
+  typecheck:
+    name: typecheck (tsc --noEmit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # 锁住隐私不变量(SecretApi 无 get()、Collection 排除 profile);
+      # @ts-check 的 platform/domain 模块在此真正被类型检查。
+      - run: npm ci
+      - run: npm run typecheck

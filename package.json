@@ -1,0 +1,13 @@
+{
+  "name": "seeker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Seeker — 本地优先的可复用平台基座(首个应用:求职岗位研究工作台)",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
