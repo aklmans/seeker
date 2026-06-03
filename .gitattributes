@@ -1,0 +1,10 @@
+# 仓库内统一 LF;由 CI 在 Mac/Linux/Win 共同构建,避免 CRLF 噪声与漂移。
+* text=auto eol=lf
+
+# 二进制 / 不可文本化的产物
+*.png binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
