@@ -12,6 +12,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .manage(ai::Sessions::default())
+        .manage(ai::History::default())
         .manage(capability::Registry::new())
         .setup(|app| {
             // 打开本地数据库(失败则启动报错)并交由 State 持有。

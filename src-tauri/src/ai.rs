@@ -5,7 +5,9 @@
 //! G1:OpenAI 兼容协议 + 流式 + 取消/超时/错误。
 //! C1:从能力层 registry 取 `kind=Tool` 的 schema 塞进请求;模型要调工具时,
 //! 累积流式 tool_calls → 经 registry 统一执行(破坏性能力被拒,须走护栏)→ 结果回灌 → 续推。
-//! 多协议(G4)、多轮历史与系统提示配置化(G2)后续。
+//! C2:提示组装期汇集 Context 能力(长期记忆)的召回片段作「资料」注入。
+//! G2:**多轮历史**(进程内,按 sessionId 累积 user/assistant 轮次)。
+//! 多协议(G4)、系统提示配置化(G2 剩余)、重试退避(G2 剩余)后续。
 //!
 //! 事件:`ai_chunk{sessionId,text}` · `ai_tool{sessionId,id,name,ok}` ·
 //!       `ai_done{sessionId,stopReason}` · `ai_error{sessionId,code,message,retriable}`
@@ -29,6 +31,14 @@ const MAX_ROUNDS: usize = 4;
 /// 进程内会话注册表:sessionId → 取消令牌(供 ai_cancel 中断流)。
 #[derive(Default)]
 pub struct Sessions(pub Mutex<HashMap<String, CancellationToken>>);
+
+/// 进程内多轮历史(#1 G2):sessionId → 已完成的 user/assistant 轮次。
+/// 进程内即可(同一会话多轮上下文);持久化跨重启待 messages 集合接入。**不含 profile**。
+#[derive(Default)]
+pub struct History(pub Mutex<HashMap<String, Vec<Value>>>);
+
+/// 历史保留的最大消息条数(约 10 轮 user/assistant);防无界增长 + 控 token。
+const HISTORY_MAX: usize = 20;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -103,7 +113,8 @@ impl ChatError {
 /// 一轮流式请求的结果。
 enum RoundOutcome {
     /// 模型给出最终回答(finish_reason stop/length 或 [DONE] 且无工具调用)。
-    Done(String),
+    /// `content` = 最终助手文本(供多轮历史留存)。
+    Done { stop: String, content: String },
     /// 被取消。
     Cancelled,
     /// 模型要求调用工具:`assistant` 是带 tool_calls 的助手消息(回灌历史),`calls` 待执行。
@@ -134,6 +145,7 @@ pub async fn ai_chat(
     app: AppHandle,
     sessions: State<'_, Sessions>,
     registry: State<'_, Registry>,
+    history: State<'_, History>,
     session_id: String,
     user_text: String,
     task: Option<String>,
@@ -145,19 +157,40 @@ pub async fn ai_chat(
         .unwrap()
         .insert(session_id.clone(), token.clone());
 
+    // 多轮历史(#1 G2):取本会话已完成轮次的快照(克隆后即释锁,不跨 await 持锁)。
+    let prior = history
+        .0
+        .lock()
+        .unwrap()
+        .get(&session_id)
+        .cloned()
+        .unwrap_or_default();
+
     let result = run_chat(
         &app,
         &session_id,
         &user_text,
         task.as_deref(),
         registry.inner(),
+        &prior,
         token,
     )
     .await;
 
     sessions.0.lock().unwrap().remove(&session_id);
     match result {
-        Ok(stop) => {
+        Ok((stop, content)) => {
+            // 仅干净完成(非取消、有内容)才入历史:追加本轮 user + assistant,封顶 HISTORY_MAX。
+            if stop != "cancelled" && !content.is_empty() {
+                let mut h = history.0.lock().unwrap();
+                let entry = h.entry(session_id.clone()).or_default();
+                entry.push(json!({ "role": "user", "content": user_text }));
+                entry.push(json!({ "role": "assistant", "content": content }));
+                let len = entry.len();
+                if len > HISTORY_MAX {
+                    entry.drain(0..len - HISTORY_MAX);
+                }
+            }
             let _ = app.emit(
                 "ai_done",
                 DoneEv {
@@ -191,14 +224,16 @@ pub fn ai_cancel(sessions: State<'_, Sessions>, session_id: String) -> Result<()
 }
 
 /// 工具循环:逐轮流式请求,模型要调工具就执行并回灌,直到给出最终回答或达上限。
+#[allow(clippy::too_many_arguments)]
 async fn run_chat(
     app: &AppHandle,
     session_id: &str,
     user_text: &str,
     _task: Option<&str>,
     registry: &Registry,
+    history: &[Value],
     token: CancellationToken,
-) -> Result<String, ChatError> {
+) -> Result<(String, String), ChatError> {
     let cfg = crate::config::load(app);
     if cfg.base_url.is_empty() || cfg.model.is_empty() {
         return Err(ChatError::config(
@@ -214,10 +249,16 @@ async fn run_chat(
     let system = "You are Seeker's local-first job-hunt assistant. Be concise and practical; \
                   reply in the user's language. You may call tools to read the user's local \
                   job-hunt data when helpful. Never ask for or store personal contact details.";
-    let mut messages = build_messages(system, user_text);
+    let mut messages = build_messages(system, user_text); // [system, user]
+                                                          // 多轮历史(#1 G2):已完成轮次插在 system 之后、当前 user 之前。
+    let mut at = 1;
+    for h in history {
+        messages.insert(at, h.clone());
+        at += 1;
+    }
     let cx = CallCx { app };
     // 提示组装(#2 C2):汇集 Context 能力的召回片段(如长期记忆)→ 预算裁剪 → 作为「资料」
-    // 系统消息插在 system 之后、user 之前(标注为数据、非指令,防注入);**仍不含 profile**。
+    // 系统消息插在历史之后、当前 user 之前(标注为数据、非指令,防注入);**仍不含 profile**。
     let chunks = registry
         .contribute_all(
             &Query {
@@ -227,7 +268,7 @@ async fn run_chat(
         )
         .await;
     if let Some(ctx_msg) = build_context_message(&chunks) {
-        messages.insert(1, ctx_msg);
+        messages.insert(at, ctx_msg);
     }
     // 工具清单据 availability 过滤(如未配置嵌入模型则长期记忆不暴露)。
     let tools = registry.tool_schemas(&cx);
@@ -247,8 +288,8 @@ async fn run_chat(
         )
         .await?;
         match outcome {
-            RoundOutcome::Cancelled => return Ok("cancelled".into()),
-            RoundOutcome::Done(stop) => return Ok(stop),
+            RoundOutcome::Cancelled => return Ok(("cancelled".into(), String::new())),
+            RoundOutcome::Done { stop, content } => return Ok((stop, content)),
             RoundOutcome::ToolCalls { assistant, calls } => {
                 messages.push(assistant);
                 for call in calls {
@@ -294,7 +335,7 @@ async fn run_chat(
             }
         }
     }
-    Ok("stop".into())
+    Ok(("stop".into(), String::new()))
 }
 
 /// 单轮流式请求:发送 + 解析 SSE,累积 content(逐 token 回灌)与 tool_calls。
@@ -423,11 +464,14 @@ fn apply_tool_delta(calls: &mut Vec<ToolCallAcc>, choice: &Value) {
     }
 }
 
-/// 收尾:有有效 tool_calls → ToolCalls(并重建助手消息);否则 → Done(stop)。
+/// 收尾:有有效 tool_calls → ToolCalls(并重建助手消息);否则 → Done{stop, content}(content=最终文本)。
 fn finalize(content: String, calls: Vec<ToolCallAcc>, finish: Option<String>) -> RoundOutcome {
     let valid: Vec<ToolCallAcc> = calls.into_iter().filter(|c| !c.name.is_empty()).collect();
     if valid.is_empty() {
-        return RoundOutcome::Done(finish.unwrap_or_else(|| "stop".into()));
+        return RoundOutcome::Done {
+            stop: finish.unwrap_or_else(|| "stop".into()),
+            content,
+        };
     }
     let tool_calls_json: Vec<Value> = valid
         .iter()
@@ -538,9 +582,12 @@ mod tests {
     }
 
     #[test]
-    fn finalize_done_when_no_tool_calls() {
+    fn finalize_done_carries_stop_and_content() {
         match finalize("你好".into(), Vec::new(), Some("stop".into())) {
-            RoundOutcome::Done(s) => assert_eq!(s, "stop"),
+            RoundOutcome::Done { stop, content } => {
+                assert_eq!(stop, "stop");
+                assert_eq!(content, "你好"); // 最终文本留存供多轮历史
+            }
             _ => panic!("无工具调用应为 Done"),
         }
     }
