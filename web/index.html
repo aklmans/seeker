@@ -485,6 +485,23 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .cop-msg.ai table{border-collapse:collapse; margin:10px 0; font-size:12.5px; display:block; overflow-x:auto;}
 .cop-msg.ai th,.cop-msg.ai td{border:0.5px solid var(--border); padding:6px 11px; text-align:left; vertical-align:top;}
 .cop-msg.ai th{background:var(--bg-subtle); font-weight:600; color:var(--ink); white-space:nowrap;}
+/* 智能匹配交互卡(原生 domain · 沿用设计 token,不自创视觉) */
+.match-card{padding:0; overflow:hidden;}
+.match-card .mc-head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:13px 15px 9px;}
+.match-card .mc-co{font-size:14px; font-weight:600; color:var(--ink); line-height:1.35;}
+.match-card .mc-sub{font-family:var(--font-mono); font-size:10px; letter-spacing:0.1em; color:var(--ink-3); margin-top:4px; text-transform:uppercase;}
+.match-card .mc-score{display:flex; align-items:baseline; gap:2px; flex-shrink:0;}
+.match-card .mc-score .v{font-family:var(--font-serif); font-size:30px; font-weight:500; color:var(--accent); line-height:1;}
+.match-card .mc-score .u{font-size:11px; color:var(--ink-3);}
+.match-card .mc-bar{height:5px; background:var(--bg-subtle); margin:0 15px;}
+.match-card .mc-bar i{display:block; height:100%; background:var(--accent);}
+.match-card .mc-body{display:flex; gap:10px; align-items:center; padding:12px 15px 4px; flex-wrap:wrap;}
+.match-card .mc-radar{flex-shrink:0;}
+.match-card .mc-radar svg{display:block;}
+.match-card .mc-gaps{flex:1; min-width:130px;}
+.match-card .mc-lbl{font-family:var(--font-mono); font-size:10px; letter-spacing:0.12em; color:var(--ink-3); text-transform:uppercase; margin-bottom:7px;}
+.match-card .mc-chips{display:flex; flex-wrap:wrap; gap:5px;}
+.match-card .mc-acts{padding:4px 15px 14px;}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -2733,7 +2750,8 @@ function frameQuery(text){
   if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
     return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。我的原始请求:' + t;
   if(/匹配|该投|投哪/.test(t))
-    return G + '读取我的 jobs(目标岗位)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。我的原始请求:' + t;
+    return G + '读取我的 jobs(目标岗位,含 id)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。'
+      + '聚焦的那个岗位,请在回答**末尾**附一个代码块以渲染交互雷达卡(正文保持简洁,不必重复卡里的数字):\n```seeker:match-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
   if(/缺口|短板|不足/.test(t))
     return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。我的原始请求:' + t;
   if(/最该做|下一步|现在做什么|该做什么/.test(t))
@@ -2756,6 +2774,18 @@ function extractResumeEdit(text){
   try{ const j = JSON.parse(m[1].trim()); if(j && Array.isArray(j.edits) && j.edits.length) edit = j; }catch(_e){}
   const prose = edit ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s; // 解析成功才剥离
   return { prose, edit };
+}
+/* 智能匹配可交互卡:AI 在末尾附 ```seeker:match-card 块 {jobId} → 渲染原生交互雷达卡(真实数据,非 AI 生成 HTML;
+   故用原生 domain 卡而非 show_widget 沙箱——沙箱是给不可信 UI 的)。 */
+const MATCH_CARD_RE = /```seeker:match-card\s*([\s\S]*?)```/;
+function extractMatchCard(text){
+  const s = String(text==null?'':text);
+  const m = s.match(MATCH_CARD_RE);
+  if(!m) return { prose:s, match:null };
+  let match = null;
+  try{ const j = JSON.parse(m[1].trim()); if(j && j.jobId!=null) match = j; }catch(_e){}
+  const prose = match ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s;
+  return { prose, match };
 }
 function showResumeProposal(bubble, edit, who){
   // 定位简历:edit.jobId → 当前打开的简历 → 仅有一份时取之
@@ -2824,13 +2854,62 @@ function reviewResumeProposal(jid, changes){
     },
   });
 }
+/** 岗位能力雷达 SVG(真实数据:job.need 维度 × 我的技能等级 lvl/4)。维度<3 不画。 */
+function matchRadarSVG(job){
+  const dims=(job.need||[]).slice(0,6), n=dims.length;
+  if(n<3) return '';
+  const cx=105, cy=98, R=60, esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const pt=(i,r)=>{ const a=-Math.PI/2 + i*2*Math.PI/n; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; };
+  const ring=r=>dims.map((_,i)=>pt(i,r).map(v=>v.toFixed(1)).join(',')).join(' ');
+  let grid=''; [0.34,0.67,1].forEach(f=>{ grid+=`<polygon points="${ring(R*f)}" fill="none" stroke="var(--border)" stroke-width="0.5"/>`; });
+  let axes='', labels='';
+  dims.forEach((d,i)=>{ const [ax,ay]=pt(i,R); axes+=`<line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>`;
+    const [lx,ly]=pt(i,R+11); const anc=Math.abs(lx-cx)<6?'middle':(lx>cx?'start':'end');
+    labels+=`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anc}" dominant-baseline="middle" font-size="8.5" fill="var(--ink-3)">${esc(d).slice(0,5)}</text>`; });
+  const dpts=dims.map((d,i)=>{ const s=skillByName(d); const lvl=s?s.lvl:0; const f=Math.max(0.08,Math.min(1,lvl/4)); return pt(i,R*f).map(v=>v.toFixed(1)).join(','); }).join(' ');
+  return `<svg viewBox="0 0 210 188" width="200" height="178" class="match-radar" role="img" aria-label="${tt('岗位能力雷达','Role-fit radar')}">${grid}${axes}<polygon points="${dpts}" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.3"/>${labels}</svg>`;
+}
+/** 智能匹配交互卡(原生 domain · 真实数据):匹配度 + 雷达 + 缺口 + CTA(查看完整匹配/改简历/排计划)。 */
+function renderMatchCardEl(job){
+  const pct=Math.round((job.match||0)*10);
+  const need=job.need||[]; const strengths=need.filter(n=>{const s=skillByName(n);return s&&s.lvl>=3;});
+  const gaps=topGapsOf(job); const role=String(job.role||'').split('·')[0].trim();
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const gapChips=(gaps.length?gaps:[tt('暂无明显缺口','No clear gaps')]).slice(0,6).map(g=>`<span class="chip gap">${esc(g)}</span>`).join('');
+  const card=el(`<div class="cop-card match-card">
+    <div class="mc-head"><div><div class="mc-co">${esc(job.co)} · ${esc(role)}</div>
+      <div class="mc-sub">${tt('综合匹配','Match')} · ${tt('已具备','met')} ${strengths.length}/${need.length}</div></div>
+      <div class="mc-score"><span class="v">${pct}</span><span class="u">/100</span></div></div>
+    <div class="mc-bar"><i style="width:${pct}%;"></i></div>
+    <div class="mc-body"><div class="mc-radar">${matchRadarSVG(job)}</div>
+      <div class="mc-gaps"><div class="mc-lbl">${tt('可补齐的能力','Gaps to fill')}</div><div class="mc-chips">${gapChips}</div></div></div>
+    <div class="cop-actions mc-acts"></div></div>`);
+  const acts=card.querySelector('.mc-acts');
+  const mk=(label,fn,accent)=>{ const b=el(`<button class="btn${accent?' btn-accent':''}">${label}</button>`); b.onclick=fn; acts.appendChild(b); };
+  mk(tt('查看完整匹配','Full match')+' →', ()=>{ if(typeof copMatch==='function') copMatch(job.id); else { matchState.jobId=job.id; matchState.done=false; go('match'); renderMatch(); } }, true);
+  mk(tt('改简历','Tailor resume'), ()=>{ if(typeof copResume==='function') copResume(job.id); else if(typeof aiResumeForJob==='function') aiResumeForJob(job.id); });
+  if(gaps.length) mk(tt('排训练计划','Plan'), ()=>{ if(typeof copPlan==='function') copPlan(gaps[0], job.co+' · '+role); });
+  return card;
+}
+function showMatchCard(bubble, match, who){
+  const find=k=>JOBS.find(j=>String(j.id)===String(k));
+  let job=find(match.jobId);
+  if(!job && typeof matchState==='object' && matchState) job=find(matchState.jobId);
+  if(!job) return; // 无法定位:静默(文字分析仍在)
+  try{ const card=renderMatchCardEl(job); const host=(bubble&&bubble.parentElement)||bubble; if(host){ host.appendChild(card); } }
+  catch(e){ console.error('[match] render', e); }
+}
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
   if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
   return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-/** 流式显示用:截断到结构化简历块标记之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
-function displayText(s){ return String(s==null?'':s).split('```seeker:resume-edit')[0]; }
+/** 流式显示用:截断到最早出现的指令块标记之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
+function displayText(s){
+  s = String(s==null?'':s); let cut = s.length;
+  for(const mk of ['```seeker:resume-edit','```seeker:match-card']){ const i=s.indexOf(mk); if(i>=0 && i<cut) cut=i; }
+  return s.slice(0, cut);
+}
 /** 工具循环进度文案(反焦虑:让用户知道 AI 正在读数据,而非卡住)。 */
 function toolStatusText(info){
   const n = info && info.name;
@@ -2861,10 +2940,12 @@ function streamReply(thinkBubble, text, who, scrollFn){
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
-      const ex = extractResumeEdit(acc);                              // 结构化简历回写:剥离指令块
-      if(span) span.innerHTML = aiHTML(ex.prose);                     // 最终 Markdown 渲染(已去 JSON 块)
-      persistMsg(who==='Agent'?'agent':'cop','ai', ex.prose);         // 存去块纯文本(widget 会话内重渲不持久)
+      const ex = extractResumeEdit(acc);                              // 剥离简历指令块
+      const mc = extractMatchCard(ex.prose);                          // 再剥离匹配卡指令块
+      if(span) span.innerHTML = aiHTML(mc.prose);                     // 最终 Markdown 渲染(已去所有 JSON 块)
+      persistMsg(who==='Agent'?'agent':'cop','ai', mc.prose);         // 存去块纯文本(卡片会话内重渲不持久)
       if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
+      if(mc.match){ try{ showMatchCard(thinkBubble, mc.match, who); }catch(e){ console.error('[match] card', e); } }
       if(scrollFn) scrollFn();
     }
   });
