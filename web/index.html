@@ -2693,13 +2693,28 @@ function aiErrHTML(err){
   /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
   return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
 }
-/* domain 业务框定(#智能匹配 AI 化):把简短意图框成「让 AI 用 query_data 读真实数据再答」的指令。
-   显示给用户的仍是短文案;发给 AI 的是框定版。系统提示不动(仍在网关,守"前端不组装系统提示")。 */
-const FRAMED_QUERIES = {
-  '我最该投哪个岗位?': '我在做求职岗位匹配。请**先用 query_data 工具**读取我本地的 jobs(目标岗位)与 skills(我的技能)真实数据,再基于数据分析:我最该投哪个岗位、理由、以及最关键的 1–2 个能力缺口。结论要有数据依据,不要编造数字或岗位。',
-  '我最大的能力缺口是什么?': '请**先用 query_data 工具**读取我的 skills 与 jobs,对照目标岗位的要求,找出我最关键的能力缺口,并给出依据与补齐方向。不要编造数据。',
-  '我最该投哪个岗位': '我在做求职岗位匹配。请先用 query_data 读取我的 jobs 与 skills 真实数据,再基于数据分析我最该投哪个岗位、理由与关键缺口,结论要有依据。',
-};
+/* domain 业务框定(接地气 AI 技能):按意图关键词把用户问题框成「先用 query_data 读真实数据再答」。
+   显示给用户的仍是短文案;发给 AI 的是框定版(系统提示不动、仍在网关,守"前端不组装系统提示")。
+   泛化匹配(支持"给我排一个 Rust 训练计划"等含可变内容的问法)。改简历**暂不框定** ——
+   需先接 resumes + 守 resume-AI 红线(联系方式块对 AI 只读),避免把含联系方式的简历发给 AI。 */
+function frameQuery(text){
+  const t = String(text || '');
+  const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
+  if(/简历/.test(t)) return text; // resume-AI 红线:暂不接地气(待 resumes + 联系方式锁定)
+  if(/面试|JD|陪我练|面试题/.test(t))
+    return G + '读取我的目标 jobs(岗位/JD)后,给出贴合该岗位的面试题或面试反馈。我的原始请求:' + t;
+  if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
+    return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。我的原始请求:' + t;
+  if(/匹配|该投|投哪/.test(t))
+    return G + '读取我的 jobs(目标岗位)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。我的原始请求:' + t;
+  if(/缺口|短板|不足/.test(t))
+    return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。我的原始请求:' + t;
+  if(/最该做|下一步|现在做什么|该做什么/.test(t))
+    return G + '读取我的 jobs/actions/skills 后,告诉我现在最该做什么、为什么。我的原始请求:' + t;
+  if(/市场价值|身价|值多少|薪资|薪酬/.test(t))
+    return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。我的原始请求:' + t;
+  return text;
+}
 /** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。 */
 function streamReply(thinkBubble, text, who, scrollFn){
   thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>';
@@ -2814,7 +2829,7 @@ function copSend(text, aiText){
   if(!copEl().classList.contains('open')) copOpen();
   copAppend('user', text.replace(/</g,'&lt;'));
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || FRAMED_QUERIES[text] || text; // domain 框定:显示短文案、发给 AI 框定版
+  const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
   else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
 }
@@ -2866,7 +2881,7 @@ function agentSend(text, aiText){
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;'));
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || FRAMED_QUERIES[text] || text; // domain 框定:显示短文案、发给 AI 框定版
+  const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
 }
