@@ -241,7 +241,7 @@ async fn run_chat(
                     let args: Value =
                         serde_json::from_str(&call.args).unwrap_or_else(|_| json!({}));
                     // 经 invoke_raw 统一执行(破坏性能力被拒);Widget 输出额外下发 ai_widget。
-                    let (content, ok) = match registry.invoke_raw(&call.name, &args, &cx) {
+                    let (content, ok) = match registry.invoke_raw(&call.name, &args, &cx).await {
                         Ok(Output::Widget(w)) => {
                             let title = w.title.clone();
                             let _ = app.emit(

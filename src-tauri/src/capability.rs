@@ -3,17 +3,18 @@
 //! 平台复用价值最高的一层:一组实现**同一 Capability 契约**的可插拔能力,注册即生效。
 //! AI 网关据 registry 汇总 `kind=Tool` 的 schema 给模型;模型决定调用后,工具循环
 //! 统一执行并把结果回灌(见 `ai.rs`)。**加能力 = 写插件 + `register` —— 业务与前端零改动。**
-//! 本阶段仅注册一个参考工具:只读「数据查询」。
+//! 已注册:只读「数据查询」DataQuery、沙箱组件 show_widget。
 //!
 //! **隐私红线**:任何能力都拿不到 profile —— `DataQuery` 经数据仓库 `table_for` 白名单
 //! (profile / secrets / meta / settings 不在内),从结构上碰不到隐私表;工具枚举亦不含 profile。
 //! **破坏性红线**:声明 `Destructive` 的能力**不得**由工具循环 / `cap_invoke` 直接执行,
-//! 必须走护栏(C3);C1 的工具均为只读。
+//! 必须走护栏(C3)。
 //!
-//! 契约演进(有意的小步):C1 的 `invoke` 为**同步**(本阶段能力均为本地、快速、无网络);
-//! 待 C4 接入 MCP 等网络能力时再引入异步路径。`available` 暂无运行时 ctx(C1 能力恒 Ready);
-//! C3 接双端降级时按 RuntimeCtx 扩展。`contribute`(Context 供料)/ Stream / Widget 自 C2 起接入。
+//! 契约演进(有意的小步):`invoke` 自 **C2 起为异步**(BYO 嵌入等网络能力提前到 C2,
+//! `#[async_trait]` 保证 dyn 对象安全);`available` 暂无运行时 ctx(C3 双端降级时扩展);
+//! `contribute`(Context 供料)/ Stream / Widget 自 C2 起接入。
 
+use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -100,6 +101,10 @@ pub struct CallCx<'a> {
 }
 
 /// 能力契约 —— 整层的「宪法」。所有能力实现它;registry 据此注册 / 发现 / 降级 / 调用。
+///
+/// 契约演进:`invoke` 自 **C2 起为异步**(BYO 嵌入等网络能力提前到 C2;`#[async_trait]` 保证
+/// `dyn Capability` 对象安全)。`available` 暂无运行时 ctx(C3 双端降级时扩展)。
+#[async_trait]
 pub trait Capability: Send + Sync {
     fn id(&self) -> &'static str;
     fn kind(&self) -> Kind;
@@ -107,7 +112,7 @@ pub trait Capability: Send + Sync {
     fn version(&self) -> &'static str {
         "1"
     }
-    /// 运行时可用性(C1 默认恒 Ready;C3 起按端 / 配置 / 依赖计算)。
+    /// 运行时可用性(默认恒 Ready;C3 起按端 / 配置 / 依赖计算)。
     fn available(&self) -> Availability {
         Availability::Ready
     }
@@ -118,8 +123,8 @@ pub trait Capability: Send + Sync {
     fn permissions(&self) -> &[Permission] {
         &[]
     }
-    /// 统一调用入口(C1 同步)。`input` = 工具参数 JSON。
-    fn invoke(&self, _input: &Value, _cx: &CallCx) -> Result<Output, String> {
+    /// 统一调用入口(异步:可含网络,如嵌入/检索)。`input` = 工具参数 JSON。
+    async fn invoke(&self, _input: &Value, _cx: &CallCx) -> Result<Output, String> {
         Err("该能力不支持 invoke".into())
     }
 }
@@ -174,7 +179,12 @@ impl Registry {
     }
 
     /// 统一调用(含 availability + 破坏性护栏校验)。供工具循环与 `cap_invoke` 复用。
-    pub fn invoke_raw(&self, id: &str, input: &Value, cx: &CallCx) -> Result<Output, String> {
+    pub async fn invoke_raw(
+        &self,
+        id: &str,
+        input: &Value,
+        cx: &CallCx<'_>,
+    ) -> Result<Output, String> {
         let cap = self.find(id).ok_or_else(|| format!("未知能力: {id}"))?;
         if !cap.available().is_ready() {
             return Err(format!("能力不可用: {id}"));
@@ -183,7 +193,7 @@ impl Registry {
         if cap.permissions().contains(&Permission::Destructive) {
             return Err(format!("破坏性能力须经护栏,不可直接执行: {id}"));
         }
-        cap.invoke(input, cx)
+        cap.invoke(input, cx).await
     }
 
     /// 能力清单(前端 `rt.capability.list`)。
@@ -229,14 +239,14 @@ pub fn cap_available(registry: State<'_, Registry>, id: String) -> bool {
 }
 
 #[tauri::command]
-pub fn cap_invoke(
+pub async fn cap_invoke(
     app: AppHandle,
     registry: State<'_, Registry>,
     id: String,
     input: Value,
 ) -> Result<Value, String> {
     let cx = CallCx { app: &app };
-    match registry.invoke_raw(&id, &input, &cx)? {
+    match registry.invoke_raw(&id, &input, &cx).await? {
         Output::Text(s) => Ok(Value::String(s)),
         Output::Json(v) => Ok(v),
         // 直接调用返回载荷(自动渲染走 AI 工具循环的 ai_widget 事件)。
@@ -265,6 +275,7 @@ fn is_queryable(collection: &str) -> bool {
 }
 
 pub struct DataQuery;
+#[async_trait]
 impl Capability for DataQuery {
     fn id(&self) -> &'static str {
         "query_data"
@@ -297,7 +308,7 @@ impl Capability for DataQuery {
             }),
         })
     }
-    fn invoke(&self, input: &Value, cx: &CallCx) -> Result<Output, String> {
+    async fn invoke(&self, input: &Value, cx: &CallCx) -> Result<Output, String> {
         let collection = input
             .get("collection")
             .and_then(|v| v.as_str())
@@ -378,6 +389,7 @@ fn has_external_script(lower: &str) -> bool {
 }
 
 pub struct ShowWidget;
+#[async_trait]
 impl Capability for ShowWidget {
     fn id(&self) -> &'static str {
         "show_widget"
@@ -407,7 +419,7 @@ impl Capability for ShowWidget {
             }),
         })
     }
-    fn invoke(&self, input: &Value, _cx: &CallCx) -> Result<Output, String> {
+    async fn invoke(&self, input: &Value, _cx: &CallCx) -> Result<Output, String> {
         let html = input
             .get("html")
             .and_then(|v| v.as_str())
