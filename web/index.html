@@ -1759,9 +1759,9 @@ function openNewJob(){
     <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="msec"><p class="seclabel">— BASIC INFO</p>
-        <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}"></div></div>
-        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select"><option>北京</option><option>上海</option><option>深圳</option><option>杭州</option><option>广州</option></select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select"><option>BOSS直聘</option><option>拉勾</option><option>内推</option><option>猎头</option></select></div></div>
-        <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" placeholder="${tt('如 · 5+','e.g. 5+')}"></div></div>
+        <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}"></div></div>
+        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity"><option>北京</option><option>上海</option><option>深圳</option><option>杭州</option><option>广州</option></select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource"><option>BOSS直聘</option><option>拉勾</option><option>内推</option><option>猎头</option></select></div></div>
+        <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" id="njPay" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" id="njYears" placeholder="${tt('如 · 5+','e.g. 5+')}"></div></div>
       </div>
       <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}"></textarea></div>
         <button class="btn" id="analyzeBtn">${tt('模拟分析 JD','Analyze JD')}</button><div id="analyzeResult" style="margin-top:14px;"></div></div>
@@ -1790,7 +1790,26 @@ function openNewJob(){
         <div style="display:flex;gap:28px;margin-top:12px;font-size:12.5px;color:var(--ink-2);"><span>${tt('年限','Years')} · <b class="mono">5+</b></span><span>${tt('学历','Edu')} · <b class="mono">${tt('本科+','BS+')}</b></span><span>${tt('关键词','Keywords')} · <b class="mono">${tt('稳定性 / 高并发','stability / scale')}</b></span></div></div>`;
     },1400);
   };
-  $('#saveJob',m).onclick=()=>{closeModal();toast('岗位已录入 (mock)');};
+  $('#saveJob',m).onclick=()=>{
+    const co=(($('#njCo',m)||{}).value||'').trim();
+    const role=(($('#njRole',m)||{}).value||'').trim();
+    if(!co||!role){ toast(tt('请填写公司与岗位','Company and role required')); return; }
+    const job={
+      id: nextJobId(), co, role,
+      city:(($('#njCity',m)||{}).value)||'',
+      source:(($('#njSource',m)||{}).value)||'',
+      pay:(($('#njPay',m)||{}).value||'').trim(),
+      years:(($('#njYears',m)||{}).value||'').trim(),
+      jd:(($('#jdInput',m)||{}).value||'').trim(),
+      interest:scores.interest, growth:scores.growth, match:scores.match, chance:scores.chance,
+      status:'active', kind:'', need:[], plus:[]
+    };
+    JOBS.unshift(job);
+    persistJob(job);                                  // 桌面:rt.db.upsert('jobs', job)
+    [renderJobs,renderOverview,renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
+    closeModal();
+    toast(tt('岗位已录入','Job added'));
+  };
 }
 
 /* ---------- NEW ACTION MODAL ---------- */
@@ -2523,9 +2542,15 @@ function agentChat(html){ (appMode==='agent'?agentAppend:copAppend)('ai','<span 
 function agentDeleteJob(id){
   const idx=JOBS.findIndex(j=>j.id===id); if(idx<0){agentChat('没找到这个岗位。');return;}
   const job=JOBS[idx]; JOBS.splice(idx,1);
+  const persist=jobsPersistOn();
+  if(persist) window.SeekerRT.db.remove('jobs', String(id)).catch(e=>console.error('[data] remove job', e));
   renderJobs(); renderOverview(); renderAnalysis(); renderMatch();
   agentChat('已删除「'+job.co+' · '+job.role.split('·')[0].trim()+'」。改主意了可以点撤销。');
-  toastUndo('已删除「'+job.co+'」',()=>{JOBS.splice(idx,0,job);renderJobs();renderOverview();renderAnalysis();renderMatch();});
+  toastUndo('已删除「'+job.co+'」',()=>{
+    JOBS.splice(idx,0,job);
+    if(persist) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] restore job', e));
+    renderJobs();renderOverview();renderAnalysis();renderMatch();
+  });
 }
 function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
 
@@ -2635,6 +2660,24 @@ function streamReply(thinkBubble, text, who, scrollFn){
   });
 }
 function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
+
+/* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
+function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
+function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] upsert job', e)); }
+async function hydrateJobs(){
+  if(!jobsPersistOn()) return;
+  try{
+    let rows = await window.SeekerRT.db.list('jobs');
+    if(!rows.length){                                   // 首启:内存 mock 作种子写入仓库
+      for(const j of JOBS){ await window.SeekerRT.db.upsert('jobs', j); }
+      rows = await window.SeekerRT.db.list('jobs');
+    }
+    JOBS.length=0; JOBS.push(...rows);                  // 水合(const 数组可变)
+    [renderOverview, renderJobs, renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
+  }catch(e){ console.error('[data] jobs 水合失败', e); }
+}
+window.addEventListener('seeker-rt-ready', hydrateJobs);
 
 function copSend(text){
   const inp=$('#copInput');
