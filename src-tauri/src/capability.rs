@@ -175,6 +175,7 @@ impl Registry {
         reg.register(Box::new(DataQuery));
         reg.register(Box::new(ShowWidget));
         reg.register(Box::new(crate::memory::LongTermMemory));
+        reg.register(Box::new(crate::docs::DocContext)); // RAG-over-docs:Context 自动召回用户文档
         reg
     }
 
@@ -550,8 +551,12 @@ mod tests {
             "memory"
         );
         assert_eq!(DataQuery.kind(), Kind::Tool);
-        // Registry 装配三者。
-        assert_eq!(Registry::new().caps.len(), 3);
+        // DocContext:Context 能力(只供料、无 LLM 工具 schema)。
+        assert_eq!(crate::docs::DocContext.id(), "docs");
+        assert_eq!(crate::docs::DocContext.kind(), Kind::Context);
+        assert!(crate::docs::DocContext.schema().is_none());
+        // Registry 装配四者(DataQuery / ShowWidget / memory / docs)。
+        assert_eq!(Registry::new().caps.len(), 4);
     }
 
     #[test]

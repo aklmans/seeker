@@ -81,6 +81,13 @@ const MIGRATIONS: &[(i64, &str)] = &[
         3,
         "CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, fact TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0);",
     ),
+    // RAG-over-docs(#2):用户文档切块 + 嵌入。平台能力私有,**不在 table_for** —— db_* 碰不到;
+    // 只经 DocContext 自动召回(标 Untrusted)。doc_id 聚合为"一篇文档";embedding 同记忆 BLOB。
+    (
+        4,
+        "CREATE TABLE IF NOT EXISTS doc_chunks (id TEXT PRIMARY KEY, doc_id TEXT NOT NULL, doc_name TEXT NOT NULL, text TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0);
+         CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc ON doc_chunks(doc_id);",
+    ),
 ];
 
 fn schema_version(conn: &Connection) -> i64 {
@@ -606,6 +613,89 @@ pub fn memory_undo(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usiz
     memory_restore_rows(&conn, &rows)
 }
 
+// ── RAG-over-docs 存储(#2)──────────────────────────────────────────────
+// doc_chunks:用户文档切块 + 嵌入。平台能力私有(不在 table_for)、只经 DocContext 自动召回。
+
+/// 批量写入一篇文档的切块(含 embedding)。
+pub fn doc_chunks_insert(
+    conn: &Connection,
+    doc_id: &str,
+    doc_name: &str,
+    rows: &[(String, Vec<f32>)],
+) -> Result<(), String> {
+    let now = now_ms();
+    for (i, (text, emb)) in rows.iter().enumerate() {
+        conn.execute(
+            "INSERT OR REPLACE INTO doc_chunks (id, doc_id, doc_name, text, embedding, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+            params![format!("{doc_id}_{i}"), doc_id, doc_name, text, vec_to_blob(emb), now],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 读全部切块 `(doc_name, text, embedding)` 供暴力 cosine 检索(跳过缺嵌入行)。
+pub fn doc_chunks_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT doc_name, text, embedding FROM doc_chunks")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let dn: String = r.get(0)?;
+            let txt: String = r.get(1)?;
+            let blob: Option<Vec<u8>> = r.get(2)?;
+            Ok((dn, txt, blob))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (dn, txt, blob) = r.map_err(|e| e.to_string())?;
+        if let Some(b) = blob {
+            out.push((dn, txt, blob_to_vec(&b)));
+        }
+    }
+    Ok(out)
+}
+
+/// 列出文档(按 doc_id 聚合:名 + 片段数 + 时间)——供管理 UI。**不含 embedding / 全文**。
+#[tauri::command]
+pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
+    let conn = db.0.lock().unwrap();
+    let mut stmt = conn
+        .prepare("SELECT doc_id, doc_name, COUNT(*) AS chunks, MAX(created_at) AS ts FROM doc_chunks GROUP BY doc_id ORDER BY ts DESC")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let id: String = r.get(0)?;
+            let name: String = r.get(1)?;
+            let chunks: i64 = r.get(2)?;
+            let ts: i64 = r.get(3)?;
+            Ok(serde_json::json!({ "docId": id, "name": name, "chunks": chunks, "ts": ts }))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+/// 删除一篇文档(其全部切块)。
+#[tauri::command]
+pub fn doc_remove(db: State<'_, Db>, doc_id: String) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    conn.execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())
+}
+
+/// 清空全部文档。
+#[tauri::command]
+pub fn doc_clear(db: State<'_, Db>) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    conn.execute("DELETE FROM doc_chunks", [])
+        .map_err(|e| e.to_string())
+}
+
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
 // 开应用时若距上次自动备份超阈值,则 VACUUM INTO 一份 + 修剪旧自动备份(保留最近 N)。
 // 默认开;`settings.autobackup='off'` 可关(设置页开关接 settings 待 domain 接线)。
@@ -768,6 +858,35 @@ mod tests {
             .query_row("SELECT created_at FROM memories WHERE id='m1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(restored_ts1, ts1); // 原时间保留(非 now)
+    }
+
+    #[test]
+    fn doc_chunks_insert_all_remove_clear() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-docs");
+        migrate(&mut conn, &tmp).unwrap();
+        // doc_chunks 平台私有:不在 table_for(db_* 碰不到)。
+        assert!(table_for("doc_chunks").is_err());
+        super::doc_chunks_insert(
+            &conn,
+            "d1",
+            "JD-字节",
+            &[("片段A".into(), vec![0.1, 0.2]), ("片段B".into(), vec![0.3, 0.4])],
+        )
+        .unwrap();
+        super::doc_chunks_insert(&conn, "d2", "笔记", &[("片段C".into(), vec![0.5, 0.6])]).unwrap();
+        // all:(doc_name, text, embedding)往返无损。
+        let all = super::doc_chunks_all(&conn).unwrap();
+        assert_eq!(all.len(), 3);
+        assert!(all
+            .iter()
+            .any(|(dn, txt, emb)| dn == "JD-字节" && txt == "片段A" && emb == &vec![0.1, 0.2]));
+        // 删一篇 → 剩另一篇的块;清空 → 空。
+        let n = conn.execute("DELETE FROM doc_chunks WHERE doc_id='d1'", []).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 1);
+        conn.execute("DELETE FROM doc_chunks", []).unwrap();
+        assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 0);
     }
 
     #[test]

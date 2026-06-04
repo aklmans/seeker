@@ -2,6 +2,7 @@ mod ai;
 mod capability;
 mod config;
 mod data;
+mod docs;
 mod embed;
 mod memory;
 mod prompts;
@@ -52,6 +53,10 @@ pub fn run() {
             data::memory_clear,
             data::memory_remove,
             data::memory_undo,
+            docs::doc_add,
+            data::doc_list,
+            data::doc_remove,
+            data::doc_clear,
             capability::cap_list,
             capability::cap_available,
             capability::cap_invoke,
