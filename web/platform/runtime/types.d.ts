@@ -65,10 +65,19 @@ export interface DbApi {
   /** 新增或更新(无 id 则创建)。返回写入后的完整记录。 */
   upsert(collection: Collection, record: Partial<Record>): Promise<Record>;
   /**
-   * 删除——**破坏性操作**。必经 platform/guardrail:预览 + 确认 + 可撤销。
+   * 删除——**破坏性操作**。返回被删记录(快照)→ 前端 toastUndo 撤销(经 upsert 还原)。
    * 无论调用者是 UI、Agent 还是 widget,都走同一护栏。
    */
-  remove(collection: Collection, id: string): Promise<void>;
+  remove(collection: Collection, id: string): Promise<Record | null>;
+}
+
+// ── 隐私字段(rt.profile)── 隐私红线 ─────────────────────────────
+// profile 与 db 物理隔离:Collection 不含 'profile';此接口**无任何"导出给 AI"的方法**。
+
+export interface ProfileApi {
+  /** 读取全部隐私字段(k→v)。 */
+  getAll(): Promise<{ [k: string]: string }>;
+  set(k: string, v: string): Promise<void>;
 }
 
 // ── AI 网关(rt.ai)───────────────────────────────────────────────
@@ -160,6 +169,7 @@ export interface RuntimeApi {
   /** 该端是否支持某能力;false → UI 优雅隐藏入口(不报错)。 */
   available(feature: Feature): boolean;
   readonly db: DbApi;
+  readonly profile: ProfileApi;
   readonly ai: AiApi;
   readonly secret: SecretApi;
   readonly capability: CapabilityApi;

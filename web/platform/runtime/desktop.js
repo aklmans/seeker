@@ -101,10 +101,16 @@ export function createDesktopRuntime() {
     available: (feature) => FEATURES.has(feature),
 
     db: {
-      list: () => notImpl('rt.db.list', 'desktop'),        // @ #3
-      get: () => notImpl('rt.db.get', 'desktop'),          // @ #3
-      upsert: () => notImpl('rt.db.upsert', 'desktop'),    // @ #3
-      remove: () => notImpl('rt.db.remove', 'desktop'),    // → guardrail @ #3
+      list: (collection, query) => invoke('db_list', { collection, query: query ?? null }),
+      get: (collection, id) => invoke('db_get', { collection, id }),
+      upsert: (collection, record) => invoke('db_upsert', { collection, record }),
+      remove: (collection, id) => invoke('db_remove', { collection, id }), // 返快照 → toastUndo
+    },
+
+    profile: {
+      // 隐私表,与 db 物理隔离;无"导出给 AI"的方法。
+      getAll: () => invoke('profile_get_all'),
+      set: (k, v) => invoke('profile_set', { k, v }),
     },
 
     ai: {

@@ -31,3 +31,5 @@ tokio-util = "0.7"
 futures-util = "0.3"
 # 密钥:系统钥匙串(Win 凭据管理器 / macOS Keychain)
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
+# 数据层:本地 SQLite(bundled = 自带,无系统依赖)
+rusqlite = { version = "0.32", features = ["bundled"] }

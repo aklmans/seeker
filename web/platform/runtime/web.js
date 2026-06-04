@@ -43,6 +43,11 @@ export function createWebRuntime() {
       clear: () => notImpl('rt.secret.clear', 'web'),
     },
 
+    profile: {
+      getAll: () => notImpl('rt.profile.getAll', 'web'),
+      set: () => notImpl('rt.profile.set', 'web'),
+    },
+
     capability: {
       list: () => notImpl('rt.capability.list', 'web'),
       available: () => notImpl('rt.capability.available', 'web'),
