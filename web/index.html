@@ -3100,12 +3100,13 @@ function showGapsCard(bubble, data, who){
 }
 /** 卡注册表:AI 出 ```seeker:<kind> 块 → domain 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。 */
 const SEEKER_CARDS = {
+  // persist=true 的「视图卡」会随消息存指令、重启后用实时数据重渲;resume-edit 是一次性护栏提案,不持久(否则重渲会重复提议)。
   'resume-edit':    { valid: d=>Array.isArray(d.edits) && d.edits.length>0, show: showResumeProposal },
-  'match-card':     { valid: d=>d.jobId!=null, show: showMatchCard },
-  'plan-card':      { valid: d=>d.skill!=null, show: showPlanCard },
-  'interview-card': { valid: d=>d.jobId!=null, show: showInterviewCard },
-  'value-card':     { valid: ()=>true,         show: showValueCard },
-  'gaps-card':      { valid: ()=>true,         show: showGapsCard },
+  'match-card':     { valid: d=>d.jobId!=null, show: showMatchCard,     persist:true },
+  'plan-card':      { valid: d=>d.skill!=null, show: showPlanCard,      persist:true },
+  'interview-card': { valid: d=>d.jobId!=null, show: showInterviewCard, persist:true },
+  'value-card':     { valid: ()=>true,         show: showValueCard,     persist:true },
+  'gaps-card':      { valid: ()=>true,         show: showGapsCard,      persist:true },
 };
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
@@ -3154,7 +3155,8 @@ function streamReply(thinkBubble, text, who, scrollFn){
         if(b.data && SEEKER_CARDS[kind].valid(b.data)){ pending.push([kind, b.data]); prose = b.prose; }
       }
       if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
-      persistMsg(who==='Agent'?'agent':'cop','ai', prose);            // 存去块纯文本(卡片会话内重渲不持久)
+      const persistCards = pending.filter(([k])=>SEEKER_CARDS[k].persist).map(([kind,data])=>({kind,data}));
+      persistMsg(who==='Agent'?'agent':'cop','ai', prose, persistCards); // 文字 + 可持久化卡指令(重启后重渲)
       for(const [kind, data] of pending){ try{ SEEKER_CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
       if(scrollFn) scrollFn();
     }
@@ -3229,11 +3231,14 @@ async function hydrateResumes(){
    不存招呼语 / 建议 chip / 富卡片 / widget(皆为临时 UI;widget 会话内重渲)。surface=cop|agent。
    隐私:messages 已移出后端 QUERYABLE → AI 不可 query_data('messages') 挖掘历史(经 History 拿上下文)。 */
 let __msgSeq=0;
-function persistMsg(surface, role, text){
+function persistMsg(surface, role, text, cards){
   if(!collPersistOn()) return;
-  text = String(text==null?'':text); if(!text.trim()) return;
+  text = String(text==null?'':text);
+  const hasCards = Array.isArray(cards) && cards.length>0;
+  if(!text.trim() && !hasCards) return;                 // 纯空且无卡才跳过(纯卡片回复仍持久)
   const ts = Date.now();
   const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:text, ts:ts };
+  if(hasCards) rec.cards = cards;                        // 可持久化卡指令 [{kind,data}](view 卡;不含 resume-edit 提案)
   window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
 }
 async function hydrateMessages(){
@@ -3243,8 +3248,13 @@ async function hydrateMessages(){
     if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
     rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
     const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const draw = (rows, append, who) => { rows.forEach(r => append(r.role==='user'?'user':'ai',
-      r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text)))); }; // AI 历史也渲染 Markdown
+    const draw = (rows, append, who) => { rows.forEach(r => {
+      const bubble = append(r.role==='user'?'user':'ai',
+        r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
+      if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
+        for(const c of r.cards){ const def=c&&SEEKER_CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
+      }
+    }); };
     const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
     // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
     if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
