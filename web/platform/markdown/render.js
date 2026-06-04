@@ -51,6 +51,9 @@ export function renderMarkdown(src) {
     if (inUl) { html += '</ul>'; inUl = false; }
     if (inOl) { html += '</ol>'; inOl = false; }
   };
+  // 表格分隔行:仅由 -:|空白 组成且含 -(用于探测表格起始)
+  /** @param {string} l */
+  const isDelim = (l) => l != null && /\|/.test(l) && /^[\s|:-]+$/.test(l) && /-/.test(l);
   while (i < lines.length) {
     const line = lines[i];
     // 代码围栏 ```lang(块内只转义、不解析);容忍未闭合
@@ -71,6 +74,24 @@ export function renderMarkdown(src) {
     if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { closeLists(); html += '<hr>'; i++; continue; }
     // 引用
     if (/^\s*>\s?/.test(line)) { closeLists(); html += '<blockquote>' + inline(line.replace(/^\s*>\s?/, '')) + '</blockquote>'; i++; continue; }
+    // GFM 表格:含 | 的表头行 + 分隔行;单元格走 inline()(转义安全)
+    if (line.indexOf('|') >= 0 && isDelim(lines[i + 1])) {
+      closeLists();
+      /** @param {string} row @returns {string[]} */
+      const cells = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      const aligns = cells(lines[i + 1]).map((c) => { const L = /^:/.test(c), R = /:$/.test(c); return L && R ? 'center' : R ? 'right' : L ? 'left' : ''; });
+      /** @param {string} tag @param {string} c @param {number} k */
+      const cellTag = (tag, c, k) => '<' + tag + (aligns[k] ? ' style="text-align:' + aligns[k] + '"' : '') + '>' + inline(c) + '</' + tag + '>';
+      const head = '<tr>' + cells(line).map((c, k) => cellTag('th', c, k)).join('') + '</tr>';
+      i += 2;
+      let body = '';
+      while (i < lines.length && lines[i].indexOf('|') >= 0 && !/^\s*$/.test(lines[i])) {
+        body += '<tr>' + cells(lines[i]).map((c, k) => cellTag('td', c, k)).join('') + '</tr>';
+        i++;
+      }
+      html += '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+      continue;
+    }
     // 无序列表
     const ul = line.match(/^\s*[-*+]\s+(.*)$/);
     if (ul) { if (inOl) { html += '</ol>'; inOl = false; } if (!inUl) { html += '<ul>'; inUl = true; } html += '<li>' + inline(ul[1]) + '</li>'; i++; continue; }
@@ -84,7 +105,8 @@ export function renderMarkdown(src) {
     let para = line;
     i++;
     while (i < lines.length && !/^\s*$/.test(lines[i]) &&
-      !/^\s*(#{1,6}\s|```|>\s?|[-*+]\s|\d+\.\s|(---|\*\*\*|___)\s*$)/.test(lines[i])) {
+      !/^\s*(#{1,6}\s|```|>\s?|[-*+]\s|\d+\.\s|(---|\*\*\*|___)\s*$)/.test(lines[i]) &&
+      !(lines[i].indexOf('|') >= 0 && isDelim(lines[i + 1]))) {  // 遇表格起始则断段
       para += '\n' + lines[i]; i++;
     }
     html += '<p>' + inline(para).replace(/\n/g, '<br>') + '</p>';
