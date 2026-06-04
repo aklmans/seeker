@@ -2310,7 +2310,7 @@ function resumeBind(){
   const regen=$('#rbRegen',root); if(regen)regen.onclick=()=>resumeGenerate(id,renderResumes);
   const exp=$('#rbExport',root); if(exp)exp.onclick=()=>resumeExport(id);
   const del=$('#rbDel',root); if(del)del.onclick=()=>{const snap=RESUME_TAILORED[id];delete RESUME_TAILORED[id];removeResume(id);renderResumes();renderInterview();toastUndo('已删除针对性简历',()=>{RESUME_TAILORED[id]=snap;persistResume(id);renderResumes();renderInterview();});};
-  root.addEventListener('focusout', ()=>persistResume(id)); // 输入失焦即持久化(oninput 已更新内存,此处落库)
+  root.onfocusout = ()=>persistResume(id); // 输入失焦即持久化(oninput 已更新内存);赋值而非 addEventListener,避免重渲染累积监听器
   $$('#page-resumes .blk-head').forEach(h=>h.onclick=(e)=>{if(e.target.closest('[data-mremove]'))return;h.parentElement.classList.toggle('open');});
   $$('#page-resumes [data-mtgl]').forEach(t=>t.onclick=()=>{resumeSync(id);const m=resMod(r,t.dataset.mtgl);m.on=!m.on;renderResumes();renderInterview();});
   $$('#page-resumes [data-mremove]').forEach(b=>b.onclick=(e)=>{e.stopPropagation();resumeSync(id);r.modules=r.modules.filter(m=>m.key!==b.dataset.mremove);renderResumes();});
