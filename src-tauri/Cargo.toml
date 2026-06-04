@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Seeker — 本地优先的可复用平台基座(首个应用:求职岗位研究工作台)"
 authors = ["Aklman <zhapar.dev@gmail.com>"]
 license = ""
-repository = ""
+repository = "https://github.com/aklmans/seeker"
+publish = false
 edition = "2021"
 rust-version = "1.77.2"
 

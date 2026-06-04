@@ -44,6 +44,37 @@ struct ErrEv {
     retriable: bool,
 }
 
+/// 网关内部错误:带 code 与是否可重试。配置/鉴权错**不可重试**(重试无益,引导去设置);
+/// 超时/网络/429/5xx **可重试**。
+struct ChatError {
+    code: &'static str,
+    message: String,
+    retriable: bool,
+}
+impl ChatError {
+    fn config(msg: impl Into<String>) -> Self {
+        Self {
+            code: "config",
+            message: msg.into(),
+            retriable: false,
+        }
+    }
+    fn auth(msg: impl Into<String>) -> Self {
+        Self {
+            code: "auth",
+            message: msg.into(),
+            retriable: false,
+        }
+    }
+    fn transient(code: &'static str, msg: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: msg.into(),
+            retriable: true,
+        }
+    }
+}
+
 /// 启动一次流式对话。立即返回;token 经 `ai_chunk` 回灌,结束发 `ai_done` / `ai_error`。
 #[tauri::command]
 pub async fn ai_chat(
@@ -78,9 +109,9 @@ pub async fn ai_chat(
                 "ai_error",
                 ErrEv {
                     session_id,
-                    code: "gateway".into(),
-                    message: e,
-                    retriable: true,
+                    code: e.code.into(),
+                    message: e.message,
+                    retriable: e.retriable,
                 },
             );
         }
@@ -103,13 +134,15 @@ async fn stream_openai(
     user_text: &str,
     _task: Option<&str>,
     token: CancellationToken,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let cfg = crate::config::load(app);
     if cfg.base_url.is_empty() || cfg.model.is_empty() {
-        return Err("尚未配置模型(base_url / model),请在「数据设置」填写".into());
+        return Err(ChatError::config(
+            "尚未配置模型(base_url / model),请在「数据设置」填写",
+        ));
     }
     let key = crate::secret::get_secret(KEY_ACCOUNT)
-        .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
+        .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
 
     // 系统提示。G2:消息仅 system + user 两类,**结构上不含 profile 隐私字段**
     // (ai_chat 命令签名只有 user_text,网关无从拿到 profile)。系统提示配置化(domain/prompts)留待后续细化。
@@ -129,15 +162,23 @@ async fn stream_openai(
     let resp = tokio::select! {
         _ = token.cancelled() => return Ok("cancelled".into()),
         r = tokio::time::timeout(CONNECT_TIMEOUT, send) => match r {
-            Err(_) => return Err("连接模型端点超时".into()),
-            Ok(x) => x.map_err(|e| e.to_string())?,
+            Err(_) => return Err(ChatError::transient("timeout", "连接模型端点超时")),
+            Ok(x) => x.map_err(|e| ChatError::transient("network", e.to_string()))?,
         }
     };
 
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("模型返回 HTTP {} · {}", code, redact(&body)));
+        let msg = format!("模型返回 HTTP {} · {}", code, redact(&body));
+        // 401/403 鉴权错、其它 4xx(除 408/429)多为配置错 → 不可重试;408/429/5xx → 可重试。
+        return Err(if code == 401 || code == 403 {
+            ChatError::auth(msg)
+        } else if code == 408 || code == 429 || code >= 500 {
+            ChatError::transient("http", msg)
+        } else {
+            ChatError::config(msg)
+        });
     }
 
     let mut stream = Box::pin(resp.bytes_stream());
@@ -146,12 +187,12 @@ async fn stream_openai(
         let next = tokio::select! {
             _ = token.cancelled() => return Ok("cancelled".into()),
             r = tokio::time::timeout(IDLE_TIMEOUT, stream.next()) => match r {
-                Err(_) => return Err("模型响应超时(空闲)".into()),
+                Err(_) => return Err(ChatError::transient("timeout", "模型响应超时(空闲)")),
                 Ok(n) => n,
             }
         };
         let Some(chunk) = next else { break };
-        let bytes = chunk.map_err(|e| e.to_string())?;
+        let bytes = chunk.map_err(|e| ChatError::transient("network", e.to_string()))?;
         buf.push_str(&String::from_utf8_lossy(&bytes));
 
         // 逐行解析 SSE:`data: {json}` / `data: [DONE]`
