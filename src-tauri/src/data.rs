@@ -9,7 +9,7 @@
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
@@ -44,7 +44,12 @@ pub fn open(app: &AppHandle) -> Result<Connection, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut conn = Connection::open(dir.join("seeker.db")).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
-    migrate(&mut conn, &dir.join("backups"))?;
+    let backups = dir.join("backups");
+    migrate(&mut conn, &backups)?;
+    // 周期性自动备份(开应用时若到期):best-effort,失败仅告警不阻断启动。
+    if let Err(e) = auto_backup_if_due(&conn, &backups) {
+        log::warn!("自动备份失败(不阻断): {e}");
+    }
     Ok(conn)
 }
 
@@ -484,9 +489,80 @@ pub fn memory_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>)>, 
     Ok(out)
 }
 
+// ── 周期性自动备份(平台 backlog)──────────────────────────────────
+// 开应用时若距上次自动备份超阈值,则 VACUUM INTO 一份 + 修剪旧自动备份(保留最近 N)。
+// 默认开;`settings.autobackup='off'` 可关(设置页开关接 settings 待 domain 接线)。
+// 与「迁移前快照」(seeker-pre-*)、「手动备份」(seeker-backup-*)区分:自动备份名 seeker-auto-*。
+
+const AUTO_BACKUP_INTERVAL_MS: i64 = 24 * 60 * 60 * 1000; // 24h
+const AUTO_BACKUP_KEEP: usize = 5;
+
+fn kv_get(conn: &Connection, table: &str, k: &str) -> Option<String> {
+    // table 仅取自本模块字面量(meta / settings),非用户输入。
+    conn.query_row(
+        &format!("SELECT v FROM {table} WHERE k = ?1"),
+        params![k],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+}
+
+/// 距上次备份是否到期(纯函数,便于测试)。
+fn backup_due(last_ms: i64, now: i64) -> bool {
+    now - last_ms >= AUTO_BACKUP_INTERVAL_MS
+}
+
+/// 开应用时:到期则 VACUUM INTO 一份自动备份 + 更新 meta + 修剪。
+fn auto_backup_if_due(conn: &Connection, backups_dir: &Path) -> Result<(), String> {
+    if kv_get(conn, "settings", "autobackup").as_deref() == Some("off") {
+        return Ok(()); // 用户关闭
+    }
+    let last = kv_get(conn, "meta", "last_auto_backup")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let now = now_ms();
+    if !backup_due(last, now) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(backups_dir).map_err(|e| e.to_string())?;
+    let path = backups_dir.join(format!("seeker-auto-{now}.db"));
+    let p = path.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{p}'"))
+        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (k, v) VALUES ('last_auto_backup', ?1)",
+        params![now.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+    prune_auto_backups(backups_dir, AUTO_BACKUP_KEEP);
+    Ok(())
+}
+
+/// 修剪自动备份:按文件名(含时间戳,字典序≈时间序)排序,删超过 keep 的最旧者。
+fn prune_auto_backups(backups_dir: &Path, keep: usize) {
+    let Ok(rd) = std::fs::read_dir(backups_dir) else {
+        return;
+    };
+    let mut autos: Vec<PathBuf> = rd
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("seeker-auto-") && n.ends_with(".db"))
+                .unwrap_or(false)
+        })
+        .collect();
+    autos.sort();
+    if autos.len() > keep {
+        for old in &autos[..autos.len() - keep] {
+            let _ = std::fs::remove_file(old);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{migrate, schema_version, table_for, MIGRATIONS};
+    use super::{migrate, now_ms, schema_version, table_for, MIGRATIONS};
     use rusqlite::Connection;
 
     #[test]
@@ -531,5 +607,65 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].1, "用户偏好远程后端岗位");
         assert_eq!(all[0].2, vec![1.0, 0.0, 2.0]); // BLOB 小端往返无损
+    }
+
+    #[test]
+    fn auto_backup_due_threshold() {
+        assert!(!super::backup_due(now_ms(), now_ms())); // 刚备份 → 不到期
+        assert!(super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS)); // 恰好满阈值 → 到期
+        assert!(super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS + 1));
+        assert!(!super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS - 1));
+    }
+
+    fn auto_count(dir: &std::path::Path) -> usize {
+        std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter(|e| {
+                        e.file_name()
+                            .to_str()
+                            .map(|n| n.starts_with("seeker-auto-") && n.ends_with(".db"))
+                            .unwrap_or(false)
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn auto_backup_creates_when_due_then_skips() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-autobk-{}", now_ms()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        migrate(&mut conn, &tmp).unwrap();
+        // 首次:last 缺 → 到期 → 建一份。
+        super::auto_backup_if_due(&conn, &tmp).unwrap();
+        assert_eq!(auto_count(&tmp), 1, "首启应建一份自动备份");
+        // 再调:刚备份未到阈值 → 不增。
+        super::auto_backup_if_due(&conn, &tmp).unwrap();
+        assert_eq!(auto_count(&tmp), 1, "未到阈值不重复备份");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn prune_keeps_last_n() {
+        let tmp = std::env::temp_dir().join(format!("seeker-test-prune-{}", now_ms()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        for i in 0..super::AUTO_BACKUP_KEEP + 3 {
+            std::fs::write(tmp.join(format!("seeker-auto-{i:03}.db")), b"x").unwrap();
+        }
+        std::fs::write(tmp.join("seeker-backup-keep.db"), b"x").unwrap(); // 非自动:不应被修剪
+        super::prune_auto_backups(&tmp, super::AUTO_BACKUP_KEEP);
+        assert_eq!(
+            auto_count(&tmp),
+            super::AUTO_BACKUP_KEEP,
+            "自动备份修剪到上限"
+        );
+        assert!(
+            tmp.join("seeker-backup-keep.db").exists(),
+            "手动备份不受修剪"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
