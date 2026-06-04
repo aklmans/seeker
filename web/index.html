@@ -2732,7 +2732,8 @@ function streamReply(thinkBubble, text, who, scrollFn){
       if(scrollFn) scrollFn();
     },
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
-    onDone(){ if(scrollFn) scrollFn(); }
+    onDone(){ persistMsg(who==='Agent'?'agent':'cop','ai',acc); if(scrollFn) scrollFn(); } // 只存最终纯文本(含 widget 的会话内重渲不持久)
+
   });
 }
 function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
@@ -2800,11 +2801,38 @@ async function hydrateResumes(){
     for(const rec of rows){ if(rec && rec.jobId!=null) RESUME_TAILORED[rec.jobId] = { template:rec.template||'minimal', modules:rec.modules||[] }; }
   }catch(e){ console.error('[data] hydrate resumes', e); }
 }
+/* ===== messages 对话历史持久化(domain)。只存「可见对话」纯文本(user / AI 流式结果),
+   不存招呼语 / 建议 chip / 富卡片 / widget(皆为临时 UI;widget 会话内重渲)。surface=cop|agent。
+   隐私:messages 已移出后端 QUERYABLE → AI 不可 query_data('messages') 挖掘历史(经 History 拿上下文)。 */
+let __msgSeq=0;
+function persistMsg(surface, role, text){
+  if(!collPersistOn()) return;
+  text = String(text==null?'':text); if(!text.trim()) return;
+  const ts = Date.now();
+  const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:text, ts:ts };
+  window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
+}
+async function hydrateMessages(){
+  if(!collPersistOn()) return;
+  try{
+    const rows = await window.SeekerRT.db.list('messages');
+    if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
+    rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const draw = (rows, append, who) => { rows.forEach(r => append(r.role==='user'?'user':'ai',
+      r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+esc(r.text)))); };
+    const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
+    // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
+    if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
+    if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
+  }catch(e){ console.error('[data] hydrate messages', e); }
+}
 async function hydrateBizColls(){
   await hydrateColl('skills', SKILLS);
   await hydrateColl('actions', ACTIONS);
   await hydrateColl('iv_records', IV_RECORDS);
   await hydrateResumes();
+  await hydrateMessages();
   try{ rerenderPages(); }catch(_e){}
 }
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
@@ -2851,7 +2879,7 @@ function copSend(text, aiText){
   if(appMode==='agent'){ agentSend(text, aiText); return; }
   inp.value=''; inp.style.height='auto';
   if(!copEl().classList.contains('open')) copOpen();
-  copAppend('user', text.replace(/</g,'&lt;'));
+  copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
@@ -2903,7 +2931,7 @@ function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}
 function agentSend(text, aiText){
   const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
   inp.value=''; inp.style.height='auto';
-  agentAppend('user', text.replace(/</g,'&lt;'));
+  agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }

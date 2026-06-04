@@ -308,14 +308,15 @@ pub async fn cap_invoke(
 // ── 参考能力:只读数据查询(C1)──────────────────────────────────
 // 让模型能读用户本地的求职数据(岗位 / 技能 / 行动…),**只读、无破坏性、绝不含 profile**。
 
-/// 工具可见的业务集合(与 `data::table_for` 白名单一致;**profile / secrets / settings 不在内**)。
+/// 工具可见的业务集合 —— `data::table_for`(可持久化)的**子集**,刻意排除会话日志。
+/// **profile / secrets / settings 永不可读**(隐私红线);**messages 可持久化但不可读**:
+/// 对话历史可能含用户主动写出的 PII,AI 经多轮 History 拿上下文即可,不应数据挖掘全量会话日志(最小权限)。
 const QUERYABLE: &[&str] = &[
     "jobs",
     "skills",
     "actions",
     "resumes",
     "iv_records",
-    "messages",
 ];
 
 fn is_queryable(collection: &str) -> bool {
@@ -528,7 +529,8 @@ mod tests {
         assert!(!is_queryable("settings"));
         assert!(!is_queryable("meta"));
         assert!(is_queryable("jobs"));
-        assert!(is_queryable("messages"));
+        // messages 可持久化(table_for)但不可被 AI 查询:会话日志可能含用户主动写出的 PII,最小权限。
+        assert!(!is_queryable("messages"));
         // 暴露给 LLM 的工具枚举同样不含 profile。
         let schema = DataQuery.schema().unwrap();
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();
