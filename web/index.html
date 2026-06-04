@@ -1548,6 +1548,7 @@ function toggleAction(id){
   if(card){card.classList.add('flash'); setTimeout(()=>card.classList.remove('flash'),650);}
   toast('行动状态已更新');
   renderOverview();
+  persistColl('actions', ACTIONS);
 }
 function openActionDetail(id){
   const a=ACTIONS.find(x=>x.id===id);
@@ -1575,7 +1576,7 @@ function openActionDetail(id){
     const i=+r.dataset.ms; a.milestones[i].done=!a.milestones[i].done;
     recalcProgress(a);
     a.state = a.progress===100?'done':(a.progress>0?'doing':a.state);
-    openActionDetail(id); renderActions(); renderOverview();
+    openActionDetail(id); renderActions(); renderOverview(); persistColl('actions', ACTIONS);
   });
   $('#addSess',m).onclick=()=>{
     const host=$('#sessFormHost',m);
@@ -1592,7 +1593,7 @@ function openActionDetail(id){
       a.sessions=a.sessions||[]; a.sessions.push({date,mins,note});
       if(a.state==='todo') a.state='doing';
       toast('已记录 '+mins+' 分钟训练 · 继续保持');
-      openActionDetail(id); renderActions(); renderOverview();
+      openActionDetail(id); renderActions(); renderOverview(); persistColl('actions', ACTIONS);
     };
   };
 }
@@ -2027,6 +2028,7 @@ function genPlanFromGap(skill, jobLabel){
   ACTIONS.push({id, title:`训练计划 · 补齐 ${skill}`, state:'todo', pri:'high', fromJobs:0, due:'', skill, cap:skill, jobs:jobLabel||'', est:p.weeks+' 周', note:'AI 生成 · 首选资源:'+p.res[0],
     progress:0, goal:`用约 ${p.weeks} 周补齐「${skill}」,完成 ${p.ms.length} 个里程碑并沉淀为一段可展示的项目证据。`,
     milestones:p.ms.map(t=>({t,done:false})), sessions:[], reflection:''});
+  persistColl('actions', ACTIONS);
   return id;
 }
 
@@ -2400,6 +2402,7 @@ function ivSubmit(){
         return `<div style="padding:18px 18px 20px;">${fbBody}<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;"><button class="btn btn-accent" id="ivRoundNext">${last?tt('查看整轮总评','See round summary'):tt('下一题','Next')} →</button></div></div>`;
       }
       IV_RECORDS.unshift({id:Date.now(), type:'single', qText:q.text, cat:q.cat, date:'2026.06.02', job:j.co, tags:q.tags, answer:(ans&&ans.trim()?ans.trim():'(语音作答 / 未保存文字)').slice(0,90)+(ans.length>90?'…':''), scores:f.scores, good:f.good, improve:f.improve});
+      persistColl('iv_records', IV_RECORDS);
       return `<div style="padding:18px 18px 20px;">${fbBody}<p style="font-size:12px;color:var(--ink-mute);margin:14px 0 0;">${tt('已存入练习记录 ✓','Saved to practice records ✓')}</p>
         <div style="display:flex;gap:10px;margin-top:13px;flex-wrap:wrap;"><button class="btn btn-accent" id="ivNextQ">${tt('换一题继续','Another question')} →</button><button class="btn" onclick="ivState.q=null;ivState.tab='records';ivState.search='';renderInterview();">${tt('查看练习记录','View records')} →</button></div></div>`;
     },{label:tt('评估你的回答中…','Evaluating your answer…'), after:()=>{const nq=$('#ivNextQ'); if(nq)nq.onclick=ivNextRandom; const rn=$('#ivRoundNext'); if(rn)rn.onclick=ivRoundNext;}});
@@ -2725,6 +2728,40 @@ async function hydrateJobs(){
   }catch(e){ console.error('[data] jobs 水合失败', e); }
 }
 window.addEventListener('seeker-rt-ready', hydrateJobs);
+
+/* ===== 业务数据落地:其余集合接仓库(skills/actions/iv_records;jobs 见上,resumes 紧随) =====
+   通用「整集合 upsert + 水合(首启种子)」。记录少,整集合写简单稳妥;隐私表不在此(走 profile)。 */
+function collPersistOn(){ return jobsPersistOn(); } // 同条件:桌面 + SeekerRT
+/** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。 */
+function withCollId(name, r){
+  if(r && r.id!=null) return r;
+  if(name==='skills') return Object.assign({ id:r.name }, r);
+  return Object.assign({ id:'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6) }, r);
+}
+/** 整集合 upsert(变更后调用)。 @param {string} name @param {any[]} arr */
+function persistColl(name, arr){
+  if(!collPersistOn()) return;
+  for(const r of arr){ window.SeekerRT.db.upsert(name, withCollId(name, r)).catch(e=>console.error('[data] upsert '+name, e)); }
+}
+/** 水合:载仓库;首启把内存 mock 作种子写入;再用仓库内容替换内存数组(就地)。 */
+async function hydrateColl(name, arr){
+  if(!collPersistOn()) return;
+  try{
+    let rows = await window.SeekerRT.db.list(name);
+    if(!rows.length && arr.length){                 // 首启:种子写仓库
+      for(const r of arr){ await window.SeekerRT.db.upsert(name, withCollId(name, r)); }
+      rows = await window.SeekerRT.db.list(name);
+    }
+    arr.length=0; arr.push(...rows);                 // 水合(const 数组可变内容)
+  }catch(e){ console.error('[data] hydrate '+name, e); }
+}
+async function hydrateBizColls(){
+  await hydrateColl('skills', SKILLS);
+  await hydrateColl('actions', ACTIONS);
+  await hydrateColl('iv_records', IV_RECORDS);
+  try{ rerenderPages(); }catch(_e){}
+}
+window.addEventListener('seeker-rt-ready', hydrateBizColls);
 
 /* ===== #2 W3:widget-action 回流处理(domain)。破坏性一律过 platform/guardrail。 =====
    widgetId 由平台按端口归属传入(不信任 iframe 自报);payload 仅当数据。 */
