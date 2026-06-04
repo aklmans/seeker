@@ -334,6 +334,12 @@ async fn run_chat(
             RoundOutcome::ToolCalls { assistant, calls } => {
                 messages.push(assistant);
                 for call in calls {
+                    log::info!(
+                        "[tool] id={:?} name={:?} args={:?}",
+                        call.id,
+                        call.name,
+                        call.args
+                    );
                     let args: Value =
                         serde_json::from_str(&call.args).unwrap_or_else(|_| json!({}));
                     // 经 invoke_raw 统一执行(破坏性能力被拒);Widget 输出额外下发 ai_widget。

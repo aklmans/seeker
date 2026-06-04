@@ -322,6 +322,16 @@ fn is_queryable(collection: &str) -> bool {
     QUERYABLE.contains(&collection)
 }
 
+/// 规整可选 id:空 / 全空白 / 非字符串 → None(列全部);否则 Some(去空白)。
+/// **真模型常把可选参数传成空串**,必须当"未指定"而非"按 id 取一条"(否则查不到、误返回空)。
+fn norm_id(input: &Value) -> Option<&str> {
+    input
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+}
+
 pub struct DataQuery;
 #[async_trait]
 impl Capability for DataQuery {
@@ -366,7 +376,9 @@ impl Capability for DataQuery {
             return Err(format!("不可查询的集合: {collection}"));
         }
         let result = crate::data::with_db(cx.app, |conn| {
-            match input.get("id").and_then(|v| v.as_str()) {
+            // 空白 id 当作"未指定"(列全部)—— 真模型常把可选 id 传成 ""(空串),
+            // 若当作 get-by-id 会查不到、误返回空。见 norm_id。
+            match norm_id(input) {
                 Some(id) => {
                     let one = crate::data::get_record(conn, collection, id)?;
                     Ok(json!({ "collection": collection, "record": one }))
@@ -497,6 +509,16 @@ impl Capability for ShowWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn norm_id_treats_blank_as_list_all() {
+        // 真模型把可选 id 传成 "" → 必须当列全部(否则 get-by-id 查不到、误返回空)。
+        assert_eq!(norm_id(&json!({})), None);
+        assert_eq!(norm_id(&json!({ "id": "" })), None);
+        assert_eq!(norm_id(&json!({ "id": "   " })), None);
+        assert_eq!(norm_id(&json!({ "id": "w_1" })), Some("w_1"));
+        assert_eq!(norm_id(&json!({ "id": 42 })), None);
+    }
 
     #[test]
     fn data_query_excludes_profile_and_secrets() {
