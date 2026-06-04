@@ -489,6 +489,54 @@ pub fn memory_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>)>, 
     Ok(out)
 }
 
+/// 读记忆条目 `(id, fact, ts)` 供用户在设置页查看/清除 —— **不含 embedding**(隐私 + 体积:
+/// 只回事实文本,绝不外泄向量字节)。按时间倒序。
+pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, created_at FROM memories ORDER BY created_at DESC")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let id: String = r.get(0)?;
+            let fact: String = r.get(1)?;
+            let ts: i64 = r.get(2)?;
+            Ok(serde_json::json!({ "id": id, "fact": fact, "ts": ts }))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+// ── 长期记忆的用户掌控(#4 · 查看/清除入口)────────────────────────────
+// 记忆可能含用户主动写出的 PII;给用户查看与清除入口(本地、即时生效)。embedding 永不出后端。
+
+/// 列出长期记忆(不含 embedding)——供「数据与隐私」查看。
+#[tauri::command]
+pub fn memory_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
+    let conn = db.0.lock().unwrap();
+    memory_entries(&conn)
+}
+
+/// 清除全部长期记忆,返回删除条数(清除后 AI 不再记得这些)。
+#[tauri::command]
+pub fn memory_clear(db: State<'_, Db>) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    conn.execute("DELETE FROM memories", [])
+        .map_err(|e| e.to_string())
+}
+
+/// 删除一条长期记忆。
+#[tauri::command]
+pub fn memory_remove(db: State<'_, Db>, id: String) -> Result<(), String> {
+    let conn = db.0.lock().unwrap();
+    conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
 // 开应用时若距上次自动备份超阈值,则 VACUUM INTO 一份 + 修剪旧自动备份(保留最近 N)。
 // 默认开;`settings.autobackup='off'` 可关(设置页开关接 settings 待 domain 接线)。
@@ -607,6 +655,25 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].1, "用户偏好远程后端岗位");
         assert_eq!(all[0].2, vec![1.0, 0.0, 2.0]); // BLOB 小端往返无损
+    }
+
+    #[test]
+    fn memory_entries_excludes_embedding_then_clear_empties() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-mement");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "m1", "我在学 Rust", &[0.1, 0.2]).unwrap();
+        super::memory_add(&conn, "m2", "目标分布式后端", &[0.3, 0.4]).unwrap();
+        let entries = super::memory_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 2);
+        // 供查看的条目含 fact,**绝不含 embedding**(向量字节不外泄)。
+        assert!(entries[0].get("fact").is_some());
+        assert!(entries[0].get("embedding").is_none());
+        assert!(entries.iter().any(|e| e["fact"] == "我在学 Rust"));
+        // 清除全部 → 计数正确 + 列空(memory_clear 命令体即此 DELETE)。
+        let n = conn.execute("DELETE FROM memories", []).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(super::memory_entries(&conn).unwrap().len(), 0);
     }
 
     #[test]

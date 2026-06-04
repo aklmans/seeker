@@ -169,5 +169,12 @@ export function createWebRuntime() {
       available: () => notImpl('rt.capability.available', 'web'),
       invoke: () => notImpl('rt.capability.invoke', 'web'),
     },
+
+    // 网页端暂无本地长期记忆(BYO 嵌入 + SQLite 为桌面能力)→ 优雅降级:空列表、清除无操作。
+    memory: {
+      list: () => Promise.resolve([]),
+      clear: () => Promise.resolve(0),
+      remove: () => Promise.resolve(),
+    },
   };
 }

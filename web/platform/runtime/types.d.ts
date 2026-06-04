@@ -185,6 +185,20 @@ export interface CapabilityApi {
   invoke(id: string, input: unknown): Promise<unknown>;
 }
 
+/** 长期记忆条目(查看用 · **不含 embedding**)。 */
+export interface MemoryEntry {
+  id: string;
+  fact: string;
+  ts: number;
+}
+
+/** 长期记忆的用户掌控(#4):查看 / 清除全部 / 删一条。网页端降级为空。 */
+export interface MemoryApi {
+  list(): Promise<MemoryEntry[]>;
+  clear(): Promise<number>;
+  remove(id: string): Promise<void>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -196,6 +210,7 @@ export interface RuntimeApi {
   readonly ai: AiApi;
   readonly secret: SecretApi;
   readonly capability: CapabilityApi;
+  readonly memory: MemoryApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

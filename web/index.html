@@ -1643,6 +1643,65 @@ const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.co
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
 const WEIGHTS=[['兴趣分',40],['成长分',30],['匹配分',20],['机会分',10]];
 const SET_TABS=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['goals',['目标设置','Goals']],['weights',['评分权重','Weights']],['data',['数据管理','Data']],['about',['关于','About']]];
+/* ===== 隐私 · 历史与记忆掌控(#4 用户掌控)—— 设置页入口,不经对话改;清除走 guardrail。 ===== */
+function _mgrEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _mgrTime(ts){ try{ return new Date(+ts||0).toLocaleString(); }catch(_e){ return ''; } }
+async function openHistoryManager(){
+  const rt=window.SeekerRT, G=window.SeekerGuardrail;
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('会话历史','Chat history')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body" id="histBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
+    <div class="modal-foot"><button class="btn" id="histClear">${tt('清除全部会话历史','Clear all history')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+  const render=async()=>{
+    let rows=[]; try{ rows=await rt.db.list('messages'); }catch(_e){}
+    rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const body=m.querySelector('#histBody'); if(!body) return;
+    if(!rows.length) body.innerHTML=`<p style="color:var(--ink-3);padding:18px 0;text-align:center;">${tt('暂无会话历史。','No chat history yet.')}</p>`;
+    else body.innerHTML=`<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('共 ','Total ')}${rows.length}${tt(' 条 · 仅存本地',' · local only')}</p>`+rows.map(r=>{
+      const who=r.role==='user'?tt('我','Me'):(r.surface==='agent'?'Agent':'Copilot');
+      const cls=r.role==='user'?'var(--accent)':'var(--ink-3)';
+      return `<div style="padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:${cls};margin-bottom:3px;">${who} · ${_mgrTime(r.ts)}</div><div style="font-size:13px;color:var(--ink-2);line-height:1.55;white-space:pre-wrap;">${_mgrEsc(r.text)}</div></div>`;
+    }).join('');
+    const cb=m.querySelector('#histClear'); if(cb) cb.style.display=rows.length?'':'none';
+  };
+  await render();
+  const cb=m.querySelector('#histClear');
+  if(cb) cb.onclick=async()=>{
+    if(!G||!G.confirmDestructive) return;
+    let snaps=[];
+    await G.confirmDestructive({
+      title:tt('清除全部会话历史?','Clear all chat history?'),
+      detail:tt('将删除本地所有会话消息(Copilot 与 Agent)。可在几秒内撤销。','Deletes all local chat messages (Copilot & Agent). Undoable for a few seconds.'),
+      confirmLabel:tt('清除','Clear'), undoText:tt('已清除会话历史','Chat history cleared'),
+      onConfirm:async()=>{ snaps=[]; let rows=[]; try{rows=await rt.db.list('messages');}catch(_e){} for(const r of rows){ try{ const s=await rt.db.remove('messages', r.id); if(s) snaps.push(s); }catch(_e){} } await render(); },
+      onUndo:async()=>{ for(const s of snaps){ try{ await rt.db.upsert('messages', s); }catch(_e){} } await render(); },
+    });
+  };
+}
+async function openMemoryManager(){
+  const rt=window.SeekerRT, G=window.SeekerGuardrail;
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('长期记忆','Long-term memory')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body" id="memBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
+    <div class="modal-foot"><button class="btn" id="memClear">${tt('清除全部记忆','Clear all memory')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+  const render=async()=>{
+    let rows=[]; try{ rows=await rt.memory.list(); }catch(_e){}
+    const body=m.querySelector('#memBody'); if(!body) return;
+    if(!rows.length) body.innerHTML=`<p style="color:var(--ink-3);padding:18px 0;text-align:center;">${tt('AI 还没有记住任何内容。','Nothing remembered yet.')}</p>`;
+    else body.innerHTML=`<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ','What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地',' · local only')}</p>`+rows.map(r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${_mgrEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${_mgrTime(r.ts)}</div></div><button class="btn" data-memdel="${_mgrEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Delete')}</button></div>`).join('');
+    [...m.querySelectorAll('[data-memdel]')].forEach(b=>b.onclick=async()=>{ try{ await rt.memory.remove(b.dataset.memdel); toast(tt('已删除该记忆','Memory deleted')); }catch(_e){} await render(); });
+    const cb=m.querySelector('#memClear'); if(cb) cb.style.display=rows.length?'':'none';
+  };
+  await render();
+  const cb=m.querySelector('#memClear');
+  if(cb) cb.onclick=async()=>{
+    if(!G||!G.confirmDestructive) return;
+    await G.confirmDestructive({
+      title:tt('清除全部长期记忆?','Clear all long-term memory?'),
+      detail:tt('将删除 AI 记住的全部内容。此操作不可恢复(嵌入向量无法重建)。','Deletes everything AI remembers. This cannot be undone.'),
+      confirmLabel:tt('清除','Clear'),
+      onConfirm:async()=>{ try{ await rt.memory.clear(); }catch(_e){} await render(); },
+    });
+  };
+}
 function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
@@ -1714,6 +1773,10 @@ function renderSettings(){
     ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
     ${row(tt('上次备份','Last backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">2026.05.18 14:30</span>`)}
     ${row(tt('演示空状态','Demo empty state'),`<button class="btn" onclick="showEmptyState()">${tt('查看引导态','View onboarding')}</button>`)}
+    <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
+    ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
+    ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
+    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除 —— 你掌控自己的数据。','Chat history and long-term memory are stored locally only. <b>AI cannot query your chat history</b> (it only sees in-conversation context); review or clear anything you volunteered into memory here anytime — you control your data.')}</span></div>
     ${row(tt('清空所有数据','Clear all data'),`<button class="btn" onclick="toast('已取消 — 数据已安全保留')">${tt('清空','Clear')}</button>`)}
   </div>`;
   sections.about=`<p class="seclabel">— ABOUT</p><h2 class="sectitle">${tt('关于','About')}<span class="dot">.</span></h2>
@@ -1762,6 +1825,8 @@ function renderSettings(){
 function wireDataIO(){
   const exp=$('#dataExport'), expR=$('#dataExportRedacted'), imp=$('#dataImport'), impFile=$('#dataImportFile');
   if(!exp) return;
+  const mh=$('#mgrHistory'); if(mh) mh.onclick=openHistoryManager;   // 历史与记忆掌控(#4),web/桌面皆可
+  const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
   if(!on){
     exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');
