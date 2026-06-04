@@ -27,6 +27,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 工具循环最多轮数;最后一轮强制不带 tools,逼模型给出最终文本(避免悬在工具调用上)。
 const MAX_ROUNDS: usize = 4;
+/// 瞬时错误(出 token 前)最多重试次数;指数退避 1s / 2s。
+const MAX_RETRIES: u32 = 2;
 
 /// 进程内会话注册表:sessionId → 取消令牌(供 ai_cancel 中断流)。
 #[derive(Default)]
@@ -80,11 +82,13 @@ struct ErrEv {
 }
 
 /// 网关内部错误:带 code 与是否可重试。配置/鉴权错**不可重试**(重试无益,引导去设置);
-/// 超时/网络/429/5xx **可重试**。
+/// 超时/网络/429/5xx **可重试**。`pre_stream` = 错误发生在**出首 token 之前**(连接/状态阶段)——
+/// 仅此类可安全重试;流中途失败不重试(否则会重复已回吐的 token)。
 struct ChatError {
     code: &'static str,
     message: String,
     retriable: bool,
+    pre_stream: bool,
 }
 impl ChatError {
     fn config(msg: impl Into<String>) -> Self {
@@ -92,6 +96,7 @@ impl ChatError {
             code: "config",
             message: msg.into(),
             retriable: false,
+            pre_stream: true,
         }
     }
     fn auth(msg: impl Into<String>) -> Self {
@@ -99,13 +104,25 @@ impl ChatError {
             code: "auth",
             message: msg.into(),
             retriable: false,
+            pre_stream: true,
         }
     }
+    /// 连接/状态阶段的瞬时错误(出 token 前)——可安全重试。
     fn transient(code: &'static str, msg: impl Into<String>) -> Self {
         Self {
             code,
             message: msg.into(),
             retriable: true,
+            pre_stream: true,
+        }
+    }
+    /// 流中途的瞬时错误(已可能回吐 token)——不重试(避免重复)。
+    fn transient_mid(code: &'static str, msg: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: msg.into(),
+            retriable: true,
+            pre_stream: false,
         }
     }
 }
@@ -276,17 +293,41 @@ async fn run_chat(
     for round in 0..MAX_ROUNDS {
         // 最后一轮强制不带 tools,逼出最终文本(防止悬在工具调用上无回答)。
         let round_tools: &[Value] = if round + 1 == MAX_ROUNDS { &[] } else { &tools };
-        let outcome = stream_round(
-            app,
-            session_id,
-            &cfg.base_url,
-            &cfg.model,
-            &key,
-            &messages,
-            round_tools,
-            &token,
-        )
-        .await?;
+        // 重试退避(#1 G2):仅重试**出 token 前**的瞬时错误(连接/429/5xx);
+        // 流中途失败不重试(避免重复 token);退避期间响应取消。
+        let outcome = {
+            let mut attempt = 0u32;
+            loop {
+                match stream_round(
+                    app,
+                    session_id,
+                    &cfg.base_url,
+                    &cfg.model,
+                    &key,
+                    &messages,
+                    round_tools,
+                    &token,
+                )
+                .await
+                {
+                    Ok(o) => break o,
+                    Err(e) if e.retriable && e.pre_stream && attempt < MAX_RETRIES => {
+                        attempt += 1;
+                        let backoff = Duration::from_millis(500u64 * 2u64.pow(attempt));
+                        log::warn!(
+                            "[ai] 瞬时错误重试 {attempt}/{MAX_RETRIES}(退避 {}ms):{}",
+                            backoff.as_millis(),
+                            e.message
+                        );
+                        tokio::select! {
+                            _ = token.cancelled() => return Ok(("cancelled".into(), String::new())),
+                            _ = tokio::time::sleep(backoff) => {}
+                        }
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        };
         match outcome {
             RoundOutcome::Cancelled => return Ok(("cancelled".into(), String::new())),
             RoundOutcome::Done { stop, content } => return Ok((stop, content)),
@@ -391,12 +432,12 @@ async fn stream_round(
         let next = tokio::select! {
             _ = token.cancelled() => return Ok(RoundOutcome::Cancelled),
             r = tokio::time::timeout(IDLE_TIMEOUT, stream.next()) => match r {
-                Err(_) => return Err(ChatError::transient("timeout", "模型响应超时(空闲)")),
+                Err(_) => return Err(ChatError::transient_mid("timeout", "模型响应超时(空闲)")),
                 Ok(n) => n,
             }
         };
         let Some(chunk) = next else { break };
-        let bytes = chunk.map_err(|e| ChatError::transient("network", e.to_string()))?;
+        let bytes = chunk.map_err(|e| ChatError::transient_mid("network", e.to_string()))?;
         buf.push_str(&String::from_utf8_lossy(&bytes));
 
         // 逐行解析 SSE:`data: {json}` / `data: [DONE]`
@@ -640,5 +681,16 @@ mod tests {
         for k in ["profile", "phone", "email", "\"name\""] {
             assert!(!s.contains(k), "资料块不应含隐私键: {k}");
         }
+    }
+
+    #[test]
+    fn error_pre_stream_classification_drives_retry_safety() {
+        // 连接/状态阶段(出 token 前)可重试;流中途不重试(防重复 token);配置/鉴权不重试。
+        assert!(ChatError::transient("timeout", "x").retriable);
+        assert!(ChatError::transient("timeout", "x").pre_stream);
+        assert!(ChatError::transient_mid("network", "x").retriable);
+        assert!(!ChatError::transient_mid("network", "x").pre_stream);
+        assert!(!ChatError::config("x").retriable);
+        assert!(!ChatError::auth("x").retriable);
     }
 }
