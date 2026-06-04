@@ -16,11 +16,15 @@ const KEY_ACCOUNT: &str = "provider.openai.key";
 pub struct ProviderConfig {
     #[serde(default)]
     pub base_url: String,
+    /// 当前启用的模型(active)。必在 `models` 内(get 时兜底补入)。
     #[serde(default)]
     pub model: String,
     /// 嵌入模型名(BYO `/embeddings`;长期记忆 / RAG 用)。空 = 未配置,记忆优雅降级。
     #[serde(default)]
     pub embed_model: String,
+    /// 同一协议下保存的多个模型名(一协议多模型);除非用户删除否则保留。
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -38,12 +42,20 @@ pub fn load(app: &AppHandle) -> ProviderConfig {
         .unwrap_or_default()
 }
 
+fn save(app: &AppHandle, c: &ProviderConfig) -> Result<(), String> {
+    let p = config_path(app)?;
+    let json = serde_json::to_string_pretty(c).map_err(|e| e.to_string())?;
+    fs::write(p, json).map_err(|e| e.to_string())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigView {
     base_url: String,
     model: String,
     embed_model: String,
+    /// 同一协议下已保存的模型名(active = `model`,必在此列表内)。
+    models: Vec<String>,
     /// "configured" | "empty" —— key 是否已在钥匙串(不含明文)。
     key_status: String,
 }
@@ -57,10 +69,16 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
         Err(_) => "empty",
     }
     .to_string();
+    // 兜底:当前 active 模型必在列表里(兼容旧单模型 provider.json)。
+    let mut models = c.models.clone();
+    if !c.model.is_empty() && !models.contains(&c.model) {
+        models.insert(0, c.model.clone());
+    }
     Ok(ConfigView {
         base_url: c.base_url,
         model: c.model,
         embed_model: c.embed_model,
+        models,
         key_status,
     })
 }
@@ -77,12 +95,44 @@ pub fn ai_config_set(
         c.base_url = b.trim().to_string();
     }
     if let Some(m) = model {
-        c.model = m.trim().to_string();
+        // 配置一个模型 = 加入列表(去重)+ 设为当前;配置完不清理(除非删除)。
+        let m = m.trim().to_string();
+        if !m.is_empty() {
+            if !c.models.contains(&m) {
+                c.models.push(m.clone());
+            }
+            c.model = m;
+        }
     }
     if let Some(em) = embed_model {
         c.embed_model = em.trim().to_string();
     }
-    let p = config_path(&app)?;
-    let json = serde_json::to_string_pretty(&c).map_err(|e| e.to_string())?;
-    fs::write(p, json).map_err(|e| e.to_string())
+    save(&app, &c)
+}
+
+/// 选当前使用的模型(从已保存列表;不在列表则容错补入)。
+#[tauri::command]
+pub fn ai_model_select(app: AppHandle, model: String) -> Result<(), String> {
+    let m = model.trim().to_string();
+    if m.is_empty() {
+        return Err("模型名为空".into());
+    }
+    let mut c = load(&app);
+    if !c.models.contains(&m) {
+        c.models.push(m.clone());
+    }
+    c.model = m;
+    save(&app, &c)
+}
+
+/// 删除一个已保存的模型;若删的是当前 active,则改用剩余第一个(无则清空)。
+#[tauri::command]
+pub fn ai_model_remove(app: AppHandle, model: String) -> Result<(), String> {
+    let m = model.trim().to_string();
+    let mut c = load(&app);
+    c.models.retain(|x| x != &m);
+    if c.model == m {
+        c.model = c.models.first().cloned().unwrap_or_default();
+    }
+    save(&app, &c)
 }

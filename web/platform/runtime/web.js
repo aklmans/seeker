@@ -156,6 +156,8 @@ export function createWebRuntime() {
       complete: () => notImpl('rt.ai.complete', 'web'),
       getConfig: () => notImpl('rt.ai.getConfig', 'web'),
       setConfig: () => notImpl('rt.ai.setConfig', 'web'),
+      selectModel: () => notImpl('rt.ai.selectModel', 'web'),
+      removeModel: () => notImpl('rt.ai.removeModel', 'web'),
     },
 
     secret: {

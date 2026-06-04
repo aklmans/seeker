@@ -137,9 +137,12 @@ export interface AiStream {
 
 export interface AiConfig {
   baseUrl: string;
+  /** 当前启用的模型(active)。 */
   model: string;
   /** 嵌入模型名(BYO `/embeddings`;长期记忆 / RAG 用)。空 = 未配置。 */
   embedModel: string;
+  /** 同一协议下已保存的模型名(active = model,必在此列表内)。 */
+  models: string[];
   /** key 是否已配置(钥匙串);**绝不含明文**。 */
   keyStatus: SecretStatus;
 }
@@ -151,8 +154,12 @@ export interface AiApi {
   complete(req: AiRequest): Promise<AiResult>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
   getConfig(): Promise<AiConfig>;
-  /** 写非密钥配置(baseUrl/model/embedModel);key 走 rt.secret.set 进钥匙串。 */
+  /** 写非密钥配置(baseUrl/model/embedModel);model 非空 = 加入已存列表 + 设为当前;key 走 rt.secret.set 进钥匙串。 */
   setConfig(patch: { baseUrl?: string; model?: string; embedModel?: string }): Promise<void>;
+  /** 一协议多模型:从已保存列表选当前使用的模型。 */
+  selectModel(model: string): Promise<void>;
+  /** 删除一个已保存模型(删当前则改用剩余第一个)。 */
+  removeModel(model: string): Promise<void>;
 }
 
 // ── 密钥(rt.secret)── 隐私红线 ─────────────────────────────────

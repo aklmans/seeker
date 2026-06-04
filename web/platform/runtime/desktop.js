@@ -143,6 +143,9 @@ export function createDesktopRuntime() {
           model: patch.model ?? null,
           embedModel: patch.embedModel ?? null,
         }),
+      // 一协议多模型:选当前使用 / 删一个已存模型(配置完不清理)。
+      selectModel: (model) => invoke('ai_model_select', { model }),
+      removeModel: (model) => invoke('ai_model_remove', { model }),
     },
 
     secret: {

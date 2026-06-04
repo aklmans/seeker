@@ -34,6 +34,8 @@ pub fn run() {
             secret::secret_clear,
             config::ai_config_get,
             config::ai_config_set,
+            config::ai_model_select,
+            config::ai_model_remove,
             ai::ai_chat,
             ai::ai_cancel,
             data::db_list,

@@ -559,6 +559,12 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .next-card .nx-title{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
 .next-card .nx-goal{font-size:12.5px;color:var(--ink-3);line-height:1.6;margin-top:5px;}
 .next-card .nx-acts{margin-top:11px;padding:0;}
+/* 模型多选 chips(数据设置 · 一协议多模型) */
+.md-models{display:flex;flex-wrap:wrap;gap:6px;}
+.md-model{display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border:0.5px solid var(--border);font-size:12.5px;color:var(--ink-2);cursor:pointer;background:var(--bg);}
+.md-model.on{border-color:var(--accent);color:var(--accent);}
+.md-model .md-x{border:none;background:none;color:var(--ink-mute);cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 3px;}
+.md-model .md-x:hover{color:var(--accent);}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -1696,7 +1702,7 @@ function openActionDetail(id){
 /* ---------- SETTINGS ---------- */
 let setState={theme:'light', fontsize:'14', goal:20, trainCounts:true, lang:'zh', density:'standard', motion:'on', autobackup:'on', period:'2026 年 6 月', salary:'30 — 60 万'};
 let settingsState={tab:'basic'};
-const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', temp:0.5,
+const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
 const WEIGHTS=[['兴趣分',40],['成长分',30],['匹配分',20],['机会分',10]];
 const SET_TABS=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['goals',['目标设置','Goals']],['weights',['评分权重','Weights']],['data',['数据管理','Data']],['about',['关于','About']]];
@@ -1814,7 +1820,9 @@ function renderSettings(){
     ${row(tt('接口协议','Protocol'),`<select class="select" id="mdProto">${proto.map(p=>`<option value="${p[0]}" ${p[0]===MODEL.protocol?'selected':''}>${p[1]}</option>`).join('')}</select>`)}
     ${row('Base URL',`<input class="input" id="mdBase" placeholder="https://api.anthropic.com" value="${(MODEL.baseUrl||'').replace(/"/g,'&quot;')}">`)}
     ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="sk-…" value="${MODEL.apiKey}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
-    ${row(tt('模型','Model'),`<input class="input" id="mdModel" placeholder="claude-3-5-haiku" value="${(MODEL.model||'').replace(/"/g,'&quot;')}">`)}
+    ${row(tt('模型(可存多个,点选当前)','Models (save many, click to use)'),`<div style="display:flex;flex-direction:column;gap:8px;">
+      <div id="mdModelList" class="md-models"></div>
+      <div style="display:flex;gap:8px;"><input class="input" id="mdModelAdd" placeholder="${tt('添加模型名,如 gpt-4o','Add a model, e.g. gpt-4o')}"><button class="btn" id="mdModelAddBtn">${tt('添加','Add')}</button></div></div>`)}
     ${row(tt('嵌入模型','Embed model'),`<input class="input" id="mdEmbed" placeholder="text-embedding-3-small" value="${(MODEL.embedModel||'').replace(/"/g,'&quot;')}">`)}
     ${row(tt('连接','Connection'),`<button class="btn btn-accent" id="mdTest">${tt('测试连接','Test connection')}</button>`)}
     <p class="seclabel" style="margin:24px 0 10px;">— SPEECH · STT</p>
@@ -1889,7 +1897,10 @@ function renderSettings(){
   const mb=$('#mdBase'); if(mb) mb.oninput=()=>{MODEL.baseUrl=mb.value;};
   const mk=$('#mdKey'); if(mk) mk.oninput=()=>{MODEL.apiKey=mk.value;};
   const mks=$('#mdKeyShow'); if(mks) mks.onclick=()=>{const f=$('#mdKey');if(!f)return;f.type=f.type==='password'?'text':'password';mks.textContent=f.type==='password'?'显示':'隐藏';};
-  const mm=$('#mdModel'); if(mm) mm.oninput=()=>{MODEL.model=mm.value;};
+  const mAdd=$('#mdModelAdd'), mAddB=$('#mdModelAddBtn');
+  if(mAddB) mAddB.onclick=()=>{ addModelUI(mAdd?mAdd.value:''); if(mAdd) mAdd.value=''; };
+  if(mAdd) mAdd.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addModelUI(mAdd.value); mAdd.value=''; } });
+  renderModelList(); // web/桌面通用渲染;桌面 wireModelConfigDesktop 再用后端真实列表覆盖重渲
   const me=$('#mdEmbed'); if(me) me.oninput=()=>{MODEL.embedModel=me.value;};
   const mtest=$('#mdTest'); if(mtest) mtest.onclick=()=>{toast(MODEL.apiKey?'连接成功 ✓ (mock)':'请先填写 API Key');};
   const ms=$('#mdStt'); if(ms) ms.onchange=()=>{MODEL.stt=ms.value;renderSettings();};
@@ -1939,23 +1950,41 @@ function wireDataIO(){
   }
 }
 
-/* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model→provider.json。
+/* 一协议多模型:渲染已存模型 chips(当前高亮 ✓、点选切换、× 删除)+ 添加。
+   桌面经 rt.ai.{setConfig/selectModel/removeModel} 落 provider.json;web 改 MODEL 内存(mock)。 */
+function renderModelList(){
+  const wrap=$('#mdModelList'); if(!wrap) return;
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  const models=(MODEL.models&&MODEL.models.length)?MODEL.models:(MODEL.model?[MODEL.model]:[]);
+  wrap.innerHTML = models.length
+    ? models.map(m=>`<span class="md-model ${m===MODEL.model?'on':''}" data-mdl="${esc(m)}">${esc(m)}${m===MODEL.model?' ✓':''}<button class="md-x" data-mdlx="${esc(m)}" title="${tt('删除','Delete')}">×</button></span>`).join('')
+    : `<span style="font-size:12px;color:var(--ink-mute);">${tt('还没有保存的模型 —— 在下方添加','No saved models — add one below')}</span>`;
+  [...wrap.querySelectorAll('[data-mdl]')].forEach(ch=>ch.onclick=(e)=>{ if(e.target.closest('[data-mdlx]')) return; selectModelUI(ch.dataset.mdl); });
+  [...wrap.querySelectorAll('[data-mdlx]')].forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); removeModelUI(b.dataset.mdlx); });
+}
+function selectModelUI(m){ if(!m) return; const was=MODEL.model; MODEL.model=m; if(settingsPersistOn()) window.SeekerRT.ai.selectModel(m).catch(e=>toast(String((e&&e.message)||e))); renderModelList(); if(m!==was) toast(tt('已切换到 ','Now using ')+m); }
+function removeModelUI(m){ MODEL.models=(MODEL.models||[]).filter(x=>x!==m); if(MODEL.model===m) MODEL.model=MODEL.models[0]||''; if(settingsPersistOn()) window.SeekerRT.ai.removeModel(m).catch(()=>{}); renderModelList(); toast(tt('已删除模型 ','Removed ')+m); }
+function addModelUI(m){ m=(m||'').trim(); if(!m) return; if(!(MODEL.models||[]).includes(m)) MODEL.models=(MODEL.models||[]).concat(m); MODEL.model=m;
+  if(settingsPersistOn()) window.SeekerRT.ai.setConfig({model:m}).then(()=>toast(tt('已添加并启用 ','Added & using ')+m)).catch(e=>toast(String((e&&e.message)||e)));
+  else toast(tt('已添加并启用 ','Added & using ')+m);
+  renderModelList(); }
+/* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model(多)→provider.json。
    网页/未就绪时不接管,沿用 mock(MODEL 对象)。 */
 async function wireModelConfigDesktop(){
   if(typeof isDesktop!=='function' || !isDesktop() || !window.SeekerRT) return;
   const base=$('#mdBase'); if(!base) return;            // 仅 BYO · LLM 页有这些输入
-  const key=$('#mdKey'), model=$('#mdModel'), embed=$('#mdEmbed'), test=$('#mdTest');
+  const key=$('#mdKey'), embed=$('#mdEmbed'), test=$('#mdTest');
   const rt=window.SeekerRT, KEYACC='provider.openai.key';
   const cfgPh=()=>tt('已配置 · 留空则保持不变','Configured · leave blank to keep');
   try{
     const c=await rt.ai.getConfig();
-    base.value=c.baseUrl||''; if(model) model.value=c.model||''; if(embed) embed.value=c.embedModel||'';
+    base.value=c.baseUrl||''; if(embed) embed.value=c.embedModel||'';
+    MODEL.models=Array.isArray(c.models)?c.models:[]; MODEL.model=c.model||''; renderModelList(); // 用后端真实已存模型列表覆盖重渲
     if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : 'sk-…'; }
   }catch(_e){ /* 未就绪 */ }
   base.onblur=()=>{ rt.ai.setConfig({baseUrl:base.value.trim()})
     .then(()=>toast(tt('已保存 Base URL','Base URL saved')))
     .catch(e=>toast(String((e&&e.message)||e))); };
-  if(model) model.onblur=()=>{ rt.ai.setConfig({model:model.value.trim()}).catch(()=>{}); };
   if(embed) embed.onblur=()=>{ rt.ai.setConfig({embedModel:embed.value.trim()})
     .then(()=>toast(tt('已保存嵌入模型(长期记忆 / 检索用)','Embed model saved'))).catch(()=>{}); };
   if(key) key.onblur=()=>{ const v=key.value.trim(); if(!v) return;
