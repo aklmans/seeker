@@ -2735,8 +2735,11 @@ async function wgtAction(widgetId, action, payload){
   const G=window.SeekerGuardrail; if(!G) return;
   if(action==='delete-job' && payload.id!=null && jobsPersistOn()){
     let snap=null;
+    /* 预览显示可读目标(公司 · 岗位)而非裸 id —— 威胁 T5 的「预览」腿(#4 §⑥);未命中回退 #id。 */
+    const _job=JOBS.find(x=>String(x.id)===String(payload.id));
+    const _label=_job?(_job.co+(_job.role?(' · '+String(_job.role).split('·')[0].trim()):'')):('#'+payload.id);
     await G.confirmDestructive({
-      title:tt('删除岗位?','Delete job?'), detail:tt('将删除岗位 ','Will delete job ')+'#'+payload.id,
+      title:tt('删除岗位?','Delete job?'), detail:tt('将删除岗位:','Will delete job: ')+_label,
       source:'widget '+widgetId, confirmLabel:tt('删除','Delete'),
       onConfirm:async()=>{ snap=await window.SeekerRT.db.remove('jobs',String(payload.id)); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
       onUndo:async()=>{ if(snap) await window.SeekerRT.db.upsert('jobs',snap); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
