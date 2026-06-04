@@ -3312,7 +3312,7 @@ window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window
 function copSend(text, aiText){
   const inp=$('#copInput');
   text=(text||inp.value||'').trim(); if(!text)return;
-  if(appMode==='agent'){ agentSend(text, aiText); return; }
+  if(appMode==='agent'){ copClose(); agentSend(text, aiText); return; } // agent 模式:关浮窗,回复进 agent 视图(否则面板看着没反应)
   inp.value=''; inp.style.height='auto';
   if(!copEl().classList.contains('open')) copOpen();
   copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
@@ -3356,6 +3356,7 @@ function initShell(){
 }
 function setAppMode(m){
   const prev=appMode; appMode=m; document.body.dataset.appmode=m;
+  if(m==='agent'){ try{ copClose(); }catch(_e){} } // 进 agent 模式关掉浮窗(launcher 已隐藏,统一为 agent 视图唯一 AI 面)
   if(m==='agent'&&prev!=='agent') document.body.dataset.agent='centered';
   renderModeSwitch();
   try{localStorage.setItem('jh-mode',m);}catch(e){}
