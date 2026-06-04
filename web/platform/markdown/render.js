@@ -1,0 +1,94 @@
+// @ts-check
+/**
+ * 安全 Markdown 渲染(平台 · 业务无关)—— 把**不可信的模型输出**渲染成受限 HTML。
+ *
+ * 威胁模型:AI 流式文本是不可信内容(同 show_widget / RAG 的「Untrusted」红线)。
+ * 策略:**先转义所有 HTML(& < > " '),再在转义后的文本上用正则插入固定白名单标签**。
+ * 原始 HTML 标签一律被转义成实体(无法生效);链接仅允许 http/https;不产生任何
+ * script / style / 事件属性 / 任意属性。覆盖 AI 常用语法:标题、粗体、斜体、行内码、
+ * 代码块、有/无序列表、引用、分隔线、段落、软换行、链接。(表格暂不支持,按纯文本降级。)
+ */
+
+/** 转义 HTML 特殊字符(含属性上下文用的引号)。 @param {string} t */
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** 行内标记:**先转义**,再插入白名单行内标签。 @param {string} raw */
+function inline(raw) {
+  let t = esc(raw);
+  // 行内码 `code`(优先,内部不再解析其它标记)
+  t = t.replace(/`([^`\n]+)`/g, (_m, c) => '<code>' + c + '</code>');
+  // 粗体 **x** / __x__
+  t = t.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/__([^_\n]+?)__/g, '<strong>$1</strong>');
+  // 斜体 *x* / _x_(非空白起始,避免误吞乘号/下划线)
+  t = t.replace(/\*(\S[^*\n]*?)\*/g, '<em>$1</em>');
+  t = t.replace(/(^|[\s(])_(\S[^_\n]*?)_/g, '$1<em>$2</em>');
+  // 链接 [text](http...) —— 仅 http/https;url 已被 esc 转义(引号→实体),无法逃逸属性
+  t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_m, txt, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>');
+  return t;
+}
+
+/**
+ * Markdown → 安全 HTML。容忍未闭合构造(流式中途也能渲染)。
+ * @param {string} src
+ * @returns {string}
+ */
+export function renderMarkdown(src) {
+  const lines = String(src == null ? '' : src).split('\n');
+  let html = '';
+  let i = 0;
+  let inUl = false;
+  let inOl = false;
+  const closeLists = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+  };
+  while (i < lines.length) {
+    const line = lines[i];
+    // 代码围栏 ```lang(块内只转义、不解析);容忍未闭合
+    const fence = line.match(/^\s*```/);
+    if (fence) {
+      closeLists();
+      i++;
+      let code = '';
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { code += lines[i] + '\n'; i++; }
+      if (i < lines.length) i++; // 跳过闭合围栏(若有)
+      html += '<pre><code>' + esc(code.replace(/\n$/, '')) + '</code></pre>';
+      continue;
+    }
+    // 标题 # .. ######
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { closeLists(); const lvl = h[1].length; html += '<h' + lvl + '>' + inline(h[2]) + '</h' + lvl + '>'; i++; continue; }
+    // 分隔线
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { closeLists(); html += '<hr>'; i++; continue; }
+    // 引用
+    if (/^\s*>\s?/.test(line)) { closeLists(); html += '<blockquote>' + inline(line.replace(/^\s*>\s?/, '')) + '</blockquote>'; i++; continue; }
+    // 无序列表
+    const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+    if (ul) { if (inOl) { html += '</ol>'; inOl = false; } if (!inUl) { html += '<ul>'; inUl = true; } html += '<li>' + inline(ul[1]) + '</li>'; i++; continue; }
+    // 有序列表
+    const ol = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (ol) { if (inUl) { html += '</ul>'; inUl = false; } if (!inOl) { html += '<ol>'; inOl = true; } html += '<li>' + inline(ol[1]) + '</li>'; i++; continue; }
+    // 空行 → 关列表 / 段落分隔
+    if (/^\s*$/.test(line)) { closeLists(); i++; continue; }
+    // 段落:合并连续普通行(软换行 → <br>)
+    closeLists();
+    let para = line;
+    i++;
+    while (i < lines.length && !/^\s*$/.test(lines[i]) &&
+      !/^\s*(#{1,6}\s|```|>\s?|[-*+]\s|\d+\.\s|(---|\*\*\*|___)\s*$)/.test(lines[i])) {
+      para += '\n' + lines[i]; i++;
+    }
+    html += '<p>' + inline(para).replace(/\n/g, '<br>') + '</p>';
+  }
+  closeLists();
+  return html;
+}

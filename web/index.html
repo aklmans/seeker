@@ -466,6 +466,22 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .cop-msg.user{align-self:flex-end; background:var(--accent-soft); color:var(--ink); padding:9px 13px; border:0.5px solid var(--border);}
 .cop-msg.ai{align-self:flex-start; color:var(--ink-2);}
 .cop-msg.ai .who{font-family:var(--font-mono); font-size:9px; letter-spacing:0.16em; color:var(--accent); text-transform:uppercase; display:block; margin-bottom:5px;}
+/* AI 气泡内 Markdown 渲染元素(沿用设计 token,不自创视觉) */
+.cop-msg.ai h1,.cop-msg.ai h2,.cop-msg.ai h3,.cop-msg.ai h4,.cop-msg.ai h5,.cop-msg.ai h6{font-weight:600; color:var(--ink); line-height:1.35; margin:13px 0 6px;}
+.cop-msg.ai h1{font-size:16.5px;} .cop-msg.ai h2{font-size:15px;} .cop-msg.ai h3{font-size:13.8px;}
+.cop-msg.ai h4,.cop-msg.ai h5,.cop-msg.ai h6{font-size:13px;}
+.cop-msg.ai .ai-stream>:first-child,.cop-msg.ai>.who+*{margin-top:0;}
+.cop-msg.ai p{margin:7px 0;}
+.cop-msg.ai ul,.cop-msg.ai ol{margin:7px 0; padding-left:20px;}
+.cop-msg.ai li{margin:3px 0;}
+.cop-msg.ai code{font-family:var(--font-mono); font-size:12px; background:var(--bg-subtle); border:0.5px solid var(--border); border-radius:3px; padding:1px 5px;}
+.cop-msg.ai pre{background:var(--bg-subtle); border:0.5px solid var(--border); padding:11px 13px; margin:9px 0; overflow-x:auto;}
+.cop-msg.ai pre code{background:none; border:none; padding:0; font-size:12px; line-height:1.55;}
+.cop-msg.ai blockquote{border-left:2px solid var(--accent); margin:8px 0; padding:2px 0 2px 12px; color:var(--ink-3);}
+.cop-msg.ai a{color:var(--accent); text-decoration:underline;}
+.cop-msg.ai hr{border:none; border-top:0.5px solid var(--border); margin:12px 0;}
+.cop-msg.ai strong{font-weight:600; color:var(--ink);}
+.cop-msg.ai em{font-style:italic;}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -747,9 +763,11 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
   import { rt } from './platform/runtime/index.js';
   import { renderWidget } from './platform/capability/widgets/render.js';
   import { confirmDestructive } from './platform/guardrail/index.js';
+  import { renderMarkdown } from './platform/markdown/render.js';
   window.SeekerRT = rt;
   window.SeekerGuardrail = { confirmDestructive }; // 破坏性护栏(#2 · W3)
   window.SeekerWidgets = { renderWidget };          // show_widget 沙箱渲染(#2 · W1/W2)
+  window.SeekerMarkdown = { render: renderMarkdown }; // 安全 Markdown 渲染(不可信模型输出)
   window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
 </script>
 </head>
@@ -2803,6 +2821,13 @@ function reviewResumeProposal(jid, changes){
     },
   });
 }
+/** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
+function aiHTML(text){
+  if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
+  return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+/** 流式显示用:截断到结构化简历块标记之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
+function displayText(s){ return String(s==null?'':s).split('```seeker:resume-edit')[0]; }
 /** 工具循环进度文案(反焦虑:让用户知道 AI 正在读数据,而非卡住)。 */
 function toolStatusText(info){
   const n = info && info.name;
@@ -2821,7 +2846,7 @@ function streamReply(thinkBubble, text, who, scrollFn){
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   window.SeekerRT.ai.stream({ userText:text }, {
-    onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.textContent=acc; if(scrollFn) scrollFn(); },
+    onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){
       /* show_widget(#2 · W1):平台渲染器产沙箱卡 → 插入对话流(thinkBubble 所在容器)。 */
@@ -2832,9 +2857,9 @@ function streamReply(thinkBubble, text, who, scrollFn){
     },
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
-      if(!streaming){ startStream(); if(span) span.textContent=acc; } // 兜底:无 token 也落地已累积内容(不留空气泡)
+      if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       const ex = extractResumeEdit(acc);                              // 结构化简历回写:剥离指令块
-      if(ex.edit && span) span.textContent = ex.prose;                // 只展示自然语言(隐藏 JSON 块)
+      if(span) span.innerHTML = aiHTML(ex.prose);                     // 最终 Markdown 渲染(已去 JSON 块)
       persistMsg(who==='Agent'?'agent':'cop','ai', ex.prose);         // 存去块纯文本(widget 会话内重渲不持久)
       if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
       if(scrollFn) scrollFn();
@@ -2925,7 +2950,7 @@ async function hydrateMessages(){
     rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
     const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const draw = (rows, append, who) => { rows.forEach(r => append(r.role==='user'?'user':'ai',
-      r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+esc(r.text)))); };
+      r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text)))); }; // AI 历史也渲染 Markdown
     const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
     // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
     if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
