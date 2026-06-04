@@ -2693,6 +2693,13 @@ function aiErrHTML(err){
   /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
   return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
 }
+/* domain 业务框定(#智能匹配 AI 化):把简短意图框成「让 AI 用 query_data 读真实数据再答」的指令。
+   显示给用户的仍是短文案;发给 AI 的是框定版。系统提示不动(仍在网关,守"前端不组装系统提示")。 */
+const FRAMED_QUERIES = {
+  '我最该投哪个岗位?': '我在做求职岗位匹配。请**先用 query_data 工具**读取我本地的 jobs(目标岗位)与 skills(我的技能)真实数据,再基于数据分析:我最该投哪个岗位、理由、以及最关键的 1–2 个能力缺口。结论要有数据依据,不要编造数字或岗位。',
+  '我最大的能力缺口是什么?': '请**先用 query_data 工具**读取我的 skills 与 jobs,对照目标岗位的要求,找出我最关键的能力缺口,并给出依据与补齐方向。不要编造数据。',
+  '我最该投哪个岗位': '我在做求职岗位匹配。请先用 query_data 读取我的 jobs 与 skills 真实数据,再基于数据分析我最该投哪个岗位、理由与关键缺口,结论要有依据。',
+};
 /** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。 */
 function streamReply(thinkBubble, text, who, scrollFn){
   thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>';
@@ -2799,15 +2806,16 @@ async function wgtAction(widgetId, action, payload){
 }
 window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window.SeekerWidgets.onAction=wgtAction; });
 
-function copSend(text){
+function copSend(text, aiText){
   const inp=$('#copInput');
   text=(text||inp.value||'').trim(); if(!text)return;
-  if(appMode==='agent'){ agentSend(text); return; }
+  if(appMode==='agent'){ agentSend(text, aiText); return; }
   inp.value=''; inp.style.height='auto';
   if(!copEl().classList.contains('open')) copOpen();
   copAppend('user', text.replace(/</g,'&lt;'));
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  if(aiChatAvailable()){ streamReply(think, text, 'Copilot', copScroll); }
+  const toAI = aiText || FRAMED_QUERIES[text] || text; // domain 框定:显示短文案、发给 AI 框定版
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
   else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
 }
 function copInit(){
@@ -2853,12 +2861,13 @@ function setAppMode(m){
 function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
 function agentCollapse(){ document.body.dataset.agent='centered'; }
 function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
-function agentSend(text){
+function agentSend(text, aiText){
   const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;'));
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  if(aiChatAvailable()){ streamReply(think, text, 'Agent', agentScroll); }
+  const toAI = aiText || FRAMED_QUERIES[text] || text; // domain 框定:显示短文案、发给 AI 框定版
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
 }
 function agentGreet(){
