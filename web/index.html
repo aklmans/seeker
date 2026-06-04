@@ -742,6 +742,12 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
 </style>
 <!-- 应用内快捷键(A 层 · 集中模块,业务无关);须先于内联 bootstrap 定义 window.SeekerKeys -->
 <script src="./platform/keys/keys.js"></script>
+<!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
+<script type="module">
+  import { rt } from './platform/runtime/index.js';
+  window.SeekerRT = rt;
+  window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
+</script>
 </head>
 <body>
 <div class="app">
@@ -1703,6 +1709,37 @@ function renderSettings(){
   const mtv=$('#mdTtsVoice'); if(mtv) mtv.oninput=()=>{MODEL.ttsVoice=mtv.value;};
   $$('#page-settings [data-wt]').forEach(s=>s.oninput=()=>{const i=+s.dataset.wt;WEIGHTS[i][1]=+s.value;const lab=$(`[data-wv="${i}"]`);if(lab)lab.textContent=s.value+'%';const tot=WEIGHTS.reduce((a,w)=>a+w[1],0);const tl=$('#wTot');if(tl){tl.textContent=tot+'%';tl.style.color=tot===100?'var(--status-done)':'var(--ink-2)';}});
   const wr=$('#wReset'); if(wr) wr.onclick=()=>{[40,30,20,10].forEach((v,i)=>WEIGHTS[i][1]=v);renderSettings();toast('已重置为默认权重');};
+  wireModelConfigDesktop();
+}
+
+/* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model→provider.json。
+   网页/未就绪时不接管,沿用 mock(MODEL 对象)。 */
+async function wireModelConfigDesktop(){
+  if(typeof isDesktop!=='function' || !isDesktop() || !window.SeekerRT) return;
+  const base=$('#mdBase'); if(!base) return;            // 仅 BYO · LLM 页有这些输入
+  const key=$('#mdKey'), model=$('#mdModel'), test=$('#mdTest');
+  const rt=window.SeekerRT, KEYACC='provider.openai.key';
+  const cfgPh=()=>tt('已配置 · 留空则保持不变','Configured · leave blank to keep');
+  try{
+    const c=await rt.ai.getConfig();
+    base.value=c.baseUrl||''; if(model) model.value=c.model||'';
+    if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : 'sk-…'; }
+  }catch(_e){ /* 未就绪 */ }
+  base.onblur=()=>{ rt.ai.setConfig({baseUrl:base.value.trim()})
+    .then(()=>toast(tt('已保存 Base URL','Base URL saved')))
+    .catch(e=>toast(String((e&&e.message)||e))); };
+  if(model) model.onblur=()=>{ rt.ai.setConfig({model:model.value.trim()}).catch(()=>{}); };
+  if(key) key.onblur=()=>{ const v=key.value.trim(); if(!v) return;
+    rt.secret.set(KEYACC, v).then(()=>{
+      key.value=''; try{ if(typeof MODEL!=='undefined') MODEL.apiKey=''; }catch(_e){}
+      key.placeholder=cfgPh();
+      toast(tt('API Key 已存入系统钥匙串','API Key saved to system keychain'));
+    }).catch(e=>toast(String((e&&e.message)||e))); };
+  if(test) test.onclick=()=>{ const old=test.textContent; test.disabled=true; test.textContent=tt('测试中…','Testing…');
+    rt.ai.complete({userText:'ping'})
+      .then(()=>toast(tt('连接成功 ✓','Connected ✓')))
+      .catch(e=>toast(tt('连接失败:','Failed: ')+String((e&&e.message)||e)))
+      .finally(()=>{ test.disabled=false; test.textContent=old; }); };
 }
 function showEmptyState(){
   go('overview');
@@ -2580,6 +2617,25 @@ function copReply(t){
   return '我可以帮你匹配岗位、改简历、出面试题、排训练计划、查缺口和市场价值。试试这些:'+cSuggs(['我和字节那个岗位匹配吗?','我最大的能力缺口是什么?','帮我加一个岗位','我现在最该做什么?']);
 }
 
+/* ===== G2:自由对话接真实流式(桌面 + SeekerRT 就绪);否则降级 mock copReply ===== */
+function aiChatAvailable(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+function aiErrHTML(err){
+  const m=String((err&&err.message)||err).replace(/</g,'&lt;');
+  /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
+  return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
+}
+/** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。 */
+function streamReply(thinkBubble, text, who, scrollFn){
+  thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>';
+  const span=thinkBubble.querySelector('.ai-stream'); let acc='';
+  window.SeekerRT.ai.stream({ userText:text }, {
+    onToken(t){ acc+=t; if(span) span.textContent=acc; if(scrollFn) scrollFn(); },
+    onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
+    onDone(){ if(scrollFn) scrollFn(); }
+  });
+}
+function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
+
 function copSend(text){
   const inp=$('#copInput');
   text=(text||inp.value||'').trim(); if(!text)return;
@@ -2588,7 +2644,8 @@ function copSend(text){
   if(!copEl().classList.contains('open')) copOpen();
   copAppend('user', text.replace(/</g,'&lt;'));
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
+  if(aiChatAvailable()){ streamReply(think, text, 'Copilot', copScroll); }
+  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
 }
 function copInit(){
   $('#copLaunch').onclick=copToggle;
@@ -2638,7 +2695,8 @@ function agentSend(text){
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;'));
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
+  if(aiChatAvailable()){ streamReply(think, text, 'Agent', agentScroll); }
+  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
 }
 function agentGreet(){
   agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));

@@ -19,7 +19,9 @@ fn entry(account: &str) -> Result<Entry, String> {
 /// 写入密钥(用户在设置页填写 → 直送钥匙串)。
 #[tauri::command]
 pub fn secret_set(account: String, value: String) -> Result<(), String> {
-    entry(&account)?.set_password(&value).map_err(|e| e.to_string())
+    entry(&account)?
+        .set_password(&value)
+        .map_err(|e| e.to_string())
 }
 
 /// 前端只能查「是否已配置」,拿不到明文。

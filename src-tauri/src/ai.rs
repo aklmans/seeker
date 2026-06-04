@@ -111,16 +111,14 @@ async fn stream_openai(
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
 
-    // G1:最小系统提示。G2 改为 domain/prompts 配置驱动 + 显式剔除 profile 隐私字段。
+    // 系统提示。G2:消息仅 system + user 两类,**结构上不含 profile 隐私字段**
+    // (ai_chat 命令签名只有 user_text,网关无从拿到 profile)。系统提示配置化(domain/prompts)留待后续细化。
     let system = "You are Seeker's local-first job-hunt assistant. Be concise and practical; \
                   reply in the user's language. Never ask for or store personal contact details.";
     let body = json!({
         "model": cfg.model,
         "stream": true,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_text},
-        ],
+        "messages": build_messages(system, user_text),
     });
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
 
@@ -183,6 +181,15 @@ async fn stream_openai(
     Ok("stop".into())
 }
 
+/// 组装发给模型的消息:**只有 system + user**,绝不夹带 profile 等隐私字段
+/// (网关无 profile 来源;隐私从结构上隔离 —— 见 privacy 单测)。
+fn build_messages(system: &str, user_text: &str) -> serde_json::Value {
+    json!([
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_text},
+    ])
+}
+
 /// 从 OpenAI 兼容 SSE 的 data 行抽取增量内容;`[DONE]`/无内容 → None。
 fn extract_content_delta(data: &str) -> Option<String> {
     if data == "[DONE]" {
@@ -201,7 +208,21 @@ fn redact(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_content_delta;
+    use super::{build_messages, extract_content_delta};
+
+    #[test]
+    fn messages_are_only_system_and_user_no_profile() {
+        let m = build_messages("SYS", "我和字节那个岗位匹配吗?");
+        let arr = m.as_array().expect("array");
+        assert_eq!(arr.len(), 2, "只应有 system + user 两条");
+        assert_eq!(arr[0]["role"], "system");
+        assert_eq!(arr[1]["role"], "user");
+        // 隐私红线:组装结果绝不含隐私字段键(姓名/电话/邮箱/profile)。
+        let s = m.to_string();
+        for k in ["profile", "phone", "email", "\"name\""] {
+            assert!(!s.contains(k), "组装消息不应含隐私键: {k}");
+        }
+    }
 
     #[test]
     fn parses_openai_delta() {
