@@ -2803,27 +2803,42 @@ function reviewResumeProposal(jid, changes){
     },
   });
 }
-/** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。 */
+/** 工具循环进度文案(反焦虑:让用户知道 AI 正在读数据,而非卡住)。 */
+function toolStatusText(info){
+  const n = info && info.name;
+  if(n==='query_data') return tt('正在查询你的本地数据…','Reading your local data…');
+  if(n==='show_widget') return tt('正在生成…','Composing…');
+  if(n==='memory'||n==='remember'||n==='recall') return tt('正在检索记忆…','Searching memory…');
+  return tt('正在处理…','Working…');
+}
+/** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。
+   关键:保留「思考中」指示直到首 token 才切流式 —— 工具循环(query_data 等)首字可达 10s+,
+   期间用状态行反馈「正在查询你的本地数据…」,否则空 who 气泡会被误当「没反应」。 */
 function streamReply(thinkBubble, text, who, scrollFn){
-  thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>';
-  const span=thinkBubble.querySelector('.ai-stream'); let acc='';
+  const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
+  thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
+  let acc='', span=null, streaming=false;
+  const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
+  const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   window.SeekerRT.ai.stream({ userText:text }, {
-    onToken(t){ acc+=t; if(span) span.textContent=acc; if(scrollFn) scrollFn(); },
+    onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.textContent=acc; if(scrollFn) scrollFn(); },
+    onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){
       /* show_widget(#2 · W1):平台渲染器产沙箱卡 → 插入对话流(thinkBubble 所在容器)。 */
+      if(!streaming) startStream();
       try{ const card=window.SeekerWidgets.renderWidget(w); const host=thinkBubble.parentElement; if(host) host.appendChild(card); }
       catch(e){ console.error('[widget] 渲染失败', e); }
       if(scrollFn) scrollFn();
     },
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
+      if(!streaming){ startStream(); if(span) span.textContent=acc; } // 兜底:无 token 也落地已累积内容(不留空气泡)
       const ex = extractResumeEdit(acc);                              // 结构化简历回写:剥离指令块
       if(ex.edit && span) span.textContent = ex.prose;                // 只展示自然语言(隐藏 JSON 块)
       persistMsg(who==='Agent'?'agent':'cop','ai', ex.prose);         // 存去块纯文本(widget 会话内重渲不持久)
       if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
       if(scrollFn) scrollFn();
     }
-
   });
 }
 function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
