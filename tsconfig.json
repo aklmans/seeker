@@ -13,10 +13,10 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "platform/**/*.ts",
-    "platform/**/*.js",
-    "domain/**/*.ts",
-    "domain/**/*.js"
+    "web/platform/**/*.ts",
+    "web/platform/**/*.js",
+    "web/domain/**/*.ts",
+    "web/domain/**/*.js"
   ],
-  "exclude": ["node_modules", "src-tauri", "index.html"]
+  "exclude": ["node_modules", "src-tauri", "web/index.html"]
 }

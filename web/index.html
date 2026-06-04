@@ -731,7 +731,17 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
 @media (max-width:900px){ .agent-chat{flex-basis:340px;} }
 
 .hide{display:none !important;}
+
+/* ===== 快捷键帮助浮层(Mod+/)· 复用设计 token,不自创视觉 ===== */
+.ks-wrap{display:flex; flex-direction:column; gap:20px;}
+.ks-gh{font-family:var(--font-mono); font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--ink-3); margin:0 0 4px;}
+.ks-row{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:8px 0; border-bottom:0.5px solid var(--border);}
+.ks-row:last-child{border-bottom:none;}
+.ks-lb{font-size:13.5px; color:var(--ink-2);}
+.kbd{font-family:var(--font-mono); font-size:11px; color:var(--ink); background:var(--bg-subtle); border:0.5px solid var(--border-strong); border-radius:3px; padding:3px 8px; white-space:nowrap; letter-spacing:0.04em;}
 </style>
+<!-- 应用内快捷键(A 层 · 集中模块,业务无关);须先于内联 bootstrap 定义 window.SeekerKeys -->
+<script src="./platform/keys/keys.js"></script>
 </head>
 <body>
 <div class="app">
@@ -1083,6 +1093,7 @@ function toggleTheme(){
 })();
 
 /* ============ TOAST ============ */
+let lastUndo=null; /* 最近一次可撤销操作(供 Mod+Z);仅 toastUndo 类操作登记 */
 function toast(msg){
   const t=el(`<div class="toast">${msg}</div>`);
   $('#toasts').appendChild(t);
@@ -1092,8 +1103,10 @@ function toastUndo(msg, restoreFn){
   const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
   $('#toasts').appendChild(t);
   let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
-  $('.toast-undo',t).onclick=()=>{close();restoreFn();toast('已撤销');};
-  setTimeout(close,6500);
+  const doUndo=()=>{close();restoreFn();toast('已撤销');if(lastUndo===doUndo)lastUndo=null;};
+  lastUndo=doUndo;                       /* 登记为「最近可撤销」,Mod+Z 触发 */
+  $('.toast-undo',t).onclick=doUndo;
+  setTimeout(()=>{close();if(lastUndo===doUndo)lastUndo=null;},6500);
 }
 
 /* ============ MODAL ============ */
@@ -1107,7 +1120,7 @@ function openModal(html, wide){
 }
 function closeModal(){$('#overlay').classList.remove('open'); $('#modalHost').innerHTML='';}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+/* Esc 关弹窗已收编进 SeekerKeys 的 Esc 逐层链(见 initKeys) */
 
 function frontis(eyebrow,title){
   return `<div class="frontis"><div><p class="eyebrow">— ${eyebrow}</p><h1 class="title">${title}<span class="dot">.</span></h1></div></div>`;
@@ -2584,7 +2597,7 @@ function copInit(){
   const inp=$('#copInput');
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
   inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
-  document.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();copToggle();} if(e.key==='Escape')copClose(); });
+  /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
   copAppend('ai','<span class="who">Copilot</span>嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:'+cSuggs(['我和字节那个岗位匹配吗?','我最大的能力缺口是什么?','帮我改腾讯那个岗位的简历','我现在最该做什么?']));
 }
 
@@ -2599,7 +2612,7 @@ function renderModeSwitch(){
 function initShell(){
   try{const w=localStorage.getItem('jh-sbw'); if(w)document.documentElement.style.setProperty('--sb-w',w+'px');}catch(e){}
   try{const lg=localStorage.getItem('jh-lang'); if(lg)setState.lang=lg;}catch(e){}
-  const col=$('#sbCollapse'); if(col)col.onclick=()=>{const r=document.body.dataset.sidebar==='rail';document.body.dataset.sidebar=r?'':'rail';col.textContent=r?'«':'»';};
+  const col=$('#sbCollapse'); if(col)col.onclick=toggleSidebar;
   const exp=$('#sbExpand'); if(exp)exp.onclick=()=>{document.body.dataset.sidebar='';if(col)col.textContent='«';};
   const lang=$('#langBtn'); if(lang){lang.textContent=setState.lang==='en'?'EN':'中';lang.onclick=()=>setLang(setState.lang==='en'?'zh':'en');}
   const rz=$('#sbResize'); if(rz)rz.onmousedown=(e)=>{
@@ -2638,7 +2651,7 @@ function agentInit(){
       if(e.key==='ArrowDown'){e.preventDefault();cmdActive=(cmdActive+1)%cmdFiltered.length;cmdRender();return;}
       if(e.key==='ArrowUp'){e.preventDefault();cmdActive=(cmdActive-1+cmdFiltered.length)%cmdFiltered.length;cmdRender();return;}
       if(e.key==='Enter'){e.preventDefault();cmdRun(cmdActive);return;}
-      if(e.key==='Escape'){cmdClose();return;}
+      /* Esc 关命令浮层 → SeekerKeys Esc 逐层链 */
     }
     if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();agentSend();}
   });
@@ -2679,6 +2692,64 @@ function cmdOpen(q){cmdFiltered=cmdFilterList(q);cmdActive=0;if(cmdFiltered.leng
 function cmdClose(){const p=$('#cmdPop');if(p)p.classList.remove('open');}
 function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').value='';$('#agentInput').style.height='auto';cmdClose();c.run();}
 
+/* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
+function toggleSidebar(){
+  const r=document.body.dataset.sidebar==='rail';
+  document.body.dataset.sidebar=r?'':'rail';
+  const col=$('#sbCollapse'); if(col)col.textContent=r?'«':'»';
+}
+function isDesktop(){return !!(window.__TAURI__);}
+function pageSearchInput(id){
+  const pg=$('#page-'+id); if(!pg)return null;
+  /* 原型真实搜索框是 .iv-search(面试页);其余页为 chip 筛选、无文本框 */
+  return pg.querySelector('input[type="search"], input.iv-search, input.search, [data-search] input, input[data-search]');
+}
+function contextNew(){
+  const m={jobs:openNewJob, actions:openNewAction};
+  const fn=m[current]; if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
+}
+function keysHelpHTML(){
+  const groups=window.SeekerKeys.groups();
+  const body=groups.map(g=>`<div class="ks-grp"><div class="ks-gh">${tt(g.group.zh,g.group.en)}</div>`+
+    g.items.map(it=>`<div class="ks-row"><span class="ks-lb">${tt(it.label.zh,it.label.en)}</span><span class="kbd">${it.fmt}</span></div>`).join('')+`</div>`).join('');
+  return `<div class="modal-head"><div><p class="eyebrow">— SHORTCUTS</p><h2 style="margin-top:5px;">${tt('键盘快捷键','Keyboard shortcuts')}<span class="dot">.</span></h2><div class="sub"><span>Mod = ⌘ / Ctrl</span></div></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body"><div class="ks-wrap">${body}</div></div>`;
+}
+function initKeys(){
+  const K=window.SeekerKeys;
+  if(!K){ console.error('[keys] window.SeekerKeys 未加载 —— 快捷键将全部失效;请检查 platform/keys/keys.js 是否被 frontendDist 内嵌并成功加载'); return; }
+  const G={glob:{zh:'全局',en:'Global'},navg:{zh:'导航',en:'Navigate'},ctx:{zh:'语境',en:'Contextual'},agent:{zh:'Agent / 命令',en:'Agent / Command'},iv:{zh:'面试陪练',en:'Interview'}};
+  K.registerAll([
+    {id:'agent', combo:'Mod+K', allowInInput:true, group:G.glob, label:{zh:'唤起 Agent / 问问 AI',en:'Open Agent / Ask AI'}, run:()=>{ if(appMode==='agent'){const ip=$('#agentInput');if(ip)ip.focus();}else copToggle(); }},
+    {id:'mode', combo:'Mod+\\', allowInInput:true, group:G.glob, label:{zh:'切换 Agent / 编辑器',en:'Toggle Agent / Editor'}, run:()=>setAppMode(appMode==='agent'?'editor':'agent')},
+    {id:'sidebar', combo:'Mod+B', allowInInput:true, group:G.glob, label:{zh:'收起 / 展开侧栏',en:'Toggle sidebar'}, run:toggleSidebar},
+    {id:'settings', combo:'Mod+,', allowInInput:true, group:G.glob, label:{zh:'数据设置',en:'Settings'}, run:()=>go('settings')},
+    {id:'help', combo:'Mod+/', allowInInput:true, group:G.glob, label:{zh:'快捷键帮助',en:'Shortcut help'}, run:()=>openModal(keysHelpHTML())},
+    {id:'theme', combo:'Mod+Shift+D', allowInInput:true, group:G.glob, label:{zh:'切换深 / 浅主题',en:'Toggle theme'}, run:toggleTheme}
+  ]);
+  PAGES.forEach((p,i)=>{ const n=i+1; if(n<=9) K.register({id:'nav'+n, combo:'Mod+'+n, group:G.navg, label:{zh:p.label,en:p.en}, run:()=>go(p.id)}); });
+  K.registerAll([
+    {id:'new', combo:'Mod+N', when:isDesktop, group:G.ctx, label:{zh:'新建(随当前页)',en:'New (current page)'}, run:contextNew}, /* 仅桌面:网页让位浏览器 Ctrl/⌘+N(满足设计文档 §三"不抢 Mod+N") */
+    {id:'find', combo:'Mod+F', group:G.ctx, when:()=>!!pageSearchInput(current), label:{zh:'聚焦搜索 / 筛选',en:'Focus search / filter'}, run:()=>{const i=pageSearchInput(current);if(i){i.focus();if(i.select)i.select();}}},
+    {id:'undo', combo:'Mod+Z', group:G.ctx, label:{zh:'撤销(可逆操作)',en:'Undo'}, run:()=>{ if(lastUndo)lastUndo(); else toast(tt('没有可撤销的操作','Nothing to undo')); }}
+  ]);
+  /* 信息行:仅进帮助浮层、不分发(输入内已有行为 + M5 语音占位) */
+  K.registerAll([
+    {id:'i-esc', combo:'', display:'Esc', group:G.ctx, label:{zh:'逐层退出 / 关闭',en:'Exit / close (layered)'}},
+    {id:'i-slash', combo:'', display:'/', group:G.agent, label:{zh:'输入框开头唤起命令浮层',en:'Type / for command palette'}},
+    {id:'i-enter', combo:'', display:'Enter', group:G.agent, label:{zh:'发送',en:'Send'}},
+    {id:'i-shiftenter', combo:'', display:(K.isMac?'⇧ Enter':'Shift+Enter'), group:G.agent, label:{zh:'换行',en:'New line'}},
+    {id:'i-updown', combo:'', display:'↑ ↓', group:G.agent, label:{zh:'命令浮层选择 / 空输入调历史',en:'Palette select / recall last'}},
+    {id:'i-voice', combo:'Mod+Shift+M', display:K.fmt('Mod+Shift+M'), group:G.iv, label:{zh:'语音作答(M5 上线)',en:'Voice answer (in M5)'}}
+  ]);
+  /* Esc 逐层链(优先级高→低):命令浮层 → 弹窗/帮助 → Copilot → 收起画布 */
+  K.registerEscape(()=>{ if(cmdIsOpen()){cmdClose();return true;} return false; }, 50);
+  K.registerEscape(()=>{ const o=$('#overlay'); if(o&&o.classList.contains('open')){closeModal();return true;} return false; }, 40);
+  K.registerEscape(()=>{ const c=copEl(); if(c&&c.classList.contains('open')){copClose();return true;} return false; }, 30);
+  K.registerEscape(()=>{ if(appMode==='agent'&&document.body.dataset.agent==='split'){agentCollapse();return true;} return false; }, 20);
+  K.attach();
+}
+
 /* ---------- INIT ---------- */
 
 buildNav();
@@ -2688,6 +2759,7 @@ $('#themeBtn2').onclick=toggleTheme;
 copInit();
 agentInit();
 initShell();
+initKeys();
 go('overview');
 appReady=true;
 </script>
