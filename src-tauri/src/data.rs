@@ -9,6 +9,7 @@
 
 use rusqlite::{params, Connection};
 use serde_json::{Map, Value};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
@@ -37,18 +38,21 @@ fn table_for(collection: &str) -> Result<&'static str, String> {
     }
 }
 
-/// 打开(或创建)本地数据库并建表。
+/// 打开(或创建)本地数据库,跑迁移(迁移前自动快照、每步事务失败回滚)。
 pub fn open(app: &AppHandle) -> Result<Connection, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let conn = Connection::open(dir.join("seeker.db")).map_err(|e| e.to_string())?;
+    let mut conn = Connection::open(dir.join("seeker.db")).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
-    init_schema(&conn)?;
+    migrate(&mut conn, &dir.join("backups"))?;
     Ok(conn)
 }
 
-fn init_schema(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(
+/// 版本化迁移:每项 (版本号, SQL)。加业务字段本零迁移(改 data_json);要查询/排序才"升列"——
+/// 那时追加一条迁移。启动时顺序应用 version > 当前 的项。
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
         "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
          CREATE TABLE IF NOT EXISTS skills (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
@@ -57,10 +61,65 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
          CREATE TABLE IF NOT EXISTS iv_records (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS profile (k TEXT PRIMARY KEY, v TEXT NOT NULL);
-         CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
-         CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);",
+         CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);",
+    ),
+    // "字段升列"样板:把 data_json.state 提升为 actions 骨架列 + 回填 + 建索引。
+    (
+        2,
+        "ALTER TABLE actions ADD COLUMN state TEXT;
+         UPDATE actions SET state = json_extract(data_json, '$.state');
+         CREATE INDEX IF NOT EXISTS idx_actions_state ON actions(state);",
+    ),
+];
+
+fn schema_version(conn: &Connection) -> i64 {
+    conn.query_row("SELECT v FROM meta WHERE k = 'schema_version'", [], |r| {
+        r.get::<_, String>(0)
+    })
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(0)
+}
+
+/// 启动迁移:顺序应用待执行迁移;**迁移前自动快照**;每步独立事务,失败即回滚并中止(版本不前进)。
+fn migrate(conn: &mut Connection, backups_dir: &Path) -> Result<(), String> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
+        [],
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    let cur = schema_version(conn);
+    let latest = MIGRATIONS.last().map(|m| m.0).unwrap_or(0);
+    if cur >= latest {
+        return Ok(());
+    }
+    // 迁移前自动快照(失败仅告警,不阻断;每步事务另有回滚兜底)。
+    if let Err(e) = snapshot(conn, backups_dir, cur) {
+        log::warn!("迁移前快照失败(继续迁移): {e}");
+    }
+    for (ver, sql) in MIGRATIONS.iter().filter(|m| m.0 > cur) {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(sql)
+            .map_err(|e| format!("迁移 v{ver} 失败(已回滚): {e}"))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO meta (k, v) VALUES ('schema_version', ?1)",
+            params![ver.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 迁移前快照:VACUUM INTO 一份一致副本到 backups/(WAL 安全)。
+fn snapshot(conn: &Connection, backups_dir: &Path, from_ver: i64) -> Result<(), String> {
+    std::fs::create_dir_all(backups_dir).map_err(|e| e.to_string())?;
+    let path = backups_dir.join(format!("seeker-pre-v{}-{}.db", from_ver, now_ms()));
+    // 路径作转义字符串字面量(避免绑定参数在 VACUUM INTO 的兼容性问题)。
+    let p = path.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{p}'"))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn record_id(record: &Value) -> Result<String, String> {
@@ -190,7 +249,23 @@ pub fn profile_set(db: State<'_, Db>, k: String, v: String) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
-    use super::table_for;
+    use super::{migrate, schema_version, table_for, MIGRATIONS};
+    use rusqlite::Connection;
+
+    #[test]
+    fn migrate_upgrades_to_latest_and_promotes_actions_state() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups");
+        migrate(&mut conn, &tmp).unwrap();
+        assert_eq!(schema_version(&conn), MIGRATIONS.last().unwrap().0);
+        // "升列"样板生效:actions.state 已成列。
+        let has_state: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('actions') WHERE name = 'state'")
+            .unwrap()
+            .query_row([], |_| Ok(true))
+            .unwrap_or(false);
+        assert!(has_state, "actions.state 应已升列");
+    }
 
     #[test]
     fn table_for_rejects_profile_and_secrets() {
