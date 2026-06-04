@@ -502,6 +502,20 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .match-card .mc-lbl{font-family:var(--font-mono); font-size:10px; letter-spacing:0.12em; color:var(--ink-3); text-transform:uppercase; margin-bottom:7px;}
 .match-card .mc-chips{display:flex; flex-wrap:wrap; gap:5px;}
 .match-card .mc-acts{padding:4px 15px 14px;}
+/* 训练计划交互卡(原生 domain · 沿用设计 token) */
+.plan-card{padding:0;}
+.plan-card .pc-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:13px 15px 4px; flex-wrap:wrap;}
+.plan-card .pc-title{font-size:14px; font-weight:600; color:var(--ink);}
+.plan-card .pc-badge{font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; color:var(--accent); white-space:nowrap;}
+.plan-card .pc-timeline{padding:8px 15px 4px;}
+.plan-card .pc-step{display:flex; gap:11px; align-items:flex-start; padding:7px 0; border-bottom:0.5px solid var(--border);}
+.plan-card .pc-step:last-child{border-bottom:none;}
+.plan-card .pc-idx{font-family:var(--font-mono); font-size:11px; color:var(--accent); flex-shrink:0; padding-top:1px;}
+.plan-card .pc-ms{font-size:13px; color:var(--ink-2); line-height:1.5;}
+.plan-card .pc-res{padding:8px 15px 2px;}
+.plan-card .pc-lbl{font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin-bottom:7px;}
+.plan-card .pc-chips{display:flex; flex-wrap:wrap; gap:5px;}
+.plan-card .pc-acts{padding:8px 15px 14px;}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -2813,7 +2827,8 @@ function frameQuery(text){
   if(/面试|JD|陪我练|面试题/.test(t))
     return G + '读取我的目标 jobs(岗位/JD)后,给出贴合该岗位的面试题或面试反馈。我的原始请求:' + t;
   if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
-    return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。我的原始请求:' + t;
+    return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。'
+      + '聚焦要补的那项技能,请在回答**末尾**附一个代码块以渲染交互计划卡(正文保持简洁):\n```seeker:plan-card\n{"skill":"<要补的技能名,如 Rust / K8s / 分布式系统 / 系统设计>"}\n```\n我的原始请求:' + t;
   if(/匹配|该投|投哪/.test(t))
     return G + '读取我的 jobs(目标岗位,含 id)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。'
       + '聚焦的那个岗位,请在回答**末尾**附一个代码块以渲染交互雷达卡(正文保持简洁,不必重复卡里的数字):\n```seeker:match-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
@@ -2851,6 +2866,17 @@ function extractMatchCard(text){
   try{ const j = JSON.parse(m[1].trim()); if(j && j.jobId!=null) match = j; }catch(_e){}
   const prose = match ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s;
   return { prose, match };
+}
+/* 训练计划可交互卡:AI 末尾附 ```seeker:plan-card 块 {skill, jobLabel?} → 原生计划卡(planFor 真实里程碑数据)。 */
+const PLAN_CARD_RE = /```seeker:plan-card\s*([\s\S]*?)```/;
+function extractPlanCard(text){
+  const s = String(text==null?'':text);
+  const m = s.match(PLAN_CARD_RE);
+  if(!m) return { prose:s, plan:null };
+  let plan = null;
+  try{ const j = JSON.parse(m[1].trim()); if(j && j.skill!=null) plan = j; }catch(_e){}
+  const prose = plan ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s;
+  return { prose, plan };
 }
 function showResumeProposal(bubble, edit, who){
   // 定位简历:edit.jobId → 当前打开的简历 → 仅有一份时取之
@@ -2964,16 +2990,38 @@ function showMatchCard(bubble, match, who){
   try{ const card=renderMatchCardEl(job); const host=(bubble&&bubble.parentElement)||bubble; if(host){ host.appendChild(card); } }
   catch(e){ console.error('[match] render', e); }
 }
+/** 训练计划交互卡(原生 domain · 真实 planFor 数据):里程碑时间线 + 资源 + 一键加入行动清单。 */
+function renderPlanCardEl(skill, jobLabel){
+  const p=planFor(skill); const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const steps=(p.ms||[]).map((t,i)=>`<div class="pc-step"><span class="pc-idx">${String(i+1).padStart(2,'0')}</span><span class="pc-ms">${esc(t)}</span></div>`).join('');
+  const res=(p.res||[]).map(r=>`<span class="chip">${esc(r)}</span>`).join('');
+  const card=el(`<div class="cop-card plan-card">
+    <div class="pc-head"><div class="pc-title">${tt('训练计划','Training plan')} · ${esc(skill)}</div>
+      <div class="pc-badge">${tt('约 ','~')}${p.weeks} ${tt('周','wk')} · ${(p.ms||[]).length} ${tt('里程碑','steps')}</div></div>
+    <div class="pc-timeline">${steps}</div>
+    <div class="pc-res"><div class="pc-lbl">${tt('推荐资源','Resources')}</div><div class="pc-chips">${res}</div></div>
+    <div class="cop-actions pc-acts"></div></div>`);
+  const acts=card.querySelector('.pc-acts');
+  const mk=(label,fn,accent)=>{ const b=el(`<button class="btn${accent?' btn-accent':''}">${label}</button>`); b.onclick=fn; acts.appendChild(b); };
+  mk(tt('加入行动清单','Add to actions')+' →', ()=>{ if(typeof copPlan==='function') copPlan(skill, jobLabel||''); else if(typeof genPlanFromGap==='function'){ genPlanFromGap(skill, jobLabel||''); try{renderActions();renderOverview();}catch(_e){} if(typeof go==='function') go('actions'); } }, true);
+  return card;
+}
+function showPlanCard(bubble, plan, who){
+  const skill = plan && plan.skill!=null ? String(plan.skill).trim() : '';
+  if(!skill) return; // 无技能名:静默(文字计划仍在)
+  try{ const card=renderPlanCardEl(skill, plan.jobLabel||''); const host=(bubble&&bubble.parentElement)||bubble; if(host){ host.appendChild(card); } }
+  catch(e){ console.error('[plan] render', e); }
+}
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
   if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
   return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-/** 流式显示用:截断到最早出现的指令块标记之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
+/** 流式显示用:截断到任一 seeker 指令块起始之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
 function displayText(s){
-  s = String(s==null?'':s); let cut = s.length;
-  for(const mk of ['```seeker:resume-edit','```seeker:match-card']){ const i=s.indexOf(mk); if(i>=0 && i<cut) cut=i; }
-  return s.slice(0, cut);
+  s = String(s==null?'':s);
+  const i = s.indexOf('```seeker:');
+  return i>=0 ? s.slice(0, i) : s;
 }
 /** 工具循环进度文案(反焦虑:让用户知道 AI 正在读数据,而非卡住)。 */
 function toolStatusText(info){
@@ -3006,11 +3054,13 @@ function streamReply(thinkBubble, text, who, scrollFn){
     onDone(){
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       const ex = extractResumeEdit(acc);                              // 剥离简历指令块
-      const mc = extractMatchCard(ex.prose);                          // 再剥离匹配卡指令块
-      if(span) span.innerHTML = aiHTML(mc.prose);                     // 最终 Markdown 渲染(已去所有 JSON 块)
-      persistMsg(who==='Agent'?'agent':'cop','ai', mc.prose);         // 存去块纯文本(卡片会话内重渲不持久)
+      const mc = extractMatchCard(ex.prose);                          // 剥离匹配卡指令块
+      const pc = extractPlanCard(mc.prose);                           // 剥离计划卡指令块
+      if(span) span.innerHTML = aiHTML(pc.prose);                     // 最终 Markdown 渲染(已去所有 JSON 块)
+      persistMsg(who==='Agent'?'agent':'cop','ai', pc.prose);         // 存去块纯文本(卡片会话内重渲不持久)
       if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
       if(mc.match){ try{ showMatchCard(thinkBubble, mc.match, who); }catch(e){ console.error('[match] card', e); } }
+      if(pc.plan){ try{ showPlanCard(thinkBubble, pc.plan, who); }catch(e){ console.error('[plan] card', e); } }
       if(scrollFn) scrollFn();
     }
   });
