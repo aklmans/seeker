@@ -1,10 +1,11 @@
 // @ts-check
 /**
  * 桌面端运行时(Tauri)。
- * 落地方式:Tauri invoke → Rust 核(SQLite / 钥匙串 / reqwest 流式 / sidecar)。
- * M0:仅契约 + 空实现。真实命令在 #1(ai)/#3(db)/#4(secret)/#2(capability) 接入。
+ * 落地:Tauri invoke / event → Rust 核(钥匙串 / reqwest 流式 / …)。
+ * G1 已接:ai(流式对话)、secret(钥匙串)、ai.getConfig/setConfig(provider 配置)。
+ * db / capability 仍占位(#3 / #2)。
  */
-import { NotImplementedError, notImpl } from './errors.js';
+import { notImpl } from './errors.js';
 
 /** 桌面端「全功能」:所有能力都在。 */
 const FEATURES = new Set(
@@ -14,20 +15,83 @@ const FEATURES = new Set(
   ]),
 );
 
-/**
- * 封装 Tauri invoke(withGlobalTauri=true → window.__TAURI__ 注入)。
- * 现在未被任何空实现调用;留作 #1+ 真实命令接入点。
- * @param {string} cmd
- * @param {Record<string, unknown>} [args]
- * @returns {Promise<unknown>}
- */
-// eslint-disable-next-line no-unused-vars
+/** Tauri 全局(withGlobalTauri 注入)。 @returns {any} */
+function tauri() {
+  const t = /** @type {any} */ (globalThis).__TAURI__;
+  if (!t || !t.core) throw new Error('Tauri 运行时不可用:window.__TAURI__ 缺失');
+  return t;
+}
+
+/** @param {string} cmd @param {Record<string, unknown>} [args] @returns {Promise<any>} */
 function invoke(cmd, args) {
-  const tauri = /** @type {any} */ (globalThis).__TAURI__;
-  if (!tauri?.core?.invoke) {
-    return Promise.reject(new Error('Tauri 运行时不可用:window.__TAURI__ 缺失'));
-  }
-  return tauri.core.invoke(cmd, args);
+  return tauri().core.invoke(cmd, args);
+}
+
+function genSessionId() {
+  return 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * 流式对话:**先订阅 ai_chunk/ai_done/ai_error,后 invoke ai_chat**(防丢首包)。
+ * @param {import('./types').AiRequest} req
+ * @param {import('./types').AiStreamHandlers} [handlers]
+ * @returns {import('./types').AiStream}
+ */
+function aiStream(req, handlers = {}) {
+  const sessionId = req.sessionId || genSessionId();
+  const ev = tauri().event;
+  /** @type {Array<() => void>} */
+  let unlisten = [];
+  let acc = '';
+  const cleanup = () => {
+    unlisten.forEach((u) => { try { if (u) u(); } catch (_e) { /* ignore */ } });
+    unlisten = [];
+  };
+
+  const done = (async () => {
+    /** @type {(r: import('./types').AiResult) => void} */
+    let resolveDone = () => {};
+    /** @type {(e: Error) => void} */
+    let rejectDone = () => {};
+    /** @type {Promise<import('./types').AiResult>} */
+    const p = new Promise((res, rej) => { resolveDone = res; rejectDone = rej; });
+
+    const hit = (/** @type {any} */ e) => e && e.payload && e.payload.sessionId === sessionId;
+    unlisten = await Promise.all([
+      ev.listen('ai_chunk', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        acc += e.payload.text;
+        if (handlers.onToken) handlers.onToken(e.payload.text);
+      }),
+      ev.listen('ai_done', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        cleanup();
+        const r = { text: acc, stopReason: e.payload.stopReason };
+        if (handlers.onDone) handlers.onDone(r);
+        resolveDone(r);
+      }),
+      ev.listen('ai_error', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        cleanup();
+        const err = new Error(e.payload.message || 'AI 网关错误');
+        if (handlers.onError) handlers.onError(err);
+        rejectDone(err);
+      }),
+    ]);
+
+    // 不 await:ai_chat 在流结束时才 resolve;真正的结束信号走 ai_done/ai_error。
+    invoke('ai_chat', { sessionId, userText: req.userText, task: req.task || null })
+      .catch((/** @type {any} */ err) => {
+        cleanup();
+        rejectDone(err instanceof Error ? err : new Error(String(err)));
+      });
+    return p;
+  })();
+
+  return {
+    cancel: () => { invoke('ai_cancel', { sessionId }).catch(() => {}); },
+    done,
+  };
 }
 
 /** @returns {import('./types').RuntimeApi} */
@@ -37,24 +101,28 @@ export function createDesktopRuntime() {
     available: (feature) => FEATURES.has(feature),
 
     db: {
-      list: () => notImpl('rt.db.list', 'desktop'),          // → invoke('db_list', …)   @ #3
-      get: () => notImpl('rt.db.get', 'desktop'),            // → invoke('db_get', …)    @ #3
-      upsert: () => notImpl('rt.db.upsert', 'desktop'),      // → invoke('db_upsert', …) @ #3
-      remove: () => notImpl('rt.db.remove', 'desktop'),      // → 经 guardrail 预览+确认+撤销 @ #3
+      list: () => notImpl('rt.db.list', 'desktop'),        // @ #3
+      get: () => notImpl('rt.db.get', 'desktop'),          // @ #3
+      upsert: () => notImpl('rt.db.upsert', 'desktop'),    // @ #3
+      remove: () => notImpl('rt.db.remove', 'desktop'),    // → guardrail @ #3
     },
 
     ai: {
-      // 流式返回同步句柄,故此处同步抛错(不能返回 rejected Promise)。
-      stream: () => {
-        throw new NotImplementedError('rt.ai.stream', 'desktop'); // → invoke + event 回灌 @ #1
-      },
-      complete: () => notImpl('rt.ai.complete', 'desktop'),
+      stream: aiStream,
+      complete: (req) => aiStream(req).done,
+      getConfig: () => invoke('ai_config_get'),
+      setConfig: (patch) =>
+        invoke('ai_config_set', {
+          baseUrl: patch.baseUrl ?? null,
+          model: patch.model ?? null,
+        }),
     },
 
     secret: {
-      status: () => notImpl('rt.secret.status', 'desktop'),  // → 钥匙串查 configured/empty @ #4
-      set: () => notImpl('rt.secret.set', 'desktop'),        // → 直送钥匙串,不回显 @ #4
-      clear: () => notImpl('rt.secret.clear', 'desktop'),
+      // 仅状态/写入/清除;**没有 get**——明文密钥从命令层就回不到前端。
+      status: (key) => invoke('secret_status', { account: key }),
+      set: (key, value) => invoke('secret_set', { account: key, value }),
+      clear: (key) => invoke('secret_clear', { account: key }),
     },
 
     capability: {

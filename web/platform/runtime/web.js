@@ -33,6 +33,8 @@ export function createWebRuntime() {
         throw new NotImplementedError('rt.ai.stream', 'web'); // → 浏览器→自有后端代理 @ #1
       },
       complete: () => notImpl('rt.ai.complete', 'web'),
+      getConfig: () => notImpl('rt.ai.getConfig', 'web'),
+      setConfig: () => notImpl('rt.ai.setConfig', 'web'),
     },
 
     secret: {

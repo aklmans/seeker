@@ -75,15 +75,21 @@ export interface DbApi {
 // 前端只发文字、收 token 流;出网与密钥都在 Rust。提示组装时**排除 profile**。
 
 export interface AiRequest {
-  /** 任务类型(智能匹配 / 简历改写 / 面试反馈 …),由 domain/prompts 配置驱动。 */
-  task: string;
-  /** 上下文(业务数据);网关组装提示时**显式剔除隐私字段**。 */
+  /** 用户文本——前端只发文字。 */
+  userText: string;
+  /** 会话 id(缺省由适配器生成):流式事件路由 + 取消。 */
+  sessionId?: string;
+  /** 任务类型(智能匹配 / 简历改写 / 面试反馈 …),选择系统提示;由 domain/prompts 配置驱动。 */
+  task?: string;
+  /** 业务上下文(白名单);网关组装提示时**结构上不含 profile 隐私字段**。 */
   context?: unknown;
 }
 
 export interface AiResult {
   text: string;
-  /** 模型返回的工具调用(交给 Rust 工具层执行,含 show_widget)。 */
+  /** 结束原因:stop | cancelled | length … */
+  stopReason?: string;
+  /** 模型返回的工具调用(交给 Rust 工具层执行,含 show_widget)。G3。 */
   toolCalls?: Array<{ id: string; name: string; input: unknown }>;
 }
 
@@ -99,11 +105,22 @@ export interface AiStream {
   done: Promise<AiResult>;
 }
 
+export interface AiConfig {
+  baseUrl: string;
+  model: string;
+  /** key 是否已配置(钥匙串);**绝不含明文**。 */
+  keyStatus: SecretStatus;
+}
+
 export interface AiApi {
   /** 流式补全(SSE/chunk → 逐 token 回灌)。 */
   stream(req: AiRequest, handlers?: AiStreamHandlers): AiStream;
-  /** 非流式补全。 */
+  /** 非流式补全(= stream 收齐)。 */
   complete(req: AiRequest): Promise<AiResult>;
+  /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
+  getConfig(): Promise<AiConfig>;
+  /** 写非密钥配置(baseUrl/model);key 走 rt.secret.set 进钥匙串。 */
+  setConfig(patch: { baseUrl?: string; model?: string }): Promise<void>;
 }
 
 // ── 密钥(rt.secret)── 隐私红线 ─────────────────────────────────
