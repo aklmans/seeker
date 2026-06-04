@@ -1,19 +1,94 @@
 // @ts-check
 /**
  * 网页端运行时。
- * 落地方式:后端代理(AI 出网,不暴露 key)/ IndexedDB(数据)/ 会话内存或服务端代管(密钥)。
- * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用,
- * available() 返回 false,UI 优雅隐藏入口。
- * M0:仅契约 + 空实现。
+ * 数据走 **IndexedDB**(#3 D4):rt.db / rt.profile 在浏览器本地持久化,与桌面同契约;
+ * 导出/导入用 Blob 下载 / 文件读入。AI 与 secret 仍降级(需自有后端代理 / 服务端代管,未实现)。
+ * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用。
  */
 import { NotImplementedError, notImpl } from './errors.js';
 
-/** 网页端可用能力子集(系统集成类不在其中)。 */
 const FEATURES = new Set(
-  /** @type {import('./types').Feature[]} */ ([
-    'db', 'ai', 'secret', 'capability',
-  ]),
+  /** @type {import('./types').Feature[]} */ (['db', 'ai', 'secret', 'capability']),
 );
+
+// ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
+const DB_NAME = 'seeker';
+const DB_VERSION = 1;
+/** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages'];
+const KV_STORES = ['profile', 'settings', 'meta'];
+
+/** @type {Promise<any> | null} */
+let dbPromise = null;
+/** @returns {Promise<any>} IDBDatabase */
+function openDb() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const idb = /** @type {any} */ (globalThis).indexedDB;
+    if (!idb) { reject(new Error('IndexedDB 不可用')); return; }
+    const req = idb.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      COLLECTIONS.forEach((s) => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' }); });
+      KV_STORES.forEach((s) => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'k' }); });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('打开 IndexedDB 失败'));
+  });
+  return dbPromise;
+}
+/** @param {any} req @returns {Promise<any>} */
+function reqDone(req) {
+  return new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
+}
+/** @param {string} name @param {IDBTransactionMode} mode @returns {Promise<any>} IDBObjectStore */
+function store(name, mode) {
+  return openDb().then((db) => db.transaction(name, mode).objectStore(name));
+}
+/** 集合白名单守卫(与桌面 table_for 一致:profile/settings 不可经通用 db_*)。
+ *  @param {string} c @returns {Promise<never> | null} */
+function guard(c) {
+  return COLLECTIONS.includes(c) ? null : Promise.reject(new Error('未知或受保护的集合: ' + c));
+}
+/** @param {string} name @returns {Promise<any[]>} */
+async function listAll(name) {
+  const s = await store(name, 'readonly');
+  return /** @type {any[]} */ ((await reqDone(s.getAll())) || []);
+}
+/** @param {string} name @returns {Promise<{[k:string]:string}>} */
+async function kvAll(name) {
+  /** @type {{[k:string]:string}} */
+  const o = {};
+  (await listAll(name)).forEach((r) => { if (r && typeof r.k === 'string') o[r.k] = String(r.v); });
+  return o;
+}
+/** @param {any} obj @param {string} filename @returns {string} */
+function downloadJson(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return filename;
+}
+/** @param {boolean} redact @returns {Promise<any>} */
+async function bundleAll(redact) {
+  /** @type {any} */
+  const collections = {};
+  for (const c of COLLECTIONS) collections[c] = await listAll(c);
+  return {
+    schemaVersion: DB_VERSION,
+    exportedAt: Date.now(),
+    redacted: !!redact,
+    collections,
+    settings: await kvAll('settings'),
+    profile: redact ? {} : await kvAll('profile'),
+  };
+}
 
 /** @returns {import('./types').RuntimeApi} */
 export function createWebRuntime() {
@@ -22,13 +97,56 @@ export function createWebRuntime() {
     available: (feature) => FEATURES.has(feature),
 
     db: {
-      list: () => notImpl('rt.db.list', 'web'),          // → IndexedDB / 远端 API @ #3
-      get: () => notImpl('rt.db.get', 'web'),
-      upsert: () => notImpl('rt.db.upsert', 'web'),
-      remove: () => notImpl('rt.db.remove', 'web'),
-      export: () => notImpl('rt.db.export', 'web'),
-      import: () => notImpl('rt.db.import', 'web'),
-      backup: () => notImpl('rt.db.backup', 'web'),
+      list: async (collection) => guard(collection) || listAll(collection),
+      get: async (collection, id) => {
+        const bad = guard(collection);
+        if (bad) return bad;
+        const s = await store(collection, 'readonly');
+        return (await reqDone(s.get(id))) ?? null;
+      },
+      upsert: async (collection, record) => {
+        const bad = guard(collection);
+        if (bad) return bad;
+        const s = await store(collection, 'readwrite');
+        await reqDone(s.put(record));
+        return /** @type {any} */ (record);
+      },
+      remove: async (collection, id) => {
+        const bad = guard(collection);
+        if (bad) return bad;
+        const s1 = await store(collection, 'readonly');
+        const snap = (await reqDone(s1.get(id))) ?? null;
+        const s2 = await store(collection, 'readwrite');
+        await reqDone(s2.delete(id));
+        return snap;
+      },
+      export: async (redact) => downloadJson(await bundleAll(redact), 'seeker-export' + (redact ? '-redacted' : '') + '-' + Date.now() + '.json'),
+      import: async (json) => {
+        const bundle = JSON.parse(json);
+        /** @type {{[c:string]:number}} */
+        const counts = {};
+        const cols = (bundle && bundle.collections) || {};
+        for (const c of COLLECTIONS) {
+          const arr = Array.isArray(cols[c]) ? cols[c] : [];
+          if (!arr.length) continue;
+          const s = await store(c, 'readwrite');
+          let n = 0;
+          for (const rec of arr) { if (rec && rec.id !== undefined) { await reqDone(s.put(rec)); n++; } }
+          counts[c] = n;
+        }
+        for (const kv of ['profile', 'settings']) {
+          const obj = (bundle && bundle[kv]) || {};
+          const s = await store(kv, 'readwrite');
+          for (const k of Object.keys(obj)) await reqDone(s.put({ k, v: String(obj[k]) }));
+        }
+        return counts;
+      },
+      backup: async () => downloadJson(await bundleAll(false), 'seeker-backup-' + Date.now() + '.json'),
+    },
+
+    profile: {
+      getAll: () => kvAll('profile'),
+      set: async (k, v) => { const s = await store('profile', 'readwrite'); await reqDone(s.put({ k, v: String(v) })); },
     },
 
     ai: {
@@ -41,14 +159,9 @@ export function createWebRuntime() {
     },
 
     secret: {
-      status: () => notImpl('rt.secret.status', 'web'),  // → 会话内存 / 服务端代管(不落浏览器)@ #4
+      status: () => notImpl('rt.secret.status', 'web'), // → 会话内存 / 服务端代管(不落浏览器)@ #4
       set: () => notImpl('rt.secret.set', 'web'),
       clear: () => notImpl('rt.secret.clear', 'web'),
-    },
-
-    profile: {
-      getAll: () => notImpl('rt.profile.getAll', 'web'),
-      set: () => notImpl('rt.profile.set', 'web'),
     },
 
     capability: {
