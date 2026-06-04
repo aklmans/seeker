@@ -14,17 +14,25 @@
   ② CI 上加 macOS 的带 UI 自动化(启动 + 截图比对)。**macOS 正式发布前(最迟 M6)必须做。**
 - **缓解**:每个里程碑保持"避免依赖单端特性 + 关键交互写差异回退"(总盘 ⑬ 对策)。
 
-## R2 · #4 收紧 CSP 与原型大量内联的张力 〔进 #4 前预判〕
+## R2 · 收紧 CSP 与原型大量内联的张力 〔已闭合 · #2 S2,2026-06-03〕
 
-- **现状**:`index.html`(原型)是**单文件**,含**大量内联 `<style>` 与多段内联 `<script>`**,
-  且用 `localStorage`(主题/语言/模式/侧栏宽度)。M0 的 `tauri.conf.json` `security.csp = null`(不限制)。
-- **为什么是风险**:#4 安全要落地严格 CSP(`安全与隐私模型`:`default-src 'none'`、widget 内 CSP 等)。
-  对主窗口若上 `script-src 'self'`、`style-src 'self'`,**会直接禁掉内联脚本/样式**,原型当场白屏。
-- **进 #4 前要定的方案(三选一或组合)**:
-  1. **抽取**:把内联 `<script>/<style>` 拆成外部 `.js`/`.css`(配合 domain/ui 模块化,本就是后续方向)——最干净,顺势做。
-  2. **nonce / hash**:给保留的内联块加 `nonce-` 或 `'sha256-...'`(Tauri 支持注入 nonce)。
-  3. 主窗口 CSP 适度放宽,**严格 CSP 只强制在 show_widget 的 iframe**(不可信代码才是重点)。
-- **connect-src**:无论哪种,都要让 `connect-src` 放行 **AI 网关**所需(桌面端前端经 `rt.ai`→Tauri IPC,
-  通常不直连外网;但要确认 IPC/asset 协议 origin 不被 CSP 误伤)。
-- **关联**:这与 R 之外的「前端开始 import platform/domain 模块」是同一波改造(见 `docs/RELEASE.md` 与
-  `tauri.conf.json` 的 frontendDist 复查点)——抽取内联 + 模块化 + 上 CSP 宜一起规划。
+- **结论**:采用上方案 3(主窗口适度放宽、强隔离留给沙箱 iframe)。`tauri.conf.json`
+  `security.csp` 由 `null` 收紧为:`default-src 'self'; script-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';
+  connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self';
+  frame-ancestors 'none'`,并 `dangerousDisableAssetCspModification: ["script-src","style-src"]`。
+- **为何 `'unsafe-inline'` 不可免(非偷懒)**:原型有**几十处内联 `onclick="..."` 事件处理器**
+  + 海量内联 `style="..."`。内联事件处理器**既不能 nonce 也不能 hash**(仅 `'unsafe-inline'` 放行);
+  方案 1/2(抽取 / nonce)需把这些处理器全改写成 `addEventListener`——大动原型、违反"不偏离原型 + 范围克制"。
+  `dangerousDisableAssetCspModification` 是必需:否则 Tauri 给 `<script>/<style>` 注入 nonce 会按 CSP 规范
+  **使 `'unsafe-inline'` 失效**,内联处理器当场全废。
+- **安全增益仍实在**:主窗口是**半信任壳**(只跑我们自己的代码,不把不可信 HTML 注入主 DOM——
+  LLM widget 走沙箱 iframe、外部文本转义标 Untrusted);真正威胁是被注入后外泄,已由
+  **`connect-src` 锁死(仅 self + Tauri IPC,杜绝前端直连外网)** + `default-src 'self'` + `object-src 'none'` 封堵。
+- **实测(桌面 CDP)**:CSP 下原型**零违规干净加载**(`securitypolicyviolation` 收集器全程为空,
+  内联脚本/样式/`onclick` 处理器均工作)、IPC `invoke` 通(`rt.db.list` 往返)、
+  **外部网络被拦**——对**可连通**的本地非 self 源(127.0.0.1:8799)`fetch` 抛 `TypeError`(可达却被拦=CSP),
+  违规日志录到 `connect-src | https://example.com/`。
+- **遗留**:show_widget 的 iframe 严格 CSP(`default-src 'none'`)+ 沙箱三道墙随 **show_widget(#2 下一步)**
+  落地;届时复查主窗口是否需为 srcdoc iframe 放行 `frame-src`(当前回落 `default-src 'self'`)。
+- macOS/WKWebView 上同一 CSP 的行为差异并入 [R1] 一并冒烟。
