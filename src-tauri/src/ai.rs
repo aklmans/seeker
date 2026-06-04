@@ -246,7 +246,7 @@ async fn run_chat(
     app: &AppHandle,
     session_id: &str,
     user_text: &str,
-    _task: Option<&str>,
+    task: Option<&str>,
     registry: &Registry,
     history: &[Value],
     token: CancellationToken,
@@ -260,17 +260,11 @@ async fn run_chat(
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
 
-    // 系统提示。消息仅 system + user(+ 工具循环产生的 assistant/tool),**结构上不含 profile**
+    // 系统提示(配置化):平台安全/行为基线 + 域 overlay(按 task 选取);见 prompts.rs。
+    // 消息仅 system + user(+ 工具循环产生的 assistant/tool),**结构上不含 profile**
     // (ai_chat 命令签名只有 user_text,网关无从拿到 profile;工具结果只来自白名单业务集合)。
-    // 系统提示配置化(domain/prompts)留待 G2。
-    let system = "You are Seeker's local-first job-hunt assistant. Be concise and practical; \
-                  reply in the user's language. You may call tools to read the user's local \
-                  job-hunt data when helpful. Never ask for or store personal contact details.\n\n\
-                  Presentation — pick the clearest form yourself (the user won't ask for it):\n\
-                  - Default to Markdown prose for explanations, advice, and short answers; never wrap plain text in a widget.\n\
-                  - If the conversation gives a specific output-format instruction (e.g. append a structured block to render a built-in card), follow that.\n\
-                  - Otherwise, when an interactive or visual view communicates better than prose — a comparison, ranking, distribution/proportion, dashboard, chart, timeline, or an interactive checklist/calculator — proactively call the show_widget tool with a self-contained HTML snippet. Lead with one short sentence of context, then the widget (never reply with a bare widget). At most one widget per reply, and only when it clearly beats text.";
-    let mut messages = build_messages(system, user_text); // [system, user]
+    let system = crate::prompts::system_prompt(app, task);
+    let mut messages = build_messages(&system, user_text); // [system, user]
                                                           // 多轮历史(#1 G2):已完成轮次插在 system 之后、当前 user 之前。
     let mut at = 1;
     for h in history {

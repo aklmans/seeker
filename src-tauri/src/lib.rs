@@ -4,6 +4,7 @@ mod config;
 mod data;
 mod embed;
 mod memory;
+mod prompts;
 mod secret;
 
 use tauri::Manager;
