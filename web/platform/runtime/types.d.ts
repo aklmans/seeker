@@ -208,6 +208,22 @@ export interface MemoryApi {
   undo(): Promise<number>;
 }
 
+/** 一篇文档(列表用 · 不含 embedding / 全文)。 */
+export interface DocInfo {
+  docId: string;
+  name: string;
+  chunks: number;
+  ts: number;
+}
+
+/** RAG-over-docs(#2):加文档(后端切块+嵌入)/ 列出 / 删一篇 / 清空。网页端降级。 */
+export interface DocsApi {
+  add(name: string, text: string): Promise<{ docId: string; name: string; chunks: number }>;
+  list(): Promise<DocInfo[]>;
+  remove(docId: string): Promise<number>;
+  clear(): Promise<number>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -220,6 +236,7 @@ export interface RuntimeApi {
   readonly secret: SecretApi;
   readonly capability: CapabilityApi;
   readonly memory: MemoryApi;
+  readonly docs: DocsApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

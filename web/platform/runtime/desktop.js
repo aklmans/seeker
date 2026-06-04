@@ -169,5 +169,13 @@ export function createDesktopRuntime() {
       remove: (id) => invoke('memory_remove', { id }),
       undo: () => invoke('memory_undo'),
     },
+
+    docs: {
+      // RAG-over-docs(#2):加文档(切块+嵌入,后端做)/ 列出(名+片段数)/ 删一篇 / 清空。
+      add: (name, text) => invoke('doc_add', { name, text }),
+      list: () => invoke('doc_list'),
+      remove: (docId) => invoke('doc_remove', { docId }),
+      clear: () => invoke('doc_clear'),
+    },
   };
 }

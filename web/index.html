@@ -1792,6 +1792,59 @@ async function openMemoryManager(){
     });
   };
 }
+async function openDocsManager(){
+  const rt=window.SeekerRT, G=window.SeekerGuardrail;
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— KNOWLEDGE</p><h2 style="margin-top:5px;">${tt('知识库 · 文档','Knowledge · docs')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <input class="input" id="docName" placeholder="${tt('文档名称(如 字节后端 JD)','Doc name (e.g. ByteDance JD)')}">
+        <textarea class="input" id="docText" rows="4" placeholder="${tt('粘贴文档内容,或从下方选 .txt / .md 文件','Paste text, or pick a .txt/.md file below')}" style="resize:vertical;font-family:inherit;"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-accent" id="docAddBtn">${tt('添加到知识库','Add to knowledge')}</button>
+          <button class="btn" id="docFileBtn">${tt('选文件 .txt/.md','Pick .txt/.md')}</button>
+          <input type="file" id="docFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
+          <span class="mono" id="docHint" style="font-size:11px;color:var(--ink-mute);"></span>
+        </div>
+      </div>
+      <div id="docList">${tt('加载中…','Loading…')}</div>
+    </div>
+    <div class="modal-foot"><button class="btn" id="docClear">${tt('清空全部','Clear all')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmtTs=ts=>{try{return new Date(+ts||0).toLocaleString();}catch(_e){return '';}};
+  const render=async()=>{
+    let rows=[]; try{ rows=await rt.docs.list(); }catch(_e){}
+    const body=m.querySelector('#docList'); if(!body) return;
+    body.innerHTML = rows.length
+      ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ','Docs · ')}${rows.length}</div>`+rows.map(d=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${esc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段','chunks')} · ${fmtTs(d.ts)}</div></div><button class="btn" data-docdel="${esc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Delete')}</button></div>`).join('')
+      : `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。','Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.')}</p>`;
+    [...m.querySelectorAll('[data-docdel]')].forEach(b=>b.onclick=()=>{
+      if(!G||!G.confirmDestructive) return;
+      const d=rows.find(x=>String(x.docId)===String(b.dataset.docdel));
+      G.confirmDestructive({ title:tt('删除文档?','Delete doc?'), detail:(tt('将从知识库删除:','Remove from knowledge: '))+(d?d.name:''), confirmLabel:tt('删除','Delete'),
+        onConfirm:async()=>{ try{ await rt.docs.remove(b.dataset.docdel); }catch(_e){} await render(); } });
+    });
+    const cb=m.querySelector('#docClear'); if(cb) cb.style.display=rows.length?'':'none';
+  };
+  await render();
+  const addBtn=m.querySelector('#docAddBtn'), nameI=m.querySelector('#docName'), textI=m.querySelector('#docText'), hint=m.querySelector('#docHint');
+  if(addBtn) addBtn.onclick=async()=>{
+    const text=((textI&&textI.value)||'').trim(); if(!text){ toast(tt('请先粘贴内容或选文件','Paste text or pick a file first')); return; }
+    const name=((nameI&&nameI.value)||'').trim();
+    addBtn.disabled=true; const old=addBtn.textContent; addBtn.textContent=tt('添加中…','Adding…');
+    try{ const r=await rt.docs.add(name, text); toast(tt('已加入「','Added "')+((r&&r.name)||name||tt('未命名','Untitled'))+'」 · '+((r&&r.chunks)||0)+tt(' 片段',' chunks')); if(nameI)nameI.value=''; if(textI)textI.value=''; if(hint)hint.textContent=''; await render(); }
+    catch(e){ toast(String((e&&e.message)||e)); }
+    finally{ addBtn.disabled=false; addBtn.textContent=old; }
+  };
+  const fileBtn=m.querySelector('#docFileBtn'), fileI=m.querySelector('#docFile');
+  if(fileBtn&&fileI){ fileBtn.onclick=()=>fileI.click();
+    fileI.onchange=()=>{ const f=fileI.files&&fileI.files[0]; if(!f) return; const reader=new FileReader();
+      reader.onload=()=>{ if(textI) textI.value=String(reader.result||''); if(nameI&&!nameI.value) nameI.value=f.name.replace(/\.(txt|md)$/i,''); if(hint) hint.textContent=f.name; };
+      reader.readAsText(f); fileI.value=''; }; }
+  const clr=m.querySelector('#docClear');
+  if(clr) clr.onclick=()=>{ if(!G||!G.confirmDestructive) return;
+    G.confirmDestructive({ title:tt('清空全部文档?','Clear all docs?'), detail:tt('将删除知识库里的全部文档。','Removes every doc from the knowledge base.'), confirmLabel:tt('清空','Clear'),
+      onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); } }); };
+}
 function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
@@ -1868,7 +1921,8 @@ function renderSettings(){
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
     ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
     ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
-    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除 —— 你掌控自己的数据。','Chat history and long-term memory are stored locally only. <b>AI cannot query your chat history</b> (it only sees in-conversation context); review or clear anything you volunteered into memory here anytime — you control your data.')}</span></div>
+    ${row(tt('知识库 · 文档','Knowledge · docs'),`<button class="btn" id="mgrDocs">${tt('管理文档','Manage docs')}</button>`)}
+    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除。<b>知识库文档</b>是你主动加入、供 AI 检索作答的语料(需配嵌入模型),其相关片段会用于回答 —— 同样只存本地、可随时删除。你掌控自己的数据。','Chat history and long-term memory stay local only. <b>AI cannot query your chat history</b> (only in-conversation context); review/clear volunteered memory here anytime. <b>Knowledge docs</b> are material you add for the AI to retrieve from (needs an embed model); relevant chunks are used in answers — also local-only and deletable anytime. You control your data.')}</span></div>
     ${row(tt('清空所有数据','Clear all data'),`<button class="btn" onclick="toast('已取消 — 数据已安全保留')">${tt('清空','Clear')}</button>`)}
   </div>`;
   sections.about=`<p class="seclabel">— ABOUT</p><h2 class="sectitle">${tt('关于','About')}<span class="dot">.</span></h2>
@@ -1922,6 +1976,7 @@ function wireDataIO(){
   if(!exp) return;
   const mh=$('#mgrHistory'); if(mh) mh.onclick=openHistoryManager;   // 历史与记忆掌控(#4),web/桌面皆可
   const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
+  const md=$('#mgrDocs'); if(md) md.onclick=openDocsManager;          // RAG 知识库管理(#2)
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
   if(!on){
     exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');

@@ -179,5 +179,13 @@ export function createWebRuntime() {
       remove: () => Promise.resolve(),
       undo: () => Promise.resolve(0),
     },
+
+    // 网页端暂无本地知识库(切块/嵌入/SQLite 为桌面能力)→ 列空、加文档不支持、删/清无操作。
+    docs: {
+      add: () => notImpl('rt.docs.add', 'web'),
+      list: () => Promise.resolve([]),
+      remove: () => Promise.resolve(0),
+      clear: () => Promise.resolve(0),
+    },
   };
 }
