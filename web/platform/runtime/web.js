@@ -175,6 +175,7 @@ export function createWebRuntime() {
       list: () => Promise.resolve([]),
       clear: () => Promise.resolve(0),
       remove: () => Promise.resolve(),
+      undo: () => Promise.resolve(0),
     },
   };
 }

@@ -1738,7 +1738,7 @@ async function openMemoryManager(){
     const body=m.querySelector('#memBody'); if(!body) return;
     if(!rows.length) body.innerHTML=`<p style="color:var(--ink-3);padding:18px 0;text-align:center;">${tt('AI 还没有记住任何内容。','Nothing remembered yet.')}</p>`;
     else body.innerHTML=`<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ','What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地',' · local only')}</p>`+rows.map(r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${_mgrEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${_mgrTime(r.ts)}</div></div><button class="btn" data-memdel="${_mgrEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Delete')}</button></div>`).join('');
-    [...m.querySelectorAll('[data-memdel]')].forEach(b=>b.onclick=async()=>{ try{ await rt.memory.remove(b.dataset.memdel); toast(tt('已删除该记忆','Memory deleted')); }catch(_e){} await render(); });
+    [...m.querySelectorAll('[data-memdel]')].forEach(b=>b.onclick=async()=>{ try{ await rt.memory.remove(b.dataset.memdel); }catch(_e){} await render(); toastUndo(tt('已删除该记忆','Memory deleted'), async()=>{ try{ await rt.memory.undo(); }catch(_e){} await render(); }); });
     const cb=m.querySelector('#memClear'); if(cb) cb.style.display=rows.length?'':'none';
   };
   await render();
@@ -1747,9 +1747,11 @@ async function openMemoryManager(){
     if(!G||!G.confirmDestructive) return;
     await G.confirmDestructive({
       title:tt('清除全部长期记忆?','Clear all long-term memory?'),
-      detail:tt('将删除 AI 记住的全部内容。此操作不可恢复(嵌入向量无法重建)。','Deletes everything AI remembers. This cannot be undone.'),
+      detail:tt('将删除 AI 记住的全部内容。可在几秒内撤销。','Deletes everything AI remembers. Undoable for a few seconds.'),
       confirmLabel:tt('清除','Clear'),
+      undoText:tt('已清除长期记忆','Memory cleared'),
       onConfirm:async()=>{ try{ await rt.memory.clear(); }catch(_e){} await render(); },
+      onUndo:async()=>{ try{ await rt.memory.undo(); }catch(_e){} await render(); },
     });
   };
 }

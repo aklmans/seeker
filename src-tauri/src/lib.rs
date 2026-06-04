@@ -14,6 +14,7 @@ pub fn run() {
         .manage(ai::Sessions::default())
         .manage(ai::History::default())
         .manage(capability::Registry::new())
+        .manage(data::MemTrash::default())
         .setup(|app| {
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
             let conn = data::open(app.handle())?;
@@ -47,6 +48,7 @@ pub fn run() {
             data::memory_list,
             data::memory_clear,
             data::memory_remove,
+            data::memory_undo,
             capability::cap_list,
             capability::cap_available,
             capability::cap_invoke,

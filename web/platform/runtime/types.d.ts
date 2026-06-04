@@ -197,6 +197,8 @@ export interface MemoryApi {
   list(): Promise<MemoryEntry[]>;
   clear(): Promise<number>;
   remove(id: string): Promise<void>;
+  /** 撤销最近一次清除/单删(后端 trash 还原,向量不出后端)。返回还原条数。 */
+  undo(): Promise<number>;
 }
 
 // ── 顶层 Runtime ────────────────────────────────────────────────

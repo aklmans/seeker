@@ -160,10 +160,11 @@ export function createDesktopRuntime() {
     },
 
     memory: {
-      // 长期记忆的用户掌控(#4):查看(不含 embedding)/ 清除全部 / 删一条。
+      // 长期记忆的用户掌控(#4):查看(不含 embedding)/ 清除 / 删一条 / 撤销(后端 trash 还原,向量不出后端)。
       list: () => invoke('memory_list'),
       clear: () => invoke('memory_clear'),
       remove: (id) => invoke('memory_remove', { id }),
+      undo: () => invoke('memory_undo'),
     },
   };
 }

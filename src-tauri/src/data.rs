@@ -510,8 +510,49 @@ pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
-// ── 长期记忆的用户掌控(#4 · 查看/清除入口)────────────────────────────
-// 记忆可能含用户主动写出的 PII;给用户查看与清除入口(本地、即时生效)。embedding 永不出后端。
+// ── 长期记忆的用户掌控(#4 · 查看/清除/撤销入口)──────────────────────────
+// 记忆可能含用户主动写出的 PII;给用户查看 + 清除 + **撤销**入口(本地、即时生效)。embedding 永不出后端。
+
+/// 记忆销毁撤销暂存:存「最近一次销毁(清除/单删)」的记忆行(含 embedding)。
+/// **向量仅留后端、绝不经命令外泄**(守 embedding 隔离红线);供 memory_undo 还原。进程内,重启即失(undo 是当场动作)。
+type MemRow = (String, String, Vec<f32>, i64); // (id, fact, embedding, created_at)
+#[derive(Default)]
+pub struct MemTrash(pub Mutex<Vec<MemRow>>);
+
+/// 读全量记忆行(含 embedding + 时间)——内部用(快照),绝不经命令外泄向量。
+fn memory_rows_full(conn: &Connection) -> Result<Vec<MemRow>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding, created_at FROM memories")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let id: String = r.get(0)?;
+            let fact: String = r.get(1)?;
+            let blob: Option<Vec<u8>> = r.get(2)?;
+            let ts: i64 = r.get(3)?;
+            Ok((id, fact, blob.map(|b| blob_to_vec(&b)).unwrap_or_default(), ts))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+/// 还原一批记忆行(保留原 id / embedding / 时间)。
+fn memory_restore_rows(conn: &Connection, rows: &[MemRow]) -> Result<usize, String> {
+    let mut n = 0;
+    for (id, fact, emb, ts) in rows {
+        conn.execute(
+            "INSERT OR REPLACE INTO memories (id, fact, embedding, created_at) VALUES (?1,?2,?3,?4)",
+            params![id, fact, vec_to_blob(emb), ts],
+        )
+        .map_err(|e| e.to_string())?;
+        n += 1;
+    }
+    Ok(n)
+}
 
 /// 列出长期记忆(不含 embedding)——供「数据与隐私」查看。
 #[tauri::command]
@@ -520,21 +561,49 @@ pub fn memory_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
     memory_entries(&conn)
 }
 
-/// 清除全部长期记忆,返回删除条数(清除后 AI 不再记得这些)。
+/// 清除全部长期记忆,返回删除条数。**删前把整表(含 embedding)快照进后端 trash**,供撤销(向量不出后端)。
 #[tauri::command]
-pub fn memory_clear(db: State<'_, Db>) -> Result<usize, String> {
+pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    conn.execute("DELETE FROM memories", [])
-        .map_err(|e| e.to_string())
+    let snap = memory_rows_full(&conn)?;
+    let n = conn
+        .execute("DELETE FROM memories", [])
+        .map_err(|e| e.to_string())?;
+    *trash.0.lock().unwrap() = snap;
+    Ok(n)
 }
 
-/// 删除一条长期记忆。
+/// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。
 #[tauri::command]
-pub fn memory_remove(db: State<'_, Db>, id: String) -> Result<(), String> {
+pub fn memory_remove(db: State<'_, Db>, trash: State<'_, MemTrash>, id: String) -> Result<(), String> {
     let conn = db.0.lock().unwrap();
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+    let snap: Vec<MemRow> = stmt
+        .query_map(params![id], |r| {
+            let i: String = r.get(0)?;
+            let f: String = r.get(1)?;
+            let b: Option<Vec<u8>> = r.get(2)?;
+            let t: i64 = r.get(3)?;
+            Ok((i, f, b.map(|x| blob_to_vec(&x)).unwrap_or_default(), t))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|x| x.ok())
+        .collect();
+    drop(stmt);
     conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+    *trash.0.lock().unwrap() = snap;
     Ok(())
+}
+
+/// 撤销最近一次记忆销毁(清除 / 单删):从后端 trash 还原(原 embedding 与时间无损)→ 清空 trash。
+#[tauri::command]
+pub fn memory_undo(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    let rows = std::mem::take(&mut *trash.0.lock().unwrap());
+    memory_restore_rows(&conn, &rows)
 }
 
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
@@ -674,6 +743,31 @@ mod tests {
         let n = conn.execute("DELETE FROM memories", []).unwrap();
         assert_eq!(n, 2);
         assert_eq!(super::memory_entries(&conn).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn memory_snapshot_then_restore_keeps_embedding_and_time() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-memundo");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "m1", "学 Rust", &[0.1, 0.2, 0.3]).unwrap();
+        super::memory_add(&conn, "m2", "目标后端架构", &[0.4, 0.5]).unwrap();
+        // 快照(含 embedding + 时间)—— memory_clear/remove 删前所做;向量仅在此后端结构里。
+        let snap = super::memory_rows_full(&conn).unwrap();
+        assert_eq!(snap.len(), 2);
+        let ts1 = snap.iter().find(|r| r.0 == "m1").unwrap().3;
+        conn.execute("DELETE FROM memories", []).unwrap();
+        assert_eq!(super::memory_entries(&conn).unwrap().len(), 0);
+        // 撤销 = 从快照还原:条数 + embedding + created_at 均无损。
+        assert_eq!(super::memory_restore_rows(&conn, &snap).unwrap(), 2);
+        let all = super::memory_all(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+        let m1 = all.iter().find(|x| x.0 == "m1").unwrap();
+        assert_eq!(m1.2, vec![0.1, 0.2, 0.3]); // embedding 往返无损
+        let restored_ts1: i64 = conn
+            .query_row("SELECT created_at FROM memories WHERE id='m1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(restored_ts1, ts1); // 原时间保留(非 now)
     }
 
     #[test]
