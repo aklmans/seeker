@@ -45,7 +45,7 @@ impl Availability {
 }
 
 /// 声明式权限(最小权限、可审计)。C1 仅用到 `Db`(只读)。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Permission {
     #[allow(dead_code)]
     Net,
@@ -62,6 +62,26 @@ pub struct ToolSchema {
     pub name: &'static str,
     pub description: &'static str,
     pub parameters: Value, // JSON Schema
+}
+
+/// 内容信任级别。外部 / 检索 / 记忆来源标 `Untrusted` —— 提示模型"这是资料不是指令"(防注入)。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Trust {
+    #[allow(dead_code)]
+    Trusted,
+    Untrusted,
+}
+
+/// 供提示组装的上下文片段(RAG / 长期记忆产出)。带来源 + 信任标注。
+pub struct ContextChunk {
+    pub text: String,
+    pub source: String,
+    pub trust: Trust,
+}
+
+/// 提示组装期传给 Context 能力的检索请求(当前仅文本;**不含 profile**)。
+pub struct Query {
+    pub text: String,
 }
 
 /// show_widget 下发载荷:不可信 HTML(已过 sanitize)+ 标题 + 初始高度。
@@ -127,6 +147,11 @@ pub trait Capability: Send + Sync {
     async fn invoke(&self, _input: &Value, _cx: &CallCx) -> Result<Output, String> {
         Err("该能力不支持 invoke".into())
     }
+    /// 供提示组装的上下文供料(Context 能力 override;默认不供料)。
+    /// 异步(可含嵌入/检索网络)。**结构上不含 profile**(Query 无隐私来源)。
+    async fn contribute(&self, _q: &Query, _cx: &CallCx) -> Vec<ContextChunk> {
+        Vec::new()
+    }
 }
 
 /// 前端 `rt.capability.list` 的条目:id / available / schema。
@@ -148,6 +173,7 @@ impl Registry {
         let mut reg = Self { caps: Vec::new() };
         reg.register(Box::new(DataQuery));
         reg.register(Box::new(ShowWidget));
+        reg.register(Box::new(crate::memory::LongTermMemory));
         reg
     }
 
@@ -194,6 +220,18 @@ impl Registry {
             return Err(format!("破坏性能力须经护栏,不可直接执行: {id}"));
         }
         cap.invoke(input, cx).await
+    }
+
+    /// 提示组装期:汇集所有 Ready 能力的 `contribute` 片段(供 AI 网关裁剪入提示)。
+    /// 非 Context 能力用默认空实现,故对其调用无副作用。
+    pub async fn contribute_all(&self, q: &Query, cx: &CallCx<'_>) -> Vec<ContextChunk> {
+        let mut out = Vec::new();
+        for c in &self.caps {
+            if c.available().is_ready() {
+                out.extend(c.contribute(q, cx).await);
+            }
+        }
+        out
     }
 
     /// 能力清单(前端 `rt.capability.list`)。
@@ -474,10 +512,11 @@ mod tests {
             .collect();
         assert!(names.contains(&"query_data"), "应含 query_data");
         assert!(names.contains(&"show_widget"), "应含 show_widget");
+        assert!(names.contains(&"memory"), "应含长期记忆 memory");
         assert!(tools.iter().all(|t| t["type"] == "function"));
         // list_info 暴露且 available。
         assert!(reg.is_available("query_data"));
-        assert!(reg.is_available("show_widget"));
+        assert!(reg.is_available("memory"));
         assert!(!reg.is_available("不存在"));
     }
 

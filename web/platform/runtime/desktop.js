@@ -141,6 +141,7 @@ export function createDesktopRuntime() {
         invoke('ai_config_set', {
           baseUrl: patch.baseUrl ?? null,
           model: patch.model ?? null,
+          embedModel: patch.embedModel ?? null,
         }),
     },
 

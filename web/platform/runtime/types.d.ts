@@ -138,6 +138,8 @@ export interface AiStream {
 export interface AiConfig {
   baseUrl: string;
   model: string;
+  /** 嵌入模型名(BYO `/embeddings`;长期记忆 / RAG 用)。空 = 未配置。 */
+  embedModel: string;
   /** key 是否已配置(钥匙串);**绝不含明文**。 */
   keyStatus: SecretStatus;
 }
@@ -149,8 +151,8 @@ export interface AiApi {
   complete(req: AiRequest): Promise<AiResult>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
   getConfig(): Promise<AiConfig>;
-  /** 写非密钥配置(baseUrl/model);key 走 rt.secret.set 进钥匙串。 */
-  setConfig(patch: { baseUrl?: string; model?: string }): Promise<void>;
+  /** 写非密钥配置(baseUrl/model/embedModel);key 走 rt.secret.set 进钥匙串。 */
+  setConfig(patch: { baseUrl?: string; model?: string; embedModel?: string }): Promise<void>;
 }
 
 // ── 密钥(rt.secret)── 隐私红线 ─────────────────────────────────

@@ -18,6 +18,9 @@ pub struct ProviderConfig {
     pub base_url: String,
     #[serde(default)]
     pub model: String,
+    /// 嵌入模型名(BYO `/embeddings`;长期记忆 / RAG 用)。空 = 未配置,记忆优雅降级。
+    #[serde(default)]
+    pub embed_model: String,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -40,6 +43,7 @@ pub fn load(app: &AppHandle) -> ProviderConfig {
 pub struct ConfigView {
     base_url: String,
     model: String,
+    embed_model: String,
     /// "configured" | "empty" —— key 是否已在钥匙串(不含明文)。
     key_status: String,
 }
@@ -56,6 +60,7 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
     Ok(ConfigView {
         base_url: c.base_url,
         model: c.model,
+        embed_model: c.embed_model,
         key_status,
     })
 }
@@ -65,6 +70,7 @@ pub fn ai_config_set(
     app: AppHandle,
     base_url: Option<String>,
     model: Option<String>,
+    embed_model: Option<String>,
 ) -> Result<(), String> {
     let mut c = load(&app);
     if let Some(b) = base_url {
@@ -72,6 +78,9 @@ pub fn ai_config_set(
     }
     if let Some(m) = model {
         c.model = m.trim().to_string();
+    }
+    if let Some(em) = embed_model {
+        c.embed_model = em.trim().to_string();
     }
     let p = config_path(&app)?;
     let json = serde_json::to_string_pretty(&c).map_err(|e| e.to_string())?;

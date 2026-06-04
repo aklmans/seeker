@@ -2,6 +2,8 @@ mod ai;
 mod capability;
 mod config;
 mod data;
+mod embed;
+mod memory;
 mod secret;
 
 use tauri::Manager;

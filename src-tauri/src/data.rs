@@ -70,6 +70,12 @@ const MIGRATIONS: &[(i64, &str)] = &[
          UPDATE actions SET state = json_extract(data_json, '$.state');
          CREATE INDEX IF NOT EXISTS idx_actions_state ON actions(state);",
     ),
+    // 长期记忆表(#2 C2):平台能力的私有存储,**不在 table_for** —— 通用 db_* 碰不到;
+    // embedding 存 BLOB(小端 f32),暴力 cosine 检索(单用户规模足够)。
+    (
+        3,
+        "CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, fact TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0);",
+    ),
 ];
 
 fn schema_version(conn: &Connection) -> i64 {
@@ -421,6 +427,63 @@ pub fn db_backup(app: AppHandle, db: State<'_, Db>) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+// ── 长期记忆存储(#2 C2)──────────────────────────────────────────
+// `memories` 表不在 `table_for` 白名单:通用 db_* 碰不到,仅长期记忆能力(经 with_db)可达。
+// embedding 以小端 f32 字节存 BLOB;检索走暴力 cosine(单用户规模足够,日后量大再换 sqlite-vec)。
+
+fn vec_to_blob(v: &[f32]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(v.len() * 4);
+    for f in v {
+        b.extend_from_slice(&f.to_le_bytes());
+    }
+    b
+}
+
+fn blob_to_vec(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
+/// 写入(或覆盖)一条记忆:事实文本 + 其嵌入向量。
+pub fn memory_add(
+    conn: &Connection,
+    id: &str,
+    fact: &str,
+    embedding: &[f32],
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO memories (id, fact, embedding, created_at) VALUES (?1,?2,?3,?4)",
+        params![id, fact, vec_to_blob(embedding), now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 读全部记忆 `(id, fact, embedding)` 供暴力 cosine 检索(跳过缺嵌入的行)。
+pub fn memory_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding FROM memories")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<Vec<u8>>>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (id, fact, blob) = r.map_err(|e| e.to_string())?;
+        if let Some(b) = blob {
+            out.push((id, fact, blob_to_vec(&b)));
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{migrate, schema_version, table_for, MIGRATIONS};
@@ -451,5 +514,22 @@ mod tests {
         // 业务集合可访问。
         assert!(table_for("jobs").is_ok());
         assert!(table_for("messages").is_ok());
+    }
+
+    #[test]
+    fn memory_storage_roundtrip_and_isolated() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-mem");
+        migrate(&mut conn, &tmp).unwrap();
+        // memories 表存在但**不在通用 table_for**(db_* 碰不到 —— 隔离)。
+        assert!(
+            table_for("memories").is_err(),
+            "memories 不应可经 db_* 访问"
+        );
+        super::memory_add(&conn, "m1", "用户偏好远程后端岗位", &[1.0, 0.0, 2.0]).unwrap();
+        let all = super::memory_all(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].1, "用户偏好远程后端岗位");
+        assert_eq!(all[0].2, vec![1.0, 0.0, 2.0]); // BLOB 小端往返无损
     }
 }
