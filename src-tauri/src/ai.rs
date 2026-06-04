@@ -693,4 +693,40 @@ mod tests {
         assert!(!ChatError::config("x").retriable);
         assert!(!ChatError::auth("x").retriable);
     }
+
+    #[test]
+    fn assembled_messages_have_no_profile_across_all_segments() {
+        // 合成核验:按 run_chat 同样方式拼 [system, ...历史, 资料块, user],断言**整体**无 profile
+        // (各段分别锁定之外,再锁组合不变量;随历史/资料增长更稳)。
+        let mut messages =
+            build_messages("You are a job-hunt assistant.", "我和字节那个岗位匹配吗?");
+        // 多轮历史(user/assistant 文本)插在 system 之后、user 之前。
+        let history = [
+            json!({ "role": "user", "content": "上一轮:看看后端岗位" }),
+            json!({ "role": "assistant", "content": "上一轮回答:好的" }),
+        ];
+        let mut at = 1;
+        for h in &history {
+            messages.insert(at, h.clone());
+            at += 1;
+        }
+        // 资料块(记忆召回,标 Untrusted)插在历史之后、user 之前。
+        let chunks = [ContextChunk {
+            text: "用户偏好远程后端岗位".into(),
+            source: "长期记忆".into(),
+            trust: Trust::Untrusted,
+        }];
+        if let Some(c) = build_context_message(&chunks) {
+            messages.insert(at, c);
+        }
+        let s = serde_json::to_string(&messages).unwrap();
+        for k in ["profile", "phone", "email", "\"name\""] {
+            assert!(
+                !s.contains(k),
+                "完整组装(系统+历史+资料+user)不应含隐私键: {k}"
+            );
+        }
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages.last().unwrap()["role"], "user");
+    }
 }
