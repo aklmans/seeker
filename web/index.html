@@ -746,8 +746,10 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
 <script type="module">
   import { rt } from './platform/runtime/index.js';
   import { renderWidget } from './platform/capability/widgets/render.js';
+  import { confirmDestructive } from './platform/guardrail/index.js';
   window.SeekerRT = rt;
-  window.SeekerWidgets = { renderWidget }; // show_widget 沙箱渲染(#2 · W1)
+  window.SeekerGuardrail = { confirmDestructive }; // 破坏性护栏(#2 · W3)
+  window.SeekerWidgets = { renderWidget };          // show_widget 沙箱渲染(#2 · W1/W2)
   window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
 </script>
 </head>
@@ -2719,6 +2721,39 @@ async function hydrateJobs(){
   }catch(e){ console.error('[data] jobs 水合失败', e); }
 }
 window.addEventListener('seeker-rt-ready', hydrateJobs);
+
+/* ===== #2 W3:widget-action 回流处理(domain)。破坏性一律过 platform/guardrail。 =====
+   widgetId 由平台按端口归属传入(不信任 iframe 自报);payload 仅当数据。 */
+async function wgtAction(widgetId, action, payload){
+  payload = payload || {};
+  const destructive = /^(delete|clear|remove|reset|wipe)/i.test(String(action));
+  if(!destructive){
+    /* 安全动作:当「用户意图」致意(接 Agent 为后续 domain 决策)。 */
+    try{ if(typeof toast==='function') toast((tt('组件请求:','Widget: '))+action); }catch(_e){}
+    return;
+  }
+  const G=window.SeekerGuardrail; if(!G) return;
+  if(action==='delete-job' && payload.id!=null && jobsPersistOn()){
+    let snap=null;
+    await G.confirmDestructive({
+      title:tt('删除岗位?','Delete job?'), detail:tt('将删除岗位 ','Will delete job ')+'#'+payload.id,
+      source:'widget '+widgetId, confirmLabel:tt('删除','Delete'),
+      onConfirm:async()=>{ snap=await window.SeekerRT.db.remove('jobs',String(payload.id)); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
+      onUndo:async()=>{ if(snap) await window.SeekerRT.db.upsert('jobs',snap); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
+      undoText:tt('已删除岗位','Job deleted'),
+    });
+    return;
+  }
+  /* 通用破坏性(含演示):一律先预览+确认,确认后才执行 + 可撤销。 */
+  await G.confirmDestructive({
+    title:tt('确认操作','Confirm action'), detail:(tt('组件请求执行:','Widget requests: '))+action,
+    source:'widget '+widgetId, confirmLabel:tt('执行','Run'),
+    onConfirm:()=>{ window.__wgtExecuted={widgetId:widgetId, action:action}; },
+    onUndo:()=>{ window.__wgtExecuted=null; },
+    undoText:tt('已执行','Done')+' · '+action,
+  });
+}
+window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window.SeekerWidgets.onAction=wgtAction; });
 
 function copSend(text){
   const inp=$('#copInput');

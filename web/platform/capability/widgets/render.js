@@ -67,20 +67,33 @@ function ensureThemeObserver() {
 }
 
 /** 父侧处理来自 widget 的入站消息(零信任:只读结构化字段)。
- *  @param {HTMLIFrameElement} frame @param {any} msg */
-function handlePortMessage(frame, msg) {
+ *  @param {HTMLIFrameElement} frame @param {string} widgetId @param {any} msg */
+function handlePortMessage(frame, widgetId, msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'widget-resize' && typeof msg.height === 'number' && isFinite(msg.height)) {
     const max = Math.round(window.innerHeight * MAX_HEIGHT_RATIO);
-    const h = Math.max(40, Math.min(max, Math.ceil(msg.height)));
-    frame.style.height = h + 'px';
+    frame.style.height = Math.max(40, Math.min(max, Math.ceil(msg.height))) + 'px';
+    return;
   }
-  // widget-action(W3)/ widget-error(W4)后续接入。
+  if (msg.type === 'widget-action' && typeof msg.action === 'string') {
+    // 零信任:widget_id 由**端口归属**(widgetId)确定,绝不信任 iframe 自报;payload 仅当数据。
+    // 一律交给 domain 的 onAction —— 破坏性动作由其经 platform/guardrail(预览+确认+撤销)。
+    const sw = /** @type {any} */ (window).SeekerWidgets;
+    if (sw && typeof sw.onAction === 'function') {
+      try { sw.onAction(widgetId, msg.action, msg.payload); }
+      catch (e) { console.error('[widget] onAction 出错', e); }
+    } else {
+      console.warn('[widget] 收到 widget-action 但无 onAction 处理器:', msg.action);
+    }
+  }
+  // widget-error(W4)后续接入。
 }
 
 /** srcDoc 内的可信 bridge(运行在沙箱里):端口握手 + 高度上报 + 主题热更新。 */
 const BRIDGE = "(function(){var port=null,t=0,last=0;" +
   "function send(m){if(port){try{port.postMessage(m);}catch(e){}}}" +
+  // widget 交互上抛:LLM 在按钮等处调 seeker.action('id', data) → 经端口当「用户意图」回流父侧(过护栏)。
+  "window.seeker={action:function(n,p){send({type:'widget-action',action:String(n),payload:p});}};" +
   "function report(){if(!port)return;var h=Math.ceil(document.documentElement.scrollHeight);if(Math.abs(h-last)<2)return;last=h;send({type:'widget-resize',height:h});}" +
   "function schedule(){if(t)clearTimeout(t);t=setTimeout(function(){t=0;report();},80);}" +
   "window.addEventListener('message',function(e){" +
@@ -108,8 +121,8 @@ export function buildSrcDoc(html) {
     "body{padding:4px;background:var(--bg,#fff);color:var(--ink,#1a1a1a);" +
     "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.55}" +
     'a{color:var(--accent,#c95f3d)}</style></head><body>' +
+    '<script>' + BRIDGE + '<\/script>' + // bridge 先于不可信内容,确保 window.seeker 就绪
     (html || '') +
-    '<script>' + BRIDGE + '<\/script>' +
     '</body></html>'
   );
 }
@@ -158,7 +171,7 @@ export function renderWidget(payload) {
   frame.addEventListener('load', () => {
     try {
       const ch = new MessageChannel();
-      ch.port1.onmessage = (e) => handlePortMessage(frame, e.data);
+      ch.port1.onmessage = (e) => handlePortMessage(frame, id, e.data);
       PORTS.add(ch.port1);
       ensureThemeObserver();
       if (frame.contentWindow) {

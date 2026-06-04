@@ -394,7 +394,8 @@ impl Capability for ShowWidget {
             description: "渲染一张对话内联的交互式可视化卡片(看板 / 进度 / 状态 / Tab 等)。\
                           传入**自包含**的纯 HTML/CSS/原生 JS 片段:不要外链脚本/样式、不要 \
                           <iframe>/<link>/<object>。用于一次性可视化;若是要打开产品已有页面,\
-                          请改用导航而非本工具。",
+                          请改用导航而非本工具。如需把按钮点击等交互回流给助手,在脚本里调用 \
+                          seeker.action('动作名', {数据});破坏性动作会先经用户确认护栏再执行。",
             parameters: json!({
                 "type": "object",
                 "properties": {
