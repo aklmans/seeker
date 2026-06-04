@@ -516,6 +516,43 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .plan-card .pc-lbl{font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin-bottom:7px;}
 .plan-card .pc-chips{display:flex; flex-wrap:wrap; gap:5px;}
 .plan-card .pc-acts{padding:8px 15px 14px;}
+/* 面试题交互卡 */
+.iv-card{padding:0;}
+.iv-card .iv-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:13px 15px 6px;flex-wrap:wrap;}
+.iv-card .iv-title{font-size:14px;font-weight:600;color:var(--ink);}
+.iv-card .iv-badge{font-family:var(--font-mono);font-size:10px;color:var(--accent);white-space:nowrap;}
+.iv-card .iv-list{padding:4px 15px;}
+.iv-card .iv-q{padding:9px 0;border-bottom:0.5px solid var(--border);}
+.iv-card .iv-q:last-child{border-bottom:none;}
+.iv-card .iv-qtop{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.iv-card .iv-idx{font-family:var(--font-mono);font-size:10px;color:var(--accent);}
+.iv-card .iv-cat{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);background:var(--bg-subtle);border:0.5px solid var(--border);padding:1px 6px;}
+.iv-card .iv-qt{font-size:13px;color:var(--ink-2);line-height:1.55;}
+.iv-card .iv-acts{padding:8px 15px 14px;}
+/* 市场价值交互卡 */
+.value-card{padding:0;}
+.value-card .vc-head{padding:14px 15px 10px;border-bottom:0.5px solid var(--border);}
+.value-card .vc-lbl{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);}
+.value-card .vc-num{display:flex;align-items:baseline;gap:4px;margin:4px 0 2px;}
+.value-card .vc-num .v{font-family:var(--font-serif);font-size:32px;font-weight:500;color:var(--accent);line-height:1;}
+.value-card .vc-num .u{font-size:12px;color:var(--ink-3);}
+.value-card .vc-band{font-size:12.5px;color:var(--ink-3);}
+.value-card .vc-moves{padding:11px 15px 4px;}
+.value-card .vc-mlbl{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;}
+.value-card .vc-move{display:flex;align-items:flex-start;gap:9px;padding:4px 0;font-size:13px;color:var(--ink-2);line-height:1.5;}
+.value-card .vc-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:7px;flex-shrink:0;}
+.value-card .vc-acts{padding:8px 15px 14px;}
+/* 能力缺口交互卡 */
+.gaps-card{padding:0;}
+.gaps-card .gc-head{padding:13px 15px 4px;}
+.gaps-card .gc-title{font-size:14px;font-weight:600;color:var(--ink);}
+.gaps-card .gc-list{padding:4px 15px;}
+.gaps-card .gc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border);}
+.gaps-card .gc-row:last-child{border-bottom:none;}
+.gaps-card .gc-skill{font-size:13.5px;color:var(--ink);font-weight:500;flex:1;}
+.gaps-card .gc-meta{display:flex;gap:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);white-space:nowrap;}
+.gaps-card .gc-jobs{color:var(--accent);}
+.gaps-card .gc-acts{padding:8px 15px 14px;}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -2825,7 +2862,8 @@ function frameQuery(text){
       + '若你给出了具体可直接套用的改写,请在回答**末尾**附一个代码块以便我一键应用(先正常用自然语言说明改动思路,再附代码块):\n```seeker:resume-edit\n{"jobId":<目标岗位 id>,"edits":[{"module":"<模块 key,如 summary / skills / honors / portfolio,或自定义模块 key>","content":<文本模块为字符串;skills 模块为字符串数组>}]}\n```\n'
       + 'module **只能是专业模块,绝不能是 basic 或任何联系方式 / 身份字段**;只列你确有改写的模块。我的原始请求:' + t;
   if(/面试|JD|陪我练|面试题/.test(t))
-    return G + '读取我的目标 jobs(岗位/JD)后,给出贴合该岗位的面试题或面试反馈。我的原始请求:' + t;
+    return G + '读取我的目标 jobs(岗位/JD,含 id)后,给出贴合该岗位的面试题或面试反馈。'
+      + '聚焦的那个岗位,请在回答**末尾**附一个代码块渲染面试卡(正文简洁):\n```seeker:interview-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
   if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
     return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。'
       + '聚焦要补的那项技能,请在回答**末尾**附一个代码块以渲染交互计划卡(正文保持简洁):\n```seeker:plan-card\n{"skill":"<要补的技能名,如 Rust / K8s / 分布式系统 / 系统设计>"}\n```\n我的原始请求:' + t;
@@ -2833,11 +2871,13 @@ function frameQuery(text){
     return G + '读取我的 jobs(目标岗位,含 id)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。'
       + '聚焦的那个岗位,请在回答**末尾**附一个代码块以渲染交互雷达卡(正文保持简洁,不必重复卡里的数字):\n```seeker:match-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
   if(/缺口|短板|不足/.test(t))
-    return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。我的原始请求:' + t;
+    return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。'
+      + '请在回答**末尾**附一个代码块渲染缺口卡(正文简洁):\n```seeker:gaps-card\n{}\n```\n我的原始请求:' + t;
   if(/最该做|下一步|现在做什么|该做什么/.test(t))
     return G + '读取我的 jobs/actions/skills 后,告诉我现在最该做什么、为什么。我的原始请求:' + t;
   if(/市场价值|身价|值多少|薪资|薪酬/.test(t))
-    return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。我的原始请求:' + t;
+    return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。'
+      + '请在回答**末尾**附一个代码块渲染市场价值卡(正文简洁):\n```seeker:value-card\n{}\n```\n我的原始请求:' + t;
   return text;
 }
 
@@ -2845,38 +2885,16 @@ function frameQuery(text){
    经 platform/guardrail 预览(前→后)+ 确认 + 撤销后,直接改写简历**专业模块**并落库。
    红线:绝不写 basic / locked 模块(联系方式本不在 resumes 集合,此处再二次守卫)。
    本期支持文本模块(content=字符串)与 skills(content=数组);work/projects/edu 等嵌套结构仅聊天建议。 */
-const RESUME_EDIT_RE = /```seeker:resume-edit\s*([\s\S]*?)```/;
-function extractResumeEdit(text){
+/** 通用:从文本提取 ```seeker:<kind> 的 JSON 块,返回 {prose(已剥离块), data(解析失败=null)}。
+    新增卡只需在 SEEKER_CARDS 注册 + frameQuery 加指令,本函数与 streamReply 零改动。 */
+function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
-  const m = s.match(RESUME_EDIT_RE);
-  if(!m) return { prose:s, edit:null };
-  let edit = null;
-  try{ const j = JSON.parse(m[1].trim()); if(j && Array.isArray(j.edits) && j.edits.length) edit = j; }catch(_e){}
-  const prose = edit ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s; // 解析成功才剥离
-  return { prose, edit };
-}
-/* 智能匹配可交互卡:AI 在末尾附 ```seeker:match-card 块 {jobId} → 渲染原生交互雷达卡(真实数据,非 AI 生成 HTML;
-   故用原生 domain 卡而非 show_widget 沙箱——沙箱是给不可信 UI 的)。 */
-const MATCH_CARD_RE = /```seeker:match-card\s*([\s\S]*?)```/;
-function extractMatchCard(text){
-  const s = String(text==null?'':text);
-  const m = s.match(MATCH_CARD_RE);
-  if(!m) return { prose:s, match:null };
-  let match = null;
-  try{ const j = JSON.parse(m[1].trim()); if(j && j.jobId!=null) match = j; }catch(_e){}
-  const prose = match ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s;
-  return { prose, match };
-}
-/* 训练计划可交互卡:AI 末尾附 ```seeker:plan-card 块 {skill, jobLabel?} → 原生计划卡(planFor 真实里程碑数据)。 */
-const PLAN_CARD_RE = /```seeker:plan-card\s*([\s\S]*?)```/;
-function extractPlanCard(text){
-  const s = String(text==null?'':text);
-  const m = s.match(PLAN_CARD_RE);
-  if(!m) return { prose:s, plan:null };
-  let plan = null;
-  try{ const j = JSON.parse(m[1].trim()); if(j && j.skill!=null) plan = j; }catch(_e){}
-  const prose = plan ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s;
-  return { prose, plan };
+  const m = s.match(new RegExp('```seeker:' + kind + '\\s*([\\s\\S]*?)```'));
+  if(!m) return { prose:s, data:null };
+  let data = null;
+  try{ data = JSON.parse(m[1].trim()); }catch(_e){}
+  const prose = data ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s; // 解析成功才剥离
+  return { prose, data };
 }
 function showResumeProposal(bubble, edit, who){
   // 定位简历:edit.jobId → 当前打开的简历 → 仅有一份时取之
@@ -3012,6 +3030,83 @@ function showPlanCard(bubble, plan, who){
   try{ const card=renderPlanCardEl(skill, plan.jobLabel||''); const host=(bubble&&bubble.parentElement)||bubble; if(host){ host.appendChild(card); } }
   catch(e){ console.error('[plan] render', e); }
 }
+/** 面试题交互卡(原生 · genQuestionsFor 真实题目):题目列表 + 去模拟面试。 */
+function renderInterviewCardEl(job){
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const qs=(typeof genQuestionsFor==='function'?genQuestionsFor(job,4):[]);
+  const role=String(job.role||'').split('·')[0].trim();
+  const CAT={project:tt('项目深挖','Project'),design:tt('系统设计','Design'),perf:tt('性能/算法','Perf'),dist:tt('分布式','Dist'),behavior:tt('行为面','Behavior')};
+  const items=qs.map((q,i)=>`<div class="iv-q"><div class="iv-qtop"><span class="iv-idx">${String(i+1).padStart(2,'0')}</span><span class="iv-cat">${esc(CAT[q.cat]||q.cat||'')}</span></div><div class="iv-qt">${esc(q.text)}</div></div>`).join('')
+    || `<p style="color:var(--ink-3);padding:6px 0;">${tt('暂无题目。','No questions.')}</p>`;
+  const card=el(`<div class="cop-card iv-card">
+    <div class="iv-head"><div class="iv-title">${tt('面试题','Interview prep')} · ${esc(job.co)} · ${esc(role)}</div><div class="iv-badge">${qs.length} ${tt('题','Q')}</div></div>
+    <div class="iv-list">${items}</div>
+    <div class="cop-actions iv-acts"></div></div>`);
+  const b=el(`<button class="btn btn-accent">${tt('去模拟面试','Mock interview')} →</button>`);
+  b.onclick=()=>{ if(typeof copInterview==='function') copInterview(job.id); else if(typeof goInterview==='function') goInterview(job.id); };
+  card.querySelector('.iv-acts').appendChild(b);
+  return card;
+}
+function showInterviewCard(bubble, data, who){
+  const find=k=>JOBS.find(j=>String(j.id)===String(k));
+  let job=find(data.jobId); if(!job && typeof matchState==='object'&&matchState) job=find(matchState.jobId);
+  if(!job) return;
+  try{ const card=renderInterviewCardEl(job); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[iv] render', e); }
+}
+/** 跨目标岗位的能力缺口聚合:某技能 lvl<3 且被几个目标岗位需要,按需求数排序。 */
+function topGapsAcrossJobs(limit){
+  const map={};
+  for(const j of JOBS){ for(const n of (j.need||[])){ const s=skillByName(n); const lvl=s?s.lvl:0; if(lvl<3){ if(!map[n]) map[n]={skill:n, lvl, jobs:0}; map[n].jobs++; } } }
+  return Object.values(map).sort((a,b)=> b.jobs-a.jobs || a.lvl-b.lvl).slice(0, limit||5);
+}
+/** 市场价值交互卡(原生 · 真实数据):年包估算 + 带位 + 最高杠杆动作(取自跨岗缺口)+ 完整报告。 */
+function renderValueCardEl(){
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const gaps=topGapsAcrossJobs(3);
+  const moves=gaps.map(g=>`<div class="vc-move"><span class="vc-dot"></span><span>${tt('补齐 ','Fill ')}<b>${esc(g.skill)}</b> · ${g.jobs} ${tt('个目标岗位需要','jobs need it')}</span></div>`).join('')
+    || `<p style="font-size:12.5px;color:var(--ink-3);">${tt('暂无明显短板。','No clear gaps.')}</p>`;
+  const card=el(`<div class="cop-card value-card">
+    <div class="vc-head"><div class="vc-lbl">${tt('综合市场价值 · 年包','Market value · annual')}</div>
+      <div class="vc-num"><span class="v">${YOU_VALUE}</span><span class="u">${tt('万 / 年','w/yr')}</span></div>
+      <div class="vc-band">${tt('后端 · 高级带中上沿','Senior Backend · upper-mid')}</div></div>
+    <div class="vc-moves"><div class="vc-mlbl">${tt('最高杠杆动作','Highest-leverage moves')}</div>${moves}</div>
+    <div class="cop-actions vc-acts"></div></div>`);
+  const b=el(`<button class="btn btn-accent">${tt('看完整报告','Full report')} →</button>`);
+  b.onclick=()=>{ if(typeof copMarket==='function') copMarket(); else if(typeof openMarketValue==='function') openMarketValue(); };
+  card.querySelector('.vc-acts').appendChild(b);
+  return card;
+}
+function showValueCard(bubble, data, who){
+  try{ const card=renderValueCardEl(); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[value] render', e); }
+}
+/** 能力缺口交互卡(原生 · 跨岗聚合):每项缺口 lvl + 几岗需要 + 排计划;底部去智能匹配。 */
+function renderGapsCardEl(){
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const gaps=topGapsAcrossJobs(5);
+  const rows=gaps.map(g=>`<div class="gc-row"><div class="gc-skill">${esc(g.skill)}</div><div class="gc-meta"><span>lvl ${g.lvl}/4</span><span class="gc-jobs">${g.jobs} ${tt('岗需要','jobs')}</span></div><button class="btn" data-gapskill="${esc(g.skill)}" style="padding:3px 9px;font-size:11px;flex-shrink:0;">${tt('排计划','Plan')}</button></div>`).join('')
+    || `<p style="color:var(--ink-3);padding:8px 0;">${tt('目标岗位的硬性要求你都已具备 👏','You already meet all hard requirements 👏')}</p>`;
+  const card=el(`<div class="cop-card gaps-card">
+    <div class="gc-head"><div class="gc-title">${tt('能力缺口 · 按目标岗位需求排序','Skill gaps · by demand')}</div></div>
+    <div class="gc-list">${rows}</div>
+    <div class="cop-actions gc-acts"></div></div>`);
+  [...card.querySelectorAll('[data-gapskill]')].forEach(b=>b.onclick=()=>{ if(typeof copPlan==='function') copPlan(b.dataset.gapskill, ''); });
+  const b=el(`<button class="btn btn-accent">${tt('看智能匹配','Smart match')} →</button>`);
+  b.onclick=()=>{ if(typeof copGo==='function') copGo('match'); else if(typeof go==='function') go('match'); };
+  card.querySelector('.gc-acts').appendChild(b);
+  return card;
+}
+function showGapsCard(bubble, data, who){
+  try{ const card=renderGapsCardEl(); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[gaps] render', e); }
+}
+/** 卡注册表:AI 出 ```seeker:<kind> 块 → domain 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。 */
+const SEEKER_CARDS = {
+  'resume-edit':    { valid: d=>Array.isArray(d.edits) && d.edits.length>0, show: showResumeProposal },
+  'match-card':     { valid: d=>d.jobId!=null, show: showMatchCard },
+  'plan-card':      { valid: d=>d.skill!=null, show: showPlanCard },
+  'interview-card': { valid: d=>d.jobId!=null, show: showInterviewCard },
+  'value-card':     { valid: ()=>true,         show: showValueCard },
+  'gaps-card':      { valid: ()=>true,         show: showGapsCard },
+};
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
   if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
@@ -3053,14 +3148,14 @@ function streamReply(thinkBubble, text, who, scrollFn){
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
-      const ex = extractResumeEdit(acc);                              // 剥离简历指令块
-      const mc = extractMatchCard(ex.prose);                          // 剥离匹配卡指令块
-      const pc = extractPlanCard(mc.prose);                           // 剥离计划卡指令块
-      if(span) span.innerHTML = aiHTML(pc.prose);                     // 最终 Markdown 渲染(已去所有 JSON 块)
-      persistMsg(who==='Agent'?'agent':'cop','ai', pc.prose);         // 存去块纯文本(卡片会话内重渲不持久)
-      if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
-      if(mc.match){ try{ showMatchCard(thinkBubble, mc.match, who); }catch(e){ console.error('[match] card', e); } }
-      if(pc.plan){ try{ showPlanCard(thinkBubble, pc.plan, who); }catch(e){ console.error('[plan] card', e); } }
+      let prose = acc; const pending = [];                            // 逐卡型剥离 ```seeker 指令块(注册表驱动,加卡零改)
+      for(const kind in SEEKER_CARDS){
+        const b = extractSeekerBlock(prose, kind);
+        if(b.data && SEEKER_CARDS[kind].valid(b.data)){ pending.push([kind, b.data]); prose = b.prose; }
+      }
+      if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
+      persistMsg(who==='Agent'?'agent':'cop','ai', prose);            // 存去块纯文本(卡片会话内重渲不持久)
+      for(const [kind, data] of pending){ try{ SEEKER_CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
       if(scrollFn) scrollFn();
     }
   });
