@@ -110,6 +110,8 @@ export interface AiResult {
 
 export interface AiStreamHandlers {
   onToken?: (token: string) => void;
+  /** 工具循环活动(G3 / #2·C1):一次工具被调用(id/name + 成功与否)。 */
+  onTool?: (tool: { id: string; name: string; ok: boolean }) => void;
   onDone?: (result: AiResult) => void;
   onError?: (err: Error) => void;
 }

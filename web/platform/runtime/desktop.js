@@ -43,6 +43,8 @@ function aiStream(req, handlers = {}) {
   /** @type {Array<() => void>} */
   let unlisten = [];
   let acc = '';
+  /** @type {NonNullable<import('./types').AiResult['toolCalls']>} */
+  const toolCalls = [];
   const cleanup = () => {
     unlisten.forEach((u) => { try { if (u) u(); } catch (_e) { /* ignore */ } });
     unlisten = [];
@@ -63,10 +65,16 @@ function aiStream(req, handlers = {}) {
         acc += e.payload.text;
         if (handlers.onToken) handlers.onToken(e.payload.text);
       }),
+      ev.listen('ai_tool', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        // 工具循环活动(#2 · C1):记入结果 toolCalls,供 UI 可选展示「正在查询数据…」。
+        toolCalls.push({ id: e.payload.id, name: e.payload.name, input: undefined });
+        if (handlers.onTool) handlers.onTool({ id: e.payload.id, name: e.payload.name, ok: !!e.payload.ok });
+      }),
       ev.listen('ai_done', (/** @type {any} */ e) => {
         if (!hit(e)) return;
         cleanup();
-        const r = { text: acc, stopReason: e.payload.stopReason };
+        const r = { text: acc, stopReason: e.payload.stopReason, toolCalls };
         if (handlers.onDone) handlers.onDone(r);
         resolveDone(r);
       }),
@@ -135,9 +143,10 @@ export function createDesktopRuntime() {
     },
 
     capability: {
-      list: () => notImpl('rt.capability.list', 'desktop'),
-      available: () => notImpl('rt.capability.available', 'desktop'),
-      invoke: () => notImpl('rt.capability.invoke', 'desktop'),
+      // 能力层 registry(#2 · C1):列出 / 探测可用性 / 统一调用(破坏性能力被 Rust 侧拒,须走护栏)。
+      list: () => invoke('cap_list'),
+      available: (id) => invoke('cap_available', { id }),
+      invoke: (id, input) => invoke('cap_invoke', { id, input: input ?? null }),
     },
   };
 }

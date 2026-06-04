@@ -1,4 +1,5 @@
 mod ai;
+mod capability;
 mod config;
 mod data;
 mod secret;
@@ -9,6 +10,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .manage(ai::Sessions::default())
+        .manage(capability::Registry::new())
         .setup(|app| {
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
             let conn = data::open(app.handle())?;
@@ -39,6 +41,9 @@ pub fn run() {
             data::db_export,
             data::db_import,
             data::db_backup,
+            capability::cap_list,
+            capability::cap_available,
+            capability::cap_invoke,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

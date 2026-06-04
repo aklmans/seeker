@@ -130,15 +130,20 @@ fn record_id(record: &Value) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-pub fn db_list(
-    db: State<'_, Db>,
-    collection: String,
-    _query: Option<Value>,
-) -> Result<Vec<Value>, String> {
-    let table = table_for(&collection)?;
-    let conn = db.0.lock().unwrap();
-    // D1:返回全量(updated_at 倒序);骨架列 WHERE/ORDER 的下推留 D2,前端现有筛选不变。
+/// 锁住数据库连接跑一段只读 / 读写逻辑。供命令与**能力层**(只经白名单仓库,碰不到隐私表)复用。
+pub fn with_db<T>(
+    app: &AppHandle,
+    f: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let db = app.state::<Db>();
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    f(&conn)
+}
+
+/// 列出某集合全量(updated_at 倒序)。`table_for` 白名单守卫 —— profile 等隐私表会被拒。
+/// 骨架列 WHERE/ORDER 下推留待后续;前端现有筛选不变。
+pub fn list_records(conn: &Connection, collection: &str) -> Result<Vec<Value>, String> {
+    let table = table_for(collection)?;
     let sql = format!("SELECT data_json FROM {table} ORDER BY updated_at DESC, id");
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
@@ -154,10 +159,9 @@ pub fn db_list(
     Ok(out)
 }
 
-#[tauri::command]
-pub fn db_get(db: State<'_, Db>, collection: String, id: String) -> Result<Option<Value>, String> {
-    let table = table_for(&collection)?;
-    let conn = db.0.lock().unwrap();
+/// 按 id 取一条(同样经 `table_for` 白名单)。
+pub fn get_record(conn: &Connection, collection: &str, id: &str) -> Result<Option<Value>, String> {
+    let table = table_for(collection)?;
     let sql = format!("SELECT data_json FROM {table} WHERE id = ?1");
     let s: Option<String> = conn
         .prepare(&sql)
@@ -165,6 +169,22 @@ pub fn db_get(db: State<'_, Db>, collection: String, id: String) -> Result<Optio
         .query_row(params![id], |r| r.get::<_, String>(0))
         .ok();
     Ok(s.and_then(|s| serde_json::from_str(&s).ok()))
+}
+
+#[tauri::command]
+pub fn db_list(
+    db: State<'_, Db>,
+    collection: String,
+    _query: Option<Value>,
+) -> Result<Vec<Value>, String> {
+    let conn = db.0.lock().unwrap();
+    list_records(&conn, &collection)
+}
+
+#[tauri::command]
+pub fn db_get(db: State<'_, Db>, collection: String, id: String) -> Result<Option<Value>, String> {
+    let conn = db.0.lock().unwrap();
+    get_record(&conn, &collection, &id)
 }
 
 /// 写入一条记录:jobs 额外抽取骨架列(status/match_score),其余仅 id+data_json。供 upsert/import 复用。
