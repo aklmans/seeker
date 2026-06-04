@@ -466,9 +466,11 @@ impl Capability for ShowWidget {
     fn schema(&self) -> Option<ToolSchema> {
         Some(ToolSchema {
             name: "show_widget",
-            description: "渲染一张对话内联的交互式可视化卡片(看板 / 进度 / 状态 / Tab 等)。\
+            description: "渲染一张对话内联的交互式可视化卡片(对比 / 排行 / 看板 / 进度 / 时间线 / 清单 / 计算器 等)。\
+                          **何时用(主动判断,用户不会主动要求)**:当可视化或交互比纯文字更能说明问题时用本工具;\
+                          纯解释 / 建议 / 简短回答用 Markdown 文字,别套 widget;若对话已指示用某个内置卡(结构化块),按那个来。\
                           传入**自包含**的纯 HTML/CSS/原生 JS 片段:不要外链脚本/样式、不要 \
-                          <iframe>/<link>/<object>。用于一次性可视化;若是要打开产品已有页面,\
+                          <iframe>/<link>/<object>。若是要打开产品已有页面,\
                           请改用导航而非本工具。如需把按钮点击等交互回流给助手,在脚本里调用 \
                           seeker.action('动作名', {数据});破坏性动作会先经用户确认护栏再执行。",
             parameters: json!({
