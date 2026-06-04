@@ -1700,6 +1700,31 @@ const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.co
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
 const WEIGHTS=[['兴趣分',40],['成长分',30],['匹配分',20],['机会分',10]];
 const SET_TABS=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['goals',['目标设置','Goals']],['weights',['评分权重','Weights']],['data',['数据管理','Data']],['about',['关于','About']]];
+
+/* ===== 数据设置持久化(除非用户清除,持续保留)。profile 落盘(rt.profile · 隔离);
+   目标/权重/外观偏好走 localStorage(jh-settings);theme/lang 沿用各自既有键。 ===== */
+function settingsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+function saveSettings(){
+  try{ localStorage.setItem('jh-settings', JSON.stringify({
+    fontsize:setState.fontsize, goal:setState.goal, trainCounts:setState.trainCounts, density:setState.density,
+    motion:setState.motion, autobackup:setState.autobackup, period:setState.period, salary:setState.salary,
+    weights:WEIGHTS.map(w=>w[1])
+  })); }catch(_e){}
+}
+function hydrateSettings(){
+  try{ const s=JSON.parse(localStorage.getItem('jh-settings')||'null'); if(!s) return;
+    ['fontsize','goal','trainCounts','density','motion','autobackup','period','salary'].forEach(k=>{ if(s[k]!=null) setState[k]=s[k]; });
+    if(Array.isArray(s.weights)) s.weights.forEach((v,i)=>{ if(WEIGHTS[i]!=null && typeof v==='number') WEIGHTS[i][1]=v; });
+  }catch(_e){}
+}
+function persistProfileField(k, v){ if(settingsPersistOn()) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
+async function hydrateProfile(){
+  if(!settingsPersistOn()) return;
+  try{ const p=await window.SeekerRT.profile.getAll();
+    if(p && typeof p==='object'){ Object.keys(p).forEach(k=>{ PROFILE[k]=p[k]; }); try{ if(current==='settings') renderSettings(); }catch(_e){} }
+  }catch(e){ console.error('[data] hydrate profile', e); }
+}
+window.addEventListener('seeker-rt-ready', hydrateProfile);
 /* ===== 隐私 · 历史与记忆掌控(#4 用户掌控)—— 设置页入口,不经对话改;清除走 guardrail。 ===== */
 function _mgrEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function _mgrTime(ts){ try{ return new Date(+ts||0).toLocaleString(); }catch(_e){ return ''; } }
@@ -1848,17 +1873,17 @@ function renderSettings(){
   const tabbar=`<div class="tabs" style="overflow-x:auto;flex-wrap:nowrap;margin-bottom:8px;">${SET_TABS.map(t=>`<button class="tab ${settingsState.tab===t[0]?'on':''}" data-stab="${t[0]}" style="white-space:nowrap;">${setState.lang==='en'?t[1][1]:t[1][0]}</button>`).join('')}</div>`;
   $('#page-settings').innerHTML=frontis('SETTINGS',tt('数据设置','Settings'))+tabbar+`<div class="sec" style="border-bottom:none;padding-top:18px;">${sections[settingsState.tab]}</div>`+signFoot();
   $$('#page-settings [data-stab]').forEach(b=>b.onclick=()=>{settingsState.tab=b.dataset.stab;renderSettings();});
-  $$('#page-settings [data-pf]').forEach(inp=>inp.oninput=()=>{PROFILE[inp.dataset.pf]=inp.value;});
+  $$('#page-settings [data-pf]').forEach(inp=>{ inp.oninput=()=>{PROFILE[inp.dataset.pf]=inp.value;}; inp.onchange=()=>persistProfileField(inp.dataset.pf, inp.value); }); // 改完(失焦)落盘到隔离的 profile 仓库
   $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{const v=b.dataset.theme;if(v==='system'){toast('已设为跟随系统 (mock)');}else{document.documentElement.dataset.theme=v;try{localStorage.setItem('jh-theme',v);}catch(e){}renderTopActions(current);$('#themeBtn2').innerHTML=v==='dark'?IC.sun:IC.moon;}renderSettings();});
-  $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>{setState.fontsize=b.dataset.fs;renderSettings();toast('正文字号 '+b.dataset.fs+'px');});
-  $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setState.lang=b.dataset.lang;renderSettings();toast(b.dataset.lang==='en'?'English (demo)':'已切换为中文');});
-  $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});
-  $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>{setState.motion=b.dataset.motion;renderSettings();});
-  $$('#page-settings [data-ab]').forEach(b=>b.onclick=()=>{setState.autobackup=b.dataset.ab;renderSettings();toast('自动备份已'+(b.dataset.ab==='on'?'开启':'关闭'));});
-  $$('#page-settings [data-tc]').forEach(b=>b.onclick=()=>{setState.trainCounts=(b.dataset.tc==='on');renderSkills();renderSettings();toast(setState.trainCounts?'已开启:训练计入能力成长':'已关闭训练计入');});
-  const gr=$('#goalRange'); if(gr) gr.oninput=()=>{setState.goal=+gr.value;$('#goalVal').textContent=gr.value;};
-  const sp=$('#setPeriod'); if(sp) sp.oninput=()=>{setState.period=sp.value;};
-  const sl=$('#setSalary'); if(sl) sl.oninput=()=>{setState.salary=sl.value;};
+  $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>{setState.fontsize=b.dataset.fs;saveSettings();renderSettings();toast('正文字号 '+b.dataset.fs+'px');});
+  $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setState.lang=b.dataset.lang;try{localStorage.setItem('jh-lang',b.dataset.lang);}catch(e){}renderSettings();toast(b.dataset.lang==='en'?'English (demo)':'已切换为中文');});
+  $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;saveSettings();renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});
+  $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>{setState.motion=b.dataset.motion;saveSettings();renderSettings();});
+  $$('#page-settings [data-ab]').forEach(b=>b.onclick=()=>{setState.autobackup=b.dataset.ab;saveSettings();renderSettings();toast('自动备份已'+(b.dataset.ab==='on'?'开启':'关闭'));});
+  $$('#page-settings [data-tc]').forEach(b=>b.onclick=()=>{setState.trainCounts=(b.dataset.tc==='on');saveSettings();renderSkills();renderSettings();toast(setState.trainCounts?'已开启:训练计入能力成长':'已关闭训练计入');});
+  const gr=$('#goalRange'); if(gr) gr.oninput=()=>{setState.goal=+gr.value;$('#goalVal').textContent=gr.value;saveSettings();};
+  const sp=$('#setPeriod'); if(sp) sp.oninput=()=>{setState.period=sp.value;saveSettings();};
+  const sl=$('#setSalary'); if(sl) sl.oninput=()=>{setState.salary=sl.value;saveSettings();};
   $$('#page-settings [data-mmode]').forEach(b=>b.onclick=()=>{MODEL.mode=b.dataset.mmode;renderSettings();});
   const mp=$('#mdProto'); if(mp) mp.onchange=()=>{MODEL.protocol=mp.value;MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com',ollama:'http://localhost:11434/v1',other:''})[mp.value];MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku',gemini:'gemini-1.5-flash',ollama:'qwen2.5',other:''})[mp.value];renderSettings();};
   const mb=$('#mdBase'); if(mb) mb.oninput=()=>{MODEL.baseUrl=mb.value;};
@@ -1874,8 +1899,8 @@ function renderSettings(){
   const mtu=$('#mdTtsUrl'); if(mtu) mtu.oninput=()=>{MODEL.ttsUrl=mtu.value;};
   const mtk=$('#mdTtsKey'); if(mtk) mtk.oninput=()=>{MODEL.ttsKey=mtk.value;};
   const mtv=$('#mdTtsVoice'); if(mtv) mtv.oninput=()=>{MODEL.ttsVoice=mtv.value;};
-  $$('#page-settings [data-wt]').forEach(s=>s.oninput=()=>{const i=+s.dataset.wt;WEIGHTS[i][1]=+s.value;const lab=$(`[data-wv="${i}"]`);if(lab)lab.textContent=s.value+'%';const tot=WEIGHTS.reduce((a,w)=>a+w[1],0);const tl=$('#wTot');if(tl){tl.textContent=tot+'%';tl.style.color=tot===100?'var(--status-done)':'var(--ink-2)';}});
-  const wr=$('#wReset'); if(wr) wr.onclick=()=>{[40,30,20,10].forEach((v,i)=>WEIGHTS[i][1]=v);renderSettings();toast('已重置为默认权重');};
+  $$('#page-settings [data-wt]').forEach(s=>s.oninput=()=>{const i=+s.dataset.wt;WEIGHTS[i][1]=+s.value;const lab=$(`[data-wv="${i}"]`);if(lab)lab.textContent=s.value+'%';const tot=WEIGHTS.reduce((a,w)=>a+w[1],0);const tl=$('#wTot');if(tl){tl.textContent=tot+'%';tl.style.color=tot===100?'var(--status-done)':'var(--ink-2)';}saveSettings();});
+  const wr=$('#wReset'); if(wr) wr.onclick=()=>{[40,30,20,10].forEach((v,i)=>WEIGHTS[i][1]=v);saveSettings();renderSettings();toast('已重置为默认权重');};
   wireModelConfigDesktop();
   wireDataIO();
 }
@@ -3376,6 +3401,7 @@ function renderModeSwitch(){
 function initShell(){
   try{const w=localStorage.getItem('jh-sbw'); if(w)document.documentElement.style.setProperty('--sb-w',w+'px');}catch(e){}
   try{const lg=localStorage.getItem('jh-lang'); if(lg)setState.lang=lg;}catch(e){}
+  hydrateSettings(); // 目标/权重/外观偏好 从 localStorage 恢复(profile 走 rt.profile,见 hydrateProfile)
   const col=$('#sbCollapse'); if(col)col.onclick=toggleSidebar;
   const exp=$('#sbExpand'); if(exp)exp.onclick=()=>{document.body.dataset.sidebar='';if(col)col.textContent='«';};
   const lang=$('#langBtn'); if(lang){lang.textContent=setState.lang==='en'?'EN':'中';lang.onclick=()=>setLang(setState.lang==='en'?'zh':'en');}
