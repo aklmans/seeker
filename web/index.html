@@ -553,6 +553,12 @@ html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--i
 .gaps-card .gc-meta{display:flex;gap:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);white-space:nowrap;}
 .gaps-card .gc-jobs{color:var(--accent);}
 .gaps-card .gc-acts{padding:8px 15px 14px;}
+/* 下一步轻卡 */
+.next-card{padding:14px 15px;}
+.next-card .nx-lbl{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+.next-card .nx-title{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
+.next-card .nx-goal{font-size:12.5px;color:var(--ink-3);line-height:1.6;margin-top:5px;}
+.next-card .nx-acts{margin-top:11px;padding:0;}
 .cop-card{border:0.5px solid var(--border); background:var(--bg); margin-top:10px; padding:14px;}
 .cop-card .cct{font-size:13px; color:var(--ink); font-weight:500;}
 .cop-card .ccm{font-size:12px; color:var(--ink-3); margin-top:4px; line-height:1.6;}
@@ -2876,7 +2882,8 @@ function frameQuery(text){
     return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。'
       + '请在回答**末尾**附一个代码块渲染缺口卡(正文简洁):\n```seeker:gaps-card\n{}\n```\n我的原始请求:' + t;
   if(/最该做|下一步|现在做什么|该做什么/.test(t))
-    return G + '读取我的 jobs/actions/skills 后,告诉我现在最该做什么、为什么。我的原始请求:' + t;
+    return G + '读取我的 jobs/actions/skills 后,告诉我现在最该做什么、为什么(简洁)。'
+      + '请在回答**末尾**附一个代码块渲染「下一步」轻卡:\n```seeker:next-card\n{}\n```\n我的原始请求:' + t;
   if(/市场价值|身价|值多少|薪资|薪酬/.test(t))
     return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。'
       + '请在回答**末尾**附一个代码块渲染市场价值卡(正文简洁):\n```seeker:value-card\n{}\n```\n我的原始请求:' + t;
@@ -3066,7 +3073,7 @@ function renderValueCardEl(){
   const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const gaps=topGapsAcrossJobs(3);
   const moves=gaps.map(g=>`<div class="vc-move"><span class="vc-dot"></span><span>${tt('补齐 ','Fill ')}<b>${esc(g.skill)}</b> · ${g.jobs} ${tt('个目标岗位需要','jobs need it')}</span></div>`).join('')
-    || `<p style="font-size:12.5px;color:var(--ink-3);">${tt('暂无明显短板。','No clear gaps.')}</p>`;
+    || `<p style="font-size:12.5px;color:var(--ink-3);">${(JOBS&&JOBS.length)?tt('暂无明显短板。','No clear gaps.'):tt('添加目标岗位后给出杠杆动作。','Add target jobs to see leverage moves.')}</p>`;
   const card=el(`<div class="cop-card value-card">
     <div class="vc-head"><div class="vc-lbl">${tt('综合市场价值 · 年包','Market value · annual')}</div>
       <div class="vc-num"><span class="v">${YOU_VALUE}</span><span class="u">${tt('万 / 年','w/yr')}</span></div>
@@ -3086,7 +3093,7 @@ function renderGapsCardEl(){
   const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const gaps=topGapsAcrossJobs(5);
   const rows=gaps.map(g=>`<div class="gc-row"><div class="gc-skill">${esc(g.skill)}</div><div class="gc-meta"><span>lvl ${g.lvl}/4</span><span class="gc-jobs">${g.jobs} ${tt('岗需要','jobs')}</span></div><button class="btn" data-gapskill="${esc(g.skill)}" style="padding:3px 9px;font-size:11px;flex-shrink:0;">${tt('排计划','Plan')}</button></div>`).join('')
-    || `<p style="color:var(--ink-3);padding:8px 0;">${tt('目标岗位的硬性要求你都已具备 👏','You already meet all hard requirements 👏')}</p>`;
+    || `<p style="color:var(--ink-3);padding:8px 0;">${(JOBS&&JOBS.length)?tt('目标岗位的硬性要求你都已具备 👏','You already meet all hard requirements 👏'):tt('还没有目标岗位 —— 先添加岗位,再看能力缺口。','No target jobs yet — add a job to see your gaps.')}</p>`;
   const card=el(`<div class="cop-card gaps-card">
     <div class="gc-head"><div class="gc-title">${tt('能力缺口 · 按目标岗位需求排序','Skill gaps · by demand')}</div></div>
     <div class="gc-list">${rows}</div>
@@ -3100,6 +3107,31 @@ function renderGapsCardEl(){
 function showGapsCard(bubble, data, who){
   try{ const card=renderGapsCardEl(); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[gaps] render', e); }
 }
+/** 「下一步最该做的一件事」推荐:进行中(按 pri)→ 待开始 → 任意;无则 null。 */
+function recommendNextAction(){
+  const pr={high:0,mid:1,low:2};
+  return ACTIONS.filter(a=>a.state==='doing').sort((a,b)=>pr[a.pri]-pr[b.pri])[0] || ACTIONS.find(a=>a.state==='todo') || ACTIONS[0] || null;
+}
+/** 下一步轻卡(原生 · 真实 ACTIONS):最该做的一件事 + CTA;无行动则引导智能匹配。 */
+function renderNextCardEl(){
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const a=recommendNextAction();
+  const sub = a ? (a.goal?esc(a.goal):(a.cap?(tt('练 ','Train ')+esc(a.cap)+(a.jobs?(' · '+esc(a.jobs)):'')):'')) : '';
+  const card=el(`<div class="cop-card next-card">
+    <div class="nx-lbl">${tt('下一步 · 最该做的一件事','Next · the one thing')}</div>
+    <div class="nx-title">${a?esc(a.title):tt('先选个目标,让 AI 给你排下一步','Pick a target — AI will plan your next move')}</div>
+    ${sub?`<div class="nx-goal">${sub}</div>`:''}
+    <div class="cop-actions nx-acts"></div></div>`);
+  const acts=card.querySelector('.nx-acts');
+  const mk=(label,fn,accent)=>{ const b=el(`<button class="btn${accent?' btn-accent':''}">${label}</button>`); b.onclick=fn; acts.appendChild(b); };
+  const goP=id=>{ if(typeof copGo==='function') copGo(id); else if(typeof go==='function') go(id); };
+  if(a){ mk(tt('打开行动清单','Open actions')+' →', ()=>goP('actions'), true); mk(tt('智能匹配','Smart match'), ()=>goP('match')); }
+  else { mk(tt('智能匹配','Smart match')+' →', ()=>goP('match'), true); mk(tt('看职业资产','My assets'), ()=>goP('skills')); }
+  return card;
+}
+function showNextCard(bubble, data, who){
+  try{ const card=renderNextCardEl(); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[next] render', e); }
+}
 /** 卡注册表:AI 出 ```seeker:<kind> 块 → domain 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。 */
 const SEEKER_CARDS = {
   // persist=true 的「视图卡」会随消息存指令、重启后用实时数据重渲;resume-edit 是一次性护栏提案,不持久(否则重渲会重复提议)。
@@ -3109,6 +3141,7 @@ const SEEKER_CARDS = {
   'interview-card': { valid: d=>d.jobId!=null, show: showInterviewCard, persist:true },
   'value-card':     { valid: ()=>true,         show: showValueCard,     persist:true },
   'gaps-card':      { valid: ()=>true,         show: showGapsCard,      persist:true },
+  'next-card':      { valid: ()=>true,         show: showNextCard,      persist:true },
 };
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
