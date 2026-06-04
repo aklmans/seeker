@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, State};
 
 /// 能力种类。Tool=LLM 可主动调用;Context=供提示组装(C2);Sink=纯副作用(C2)。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Tool,
     #[allow(dead_code)] // C2 起用到
@@ -132,8 +132,9 @@ pub trait Capability: Send + Sync {
     fn version(&self) -> &'static str {
         "1"
     }
-    /// 运行时可用性(默认恒 Ready;C3 起按端 / 配置 / 依赖计算)。
-    fn available(&self) -> Availability {
+    /// 运行时可用性(C3:按端 / 配置 / 依赖**运行时计算**)。Unavailable/Degraded **不报错** ——
+    /// 网关据此过滤工具清单与供料,前端据此显隐入口。默认恒 Ready。
+    fn available(&self, _cx: &CallCx) -> Availability {
         Availability::Ready
     }
     /// 仅 `kind=Tool` 暴露;`None` = 不直接给 LLM 调。
@@ -186,10 +187,11 @@ impl Registry {
     }
 
     /// 仅 Ready 的 `kind=Tool` 的 schema,OpenAI `tools` 数组格式;供 AI 网关塞进请求。
-    pub fn tool_schemas(&self) -> Vec<Value> {
+    /// 据运行时 availability 过滤(如未配置嵌入模型时长期记忆不暴露)。
+    pub fn tool_schemas(&self, cx: &CallCx<'_>) -> Vec<Value> {
         self.caps
             .iter()
-            .filter(|c| c.kind() == Kind::Tool && c.available().is_ready())
+            .filter(|c| c.kind() == Kind::Tool && c.available(cx).is_ready())
             .filter_map(|c| c.schema())
             .map(|s| {
                 json!({
@@ -212,14 +214,22 @@ impl Registry {
         cx: &CallCx<'_>,
     ) -> Result<Output, String> {
         let cap = self.find(id).ok_or_else(|| format!("未知能力: {id}"))?;
-        if !cap.available().is_ready() {
+        if !cap.available(cx).is_ready() {
             return Err(format!("能力不可用: {id}"));
         }
-        // 破坏性能力绝不在此自动执行 —— 必须经护栏(预览+确认+撤销,C3)。
+        // 破坏性能力绝不在此自动执行 —— 必须经护栏(预览+确认+撤销)。
         if cap.permissions().contains(&Permission::Destructive) {
             return Err(format!("破坏性能力须经护栏,不可直接执行: {id}"));
         }
-        cap.invoke(input, cx).await
+        // 可观测(C3):记录每次 invoke 的耗时与结果状态(便于排查与预算)。
+        let t0 = std::time::Instant::now();
+        let r = cap.invoke(input, cx).await;
+        let ms = t0.elapsed().as_millis();
+        match &r {
+            Ok(_) => log::info!("[cap] {id} ok {ms}ms"),
+            Err(e) => log::warn!("[cap] {id} err {ms}ms: {e}"),
+        }
+        r
     }
 
     /// 提示组装期:汇集所有 Ready 能力的 `contribute` 片段(供 AI 网关裁剪入提示)。
@@ -227,20 +237,20 @@ impl Registry {
     pub async fn contribute_all(&self, q: &Query, cx: &CallCx<'_>) -> Vec<ContextChunk> {
         let mut out = Vec::new();
         for c in &self.caps {
-            if c.available().is_ready() {
+            if c.available(cx).is_ready() {
                 out.extend(c.contribute(q, cx).await);
             }
         }
         out
     }
 
-    /// 能力清单(前端 `rt.capability.list`)。
-    pub fn list_info(&self) -> Vec<CapabilityInfo> {
+    /// 能力清单(前端 `rt.capability.list`):带运行时 available(供前端显隐入口)。
+    pub fn list_info(&self, cx: &CallCx<'_>) -> Vec<CapabilityInfo> {
         self.caps
             .iter()
             .map(|c| CapabilityInfo {
                 id: c.id().to_string(),
-                available: c.available().is_ready(),
+                available: c.available(cx).is_ready(),
                 schema: c.schema().map(|s| {
                     json!({
                         "name": s.name,
@@ -252,9 +262,9 @@ impl Registry {
             .collect()
     }
 
-    fn is_available(&self, id: &str) -> bool {
+    fn is_available(&self, cx: &CallCx<'_>, id: &str) -> bool {
         self.find(id)
-            .map(|c| c.available().is_ready())
+            .map(|c| c.available(cx).is_ready())
             .unwrap_or(false)
     }
 }
@@ -267,13 +277,13 @@ impl Default for Registry {
 // ── 命令(前端 rt.capability)────────────────────────────────────
 
 #[tauri::command]
-pub fn cap_list(registry: State<'_, Registry>) -> Vec<CapabilityInfo> {
-    registry.list_info()
+pub fn cap_list(app: AppHandle, registry: State<'_, Registry>) -> Vec<CapabilityInfo> {
+    registry.list_info(&CallCx { app: &app })
 }
 
 #[tauri::command]
-pub fn cap_available(registry: State<'_, Registry>, id: String) -> bool {
-    registry.is_available(&id)
+pub fn cap_available(app: AppHandle, registry: State<'_, Registry>, id: String) -> bool {
+    registry.is_available(&CallCx { app: &app }, &id)
 }
 
 #[tauri::command]
@@ -383,8 +393,10 @@ fn gen_widget_id() -> String {
     format!("w_{}", WIDGET_SEQ.fetch_add(1, Ordering::Relaxed))
 }
 
-/// 最小 sanitize(W1):**外链引用一律拒绝**(墙2 CSP 已封死外链,这里再加一道并回报 LLM 重试)。
-/// 内联 `<script>`/`<style>` 允许(widget 必需,srcDoc 内 CSP 放行内联)。完整加固(更多标签/属性级)见 W4。
+/// 最小 sanitize:**外链引用一律拒绝**(墙2 CSP 已封死外链,这里再加一道并回报 LLM 重试)。
+/// 内联 `<script>`/`<style>` 允许(widget 必需,srcDoc 内 CSP 放行内联)。
+/// **注意:这不是安全边界** —— 真正的边界是墙1(iframe sandbox)+ 墙2(srcDoc CSP default-src none)。
+/// 本函数只是"快失败 + 引导 LLM 重试"的纵深层,后续维护勿把它当作隔离依赖。
 fn sanitize_widget_html(html: &str) -> Result<String, String> {
     if html.len() > WIDGET_MAX_BYTES {
         return Err(format!(
@@ -503,21 +515,17 @@ mod tests {
     }
 
     #[test]
-    fn registry_exposes_only_ready_tools_in_openai_format() {
-        let reg = Registry::new();
-        let tools = reg.tool_schemas();
-        let names: Vec<&str> = tools
-            .iter()
-            .filter_map(|t| t["function"]["name"].as_str())
-            .collect();
-        assert!(names.contains(&"query_data"), "应含 query_data");
-        assert!(names.contains(&"show_widget"), "应含 show_widget");
-        assert!(names.contains(&"memory"), "应含长期记忆 memory");
-        assert!(tools.iter().all(|t| t["type"] == "function"));
-        // list_info 暴露且 available。
-        assert!(reg.is_available("query_data"));
-        assert!(reg.is_available("memory"));
-        assert!(!reg.is_available("不存在"));
+    fn capabilities_expose_expected_tool_schemas() {
+        // 工具 schema 直接核验(tool_schemas / availability 过滤需 AppHandle → 经 CDP e2e 核验)。
+        assert_eq!(DataQuery.schema().unwrap().name, "query_data");
+        assert_eq!(ShowWidget.schema().unwrap().name, "show_widget");
+        assert_eq!(
+            crate::memory::LongTermMemory.schema().unwrap().name,
+            "memory"
+        );
+        assert_eq!(DataQuery.kind(), Kind::Tool);
+        // Registry 装配三者。
+        assert_eq!(Registry::new().caps.len(), 3);
     }
 
     #[test]

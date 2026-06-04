@@ -6,7 +6,8 @@
 //! 产出片段标 `trust=Untrusted`(数据非指令,防注入)。嵌入未配置/失败 → 优雅降级(不召回、不报错)。
 
 use crate::capability::{
-    CallCx, Capability, ContextChunk, Kind, Output, Permission, Query, ToolSchema, Trust,
+    Availability, CallCx, Capability, ContextChunk, Kind, Output, Permission, Query, ToolSchema,
+    Trust,
 };
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -16,6 +17,11 @@ const TOP_K_RECALL: usize = 5;
 const TOP_K_CONTRIBUTE: usize = 3;
 const MIN_SCORE: f32 = 0.2; // 相关度下限,过滤噪声
 static MEM_SEQ: AtomicU64 = AtomicU64::new(1);
+
+/// 记忆是否可用 = 是否配了嵌入模型(无嵌入则无法写入/检索)。
+fn embed_configured(embed_model: &str) -> bool {
+    !embed_model.trim().is_empty()
+}
 
 fn gen_id() -> String {
     let n = MEM_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -57,8 +63,17 @@ impl Capability for LongTermMemory {
     fn kind(&self) -> Kind {
         Kind::Tool // 主性:LLM 可调;同时 override contribute 作 Context 供料
     }
+    /// 运行时降级(C3):未配置嵌入模型 → Unavailable;网关据此不暴露 memory 工具、不召回
+    /// (避免给模型一个必然报错的工具),前端可据此提示去配置。
+    fn available(&self, cx: &CallCx) -> Availability {
+        if embed_configured(&crate::config::load(cx.app).embed_model) {
+            Availability::Ready
+        } else {
+            Availability::Unavailable("未配置嵌入模型".into())
+        }
+    }
     fn permissions(&self) -> &[Permission] {
-        &[Permission::Db]
+        &[Permission::Db, Permission::Net] // Db:记忆表;Net:BYO 嵌入(仅用户自填端点)
     }
     fn schema(&self) -> Option<ToolSchema> {
         Some(ToolSchema {
@@ -131,11 +146,18 @@ mod tests {
     fn schema_shape_and_no_pii_guidance() {
         let m = LongTermMemory;
         assert_eq!(m.id(), "memory");
-        assert_eq!(m.permissions(), &[Permission::Db]);
+        assert_eq!(m.permissions(), &[Permission::Db, Permission::Net]);
         let s = m.schema().unwrap();
         let p = s.parameters["properties"]["op"]["enum"].to_string();
         assert!(p.contains("remember") && p.contains("recall"));
         assert!(s.description.contains("不要用它存")); // 引导不存 PII
+    }
+
+    #[test]
+    fn availability_depends_on_embed_config() {
+        assert!(!embed_configured(""));
+        assert!(!embed_configured("   "));
+        assert!(embed_configured("text-embedding-3-small"));
     }
 
     #[test]

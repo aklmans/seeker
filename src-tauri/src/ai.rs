@@ -215,23 +215,22 @@ async fn run_chat(
                   reply in the user's language. You may call tools to read the user's local \
                   job-hunt data when helpful. Never ask for or store personal contact details.";
     let mut messages = build_messages(system, user_text);
+    let cx = CallCx { app };
     // 提示组装(#2 C2):汇集 Context 能力的召回片段(如长期记忆)→ 预算裁剪 → 作为「资料」
     // 系统消息插在 system 之后、user 之前(标注为数据、非指令,防注入);**仍不含 profile**。
-    {
-        let cx = CallCx { app };
-        let chunks = registry
-            .contribute_all(
-                &Query {
-                    text: user_text.to_string(),
-                },
-                &cx,
-            )
-            .await;
-        if let Some(ctx_msg) = build_context_message(&chunks) {
-            messages.insert(1, ctx_msg);
-        }
+    let chunks = registry
+        .contribute_all(
+            &Query {
+                text: user_text.to_string(),
+            },
+            &cx,
+        )
+        .await;
+    if let Some(ctx_msg) = build_context_message(&chunks) {
+        messages.insert(1, ctx_msg);
     }
-    let tools = registry.tool_schemas();
+    // 工具清单据 availability 过滤(如未配置嵌入模型则长期记忆不暴露)。
+    let tools = registry.tool_schemas(&cx);
 
     for round in 0..MAX_ROUNDS {
         // 最后一轮强制不带 tools,逼出最终文本(防止悬在工具调用上无回答)。
@@ -252,7 +251,6 @@ async fn run_chat(
             RoundOutcome::Done(stop) => return Ok(stop),
             RoundOutcome::ToolCalls { assistant, calls } => {
                 messages.push(assistant);
-                let cx = CallCx { app };
                 for call in calls {
                     let args: Value =
                         serde_json::from_str(&call.args).unwrap_or_else(|_| json!({}));
