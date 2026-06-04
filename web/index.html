@@ -2704,7 +2704,9 @@ function frameQuery(text){
   const t = String(text || '');
   const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
   if(/简历/.test(t))
-    return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式)与目标 jobs,据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。我的原始请求:' + t;
+    return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式,每个模块有 key)与目标 jobs(拿到 jobId),据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。'
+      + '若你给出了具体可直接套用的改写,请在回答**末尾**附一个代码块以便我一键应用(先正常用自然语言说明改动思路,再附代码块):\n```seeker:resume-edit\n{"jobId":<目标岗位 id>,"edits":[{"module":"<模块 key,如 summary / skills / honors / portfolio,或自定义模块 key>","content":<文本模块为字符串;skills 模块为字符串数组>}]}\n```\n'
+      + 'module **只能是专业模块,绝不能是 basic 或任何联系方式 / 身份字段**;只列你确有改写的模块。我的原始请求:' + t;
   if(/面试|JD|陪我练|面试题/.test(t))
     return G + '读取我的目标 jobs(岗位/JD)后,给出贴合该岗位的面试题或面试反馈。我的原始请求:' + t;
   if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
@@ -2719,6 +2721,88 @@ function frameQuery(text){
     return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。我的原始请求:' + t;
   return text;
 }
+
+/* ===== 结构化简历回写(domain):AI 在回答末尾附 ```seeker:resume-edit 代码块 → 解析 →
+   经 platform/guardrail 预览(前→后)+ 确认 + 撤销后,直接改写简历**专业模块**并落库。
+   红线:绝不写 basic / locked 模块(联系方式本不在 resumes 集合,此处再二次守卫)。
+   本期支持文本模块(content=字符串)与 skills(content=数组);work/projects/edu 等嵌套结构仅聊天建议。 */
+const RESUME_EDIT_RE = /```seeker:resume-edit\s*([\s\S]*?)```/;
+function extractResumeEdit(text){
+  const s = String(text==null?'':text);
+  const m = s.match(RESUME_EDIT_RE);
+  if(!m) return { prose:s, edit:null };
+  let edit = null;
+  try{ const j = JSON.parse(m[1].trim()); if(j && Array.isArray(j.edits) && j.edits.length) edit = j; }catch(_e){}
+  const prose = edit ? (s.slice(0, m.index) + s.slice(m.index + m[0].length)).trim() : s; // 解析成功才剥离
+  return { prose, edit };
+}
+function showResumeProposal(bubble, edit, who){
+  // 定位简历:edit.jobId → 当前打开的简历 → 仅有一份时取之
+  let jid = edit.jobId;
+  const has = k => k!=null && RESUME_TAILORED[k];
+  if(!has(jid)){
+    if(typeof resumeState==='object' && resumeState && has(resumeState.jobId)) jid = resumeState.jobId;
+    else { const ks = Object.keys(RESUME_TAILORED); jid = (ks.length===1) ? ks[0] : null; }
+  }
+  const r = (jid!=null) ? RESUME_TAILORED[jid] : null;
+  if(!r || !Array.isArray(r.modules)) return; // 无法定位:静默(自然语言建议仍在)
+  const changes = [];
+  for(const e of (edit.edits||[])){
+    if(!e || e.module==null) continue;
+    const mod = r.modules.find(x=>x.key===e.module);
+    if(!mod || mod.type==='locked' || mod.key==='basic') continue; // 联系方式 / 锁定模块绝不可改
+    let afterVal, before, after;
+    if(mod.type==='skills'){
+      afterVal = Array.isArray(e.content) ? e.content.map(s=>String(s).trim()).filter(Boolean)
+               : String(e.content==null?'':e.content).split(/[、,，·\/|\n]+/).map(s=>s.trim()).filter(Boolean);
+      before = Array.isArray(mod.content) ? mod.content.join(' · ') : '';
+      after = afterVal.join(' · ');
+    } else if(mod.type==='text'){
+      afterVal = String(e.content==null?'':e.content).trim();
+      before = String(mod.content==null?'':mod.content);
+      after = afterVal;
+    } else continue; // 嵌套结构(work/projects/edu)本期不结构化改写
+    if(!after || after===before) continue;
+    changes.push({ key:mod.key, label:mod.label||mod.key, type:mod.type, before, after, afterVal });
+  }
+  if(!changes.length) return;
+  const names = changes.map(c=>c.label).join('、').replace(/</g,'&lt;');
+  const card = el(`<div class="cop-card" style="margin-top:8px;"><div class="cct">✎ ${tt('AI 建议改写简历','AI suggests resume edits')} · ${changes.length} ${tt('处','edit(s)')}</div><div class="ccm">${tt('模块:','Modules: ')}${names}</div></div>`);
+  const acts = el('<div class="cop-actions"></div>');
+  const btn = el(`<button class="btn btn-accent">${tt('预览并应用 →','Preview & apply →')}</button>`);
+  btn.onclick = ()=> reviewResumeProposal(jid, changes);
+  acts.appendChild(btn); card.appendChild(acts);
+  const host = (bubble && bubble.parentElement) || bubble;
+  if(host){ host.appendChild(card); }
+}
+function reviewResumeProposal(jid, changes){
+  const G = window.SeekerGuardrail; if(!G || !G.confirmDestructive) return;
+  const r = RESUME_TAILORED[jid]; if(!r) return;
+  const job = JOBS.find(j=>String(j.id)===String(jid));
+  const snap = JSON.parse(JSON.stringify(r.modules)); // 撤销快照
+  G.confirmDestructive({
+    title: tt('应用 AI 简历改写?','Apply AI resume edits?'),
+    detail: tt('将改写以下专业模块,不涉及姓名 / 电话 / 邮箱等联系方式。','Rewrites these professional modules; contact info untouched.'),
+    changes: changes.map(c=>({label:c.label, before:c.before, after:c.after})),
+    source: (job?job.co+' · ':'')+'AI',
+    confirmLabel: tt('应用','Apply'),
+    undoText: tt('已应用 AI 简历改写','AI resume edits applied'),
+    onConfirm: ()=>{
+      for(const c of changes){
+        const mod = r.modules.find(x=>x.key===c.key);
+        if(!mod || mod.type==='locked' || mod.key==='basic') continue; // 二次红线守卫
+        mod.content = (mod.type==='skills') ? c.afterVal : c.after;
+      }
+      persistResume(jid);
+      try{ if(typeof renderResumes==='function') renderResumes(); }catch(_e){}
+    },
+    onUndo: ()=>{
+      RESUME_TAILORED[jid].modules = JSON.parse(JSON.stringify(snap));
+      persistResume(jid);
+      try{ if(typeof renderResumes==='function') renderResumes(); }catch(_e){}
+    },
+  });
+}
 /** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。 */
 function streamReply(thinkBubble, text, who, scrollFn){
   thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>';
@@ -2732,7 +2816,13 @@ function streamReply(thinkBubble, text, who, scrollFn){
       if(scrollFn) scrollFn();
     },
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
-    onDone(){ persistMsg(who==='Agent'?'agent':'cop','ai',acc); if(scrollFn) scrollFn(); } // 只存最终纯文本(含 widget 的会话内重渲不持久)
+    onDone(){
+      const ex = extractResumeEdit(acc);                              // 结构化简历回写:剥离指令块
+      if(ex.edit && span) span.textContent = ex.prose;                // 只展示自然语言(隐藏 JSON 块)
+      persistMsg(who==='Agent'?'agent':'cop','ai', ex.prose);         // 存去块纯文本(widget 会话内重渲不持久)
+      if(ex.edit){ try{ showResumeProposal(thinkBubble, ex.edit, who); }catch(e){ console.error('[resume] proposal', e); } }
+      if(scrollFn) scrollFn();
+    }
 
   });
 }

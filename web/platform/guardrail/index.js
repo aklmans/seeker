@@ -41,8 +41,11 @@ function showUndo(text, onUndo, ms) {
 
 /**
  * 预览 + 确认 + (可选)可撤销执行。
+ * `changes`(可选):结构化「前→后」对比预览(如 AI 改写简历模块)。一律用 textContent 渲染,
+ * 不可信内容(模型产出)天然无法注入。反焦虑:不用红色,旧值删除线 + 新值高亮。
  * @param {{
  *   title?: string, detail?: string, confirmLabel?: string,
+ *   changes?: {label?: string, before?: string, after?: string}[],
  *   onConfirm: () => (void | Promise<void>),
  *   onUndo?: () => (void | Promise<void>), undoText?: string, undoMs?: number,
  *   source?: string
@@ -67,6 +70,30 @@ export function confirmDestructive(opts) {
     detail.style.cssText = 'font-size:13px;color:var(--ink-2,#3a3a3a);line-height:1.6;margin-bottom:6px;';
     detail.textContent = opts.detail || '';
 
+    // 结构化「前→后」预览(可选):用 textContent 渲染,不可信内容无法注入。
+    /** @type {HTMLDivElement | null} */
+    let changesEl = null;
+    if (Array.isArray(opts.changes) && opts.changes.length) {
+      const list = document.createElement('div');
+      list.style.cssText = 'margin:2px 0 14px;display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;';
+      opts.changes.forEach((c) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'border:0.5px solid var(--border,#e6e4df);padding:8px 10px;';
+        const lb = document.createElement('div');
+        lb.style.cssText = 'font-family:var(--font-mono,monospace);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3,#6b6b6b);margin-bottom:5px;';
+        lb.textContent = c.label || '';
+        const bef = document.createElement('div');
+        bef.style.cssText = 'font-size:12px;color:var(--ink-3,#9a9a9a);text-decoration:line-through;line-height:1.5;margin-bottom:4px;white-space:pre-wrap;';
+        bef.textContent = (c.before == null || c.before === '') ? '(空)' : String(c.before);
+        const aft = document.createElement('div');
+        aft.style.cssText = 'font-size:13px;color:var(--ink,#1a1a1a);line-height:1.55;white-space:pre-wrap;';
+        aft.textContent = c.after == null ? '' : String(c.after);
+        item.append(lb, bef, aft);
+        list.appendChild(item);
+      });
+      changesEl = list;
+    }
+
     const note = document.createElement('div');
     note.style.cssText = 'font-size:12px;color:var(--ink-3,#6b6b6b);margin-bottom:18px;';
     note.textContent = opts.onUndo ? '执行后可撤销。' : '';
@@ -84,7 +111,9 @@ export function confirmDestructive(opts) {
     const ok = mkBtn(opts.confirmLabel || '确认执行', true);
     row.append(cancel, ok);
 
-    card.append(head, detail, note, row);
+    card.append(head, detail);
+    if (changesEl) card.appendChild(changesEl);
+    card.append(note, row);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
