@@ -2300,6 +2300,7 @@ function resumeSync(id){
   $$('#page-resumes [data-ebul]').forEach(t=>{const a=t.dataset.ebul.split('|');const m=resMod(r,a[0]);if(m&&m.items[+a[1]])m.items[+a[1]].bullets=t.value.split('\n').map(s=>s.trim()).filter(Boolean);});
   $$('#page-resumes [data-pf]').forEach(t=>{const a=t.dataset.pf.split('|');const m=resMod(r,a[0]);if(m&&m.items[+a[1]])m.items[+a[1]][a[2]]=t.value;});
   $$('#page-resumes [data-pbul]').forEach(t=>{const a=t.dataset.pbul.split('|');const m=resMod(r,a[0]);if(m&&m.items[+a[1]])m.items[+a[1]].bullets=t.value.split('\n').map(s=>s.trim()).filter(Boolean);});
+  persistResume(id); // 红线安全持久化:只存专业模块,联系方式绝不入集合
 }
 function resumeBind(){
   const id=resumeState.jobId; const root=$('#page-resumes'); const r=RESUME_TAILORED[id];
@@ -2308,7 +2309,8 @@ function resumeBind(){
   if(!r)return;
   const regen=$('#rbRegen',root); if(regen)regen.onclick=()=>resumeGenerate(id,renderResumes);
   const exp=$('#rbExport',root); if(exp)exp.onclick=()=>resumeExport(id);
-  const del=$('#rbDel',root); if(del)del.onclick=()=>{const snap=RESUME_TAILORED[id];delete RESUME_TAILORED[id];renderResumes();renderInterview();toastUndo('已删除针对性简历',()=>{RESUME_TAILORED[id]=snap;renderResumes();renderInterview();});};
+  const del=$('#rbDel',root); if(del)del.onclick=()=>{const snap=RESUME_TAILORED[id];delete RESUME_TAILORED[id];removeResume(id);renderResumes();renderInterview();toastUndo('已删除针对性简历',()=>{RESUME_TAILORED[id]=snap;persistResume(id);renderResumes();renderInterview();});};
+  root.addEventListener('focusout', ()=>persistResume(id)); // 输入失焦即持久化(oninput 已更新内存,此处落库)
   $$('#page-resumes .blk-head').forEach(h=>h.onclick=(e)=>{if(e.target.closest('[data-mremove]'))return;h.parentElement.classList.toggle('open');});
   $$('#page-resumes [data-mtgl]').forEach(t=>t.onclick=()=>{resumeSync(id);const m=resMod(r,t.dataset.mtgl);m.on=!m.on;renderResumes();renderInterview();});
   $$('#page-resumes [data-mremove]').forEach(b=>b.onclick=(e)=>{e.stopPropagation();resumeSync(id);r.modules=r.modules.filter(m=>m.key!==b.dataset.mremove);renderResumes();});
@@ -2323,7 +2325,7 @@ function resumeBind(){
   $$('#page-resumes [data-eadd]').forEach(b=>b.onclick=()=>{resumeSync(id);const m=resMod(r,b.dataset.eadd);if(m.type==='projects')m.items.push({name:'',date:'',star:false,bullets:[]});else m.items.push({org:'',title:'',date:'',loc:'',bullets:[]});renderResumes();});
   const addmod=$('#rbAddMod',root); if(addmod)addmod.onclick=()=>resumeAddModule(id);
   $$('#page-resumes [data-rmode]').forEach(b=>b.onclick=()=>{resumeState.mode=b.dataset.rmode;renderResumes();});
-  $$('#page-resumes [data-tpl]').forEach(b=>b.onclick=()=>{RESUME_TAILORED[id].template=b.dataset.tpl;renderResumes();});
+  $$('#page-resumes [data-tpl]').forEach(b=>b.onclick=()=>{RESUME_TAILORED[id].template=b.dataset.tpl;persistResume(id);renderResumes();});
   const pr=$('#rbPrint',root); if(pr)pr.onclick=resumePrint;
 }
 function resumeAddModule(id){
@@ -2337,7 +2339,7 @@ function resumeGenerate(id, after){
   const j=JOBS.find(x=>x.id===id); const fresh=!!RESUME_TAILORED[id]; resumeState.jobId=id;
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI RESUME</p><h2 style="margin-top:5px;">${fresh?tt('重新生成','Regenerate'):tt('生成','Generate')}${tt('针对性简历',' tailored resume')}</h2><div class="sub"><span>${j.co} · ${j.role.split('·')[0].trim()}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="grHost"></div></div>`);
   aiRun($('#grHost',m),[tt('读取 JD 的硬性 + 软性要求','Reading JD hard + soft requirements'),tt('匹配你的职业资产与项目证据','Matching your assets & evidence'),tt('按岗位重写概要、技能与项目亮点','Rewriting summary, skills & highlights')],
-    ()=>{RESUME_TAILORED[id]=genTailoredResume(j); setTimeout(()=>{(after||renderResumes)();renderInterview();},30); const r=RESUME_TAILORED[id];
+    ()=>{RESUME_TAILORED[id]=genTailoredResume(j); persistResume(id); setTimeout(()=>{(after||renderResumes)();renderInterview();},30); const r=RESUME_TAILORED[id];
       return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成针对 <b>'+j.co+'</b> 的简历 ✓ 在「简历」模块可按模块开关、编辑、标擅长、导出。','Generated a resume for <b>'+j.co+'</b> ✓ Toggle modules, edit, mark strengths, and export in the Resume module.')}</p>
         <div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);"><p style="font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 10px;">${resSummary(r)}</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${resSkills(r).map(s=>`<span class="chip">${s}</span>`).join('')}</div></div>
         <button class="btn btn-accent" style="margin-top:14px;" onclick="closeModal();go('resumes')">${tt('去编辑','Go edit')} →</button>`;
@@ -2695,12 +2697,14 @@ function aiErrHTML(err){
 }
 /* domain 业务框定(接地气 AI 技能):按意图关键词把用户问题框成「先用 query_data 读真实数据再答」。
    显示给用户的仍是短文案;发给 AI 的是框定版(系统提示不动、仍在网关,守"前端不组装系统提示")。
-   泛化匹配(支持"给我排一个 Rust 训练计划"等含可变内容的问法)。改简历**暂不框定** ——
-   需先接 resumes + 守 resume-AI 红线(联系方式块对 AI 只读),避免把含联系方式的简历发给 AI。 */
+   泛化匹配(支持"给我排一个 Rust 训练计划"等含可变内容的问法)。
+   改简历红线:resumes 集合只存专业模块(联系方式绝不入集合,始终从 profile 实时渲染),
+   故 query_data('resumes') 天然不含联系方式;框定再显式要求"只改专业内容、不碰联系方式"。 */
 function frameQuery(text){
   const t = String(text || '');
   const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
-  if(/简历/.test(t)) return text; // resume-AI 红线:暂不接地气(待 resumes + 联系方式锁定)
+  if(/简历/.test(t))
+    return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式)与目标 jobs,据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。我的原始请求:' + t;
   if(/面试|JD|陪我练|面试题/.test(t))
     return G + '读取我的目标 jobs(岗位/JD)后,给出贴合该岗位的面试题或面试反馈。我的原始请求:' + t;
   if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
@@ -2777,10 +2781,30 @@ async function hydrateColl(name, arr){
     arr.length=0; arr.push(...rows);                 // 水合(const 数组可变内容)
   }catch(e){ console.error('[data] hydrate '+name, e); }
 }
+/* resumes 红线安全持久化:只存专业模块结构(modules 含 basic/locked 标记但**无 PROFILE 内容**);
+   联系方式始终从独立 profile 实时渲染、**绝不入 resumes 集合**,故 query_data('resumes') 天然不含联系方式。 */
+function persistResume(jobId){
+  if(!collPersistOn()) return;
+  const r = RESUME_TAILORED[jobId]; if(!r) return;
+  window.SeekerRT.db.upsert('resumes', { id:'r_'+jobId, jobId:jobId, template:r.template, modules:r.modules })
+    .catch(e=>console.error('[data] upsert resume', e));
+}
+function removeResume(jobId){
+  if(!collPersistOn()) return;
+  window.SeekerRT.db.remove('resumes', 'r_'+jobId).catch(e=>console.error('[data] remove resume', e));
+}
+async function hydrateResumes(){
+  if(!collPersistOn()) return;
+  try{
+    const rows = await window.SeekerRT.db.list('resumes');
+    for(const rec of rows){ if(rec && rec.jobId!=null) RESUME_TAILORED[rec.jobId] = { template:rec.template||'minimal', modules:rec.modules||[] }; }
+  }catch(e){ console.error('[data] hydrate resumes', e); }
+}
 async function hydrateBizColls(){
   await hydrateColl('skills', SKILLS);
   await hydrateColl('actions', ACTIONS);
   await hydrateColl('iv_records', IV_RECORDS);
+  await hydrateResumes();
   try{ rerenderPages(); }catch(_e){}
 }
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
