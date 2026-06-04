@@ -745,7 +745,9 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
+  import { renderWidget } from './platform/capability/widgets/render.js';
   window.SeekerRT = rt;
+  window.SeekerWidgets = { renderWidget }; // show_widget 沙箱渲染(#2 · W1)
   window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
 </script>
 </head>
@@ -2688,6 +2690,12 @@ function streamReply(thinkBubble, text, who, scrollFn){
   const span=thinkBubble.querySelector('.ai-stream'); let acc='';
   window.SeekerRT.ai.stream({ userText:text }, {
     onToken(t){ acc+=t; if(span) span.textContent=acc; if(scrollFn) scrollFn(); },
+    onWidget(w){
+      /* show_widget(#2 · W1):平台渲染器产沙箱卡 → 插入对话流(thinkBubble 所在容器)。 */
+      try{ const card=window.SeekerWidgets.renderWidget(w); const host=thinkBubble.parentElement; if(host) host.appendChild(card); }
+      catch(e){ console.error('[widget] 渲染失败', e); }
+      if(scrollFn) scrollFn();
+    },
     onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){ if(scrollFn) scrollFn(); }
   });

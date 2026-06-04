@@ -45,6 +45,8 @@ function aiStream(req, handlers = {}) {
   let acc = '';
   /** @type {NonNullable<import('./types').AiResult['toolCalls']>} */
   const toolCalls = [];
+  /** @type {NonNullable<import('./types').AiResult['widgets']>} */
+  const widgets = [];
   const cleanup = () => {
     unlisten.forEach((u) => { try { if (u) u(); } catch (_e) { /* ignore */ } });
     unlisten = [];
@@ -71,10 +73,17 @@ function aiStream(req, handlers = {}) {
         toolCalls.push({ id: e.payload.id, name: e.payload.name, input: undefined });
         if (handlers.onTool) handlers.onTool({ id: e.payload.id, name: e.payload.name, ok: !!e.payload.ok });
       }),
+      ev.listen('ai_widget', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        // show_widget(#2 · W1):一张沙箱 widget 待渲染,交调用方插入对话流。
+        const w = { id: e.payload.id, html: e.payload.html, title: e.payload.title, minHeight: e.payload.minHeight };
+        widgets.push(w);
+        if (handlers.onWidget) handlers.onWidget(w);
+      }),
       ev.listen('ai_done', (/** @type {any} */ e) => {
         if (!hit(e)) return;
         cleanup();
-        const r = { text: acc, stopReason: e.payload.stopReason, toolCalls };
+        const r = { text: acc, stopReason: e.payload.stopReason, toolCalls, widgets };
         if (handlers.onDone) handlers.onDone(r);
         resolveDone(r);
       }),

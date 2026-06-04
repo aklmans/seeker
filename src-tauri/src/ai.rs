@@ -10,7 +10,7 @@
 //! 事件:`ai_chunk{sessionId,text}` · `ai_tool{sessionId,id,name,ok}` ·
 //!       `ai_done{sessionId,stopReason}` · `ai_error{sessionId,code,message,retriable}`
 
-use crate::capability::{CallCx, Registry};
+use crate::capability::{CallCx, Output, Registry};
 use futures_util::StreamExt;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -43,6 +43,16 @@ struct ToolEv {
     id: String,
     name: String,
     ok: bool,
+}
+/// show_widget 下发:前端据此在沙箱 iframe(sandbox + srcDoc 内 CSP)渲染不可信 UI。
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WidgetEv {
+    session_id: String,
+    id: String,
+    html: String,
+    title: String,
+    min_height: u32,
 }
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -230,8 +240,26 @@ async fn run_chat(
                 for call in calls {
                     let args: Value =
                         serde_json::from_str(&call.args).unwrap_or_else(|_| json!({}));
-                    let (content, ok) = match registry.invoke_tool(&call.name, &args, &cx) {
-                        Ok(s) => (s, true),
+                    // 经 invoke_raw 统一执行(破坏性能力被拒);Widget 输出额外下发 ai_widget。
+                    let (content, ok) = match registry.invoke_raw(&call.name, &args, &cx) {
+                        Ok(Output::Widget(w)) => {
+                            let title = w.title.clone();
+                            let _ = app.emit(
+                                "ai_widget",
+                                WidgetEv {
+                                    session_id: session_id.to_string(),
+                                    id: w.id,
+                                    html: w.html,
+                                    title: w.title,
+                                    min_height: w.min_height,
+                                },
+                            );
+                            (
+                                format!("已向用户渲染交互式组件「{title}」(用户可见)。"),
+                                true,
+                            )
+                        }
+                        Ok(out) => (out.to_model_text(), true),
                         Err(e) => (json!({ "error": e }).to_string(), false),
                     };
                     let _ = app.emit(

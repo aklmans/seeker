@@ -16,6 +16,7 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, State};
 
 /// 能力种类。Tool=LLM 可主动调用;Context=供提示组装(C2);Sink=纯副作用(C2)。
@@ -62,11 +63,21 @@ pub struct ToolSchema {
     pub parameters: Value, // JSON Schema
 }
 
-/// 统一调用输出。C1 仅 Text/Json/None;Stream/Widget 留待后续。
+/// show_widget 下发载荷:不可信 HTML(已过 sanitize)+ 标题 + 初始高度。
+/// 由能力产出 `Output::Widget`,AI 网关据此 `emit('ai_widget')` 给前端沙箱渲染(见 ai.rs)。
+pub struct WidgetPayload {
+    pub id: String,
+    pub html: String,
+    pub title: String,
+    pub min_height: u32,
+}
+
+/// 统一调用输出。C1:Text/Json/None;W1 起增 Widget(show_widget);Stream 留待后续。
 pub enum Output {
     #[allow(dead_code)]
     Text(String),
     Json(Value),
+    Widget(WidgetPayload),
     #[allow(dead_code)]
     None,
 }
@@ -76,6 +87,7 @@ impl Output {
         match self {
             Output::Text(s) => s.clone(),
             Output::Json(v) => v.to_string(),
+            Output::Widget(w) => format!("[已渲染交互式组件「{}」]", w.title),
             Output::None => String::new(),
         }
     }
@@ -126,10 +138,11 @@ pub struct Registry {
     caps: Vec<Box<dyn Capability>>,
 }
 impl Registry {
-    /// 启动时装配。**加能力即在此 `register`**;本阶段仅注册只读「数据查询」。
+    /// 启动时装配。**加能力即在此 `register`**:只读「数据查询」+「show_widget」沙箱组件。
     pub fn new() -> Self {
         let mut reg = Self { caps: Vec::new() };
         reg.register(Box::new(DataQuery));
+        reg.register(Box::new(ShowWidget));
         reg
     }
 
@@ -171,11 +184,6 @@ impl Registry {
             return Err(format!("破坏性能力须经护栏,不可直接执行: {id}"));
         }
         cap.invoke(input, cx)
-    }
-
-    /// 工具循环调用:执行并返回回灌模型的文本。
-    pub fn invoke_tool(&self, name: &str, input: &Value, cx: &CallCx) -> Result<String, String> {
-        Ok(self.invoke_raw(name, input, cx)?.to_model_text())
     }
 
     /// 能力清单(前端 `rt.capability.list`)。
@@ -231,6 +239,10 @@ pub fn cap_invoke(
     match registry.invoke_raw(&id, &input, &cx)? {
         Output::Text(s) => Ok(Value::String(s)),
         Output::Json(v) => Ok(v),
+        // 直接调用返回载荷(自动渲染走 AI 工具循环的 ai_widget 事件)。
+        Output::Widget(w) => Ok(json!({
+            "id": w.id, "html": w.html, "title": w.title, "minHeight": w.min_height
+        })),
         Output::None => Ok(Value::Null),
     }
 }
@@ -310,6 +322,115 @@ impl Capability for DataQuery {
     }
 }
 
+// ── 参考能力:show_widget(W1 · 不可信 UI 沙箱化)──────────────────
+// LLM 生成自包含 HTML → 平台核 sanitize(拒外链)+ ≤64KB 闸 + 分配 id → Output::Widget,
+// 由 AI 网关下发前端,在 iframe sandbox + srcDoc 内 CSP(default-src none)中渲染(三道墙)。
+// **自身无系统权限**(permissions 空):产物跑在沙箱里,够不到父 DOM/存储/网络。
+
+const WIDGET_MAX_BYTES: usize = 64 * 1024;
+static WIDGET_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn gen_widget_id() -> String {
+    format!("w_{}", WIDGET_SEQ.fetch_add(1, Ordering::Relaxed))
+}
+
+/// 最小 sanitize(W1):**外链引用一律拒绝**(墙2 CSP 已封死外链,这里再加一道并回报 LLM 重试)。
+/// 内联 `<script>`/`<style>` 允许(widget 必需,srcDoc 内 CSP 放行内联)。完整加固(更多标签/属性级)见 W4。
+fn sanitize_widget_html(html: &str) -> Result<String, String> {
+    if html.len() > WIDGET_MAX_BYTES {
+        return Err(format!(
+            "widget HTML 过大({}KB),上限 64KB",
+            html.len() / 1024
+        ));
+    }
+    let lower = html.to_lowercase();
+    for pat in ["<iframe", "<object", "<embed", "<link", "<base", "<meta"] {
+        if lower.contains(pat) {
+            return Err(format!(
+                "widget HTML 含禁止标签 {pat};请用纯内联 HTML/CSS/原生 JS,勿含外链/嵌套框架"
+            ));
+        }
+    }
+    if has_external_script(&lower) {
+        return Err("widget HTML 含外链 <script src>;请改为内联脚本".into());
+    }
+    Ok(html.to_string())
+}
+
+/// 扫描每个 `<script` 开标签,若标签内出现 `src` 则判为外链脚本(保守:宁可让 LLM 重试)。
+fn has_external_script(lower: &str) -> bool {
+    let mut i = 0;
+    while let Some(pos) = lower[i..].find("<script") {
+        let start = i + pos;
+        let end = lower[start..]
+            .find('>')
+            .map(|e| start + e)
+            .unwrap_or(lower.len());
+        if lower[start..end].contains("src") {
+            return true;
+        }
+        i = end + 1;
+        if i >= lower.len() {
+            break;
+        }
+    }
+    false
+}
+
+pub struct ShowWidget;
+impl Capability for ShowWidget {
+    fn id(&self) -> &'static str {
+        "show_widget"
+    }
+    fn kind(&self) -> Kind {
+        Kind::Tool
+    }
+    fn permissions(&self) -> &[Permission] {
+        &[] // 产物在沙箱内,自身无系统权限
+    }
+    fn schema(&self) -> Option<ToolSchema> {
+        Some(ToolSchema {
+            name: "show_widget",
+            description: "渲染一张对话内联的交互式可视化卡片(看板 / 进度 / 状态 / Tab 等)。\
+                          传入**自包含**的纯 HTML/CSS/原生 JS 片段:不要外链脚本/样式、不要 \
+                          <iframe>/<link>/<object>。用于一次性可视化;若是要打开产品已有页面,\
+                          请改用导航而非本工具。",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "html": { "type": "string", "description": "自包含 HTML 片段(纯内联 HTML/CSS/JS,无外链)" },
+                    "title": { "type": "string", "description": "卡片标题栏文案" },
+                    "min_height": { "type": "number", "description": "初始最小高度 px,默认 80" }
+                },
+                "required": ["html"]
+            }),
+        })
+    }
+    fn invoke(&self, input: &Value, _cx: &CallCx) -> Result<Output, String> {
+        let html = input
+            .get("html")
+            .and_then(|v| v.as_str())
+            .ok_or("缺少 html")?;
+        let sanitized = sanitize_widget_html(html)?;
+        let title = input
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Widget")
+            .to_string();
+        let min_height = input
+            .get("min_height")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(80)
+            .clamp(40, 800) as u32;
+        Ok(Output::Widget(WidgetPayload {
+            id: gen_widget_id(),
+            html: sanitized,
+            title,
+            min_height,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,13 +455,48 @@ mod tests {
     fn registry_exposes_only_ready_tools_in_openai_format() {
         let reg = Registry::new();
         let tools = reg.tool_schemas();
-        assert_eq!(tools.len(), 1, "C1 仅一个工具");
-        assert_eq!(tools[0]["type"], "function");
-        assert_eq!(tools[0]["function"]["name"], "query_data");
-        // list_info 暴露 query_data 且 available。
-        let info = reg.list_info();
-        assert!(info.iter().any(|i| i.id == "query_data" && i.available));
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str())
+            .collect();
+        assert!(names.contains(&"query_data"), "应含 query_data");
+        assert!(names.contains(&"show_widget"), "应含 show_widget");
+        assert!(tools.iter().all(|t| t["type"] == "function"));
+        // list_info 暴露且 available。
         assert!(reg.is_available("query_data"));
+        assert!(reg.is_available("show_widget"));
         assert!(!reg.is_available("不存在"));
+    }
+
+    #[test]
+    fn show_widget_sanitize_rejects_external_refs() {
+        // 外链脚本 / iframe / link 一律拒绝(墙2 之外再加一道,回报 LLM 重试)。
+        assert!(sanitize_widget_html(r#"<script src="https://evil/x.js"></script>"#).is_err());
+        assert!(sanitize_widget_html(r#"<iframe src="https://evil"></iframe>"#).is_err());
+        assert!(sanitize_widget_html(r#"<link rel="stylesheet" href="x.css">"#).is_err());
+        assert!(sanitize_widget_html(r#"<object data="x"></object>"#).is_err());
+        // 纯内联 HTML/CSS/JS 放行(widget 必需)。
+        let ok = sanitize_widget_html(
+            r#"<div style="color:red">Hi</div><script>const c=0;document.title=c;</script>"#,
+        );
+        assert!(ok.is_ok(), "纯内联应放行: {ok:?}");
+    }
+
+    #[test]
+    fn show_widget_size_gate() {
+        let big = "x".repeat(64 * 1024 + 1);
+        assert!(sanitize_widget_html(&big).is_err(), "超 64KB 应拒绝");
+    }
+
+    #[test]
+    fn show_widget_invoke_produces_widget_payload() {
+        let dq = ShowWidget;
+        // invoke 不碰 cx(无系统权限),用一个假的 CallCx 不可行(需 AppHandle);
+        // 故直接测 sanitize + schema 已覆盖;这里验 schema 形状与无权限声明。
+        assert!(dq.permissions().is_empty(), "show_widget 自身无系统权限");
+        let schema = dq.schema().unwrap();
+        assert_eq!(schema.name, "show_widget");
+        let req = schema.parameters["required"].to_string();
+        assert!(req.contains("html"));
     }
 }

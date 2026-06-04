@@ -100,18 +100,31 @@ export interface AiRequest {
   context?: unknown;
 }
 
+/** show_widget 下发载荷(不可信 HTML,前端在 sandbox iframe + srcDoc 内 CSP 渲染)。 */
+export interface WidgetPayload {
+  id: string;
+  /** 已过平台核 sanitize 的自包含 HTML(仍视为不可信,只进沙箱)。 */
+  html: string;
+  title: string;
+  minHeight: number;
+}
+
 export interface AiResult {
   text: string;
   /** 结束原因:stop | cancelled | length … */
   stopReason?: string;
   /** 模型返回的工具调用(交给 Rust 工具层执行,含 show_widget)。G3。 */
   toolCalls?: Array<{ id: string; name: string; input: unknown }>;
+  /** 本轮渲染的 widget(show_widget 工具产出)。 */
+  widgets?: WidgetPayload[];
 }
 
 export interface AiStreamHandlers {
   onToken?: (token: string) => void;
   /** 工具循环活动(G3 / #2·C1):一次工具被调用(id/name + 成功与否)。 */
   onTool?: (tool: { id: string; name: string; ok: boolean }) => void;
+  /** show_widget(#2·W1):一张沙箱 widget 待渲染。调用方据此插入对话流。 */
+  onWidget?: (widget: WidgetPayload) => void;
   onDone?: (result: AiResult) => void;
   onError?: (err: Error) => void;
 }
