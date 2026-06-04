@@ -1664,8 +1664,8 @@ function renderSettings(){
     <button class="btn" style="margin-top:16px;" id="wReset">${tt('重置为默认','Reset to default')}</button>`;
   sections.data=`<p class="seclabel">— DATA</p><h2 class="sectitle">${tt('数据与备份','Data & backup')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:600px;">
     ${row(tt('我的简历','My resume'),`<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"><span class="mono" style="font-size:12px;color:var(--ink-2);">${RESUME.filename}</span><button class="btn" onclick="openResumeModal()">${tt('管理简历','Manage resume')}</button></div>`)}
-    ${row(tt('导出数据','Export data'),`<button class="btn" onclick="toast('已导出 jobhunt-data.json (mock)')">${tt('导出 JSON','Export JSON')}</button>`)}
-    ${row(tt('导入数据','Import data'),`<button class="btn" onclick="toast('请选择文件 (mock)')">${tt('导入文件','Import file')}</button>`)}
+    ${row(tt('导出数据','Export data'),`<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="dataExport">${tt('导出 JSON','Export JSON')}</button><button class="btn" id="dataExportRedacted">${tt('脱敏导出','Export (redacted)')}</button></div>`)}
+    ${row(tt('导入数据','Import data'),`<button class="btn" id="dataImport">${tt('导入文件','Import file')}</button><input type="file" id="dataImportFile" accept=".json,application/json" style="display:none">`)}
     ${row(tt('自动备份','Auto backup'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.autobackup,'ab'))}
     ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
     ${row(tt('上次备份','Last backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">2026.05.18 14:30</span>`)}
@@ -1710,6 +1710,39 @@ function renderSettings(){
   $$('#page-settings [data-wt]').forEach(s=>s.oninput=()=>{const i=+s.dataset.wt;WEIGHTS[i][1]=+s.value;const lab=$(`[data-wv="${i}"]`);if(lab)lab.textContent=s.value+'%';const tot=WEIGHTS.reduce((a,w)=>a+w[1],0);const tl=$('#wTot');if(tl){tl.textContent=tot+'%';tl.style.color=tot===100?'var(--status-done)':'var(--ink-2)';}});
   const wr=$('#wReset'); if(wr) wr.onclick=()=>{[40,30,20,10].forEach((v,i)=>WEIGHTS[i][1]=v);renderSettings();toast('已重置为默认权重');};
   wireModelConfigDesktop();
+  wireDataIO();
+}
+
+/* D3:导出 / 脱敏导出 / 导入(桌面真接平台核;web 沿用 mock)。导入用 <input type=file> 读文件,零新插件。 */
+function wireDataIO(){
+  const exp=$('#dataExport'), expR=$('#dataExportRedacted'), imp=$('#dataImport'), impFile=$('#dataImportFile');
+  if(!exp) return;
+  const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
+  if(!on){
+    exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');
+    if(expR) expR.onclick=()=>toast('脱敏导出 (mock)');
+    if(imp) imp.onclick=()=>toast('请选择文件 (mock)');
+    return;
+  }
+  const rt=window.SeekerRT;
+  exp.onclick=()=>rt.db.export(false).then(p=>toast(tt('已导出到 ','Exported to ')+p)).catch(e=>toast(String((e&&e.message)||e)));
+  if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已脱敏导出(不含隐私)到 ','Redacted export to ')+p)).catch(e=>toast(String((e&&e.message)||e)));
+  if(imp&&impFile){
+    imp.onclick=()=>impFile.click();
+    impFile.onchange=()=>{
+      const f=impFile.files&&impFile.files[0]; if(!f){return;}
+      const reader=new FileReader();
+      reader.onload=()=>{
+        rt.db.import(String(reader.result||'')).then(counts=>{
+          const total=Object.values(counts||{}).reduce((a,b)=>a+(+b||0),0);
+          toast(tt('已导入 ','Imported ')+total+tt(' 条(导入前已自动快照)',' records (snapshot taken first)'));
+          if(typeof hydrateJobs==='function') hydrateJobs();
+        }).catch(e=>toast(tt('导入失败:','Import failed: ')+String((e&&e.message)||e)));
+        impFile.value='';
+      };
+      reader.readAsText(f);
+    };
+  }
 }
 
 /* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model→provider.json。

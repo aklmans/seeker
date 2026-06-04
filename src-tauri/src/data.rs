@@ -8,7 +8,7 @@
 //! D2 接版本化迁移 + 迁移前快照;D1 先建表跑通仓库。
 
 use rusqlite::{params, Connection};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -167,15 +167,12 @@ pub fn db_get(db: State<'_, Db>, collection: String, id: String) -> Result<Optio
     Ok(s.and_then(|s| serde_json::from_str(&s).ok()))
 }
 
-#[tauri::command]
-pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
-    let table = table_for(&collection)?;
-    let id = record_id(&record)?;
-    let data_json = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+/// 写入一条记录:jobs 额外抽取骨架列(status/match_score),其余仅 id+data_json。供 upsert/import 复用。
+fn upsert_into(conn: &Connection, table: &str, record: &Value) -> Result<(), String> {
+    let id = record_id(record)?;
+    let data_json = serde_json::to_string(record).map_err(|e| e.to_string())?;
     let now = now_ms();
-    let conn = db.0.lock().unwrap();
     if table == "jobs" {
-        // 弹性 schema 写侧:从记录抽取骨架列(status 筛选 / match_score 排序)。
         let status = record.get("status").and_then(|v| v.as_str());
         let match_score = record.get("match").and_then(|v| v.as_f64());
         conn.execute(
@@ -192,6 +189,14 @@ pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result
         )
         .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
+    let table = table_for(&collection)?;
+    let conn = db.0.lock().unwrap();
+    upsert_into(&conn, table, &record)?;
     Ok(record)
 }
 
@@ -245,6 +250,155 @@ pub fn profile_set(db: State<'_, Db>, k: String, v: String) -> Result<(), String
         )
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ── 导出 / 导入 / 备份(#3 D3)──────────────────────────────────
+// 全量导出含 profile(本地备份用);脱敏导出 redact=true 剔除 profile 供分享/调试。
+// 导入前自动快照;profile 仅整体随备份导入/导出,绝不进 AI 提示(那条红线在 ai_chat 侧)。
+
+#[tauri::command]
+pub fn db_export(app: AppHandle, db: State<'_, Db>, redact: bool) -> Result<String, String> {
+    let conn = db.0.lock().unwrap();
+    let mut collections = Map::new();
+    for c in [
+        "jobs",
+        "skills",
+        "actions",
+        "resumes",
+        "iv_records",
+        "messages",
+    ] {
+        let mut stmt = conn
+            .prepare(&format!("SELECT data_json FROM {c} ORDER BY id"))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut arr = Vec::new();
+        for r in rows {
+            if let Ok(v) = serde_json::from_str::<Value>(&r.map_err(|e| e.to_string())?) {
+                arr.push(v);
+            }
+        }
+        collections.insert(c.to_string(), Value::Array(arr));
+    }
+    let read_kv = |tbl: &str| -> Result<Map<String, Value>, String> {
+        let mut m = Map::new();
+        let mut s = conn
+            .prepare(&format!("SELECT k, v FROM {tbl}"))
+            .map_err(|e| e.to_string())?;
+        let rs = s
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for r in rs {
+            let (k, v) = r.map_err(|e| e.to_string())?;
+            m.insert(k, Value::String(v));
+        }
+        Ok(m)
+    };
+    let settings = read_kv("settings")?;
+    let profile = if redact {
+        Map::new()
+    } else {
+        read_kv("profile")?
+    };
+    let bundle = json!({
+        "schemaVersion": schema_version(&conn),
+        "exportedAt": now_ms(),
+        "redacted": redact,
+        "collections": collections,
+        "settings": settings,
+        "profile": profile,
+    });
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("exports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let suffix = if redact { "-redacted" } else { "" };
+    let path = dir.join(format!("seeker-export{suffix}-{}.json", now_ms()));
+    let text = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn db_import(app: AppHandle, db: State<'_, Db>, json: String) -> Result<Value, String> {
+    let bundle: Value =
+        serde_json::from_str(&json).map_err(|_| "无法解析导入文件(非合法 JSON)".to_string())?;
+    let imp_ver = bundle
+        .get("schemaVersion")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let latest = MIGRATIONS.last().map(|m| m.0).unwrap_or(0);
+    if imp_ver > latest {
+        return Err(format!(
+            "导入文件版本 v{imp_ver} 高于当前应用 v{latest},请升级应用后再导入"
+        ));
+    }
+    let backups = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("backups");
+    let conn = db.0.lock().unwrap();
+    let _ = snapshot(&conn, &backups, latest); // 导入前快照(best-effort)
+    let mut counts = Map::new();
+    if let Some(cols) = bundle.get("collections").and_then(|v| v.as_object()) {
+        for (c, arr) in cols {
+            let Ok(table) = table_for(c) else { continue }; // 跳过未知/受保护集合
+            let mut n: i64 = 0;
+            if let Some(records) = arr.as_array() {
+                for rec in records {
+                    if upsert_into(&conn, table, rec).is_ok() {
+                        n += 1;
+                    }
+                }
+            }
+            counts.insert(c.clone(), Value::from(n));
+        }
+    }
+    if let Some(p) = bundle.get("profile").and_then(|v| v.as_object()) {
+        for (k, v) in p {
+            if let Some(s) = v.as_str() {
+                conn.execute(
+                    "INSERT OR REPLACE INTO profile (k, v) VALUES (?1, ?2)",
+                    params![k, s],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    if let Some(st) = bundle.get("settings").and_then(|v| v.as_object()) {
+        for (k, v) in st {
+            if let Some(s) = v.as_str() {
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (k, v) VALUES (?1, ?2)",
+                    params![k, s],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(Value::Object(counts))
+}
+
+/// 即时备份:VACUUM INTO 一份一致副本到 backups/,返回路径。
+#[tauri::command]
+pub fn db_backup(app: AppHandle, db: State<'_, Db>) -> Result<String, String> {
+    let backups = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("backups");
+    std::fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
+    let path = backups.join(format!("seeker-backup-{}.db", now_ms()));
+    let conn = db.0.lock().unwrap();
+    let p = path.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{p}'"))
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

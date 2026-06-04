@@ -105,6 +105,9 @@ export function createDesktopRuntime() {
       get: (collection, id) => invoke('db_get', { collection, id }),
       upsert: (collection, record) => invoke('db_upsert', { collection, record }),
       remove: (collection, id) => invoke('db_remove', { collection, id }), // 返快照 → toastUndo
+      export: (redact) => invoke('db_export', { redact: !!redact }),
+      import: (json) => invoke('db_import', { json }),
+      backup: () => invoke('db_backup'),
     },
 
     profile: {

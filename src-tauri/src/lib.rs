@@ -36,6 +36,9 @@ pub fn run() {
             data::db_remove,
             data::profile_get_all,
             data::profile_set,
+            data::db_export,
+            data::db_import,
+            data::db_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

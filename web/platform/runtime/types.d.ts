@@ -69,6 +69,12 @@ export interface DbApi {
    * 无论调用者是 UI、Agent 还是 widget,都走同一护栏。
    */
   remove(collection: Collection, id: string): Promise<Record | null>;
+  /** 全量导出到本地文件(redact=true 剔除 profile 供分享);返回文件路径。 */
+  export(redact: boolean): Promise<string>;
+  /** 从 JSON 字符串导入(校验版本 + 导入前快照 + 合并 upsert);返回各集合导入条数。 */
+  import(json: string): Promise<{ [collection: string]: number }>;
+  /** 即时备份(VACUUM INTO);返回备份文件路径。 */
+  backup(): Promise<string>;
 }
 
 // ── 隐私字段(rt.profile)── 隐私红线 ─────────────────────────────

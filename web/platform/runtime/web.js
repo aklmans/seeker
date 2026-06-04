@@ -26,6 +26,9 @@ export function createWebRuntime() {
       get: () => notImpl('rt.db.get', 'web'),
       upsert: () => notImpl('rt.db.upsert', 'web'),
       remove: () => notImpl('rt.db.remove', 'web'),
+      export: () => notImpl('rt.db.export', 'web'),
+      import: () => notImpl('rt.db.import', 'web'),
+      backup: () => notImpl('rt.db.backup', 'web'),
     },
 
     ai: {
