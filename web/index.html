@@ -1307,6 +1307,7 @@ function buildPages(){
 
 /* ---------- OVERVIEW ---------- */
 function renderOverview(){
+  if(!onboarded()){ renderFirstRun(); return; }   // 首启未决定 → 价值主张落地页 + 岔路(开始我的 / 逛示例)
   const n=JOBS.length||1;
   const avgI=(JOBS.reduce((a,j)=>a+(j.interest||0),0)/n).toFixed(1);
   const avgM=(JOBS.reduce((a,j)=>a+(j.match||0),0)/n).toFixed(1);
@@ -1983,7 +1984,7 @@ function clearAllDataFlow(){
     title:tt('清空所有业务数据?','Clear all data?'),
     detail:tt('将删除全部岗位 / 技能 / 行动 / 简历 / 面试记录 / 对话历史。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all jobs / skills / actions / resumes / interview records / chat history. Personal info and settings stay. A backup is saved first — you can re-import it later.'),
     confirmLabel:tt('清空','Clear'),
-    onConfirm:async()=>{ await clearAllCollections(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
+    onConfirm:async()=>{ await clearAllCollections(); setDemoMode(false); markOnboarded(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
   });
 }
 function renderSettings(){
@@ -2200,15 +2201,26 @@ async function wireModelConfigDesktop(){
       .catch(e=>toast(tt('连接失败:','Failed: ')+String((e&&e.message)||e)))
       .finally(()=>{ test.disabled=false; test.textContent=old; }); };
 }
-function showEmptyState(){
-  go('overview');
-  const guide=`<div class="sec" style="border-bottom:none;"><p style="font-size:14px;color:var(--ink-2);margin:0 0 8px;">${tt('这个工具帮你从 20 个心仪岗位反推训练计划。','This tool reverse-engineers a training plan from 20 dream jobs.')}</p>
-    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('录入 3-5 个你最向往的岗位','Add 3-5 jobs you want most')}</h3><p>${tt('不需要一次录完 20 个 — 先从最有激情的开始。','No need for all 20 at once — start with the ones you\'re most excited about.')}</p><button class="btn btn-accent" style="margin-top:12px;" onclick="openNewJob()">${tt('+ 录入第一个岗位','+ Add your first job')}</button></div></div>
-    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('给每个岗位打分','Score each job')}</h3><p>${tt('兴趣 / 成长 / 匹配 / 机会 — 不用很精确,凭直觉。','Interest / Growth / Match / Odds — go with your gut.')}</p></div></div>
-    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('看缺口,定行动','See gaps, set actions')}</h3><p>${tt('工具会告诉你下一步该补什么。','The tool tells you what to fill next.')}</p></div></div>
-    <button class="btn" style="margin-top:24px;" onclick="renderOverview()">← ${tt('返回满血演示态','Back to full demo')}</button></div>`;
-  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('开始吧','Get started'))+guide+signFoot();
+// 首启价值主张落地页(评审 ★A/B):一句话说清"是什么/为什么/给谁" + 本地优先·隐私·反焦虑信任锚 + 岔路。
+function renderFirstRun(){
+  const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;">
+    <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0;">— ${tt('本地优先 · 反焦虑','LOCAL-FIRST · CALM')}</p>
+    <h2 class="sectitle" style="font-size:28px;margin:11px 0 0;">${tt('把求职,当成一个研究项目','Run your job hunt like a research project')}<span class="dot">.</span></h2>
+    <p style="font-size:14.5px;color:var(--ink-2);line-height:1.75;max-width:620px;margin:14px 0 0;">${tt('收集你心仪的岗位,Seeker 帮你反推出「该补什么能力、简历怎么改、面试怎么练」。所有数据只存在你的电脑里,联系方式永不参与 AI。','Collect the jobs you want, and Seeker reverse-engineers what skills to build, how to tune your resume, and how to prep interviews. All your data stays on this machine — your contact details never go to AI.')}</p></div>`;
+  const steps=`<div class="sec" style="border-bottom:none;padding-top:10px;">
+    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('录入 3-5 个你最向往的岗位','Add 3-5 jobs you want most')}</h3><p>${tt('从最有激情的开始 — 粘贴 JD,Seeker 自动抽取要求。','Start with the ones you\'re most excited about — paste a JD and Seeker extracts the requirements.')}</p></div></div>
+    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('看清你与目标的差距','See where you stand')}</h3><p>${tt('AI 读你的真实数据,算出匹配度与能力缺口 —— 有依据、不外发。','AI reads your real data to compute fit and skill gaps — grounded, never sent out.')}</p></div></div>
+    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('定行动:补能力 / 改简历 / 练面试','Act: build skills / tune resume / prep interviews')}</h3><p>${tt('把求职拆成可推进的小步,稳步前进 —— 你没有落后。','Break it into steady, doable steps — you\'re not behind.')}</p></div></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:26px;">
+      <button class="btn btn-accent" id="frStart">${tt('+ 录入第一个岗位','+ Add your first job')}</button>
+      <button class="btn" id="frDemo">${tt('先用示例数据逛一圈 →','Explore with sample data →')}</button>
+    </div></div>`;
+  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('开始吧','Get started'))+hero+steps+signFoot();
+  const s=$('#frStart'); if(s) s.onclick=()=>{ markOnboarded(); renderOverview(); openNewJob(); };  // 开始我的:标记上手 → 空工作台 → 录第一个岗位
+  const d=$('#frDemo'); if(d) d.onclick=()=>{ seedDemoData(); };                                     // 先逛示例:显式播种 + 示例提示条
 }
+// 设置页「查看引导态」:强制预览落地页(已上手用户也能看)。
+function showEmptyState(){ go('overview'); renderFirstRun(); }
 
 /* ---------- NEW JOB MODAL ---------- */
 function openNewJob(){
@@ -3467,6 +3479,15 @@ function streamReply(thinkBubble, text, who, scrollFn){
 }
 function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
 
+/* ===== 首次上手状态(评审落地:首启不静默灌演示数据,改岔路让用户选)=====
+   onboarded:已做首启选择(开始我的 / 逛示例)。迁移:旧版已被种子过的用户(jh-seeded-jobs)视为已上手,不弹落地页。 */
+let SEED=null; // 演示种子快照(INIT 时趁内存还是 mock 字面量抓一份,供"先逛示例"显式播种)
+function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
+function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
+function demoMode(){ try{ return localStorage.getItem('jh-demo')==='1'; }catch(_e){ return false; } }
+function setDemoMode(on){ try{ on?localStorage.setItem('jh-demo','1'):localStorage.removeItem('jh-demo'); }catch(_e){} }
+function captureSeed(){ if(SEED) return; try{ SEED={ jobs:JOBS.slice(), skills:SKILLS.slice(), actions:ACTIONS.slice(), ivRecords:IV_RECORDS.slice() }; }catch(_e){ SEED={jobs:[],skills:[],actions:[],ivRecords:[]}; } }
+
 /* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
 function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
 function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
@@ -3474,13 +3495,9 @@ function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', 
 async function hydrateJobs(){
   if(!jobsPersistOn()) return;
   try{
-    let rows = await window.SeekerRT.db.list('jobs');
-    if(!rows.length && !seededColl('jobs')){            // 首启且从未播种:内存 mock 作种子写入仓库
-      for(const j of JOBS){ await window.SeekerRT.db.upsert('jobs', j); }
-      rows = await window.SeekerRT.db.list('jobs');
-    }
-    markSeededColl('jobs');                             // 标记已初始化(清空后不再播种)
-    JOBS.length=0; JOBS.push(...rows);                  // 水合(const 数组可变)
+    const rows = await window.SeekerRT.db.list('jobs');
+    JOBS.length=0;                                      // 不再静默播种(评审):首启 DB 空 → 内存也空 → 落地页
+    if(rows.length){ markOnboarded(); JOBS.push(...rows); } // 有数据 = 已上手,水合(否则留空,等用户在落地页选择)
     [renderOverview, renderJobs, renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
   }catch(e){ console.error('[data] jobs 水合失败', e); }
 }
@@ -3507,14 +3524,42 @@ function persistColl(name, arr){
 async function hydrateColl(name, arr){
   if(!collPersistOn()) return;
   try{
-    let rows = await window.SeekerRT.db.list(name);
-    if(!rows.length && arr.length && !seededColl(name)){ // 首启且从未播种:种子写仓库
-      for(const r of arr){ await window.SeekerRT.db.upsert(name, withCollId(name, r)); }
-      rows = await window.SeekerRT.db.list(name);
-    }
-    markSeededColl(name);                            // 标记已初始化(清空后不再播种)
-    arr.length=0; arr.push(...rows);                 // 水合(const 数组可变内容)
+    const rows = await window.SeekerRT.db.list(name);
+    arr.length=0;                                    // 不再静默播种:首启 DB 空 → 内存也空 → 各视图空态/落地页
+    if(rows.length){ markOnboarded(); arr.push(...rows); } // 有数据 = 已上手,水合
   }catch(e){ console.error('[data] hydrate '+name, e); }
+}
+/** 显式播种演示数据(用户在落地页选「先用示例逛一圈」时)。用 INIT 抓的 SEED 快照持久化 + 标记演示模式。 */
+function seedDemoData(){
+  captureSeed();
+  if(SEED){
+    JOBS.length=0; JOBS.push(...SEED.jobs);
+    SKILLS.length=0; SKILLS.push(...SEED.skills);
+    ACTIONS.length=0; ACTIONS.push(...SEED.actions);
+    IV_RECORDS.length=0; IV_RECORDS.push(...SEED.ivRecords);
+    if(collPersistOn()){ persistColl('jobs', JOBS); persistColl('skills', SKILLS); persistColl('actions', ACTIONS); persistColl('iv_records', IV_RECORDS); }
+  }
+  markOnboarded(); setDemoMode(true);
+  try{ rerenderPages(); }catch(_e){}
+  go('overview'); renderOverview(); syncDemoBanner();
+}
+/** 示例模式提示条(反焦虑:无红色;bg-subtle + 橙「示例」chip + 出口「清空示例,开始我的」)。本次会话可隐藏,重启仍提示以确保出口可达。 */
+function syncDemoBanner(){
+  const main=document.querySelector('.main'); if(!main) return;
+  let bar=document.getElementById('demoBanner');
+  if(demoMode()){
+    if(!bar){
+      bar=el(`<div id="demoBanner" style="display:flex;align-items:center;gap:12px;padding:9px 22px;background:var(--bg-subtle);border-bottom:0.5px solid var(--border);font-size:12.5px;color:var(--ink-2);">
+        <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;background:var(--accent);color:#fff;padding:2px 7px;flex-shrink:0;">${tt('示例','SAMPLE')}</span>
+        <span style="flex:1;min-width:0;">${tt('这是示例数据,帮你看清产品能做什么 · 随时换成你自己的。','Sample data — see what Seeker can do; replace it with your own anytime.')}</span>
+        <button class="btn" id="demoClear" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('清空示例,开始我的','Clear sample, start mine')}</button>
+        <button id="demoDismiss" title="${tt('关闭','Dismiss')}" style="background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;flex-shrink:0;">×</button></div>`);
+      const tb=main.querySelector('.topbar');
+      if(tb && tb.nextSibling) main.insertBefore(bar, tb.nextSibling); else main.insertBefore(bar, main.firstChild);
+      const cb=bar.querySelector('#demoClear'); if(cb) cb.onclick=()=>clearAllDataFlow();      // 走护栏+备份;onConfirm 关演示模式
+      const db=bar.querySelector('#demoDismiss'); if(db) db.onclick=()=>bar.remove();            // 本次会话隐藏
+    }
+  } else if(bar){ bar.remove(); }
 }
 /* resumes 红线安全持久化:只存专业模块结构(modules 含 basic/locked 标记但**无 PROFILE 内容**);
    联系方式始终从独立 profile 实时渲染、**绝不入 resumes 集合**,故 query_data('resumes') 天然不含联系方式。 */
@@ -3797,11 +3842,13 @@ buildNav();
 buildPages();
 $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
 $('#themeBtn2').onclick=toggleTheme;
+captureSeed();   // 趁内存还是 mock 字面量,抓一份演示种子(供落地页"先逛示例"显式播种)
 copInit();
 agentInit();
 initShell();
 initKeys();
 go('overview');
+syncDemoBanner();
 appReady=true;
 </script>
 </body>
