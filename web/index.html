@@ -1115,6 +1115,25 @@ const el=(h)=>{const t=document.createElement('template');t.innerHTML=h.trim();r
 const skillByName=(n)=>SKILLS.find(s=>s.name===n);
 const fmtScore=(v)=>`${v.toFixed(1)}<small>/10</small>`;
 
+/* === 真实聚合(替代写死的演示数组,让总览/分析页反映真实 JOBS/SKILLS)=== */
+function jobsByStatus(){ const m={}; Object.keys(STATUS).forEach(k=>m[k]=0); JOBS.forEach(j=>{ if(m[j.status]!=null) m[j.status]++; }); return m; }
+function distinctNeedSkills(){ return new Set(JOBS.flatMap(j=>j.need||[])).size; }
+function distBy(field){ const m=new Map(); JOBS.forEach(j=>{ const v=(j[field]||'—'); m.set(v,(m.get(v)||0)+1); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
+function pipelineReal(){ const by=jobsByStatus();
+  return [['fav',tt('收藏','Saved'),'var(--status-info)'],['todo',tt('待投','To apply'),'var(--border-strong)'],['sent',tt('已投','Applied'),'var(--accent)'],['interview',tt('面试','Interview'),'var(--accent)'],['reject',tt('拒绝','Rejected'),'var(--ink-mute)'],['skip',tt('放弃','Skipped'),'var(--ink-mute)']]
+    .map(([k,label,color])=>({label,n:by[k]||0,color})); }
+function topGapsReal(n){ // 跨岗缺口:被需求技能 → 需求岗位数 + 用户当前水平(skillByName.lvl);按需求数排序取前 n。
+  const counts=new Map(); JOBS.forEach(j=>(j.need||[]).forEach(s=>counts.set(s,(counts.get(s)||0)+1)));
+  return [...counts.entries()].map(([name,jobs])=>{ const sk=skillByName(name); const lvl=sk?(sk.lvl||0):0;
+      return {name,jobs,lvl,have:lvl>=3?tt('已具备','have'):(lvl>=1?tt('仅基础','basic'):tt('未具备','none'))}; })
+    .filter(r=>r.lvl<3).sort((a,b)=>b.jobs-a.jobs||a.lvl-b.lvl).slice(0,n)
+    .map((r,i)=>({rank:String(i+1).padStart(2,'0'),name:r.name,jobs:r.jobs,have:r.have,
+      pct:Math.round(r.lvl/3*100),pri:r.jobs>=Math.max(2,Math.ceil(JOBS.length*0.4))?tt('高','high'):tt('中','mid')})); }
+/* JD 高频软词:在真实 JD 文本里数 curated 软词表(中文无分词器,故用词表 + 真计数;反映你真实的 JD)。 */
+const SOFT_WORDS=['稳定性','高并发','性能优化','线上故障','Owner','推动','可用性','0-1','落地','容量规划','复盘','演进','治理','可扩展','高可用','排查','重构','优化','主导','负责','架构','体系','质量','规模','增长'];
+function keywordsReal(){ const text=JOBS.map(j=>j.jd||'').join('\n');
+  return SOFT_WORDS.map(w=>[w,text.split(w).length-1]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,13); }
+
 /* ============ NAV ============ */
 const PAGES=[
   {id:'overview', label:'总览', en:'Overview', abbr:'总', eyebrow:'OVERVIEW', group:'core'},
@@ -1137,7 +1156,11 @@ function buildNav(){
   const nav=$('#nav'); nav.innerHTML=''; let lastGroup=null;
   PAGES.forEach(p=>{
     if(p.group&&p.group!==lastGroup){ lastGroup=p.group; const g=GROUPS[p.group]; nav.appendChild(el(`<div class="nav-group">${setState.lang==='en'?g.en:g.zh}</div>`)); }
-    const right=p.count?`<span class="count">${p.count}</span>`:(p.ai?`<span class="ai-tag">AI</span>`:'');
+    // 导航徽标用真实数据(岗位数 / 未完成行动数),其余回退到静态 count。
+    const liveCount = p.id==='jobs' ? `${JOBS.length}/${setState.goal||20}`
+      : p.id==='actions' ? `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`
+      : p.count;
+    const right=liveCount?`<span class="count">${liveCount}</span>`:(p.ai?`<span class="ai-tag">AI</span>`:'');
     const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="marker"></span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
     b.onclick=()=>go(p.id);
     nav.appendChild(b);
@@ -1263,17 +1286,19 @@ function buildPages(){
 
 /* ---------- OVERVIEW ---------- */
 function renderOverview(){
-  const avgI=(JOBS.reduce((a,j)=>a+j.interest,0)/JOBS.length).toFixed(1);
-  const avgM=(JOBS.reduce((a,j)=>a+j.match,0)/JOBS.length).toFixed(1);
-  const maxN=Math.max(...PIPELINE.map(p=>p.n));
+  const n=JOBS.length||1;
+  const avgI=(JOBS.reduce((a,j)=>a+(j.interest||0),0)/n).toFixed(1);
+  const avgM=(JOBS.reduce((a,j)=>a+(j.match||0),0)/n).toFixed(1);
+  const PIPE=pipelineReal();
+  const maxN=Math.max(1,...PIPE.map(p=>p.n));
   const stats=`<div class="sec" style="border-bottom:none;padding-bottom:0;">
     <div class="stat-grid">
-      <div class="stat"><div class="num">12<small> / 20</small></div><div class="lab">JOBS COLLECTED</div><div class="sub">${tt('已收集岗位','Jobs collected')}</div></div>
+      <div class="stat"><div class="num">${JOBS.length}<small> / ${setState.goal||20}</small></div><div class="lab">JOBS COLLECTED</div><div class="sub">${tt('已收集岗位','Jobs collected')}</div></div>
       <div class="stat"><div class="num">${avgI}<small> / 10</small></div><div class="lab">AVG INTEREST</div><div class="sub">${tt('平均兴趣分','Avg interest')}</div></div>
       <div class="stat"><div class="num">${avgM}<small> / 10</small></div><div class="lab">AVG MATCH</div><div class="sub">${tt('平均匹配分','Avg match')}</div></div>
-      <div class="stat"><div class="num">23</div><div class="lab">HIGH-FREQ SKILLS</div><div class="sub">${tt('高频技能','High-freq skills')}</div></div>
+      <div class="stat"><div class="num">${distinctNeedSkills()}</div><div class="lab">HIGH-FREQ SKILLS</div><div class="sub">${tt('高频技能','High-freq skills')}</div></div>
     </div></div>`;
-  const gaps=TOP_GAPS.map(g=>`
+  const gaps=topGapsReal(3).map(g=>`
     <div class="gap-item">
       <div class="gap-head"><span class="gi">${g.rank}</span><span class="gn">${g.name}</span></div>
       <div class="gap-meta">${tt(g.jobs+' 个岗位需要 · 当前 '+g.have, g.jobs+' jobs need it · now '+g.have)}</div>
@@ -1298,9 +1323,9 @@ function renderOverview(){
   const pipe=`<div class="sec" style="border-bottom:none;">
     <p class="seclabel">— PIPELINE</p><h2 class="sectitle">${tt('岗位流转','Pipeline')}<span class="dot">.</span></h2>
     <div style="margin-top:18px;max-width:560px;">
-    ${PIPELINE.map(p=>`<div class="barrow"><span class="blab">${p.label}</span><div class="btrack"><i style="width:${maxN?(p.n/maxN*100):0}%;background:${p.color};"></i></div><span class="bval">${p.n}</span></div>`).join('')}
+    ${PIPE.map(p=>`<div class="barrow"><span class="blab">${p.label}</span><div class="btrack"><i style="width:${maxN?(p.n/maxN*100):0}%;background:${p.color};"></i></div><span class="bval">${p.n}</span></div>`).join('')}
     </div>
-    <p style="font-size:12px;color:var(--ink-3);margin-top:14px;">${tt('已记录 12 个岗位 · 持续推进中','12 jobs logged · steady progress')}</p>
+    <p style="font-size:12px;color:var(--ink-3);margin-top:14px;">${tt('已记录 '+JOBS.length+' 个岗位 · 持续推进中',JOBS.length+' jobs logged · steady progress')}</p>
   </div>`;
   const nextAct=ACTIONS.filter(a=>a.state==='doing').sort((a,b)=>({high:0,mid:1,low:2})[a.pri]-({high:0,mid:1,low:2})[b.pri])[0]||ACTIONS.find(a=>a.state==='todo')||ACTIONS[0];
   const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="next-hero"><div class="nh-in">
@@ -1441,19 +1466,21 @@ function renderAnalysis(){
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 16px;">● 已具备　○ 可补充　· 横向看岗位覆盖,纵向看技能需求</p>
     <div class="matrix-wrap"><table class="matrix"><thead>${matHead}</thead><tbody>${matBody}</tbody></table></div></div>`;
 
-  const maxC=Math.max(...CITY_DIST.map(c=>c[1])), maxK=Math.max(...KIND_DIST.map(c=>c[1]));
+  const CITY=distBy('city'), KIND=distBy('kind');
+  const maxC=Math.max(1,...CITY.map(c=>c[1])), maxK=Math.max(1,...KIND.map(c=>c[1]));
   const dist=`<div class="sec"><p class="seclabel">— DISTRIBUTION</p><h2 class="sectitle">${tt('分布','Distribution')}<span class="dot">.</span></h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:18px;max-width:760px;">
-    <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">按城市</p>
-      ${CITY_DIST.map(c=>`<div class="barrow" style="grid-template-columns:48px 1fr 30px;"><span class="blab">${c[0]}</span><div class="btrack"><i style="width:${c[1]/maxC*100}%;background:var(--status-info);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
-    <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">按公司类型</p>
-      ${KIND_DIST.map(c=>`<div class="barrow" style="grid-template-columns:96px 1fr 30px;"><span class="blab" style="font-size:12.5px;">${c[0]}</span><div class="btrack"><i style="width:${maxK?c[1]/maxK*100:0}%;background:var(--ink-mute);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
+    <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">${tt('按城市','By city')}</p>
+      ${CITY.map(c=>`<div class="barrow" style="grid-template-columns:48px 1fr 30px;"><span class="blab">${c[0]}</span><div class="btrack"><i style="width:${c[1]/maxC*100}%;background:var(--status-info);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
+    <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">${tt('按公司类型','By type')}</p>
+      ${KIND.map(c=>`<div class="barrow" style="grid-template-columns:96px 1fr 30px;"><span class="blab" style="font-size:12.5px;">${c[0]}</span><div class="btrack"><i style="width:${maxK?c[1]/maxK*100:0}%;background:var(--ink-mute);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
     </div></div>`;
 
-  const maxKw=Math.max(...KEYWORDS.map(k=>k[1]));
-  const cloud=`<div class="sec" style="border-bottom:none;"><p class="seclabel">— KEYWORDS</p><h2 class="sectitle">${tt('JD 高频关键词','JD top keywords')}<span class="dot">.</span></h2>
-    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 18px;">除硬技能外,JD 中反复出现的"软词"</p>
-    <div class="cloud">${KEYWORDS.map(k=>{const sz=12+(k[1]/maxKw)*12;return `<span class="kw" style="font-size:${sz}px;"><b>${k[0]}</b> <span class="c">${k[1]}次</span></span>`;}).join('')}</div></div>`;
+  const KW=keywordsReal();
+  const cloud= KW.length ? (()=>{ const maxKw=Math.max(1,...KW.map(k=>k[1]));
+    return `<div class="sec" style="border-bottom:none;"><p class="seclabel">— KEYWORDS</p><h2 class="sectitle">${tt('JD 高频关键词','JD top keywords')}<span class="dot">.</span></h2>
+    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 18px;">${tt('除硬技能外,JD 中反复出现的"软词"','Recurring soft-words in your JDs, beyond hard skills')}</p>
+    <div class="cloud">${KW.map(k=>{const sz=12+(k[1]/maxKw)*12;return `<span class="kw" style="font-size:${sz}px;"><b>${k[0]}</b> <span class="c">${k[1]}${tt('次','×')}</span></span>`;}).join('')}</div></div>`; })() : '';
 
   const maxTrend=Math.max(...TREND.map(t=>t.pct));
   const trendRows=TREND.map(t=>{
