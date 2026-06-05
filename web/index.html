@@ -1210,7 +1210,7 @@ function updateAgentChrome(){
   const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
   const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
-  const al=$('#agentCmds .ac-label'); if(al)al.textContent=T('cmdLabel');
+  if(typeof renderAgentCmds==='function') renderAgentCmds();   // 命令 chips 双语,随语言重渲(含 ac-label)
 }
 // Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
 function updateCopChrome(){
@@ -1233,13 +1233,13 @@ function go(id){
 function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
   const map={
-    overview:[{t:'智能匹配', a:'btn-accent', fn:()=>go('match')}],
-    match:[{t:'我的简历', fn:openResumeModal}],
-    resumes:[{t:'+ 生成针对性简历', a:'btn-accent', fn:()=>resumeGenerate(resumeState.jobId, renderResumes)}],
-    jobs:[{t:'+ 录入岗位', a:'btn-accent', fn:openNewJob}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
-    analysis:[{t:'导出报告', fn:()=>toast('已导出分析报告 (mock)')}],
-    skills:[{t:'市场价值报告', fn:openMarketValue}],
-    actions:[{t:'+ 添加行动', a:'btn-accent', fn:openNewAction}],
+    overview:[{t:tt('智能匹配','Smart match'), a:'btn-accent', fn:()=>go('match')}],
+    match:[{t:tt('我的简历','My resume'), fn:openResumeModal}],
+    resumes:[{t:tt('+ 生成针对性简历','+ Tailored resume'), a:'btn-accent', fn:()=>resumeGenerate(resumeState.jobId, renderResumes)}],
+    jobs:[{t:tt('+ 录入岗位','+ Add job'), a:'btn-accent', fn:openNewJob}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
+    analysis:[{t:tt('导出报告','Export report'), fn:()=>toast(tt('已导出分析报告 (mock)','Analysis report exported (mock)'))}],
+    skills:[{t:tt('市场价值报告','Market value'), fn:openMarketValue}],
+    actions:[{t:tt('+ 添加行动','+ Add action'), fn:openNewAction}],
     interview:[],
     settings:[]
   };
@@ -1634,11 +1634,13 @@ function trainingFor(name){
 function renderSkills(){
   const buckets={compound:[],accumulate:[],depreciate:[]};
   SKILLS.forEach(s=>buckets[s.accrual].push(s));
-  const invest={compound:'优先投入',accumulate:'稳定维护',depreciate:'够用即可'};
+  const invest={compound:tt('优先投入','Invest first'),accumulate:tt('稳定维护','Maintain'),depreciate:tt('够用即可','Good enough')};
+  const accLabel={compound:tt('复利型','Compounding'),accumulate:tt('积累型','Accumulating'),depreciate:tt('易折旧','Depreciating')};
+  const accDesc={compound:tt('随经验复利增长,跨场景迁移,几乎不折旧 — 值得优先重投入。','Compounds with experience, transfers across contexts, barely depreciates — invest first.'),accumulate:tt('稳定积累、基本不折旧,但增长接近线性 — 稳定维护即可。','Accumulates steadily, low depreciation, near-linear growth — just maintain.'),depreciate:tt('与具体工具/版本绑定,折旧较快 — 够用即可,按需更新,别过度投入。','Tied to specific tools/versions, depreciates fast — keep it good enough, update as needed.')};
   const lensCol=(key)=>{
     const ac=ACCRUAL[key]; const arr=buckets[key];
     const chips=arr.slice(0,9).map(s=>`<span class="chip" data-skill="${s.name}" style="cursor:pointer;">${s.name}</span>`).join('')+(arr.length>9?`<span class="chip" style="border:none;color:var(--ink-mute);">+${arr.length-9}</span>`:'');
-    return `<div class="lens-col"><div class="lh"><span class="acbadge ${ac.cls}">${ac.label}</span><span class="mono" style="font-size:11px;color:var(--ink-3);">${arr.length} 项</span></div><p class="ld">${ac.desc}</p><div class="ll">${chips}</div><p class="invest">投资策略 · ${invest[key]}</p></div>`;
+    return `<div class="lens-col"><div class="lh"><span class="acbadge ${ac.cls}">${accLabel[key]}</span><span class="mono" style="font-size:11px;color:var(--ink-3);">${arr.length} ${tt('项','items')}</span></div><p class="ld">${accDesc[key]}</p><div class="ll">${chips}</div><p class="invest">${tt('投资策略 · ','Strategy · ')}${invest[key]}</p></div>`;
   };
   const lens=`<div class="sec"><p class="seclabel">— ACCRUAL VALUE</p><h2 class="sectitle">${tt('积累价值视角','Accrual-value lens')}<span class="dot">.</span></h2>
     <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 16px;max-width:680px;line-height:1.7;">${tt('不是所有能力都值得平均用力。复利型能力随经验跨场景叠加增值、几乎不折旧;易折旧能力与工具版本强绑定。把有限的刻意练习,优先投到复利与积累上。','Not every skill deserves equal effort. Compounding skills stack across contexts and barely depreciate; depreciating ones are tied to tool versions. Invest your limited deliberate practice in compounding & accumulating ones first.')}</p>
@@ -1652,13 +1654,14 @@ function renderSkills(){
   </div>`;
   const order=['meta','general','tech'];
   const eyebrowMap={meta:'META ABILITIES',general:'GENERAL',tech:'TECHNICAL'};
-  const noteMap={meta:'元能力是「学习能力的能力」— 复利最强、最该养护,却最少被显式训练。',general:'通用能力跨岗位迁移,JD 里常以「Owner / 推动 / 落地」等软词出现。',tech:'专业技能里,架构思维复利、语言与中间件积累、特定工具易折旧 — 区别对待。'};
+  const catTitle={meta:tt('元能力','Meta abilities'),general:tt('通用能力','General abilities'),tech:tt('专业技能','Technical skills')};
+  const noteMap={meta:tt('元能力是「学习能力的能力」— 复利最强、最该养护,却最少被显式训练。','Meta-abilities are "the ability to learn" — highest compounding, most worth nurturing, yet least explicitly trained.'),general:tt('通用能力跨岗位迁移,JD 里常以「Owner / 推动 / 落地」等软词出现。','General abilities transfer across roles — JDs phrase them as "own / drive / deliver".'),tech:tt('专业技能里,架构思维复利、语言与中间件积累、特定工具易折旧 — 区别对待。','In technical skills: architecture thinking compounds, languages & middleware accumulate, specific tools depreciate — treat them differently.')};
   let sections='';
   order.forEach(cat=>{
     if(skillFilter.cat!=='全部' && CAT_LABEL[cat]!==skillFilter.cat) return;
     const arr=SKILLS.filter(s=>s.cat===cat && (skillFilter.accrual==='全部'||s.accrual===skillFilter.accrual));
     if(!arr.length) return;
-    sections+=`<div class="sec"><p class="seclabel">— ${eyebrowMap[cat]}</p><h2 class="sectitle">${CAT_LABEL[cat]} <span style="font-family:var(--font-mono);font-style:normal;font-size:12px;color:var(--ink-3);">${arr.length}</span><span class="dot">.</span></h2>
+    sections+=`<div class="sec"><p class="seclabel">— ${eyebrowMap[cat]}</p><h2 class="sectitle">${catTitle[cat]} <span style="font-family:var(--font-mono);font-style:normal;font-size:12px;color:var(--ink-3);">${arr.length}</span><span class="dot">.</span></h2>
       <p style="font-size:12px;color:var(--ink-3);margin:6px 0 0;">${noteMap[cat]}</p>
       <div class="skill-grid" style="margin-top:16px;">${arr.map(capCard).join('')}</div></div>`;
   });
@@ -2359,7 +2362,7 @@ function openNewJob(editId){
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— ${editing?'EDIT':'NEW'}</p><h2 style="margin-top:5px;">${editing?tt('编辑岗位','Edit job'):tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
-      <div class="msec"><p class="seclabel">— AI 智能录入</p>
+      <div class="msec"><p class="seclabel">— ${tt('AI 智能录入','AI SMART ENTRY')}</p>
         <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 10px;line-height:1.6;">${tt('粘贴 JD / 招聘网页正文,或选文件,让 AI 自动整理成下面的表单 —— 你只需核对、改两笔再保存。','Paste a JD / job-page content, or pick a file; AI fills the form below — you just review, tweak, and save.')}</p>
         <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…(或选文件 / 直接扔招聘截图)','Paste a JD or full page content… (or pick a file / drop a screenshot)')}" style="min-height:84px;font-family:inherit;"></textarea>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
@@ -2374,7 +2377,7 @@ function openNewJob(editId){
       </div>
       <div class="msec"><p class="seclabel">— BASIC INFO</p>
         <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}" value="${editing?av(editing.co):''}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}" value="${editing?av(editing.role):''}"></div></div>
-        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity">${['北京','上海','深圳','杭州','广州'].map(c=>`<option ${editing&&editing.city===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource">${['BOSS直聘','拉勾','内推','猎头'].map(o=>`<option ${editing&&editing.src===o?'selected':''}>${o}</option>`).join('')}</select></div></div>
+        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity">${['北京','上海','深圳','杭州','广州'].map(c=>`<option ${editing&&editing.city===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource">${[['BOSS直聘','BOSS Zhipin'],['官网','Official site'],['社群','Community / group'],['内推','Referral'],['猎头','Headhunter'],['其他','Other']].map(o=>`<option value="${o[0]}" ${editing&&editing.src===o[0]?'selected':''}>${tt(o[0],o[1])}</option>`).join('')}</select></div></div>
         <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" id="njPay" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}" value="${editing?av(editing.pay):''}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" id="njYears" placeholder="${tt('如 · 5+','e.g. 5+')}" value="${editing?av(editing.years):''}"></div></div>
       </div>
       <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}">${editing?String(editing.jd||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}</textarea></div>
@@ -2978,7 +2981,8 @@ function renderResumes(){
   const pills=JOBS.map(j=>`<button class="pill ${j.id===resumeState.jobId?'on':''}" data-rj="${j.id}">${RESUME_TAILORED[j.id]?'● ':''}${j.co} · ${j.role.split('·')[0].trim()}</button>`).join('');
   const j=JOBS.find(x=>x.id===resumeState.jobId);
   const body=RESUME_TAILORED[j.id]?resumeWorkspaceHTML(j):`<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;"><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+j.co+' 的简历','No resume for '+j.co+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('基于 JD + 你的职业资产,几秒生成一份对口简历 —— 可编辑、标擅长、导出。','From the JD + your assets, generate a matching resume in seconds — editable, mark strengths, export.')}</div></div><button class="btn btn-accent" id="rbGen">${tt('AI 生成针对性简历','AI-generate tailored resume')} →</button></div></div>`;
-  const tail=`<div class="sec" style="border-bottom:none;"><p class="seclabel">— TAILORED</p><h2 class="sectitle">${tt('针对性简历','Tailored resumes')} <span style="font-family:var(--font-mono);font-style:normal;font-size:12px;color:var(--ink-3);">${tt(tailored.length+' 份',''+tailored.length)}</span><span class="dot">.</span></h2>
+  const tail=`<div class="sec" style="border-bottom:none;"><p class="seclabel">— TAILORED</p>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;"><h2 class="sectitle" style="margin:0;">${tt('针对性简历','Tailored resumes')} <span style="font-family:var(--font-mono);font-style:normal;font-size:12px;color:var(--ink-3);">${tt(tailored.length+' 份',''+tailored.length)}</span><span class="dot">.</span></h2>${tailored.length>0?`<button class="btn-text" id="rbClearAll" style="color:var(--ink-mute);">${tt('清空全部','Clear all')}</button>`:''}</div>
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 0;">${tt('选一个岗位查看或生成它的针对性简历(● = 已生成)。','Pick a job to view or generate its tailored resume (● = generated).')}</p>
     <div class="pillrow" style="margin-top:14px;">${pills}</div>
     <div style="margin-top:16px;">${body}</div></div>`;
@@ -2999,6 +3003,7 @@ function resumeBind(){
   const id=resumeState.jobId; const root=$('#page-resumes'); const r=RESUME_TAILORED[id];
   $$('#page-resumes [data-rj]').forEach(b=>b.onclick=()=>{resumeState.jobId=+b.dataset.rj;renderResumes();});
   const gen=$('#rbGen',root); if(gen)gen.onclick=()=>resumeGenerate(id,renderResumes);
+  const clr=$('#rbClearAll',root); if(clr)clr.onclick=clearAllTailoredResumes;   // 清空所有针对性简历(走 guardrail,主简历资料不受影响)
   if(!r)return;
   const regen=$('#rbRegen',root); if(regen)regen.onclick=()=>resumeGenerate(id,renderResumes);
   const exp=$('#rbExport',root); if(exp)exp.onclick=()=>resumeExport(id);
@@ -3403,32 +3408,32 @@ function frameQuery(text){
   const t = String(text || '');
   const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
   // 块4:AI 对话式 CRUD(放最前 —— 否则"把薪资改成X"会误命中下面的 value-card 等查询意图)。AI 一律只提案,落库由我在卡片确认。
-  if(/删除|删掉|移除|撤掉|不要(这个|那个|它|了)/.test(t) && /岗位|职位|公司|它|这个|那个/.test(t))
+  if(/删除|删掉|移除|撤掉|不要(这个|那个|它|了)|delete|remove/i.test(t) && /岗位|职位|公司|它|这个|那个|job|position|role/i.test(t))
     return G + '确认我指的是哪个岗位(拿到 id)后,**不要直接删**,在回答末尾附一个代码块发起删除提案(由我在卡片确认、可撤销):\n```seeker:job-delete\n{"id":<该岗位 id>}\n```\n我的原始请求:' + t;
-  if(/(修改|更新|改成|换成|设为|设成|改为|标记为|标成)/.test(t) && /岗位|职位|薪资|状态|城市|年限|学历|公司|JD|技能|它|这个|那个/.test(t))
+  if(/(修改|更新|改成|换成|设为|设成|改为|标记为|标成|change|update|set .* to|rename|mark .* as)/i.test(t) && /岗位|职位|薪资|状态|城市|年限|学历|公司|JD|技能|它|这个|那个|job|salary|pay|status|city|company|skill/i.test(t))
     return G + '确认是哪个岗位(拿到 id)、相关字段当前值后,**不要直接改**,在回答末尾附一个代码块发起修改提案(我在卡片确认、可撤销):\n```seeker:job-update\n{"id":<该岗位 id>,"changes":[{"field":"<co/role/city/pay/years/edu/jd/summary/seniority/workMode/kind/status/need/plus 之一>","after":<新值;need/plus 为数组;status 仅 fav/todo/sent/interview/reject/skip>}]}\n```\n我的原始请求:' + t;
-  if(/(加|添加|新增|录入|收藏|记一下|帮我加|存一下|存个)/.test(t) && /岗位|职位|公司/.test(t))
+  if(/(加|添加|新增|录入|收藏|记一下|帮我加|存一下|存个|add|create|new|save)/i.test(t) && /岗位|职位|公司|job|position|role/i.test(t))
     return '我想新增一个目标岗位。请据我下面的描述整理字段(只填能推断的,其余留空),在回答末尾附一个代码块发起新增提案(由我在卡片确认):\n```seeker:job-create\n{"co":"","role":"","city":"","pay":"","years":"","edu":"","need":[],"plus":[],"jd":"","summary":"","seniority":"","workMode":"","highlights":[],"kind":""}\n```\n我的原始请求:' + t;
-  if(/简历/.test(t))
+  if(/简历|resume|cv|tailor/i.test(t))
     return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式,每个模块有 key)与目标 jobs(拿到 jobId),据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。'
       + '若你给出了具体可直接套用的改写,请在回答**末尾**附一个代码块以便我一键应用(先正常用自然语言说明改动思路,再附代码块):\n```seeker:resume-edit\n{"jobId":<目标岗位 id>,"edits":[{"module":"<模块 key,如 summary / skills / honors / portfolio,或自定义模块 key>","content":<文本模块为字符串;skills 模块为字符串数组>}]}\n```\n'
       + 'module **只能是专业模块,绝不能是 basic 或任何联系方式 / 身份字段**;只列你确有改写的模块。我的原始请求:' + t;
-  if(/面试|JD|陪我练|面试题/.test(t))
+  if(/面试|JD|陪我练|面试题|interview/i.test(t))
     return G + '读取我的目标 jobs(岗位/JD,含 id)后,给出贴合该岗位的面试题或面试反馈。'
       + '聚焦的那个岗位,请在回答**末尾**附一个代码块渲染面试卡(正文简洁):\n```seeker:interview-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
-  if(/训练计划|学习路线|怎么补|如何补|补齐|计划/.test(t))
+  if(/训练计划|学习路线|怎么补|如何补|补齐|计划|training plan|study plan|learn|roadmap/i.test(t))
     return G + '读取我的 skills(技能现状)、actions(在进行的训练)、jobs(目标岗位)后,给出针对我缺口与目标的具体训练计划。'
       + '聚焦要补的那项技能,请在回答**末尾**附一个代码块以渲染交互计划卡(正文保持简洁):\n```seeker:plan-card\n{"skill":"<要补的技能名,如 Rust / K8s / 分布式系统 / 系统设计>"}\n```\n我的原始请求:' + t;
-  if(/匹配|该投|投哪/.test(t))
+  if(/匹配|该投|投哪|which job|best fit|should i apply|apply to/i.test(t))
     return G + '读取我的 jobs(目标岗位,含 id)与 skills(我的技能)后,分析我最该投哪个岗位、理由、以及最关键的能力缺口。'
       + '聚焦的那个岗位,请在回答**末尾**附一个代码块以渲染交互雷达卡(正文保持简洁,不必重复卡里的数字):\n```seeker:match-card\n{"jobId":<该岗位 id>}\n```\n我的原始请求:' + t;
-  if(/缺口|短板|不足/.test(t))
+  if(/缺口|短板|不足|skill gap|biggest gap|weakness/i.test(t))
     return G + '读取我的 skills 与 jobs 后,对照目标岗位找出我最关键的能力缺口与补齐方向。'
       + '请在回答**末尾**附一个代码块渲染缺口卡(正文简洁):\n```seeker:gaps-card\n{}\n```\n我的原始请求:' + t;
-  if(/最该做|下一步|现在做什么|该做什么/.test(t))
+  if(/最该做|下一步|现在做什么|该做什么|what should i do|do next|next step/i.test(t))
     return G + '读取我的 jobs/actions/skills 后,告诉我现在最该做什么、为什么(简洁)。'
       + '请在回答**末尾**附一个代码块渲染「下一步」轻卡:\n```seeker:next-card\n{}\n```\n我的原始请求:' + t;
-  if(/市场价值|身价|值多少|薪资|薪酬/.test(t))
+  if(/市场价值|身价|值多少|薪资|薪酬|market value|how much.*worth|my worth|salary range/i.test(t))
     return G + '读取我的 skills 与 jobs 后,给出有依据的市场价值/薪资判断。'
       + '请在回答**末尾**附一个代码块渲染市场价值卡(正文简洁):\n```seeker:value-card\n{}\n```\n我的原始请求:' + t;
   return text;
@@ -3951,6 +3956,21 @@ function removeResume(jobId){
   if(!collPersistOn()) return;
   window.SeekerRT.db.remove('resumes', 'r_'+jobId).catch(e=>console.error('[data] remove resume', e));
 }
+// 清空所有针对性简历(走 guardrail 预览 + 撤销)。主简历资料(哨兵 r__master__ 不在 RESUME_TAILORED)与个人信息不受影响。
+function clearAllTailoredResumes(){
+  const ids=Object.keys(RESUME_TAILORED);
+  if(!ids.length){ toast(tt('没有针对性简历','No tailored resumes')); return; }
+  const G=window.SeekerGuardrail;
+  if(!G||!G.confirmDestructive){ toast(tt('该端暂不支持','Not supported here')); return; }
+  const snap=JSON.parse(JSON.stringify(RESUME_TAILORED));
+  G.confirmDestructive({
+    title: tt('清空所有针对性简历?','Clear all tailored resumes?'),
+    detail: tt('将删除全部 '+ids.length+' 份针对性简历。主简历资料与个人信息不受影响,可撤销。','Deletes all '+ids.length+' tailored resume(s). Master resume data & personal info untouched. Undoable.'),
+    confirmLabel: tt('清空','Clear'), undoText: tt('已清空针对性简历','Tailored resumes cleared'),
+    onConfirm:()=>{ for(const k of ids){ delete RESUME_TAILORED[k]; removeResume(k); } renderResumes(); try{ renderInterview(); }catch(_e){} },
+    onUndo:()=>{ Object.keys(snap).forEach(k=>{ RESUME_TAILORED[k]=snap[k]; persistResume(k); }); renderResumes(); try{ renderInterview(); }catch(_e){} },
+  });
+}
 async function hydrateResumes(){
   if(!collPersistOn()) return;
   try{
@@ -4138,35 +4158,48 @@ function agentInit(){
   });
   inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(120,inp.scrollHeight)+'px';const v=inp.value;if(v.charAt(0)==='/')cmdOpen(v.slice(1));else cmdClose();});
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
-  const cmds=[['智能匹配','我最该投哪个岗位?'],['改简历','帮我改字节那个岗位的简历'],['出面试题','用字节的 JD 陪我练'],['排训练计划','给我排一个 Rust 训练计划'],['查能力缺口','我最大的能力缺口是什么?'],['市场价值','我的市场价值值多少?'],['下一步','我现在最该做什么?']];
-  $('#agentCmds').innerHTML=`<span class="ac-label">技能 / 命令 · 也可输入 /</span>`+cmds.map(c=>`<button class="ac-chip" data-cmd="${c[1]}">${c[0]}</button>`).join('');
-  $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
+  renderAgentCmds();   // 命令 chips(双语,随语言重渲;见 renderAgentCmds + updateAgentChrome)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
   let m='editor'; try{m=localStorage.getItem('jh-mode')||'editor';}catch(e){}
   setAppMode(m);
 }
+// Agent 命令 chips(双语;随语言重渲 —— 见 updateAgentChrome 调用)。查询也双语,配合 frameQuery 的中英关键词框定。
+function renderAgentCmds(){
+  const host=$('#agentCmds'); if(!host) return;
+  const cmds=[
+    [tt('智能匹配','Smart match'), tt('我最该投哪个岗位?','Which job should I apply to?')],
+    [tt('改简历','Tune resume'), tt('帮我改简历,贴合我的目标岗位','Help me tailor my resume to my target job')],
+    [tt('出面试题','Interview Q'), tt('用目标岗位的 JD 陪我练面试','Practice interview questions from my target job JD')],
+    [tt('排训练计划','Training plan'), tt('给我排一个训练计划补齐缺口','Make me a training plan to close my gaps')],
+    [tt('查能力缺口','Skill gaps'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?')],
+    [tt('市场价值','Market value'), tt('我的市场价值值多少?','What is my market value?')],
+    [tt('下一步','Next step'), tt('我现在最该做什么?','What should I do next?')]
+  ];
+  host.innerHTML=`<span class="ac-label">${tt('技能 / 命令 · 也可输入 /','Skills / commands · or type /')}</span>`+cmds.map(c=>`<button class="ac-chip" data-cmd="${c[1].replace(/"/g,'&quot;')}">${c[0]}</button>`).join('');
+  $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
+}
 /* ---- /command palette ---- */
 const AGENT_CMDS=[
-  {cmd:'/match', label:'智能匹配', desc:'最该投哪个', run:()=>agentSend('我最该投哪个岗位?')},
-  {cmd:'/resume', label:'改简历', desc:'打开简历', run:()=>copGo('resumes')},
-  {cmd:'/interview', label:'面试陪练', desc:'出题练习', run:()=>copGo('interview')},
-  {cmd:'/plan', label:'排训练计划', desc:'补齐缺口', run:()=>agentSend('给我排一个 Rust 训练计划')},
-  {cmd:'/gaps', label:'查能力缺口', desc:'Top 缺口', run:()=>agentSend('我最大的能力缺口是什么?')},
-  {cmd:'/value', label:'市场价值', desc:'估算身价', run:()=>agentSend('我的市场价值值多少?')},
-  {cmd:'/trend', label:'技能趋势', desc:'什么在涨', run:()=>agentSend('什么技能在涨?')},
-  {cmd:'/next', label:'下一步', desc:'现在该做', run:()=>agentSend('我现在最该做什么?')},
-  {cmd:'/jobs', label:'目标岗位', desc:'打开列表', run:()=>copGo('jobs')},
-  {cmd:'/skills', label:'职业资产', desc:'能力档案', run:()=>copGo('skills')},
-  {cmd:'/add', label:'录入岗位', desc:'新增岗位', run:()=>copNewJob()},
-  {cmd:'/market', label:'市场情报', desc:'趋势/薪资', run:()=>copGo('analysis')},
-  {cmd:'/settings', label:'数据设置', desc:'仅打开 · 不可改', run:()=>copGo('settings')}
+  {cmd:'/match', label:['智能匹配','Smart match'], desc:['最该投哪个','Best fit'], run:()=>agentSend(tt('我最该投哪个岗位?','Which job should I apply to?'))},
+  {cmd:'/resume', label:['改简历','Tune resume'], desc:['打开简历','Open resume'], run:()=>copGo('resumes')},
+  {cmd:'/interview', label:['面试陪练','Interview'], desc:['出题练习','Practice'], run:()=>copGo('interview')},
+  {cmd:'/plan', label:['排训练计划','Training plan'], desc:['补齐缺口','Close gaps'], run:()=>agentSend(tt('给我排一个训练计划补齐缺口','Make me a training plan to close my gaps'))},
+  {cmd:'/gaps', label:['查能力缺口','Skill gaps'], desc:['Top 缺口','Top gaps'], run:()=>agentSend(tt('我最大的能力缺口是什么?','What is my biggest skill gap?'))},
+  {cmd:'/value', label:['市场价值','Market value'], desc:['估算身价','Estimate worth'], run:()=>agentSend(tt('我的市场价值值多少?','What is my market value?'))},
+  {cmd:'/trend', label:['技能趋势','Skill trends'], desc:['什么在涨','What is rising'], run:()=>agentSend(tt('什么技能在涨?','What skills are trending?'))},
+  {cmd:'/next', label:['下一步','Next step'], desc:['现在该做','Do now'], run:()=>agentSend(tt('我现在最该做什么?','What should I do next?'))},
+  {cmd:'/jobs', label:['目标岗位','Target jobs'], desc:['打开列表','Open list'], run:()=>copGo('jobs')},
+  {cmd:'/skills', label:['职业资产','Career assets'], desc:['能力档案','Asset profile'], run:()=>copGo('skills')},
+  {cmd:'/add', label:['录入岗位','Add job'], desc:['新增岗位','New job'], run:()=>copNewJob()},
+  {cmd:'/market', label:['市场情报','Market intel'], desc:['趋势/薪资','Trends/pay'], run:()=>copGo('analysis')},
+  {cmd:'/settings', label:['数据设置','Settings'], desc:['仅打开 · 不可改','Open only · read-only'], run:()=>copGo('settings')}
 ];
 let cmdActive=0, cmdFiltered=[];
 function cmdIsOpen(){const p=$('#cmdPop');return p&&p.classList.contains('open');}
-function cmdFilterList(q){q=(q||'').toLowerCase().trim();if(!q)return AGENT_CMDS.slice();return AGENT_CMDS.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.includes(q)||c.desc.includes(q));}
+function cmdFilterList(q){q=(q||'').toLowerCase().trim();if(!q)return AGENT_CMDS.slice();return AGENT_CMDS.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
 function cmdRender(){
   const pop=$('#cmdPop');
-  pop.innerHTML=`<div class="cmd-hint">命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${c.cmd}</span><span class="cl">${c.label}</span><span class="cd">${c.desc}</span></div>`).join('');
+  pop.innerHTML=`<div class="cmd-hint">${tt('命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭','Commands · ↑↓ select · Enter run · Esc close')}</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${c.cmd}</span><span class="cl">${tt(c.label[0],c.label[1])}</span><span class="cd">${tt(c.desc[0],c.desc[1])}</span></div>`).join('');
   $$('#cmdPop [data-ci]').forEach(r=>r.onmousedown=(e)=>{e.preventDefault();cmdRun(+r.dataset.ci);});
 }
 function cmdOpen(q){cmdFiltered=cmdFilterList(q);cmdActive=0;if(cmdFiltered.length){cmdRender();$('#cmdPop').classList.add('open');}else cmdClose();}
