@@ -15,6 +15,8 @@ use tauri::AppHandle;
 
 const CHUNK_SIZE: usize = 500; // 近似字符数(按 char,中文友好)
 const CHUNK_OVERLAP: usize = 80;
+// 编译期保证:切块步进 = SIZE-OVERLAP > 0 → chunk_text 必前进、不死循环(比运行时 assert 更强)。
+const _: () = assert!(CHUNK_SIZE > CHUNK_OVERLAP, "chunk step (SIZE - OVERLAP) must be > 0");
 const TOP_K: usize = 4;
 const MIN_SCORE: f32 = 0.2; // 相关度下限,过滤噪声
 static DOC_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -145,7 +147,7 @@ impl Capability for DocContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{chunk_text, embed_configured, CHUNK_OVERLAP, CHUNK_SIZE};
+    use super::{chunk_text, embed_configured, CHUNK_SIZE};
 
     #[test]
     fn chunk_empty_and_short() {
@@ -156,7 +158,7 @@ mod tests {
 
     #[test]
     fn chunk_long_overlaps_and_covers() {
-        assert!(CHUNK_SIZE > CHUNK_OVERLAP); // 步进 > 0,不死循环
+        // 步进>0 已由模块级编译期 const _ 断言保证;此处验切块行为。
         let long: String = "字".repeat(CHUNK_SIZE * 2 + 50);
         let cs = chunk_text(&long);
         assert!(cs.len() >= 3, "长文本应切多块"); // 1050 字 / 步进 420 ≈ 3 块
