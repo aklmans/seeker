@@ -138,6 +138,8 @@ export function createDesktopRuntime() {
     ai: {
       stream: aiStream,
       complete: (req) => aiStream(req).done,
+      // 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本;无工具/历史/系统提示。供 AI 智能录入。
+      extract: (req) => invoke('ai_extract', { prompt: req.prompt, imageDataUrl: req.imageDataUrl ?? null }),
       getConfig: () => invoke('ai_config_get'),
       setConfig: (patch) =>
         invoke('ai_config_set', {

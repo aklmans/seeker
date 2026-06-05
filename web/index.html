@@ -2290,12 +2290,16 @@ function extractJdSkills(text){
   return Array.from(new Set(out)).slice(0,12);
 }
 // AI 智能录入(块2):把整段招聘内容框定成"提取结构化岗位、只返回 seeker:job-create 块"。AI 不止摘抄,还归纳 summary/seniority/workMode/highlights/kind。
-function frameJobExtract(blob){
-  return '你是岗位信息整理助手。从下面的招聘内容里提取一个结构化岗位。**只**输出一个 ```seeker:job-create 代码块,'
+function frameJobExtract(blob, fromImage){
+  const head = fromImage
+    ? '你是岗位信息整理助手。请仔细阅读**这张图片**(招聘截图 / 岗位海报 / JD 文档页),从中识别并提取一个结构化岗位。'
+    : '你是岗位信息整理助手。从下面的招聘内容里提取一个结构化岗位。';
+  const schema = '**只**输出一个 ```seeker:job-create 代码块,'
     +'JSON 含字段:co(公司)、role(岗位名)、city(城市)、pay(薪资)、years(年限要求)、edu(学历)、need(必需技能数组)、'
     +'plus(加分技能数组)、jd(整理后的 JD 正文)、summary(一句话:这是什么岗 / 亮点)、seniority(初级/中级/高级/专家)、'
     +'workMode(远程/混合/驻场/未知)、highlights(2-3 条核心职责或亮点的数组)、kind(一线大厂/独角兽/外企/创业/其他)。'
-    +'缺失字段留空字符串或空数组,可据内容合理归纳推断。不要调用任何工具,不要输出代码块以外的任何文字。\n\n招聘内容:\n"""\n'+blob+'\n"""';
+    +'缺失字段留空字符串或空数组,可据内容合理归纳推断。不要调用任何工具,不要输出代码块以外的任何文字。';
+  return head + schema + (fromImage ? '' : '\n\n招聘内容:\n"""\n'+blob+'\n"""');
 }
 function aiMetaHtml(mt){
   if(!mt || (!mt.summary && !mt.seniority && !mt.workMode && !mt.kind && !(mt.highlights&&mt.highlights.length))) return '';
@@ -2320,11 +2324,13 @@ function openNewJob(editId){
     <div class="modal-body">
       <div class="msec"><p class="seclabel">— AI 智能录入</p>
         <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 10px;line-height:1.6;">${tt('粘贴 JD / 招聘网页正文,或选文件,让 AI 自动整理成下面的表单 —— 你只需核对、改两笔再保存。','Paste a JD / job-page content, or pick a file; AI fills the form below — you just review, tweak, and save.')}</p>
-        <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…','Paste a JD or full page content…')}" style="min-height:84px;font-family:inherit;"></textarea>
+        <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…(或选文件 / 直接扔招聘截图)','Paste a JD or full page content… (or pick a file / drop a screenshot)')}" style="min-height:84px;font-family:inherit;"></textarea>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn btn-accent" id="aiExtract">${tt('让 AI 整理 →','Let AI organize →')}</button>
           <button class="btn" id="aiFileBtn">${tt('选文件 .txt/.md','Pick .txt/.md')}</button>
+          <button class="btn" id="aiImgBtn">${tt('扔图片 / 截图','Image / screenshot')}</button>
           <input type="file" id="aiFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
+          <input type="file" id="aiImg" accept="image/*" style="display:none">
           <span class="mono" id="aiStatus" style="font-size:11px;color:var(--ink-mute);"></span>
         </div>
         <div id="aiMeta">${editing?aiMetaHtml(aiMeta):''}</div>
@@ -2364,7 +2370,8 @@ function openNewJob(editId){
   let _pt=null;
   if(jdEl) jdEl.oninput=()=>{ clearTimeout(_pt); _pt=setTimeout(runParse, 400); }; // 粘贴 / 输入即自动解析(防抖,去多余点击)
   const ab=$('#analyzeBtn',m); if(ab) ab.onclick=runParse;                          // 按钮 = 重新解析
-  // AI 智能录入(块2):粘贴/文件 → AI 整理 → 填下方表单 + 归纳;用户核对后保存(AI 只填,扳机在用户)。
+  // AI 智能录入(块2 文本/文件 + 块3 图片):内容 → rt.ai.extract(无工具/历史/系统提示)→ 填下方表单 + 归纳;
+  // 用户核对后保存(AI 只填,保存扳机始终在用户;AI 不静默落库)。
   const fillFromExtract=(d)=>{
     const set=(sel,v)=>{ const el=$(sel,m); if(el && v!=null && String(v)!=='') el.value=String(v); };
     set('#njCo', d.co); set('#njRole', d.role); set('#njPay', d.pay); set('#njYears', d.years);
@@ -2375,23 +2382,33 @@ function openNewJob(editId){
     aiMeta={ summary:d.summary||'', seniority:d.seniority||'', workMode:d.workMode||'', highlights:Array.isArray(d.highlights)?d.highlights:[], kind:d.kind||'' };
     const mt=$('#aiMeta',m); if(mt) mt.innerHTML=aiMetaHtml(aiMeta);
   };
-  const aiExtractBtn=$('#aiExtract',m);
-  if(aiExtractBtn) aiExtractBtn.onclick=async()=>{
-    const blob=(($('#aiBlob',m)||{}).value||'').trim();
-    if(!blob){ toast(tt('先粘贴 JD / 内容','Paste a JD or content first')); return; }
-    if(!aiChatAvailable()){ toast(tt('需先在「数据设置」配置 AI 模型','Configure an AI model in Settings first')); return; }
-    const sEl=$('#aiStatus',m), old=aiExtractBtn.textContent; aiExtractBtn.disabled=true; aiExtractBtn.textContent=tt('整理中…','Organizing…'); if(sEl) sEl.textContent='';
+  const doExtract=async(prompt, imageDataUrl)=>{
+    const sEl=$('#aiStatus',m);
+    if(!aiChatAvailable()){ if(sEl) sEl.textContent=''; toast(tt('需先在「数据设置」配置 AI 模型','Configure an AI model in Settings first')); return; }
+    if(sEl) sEl.textContent=tt('AI 整理中…','AI is organizing…');
     try{
-      const res=await window.SeekerRT.ai.complete({ userText: frameJobExtract(blob) });
-      const b=extractSeekerBlock((res&&res.text)||'', 'job-create');
+      const text=await window.SeekerRT.ai.extract({ prompt, imageDataUrl: imageDataUrl||null });
+      const b=extractSeekerBlock(text||'', 'job-create');
       if(b.data){ fillFromExtract(b.data); if(sEl) sEl.textContent=tt('已整理,请核对下方表单 ↓','Done — review the form below ↓'); }
       else if(sEl) sEl.textContent=tt('未能解析,请手动填写或重试','Could not parse — fill manually or retry');
     }catch(e){ if(sEl) sEl.textContent=String((e&&e.message)||e); }
-    finally{ aiExtractBtn.disabled=false; aiExtractBtn.textContent=old; }
+  };
+  const aiExtractBtn=$('#aiExtract',m);
+  if(aiExtractBtn) aiExtractBtn.onclick=async()=>{
+    const blob=(($('#aiBlob',m)||{}).value||'').trim();
+    if(!blob){ toast(tt('先粘贴 JD / 内容,或选图片','Paste a JD / content, or pick an image')); return; }
+    const old=aiExtractBtn.textContent; aiExtractBtn.disabled=true; aiExtractBtn.textContent=tt('整理中…','Organizing…');
+    await doExtract(frameJobExtract(blob), null);
+    aiExtractBtn.disabled=false; aiExtractBtn.textContent=old;
   };
   const aiFileBtn=$('#aiFileBtn',m), aiFile=$('#aiFile',m);
   if(aiFileBtn&&aiFile){ aiFileBtn.onclick=()=>aiFile.click();
     aiFile.onchange=()=>{ const f=aiFile.files&&aiFile.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ const ta=$('#aiBlob',m); if(ta) ta.value=String(rd.result||''); }; rd.readAsText(f); aiFile.value=''; }; }
+  // 块3:选图片(招聘截图 / 海报)→ 转 data-URL → 多模态抽取(不入粘贴框,直接整理)。
+  const aiImgBtn=$('#aiImgBtn',m), aiImg=$('#aiImg',m);
+  if(aiImgBtn&&aiImg){ aiImgBtn.onclick=()=>aiImg.click();
+    aiImg.onchange=()=>{ const f=aiImg.files&&aiImg.files[0]; if(!f) return; const sEl=$('#aiStatus',m); if(sEl) sEl.textContent=tt('读取图片…','Reading image…');
+      const rd=new FileReader(); rd.onload=async()=>{ await doExtract(frameJobExtract('', true), String(rd.result||'')); }; rd.readAsDataURL(f); aiImg.value=''; }; }
   $('#saveJob',m).onclick=()=>{
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();

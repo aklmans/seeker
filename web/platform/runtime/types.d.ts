@@ -152,6 +152,8 @@ export interface AiApi {
   stream(req: AiRequest, handlers?: AiStreamHandlers): AiStream;
   /** 非流式补全(= stream 收齐)。 */
   complete(req: AiRequest): Promise<AiResult>;
+  /** 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本。无工具/历史/系统提示;供 AI 智能录入从截图/文本抽取岗位。 */
+  extract(req: { prompt: string; imageDataUrl?: string | null }): Promise<string>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
   getConfig(): Promise<AiConfig>;
   /** 写非密钥配置(baseUrl/model/embedModel);model 非空 = 加入已存列表 + 设为当前;key 走 rt.secret.set 进钥匙串。 */

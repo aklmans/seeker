@@ -262,6 +262,69 @@ pub fn ai_cancel(sessions: State<'_, Sessions>, session_id: String) -> Result<()
     Ok(())
 }
 
+/// 一次性抽取(块3 · 多模态录入):把 `prompt`(+可选图片)发给模型,取最终文本返回。
+///
+/// 与 `ai_chat` 的区别 —— **无工具循环、无多轮历史、无系统提示、非流式**:
+/// - 不注入系统提示:纯抽取不需要呈现判据/行为基线(否则模型可能改出 widget 而非要的代码块);
+/// - 无工具:从给定内容(文本 / 截图)抽取即可,不该去查库;
+/// - 红线:命令签名只有 `prompt` + 图片,网关结构上**无从拿到 profile**(同 ai_chat 的 profile-free 不变量)。
+///
+/// 图片走 OpenAI 兼容多模态:`content:[{type:text},{type:image_url,image_url:{url:"data:<mime>;base64,…"}}]`。
+/// 供「AI 智能录入」从招聘截图 / 文本抽取结构化岗位(domain 仍以提案→预览→确认落库,AI 只产文本)。
+#[tauri::command]
+pub async fn ai_extract(
+    app: AppHandle,
+    prompt: String,
+    image_data_url: Option<String>,
+) -> Result<String, String> {
+    let cfg = crate::config::load(&app);
+    if cfg.base_url.is_empty() || cfg.model.is_empty() {
+        return Err("尚未配置模型(base_url / model),请在「数据设置」填写".into());
+    }
+    let key = crate::secret::get_secret(KEY_ACCOUNT)
+        .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
+
+    // 单条 user 消息;有图片则用多模态 content 数组,否则纯文本字符串。
+    let content: Value = match image_data_url {
+        Some(url) if !url.is_empty() => json!([
+            { "type": "text", "text": prompt },
+            { "type": "image_url", "image_url": { "url": url } },
+        ]),
+        _ => Value::String(prompt),
+    };
+    let body = json!({
+        "model": cfg.model,
+        "stream": false,
+        "messages": [ { "role": "user", "content": content } ],
+    });
+    let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
+
+    // 多模态响应可能较慢(图片处理),给足整体超时。
+    let client = reqwest::Client::new();
+    let resp = tokio::time::timeout(
+        Duration::from_secs(120),
+        client.post(&url).bearer_auth(&key).json(&body).send(),
+    )
+    .await
+    .map_err(|_| "连接模型端点超时".to_string())?
+    .map_err(|e| format!("网络错误:{}", e))?;
+
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let txt = resp.text().await.unwrap_or_default();
+        return Err(format!("模型返回 HTTP {} · {}", code, redact(&txt)));
+    }
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败:{}", e))?;
+    let text = v["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    Ok(text)
+}
+
 /// 工具循环:逐轮流式请求,模型要调工具就执行并回灌,直到给出最终回答或达上限。
 #[allow(clippy::too_many_arguments)]
 async fn run_chat(

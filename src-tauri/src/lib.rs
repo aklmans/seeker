@@ -44,6 +44,7 @@ pub fn run() {
             config::ai_model_remove,
             ai::ai_chat,
             ai::ai_cancel,
+            ai::ai_extract,
             data::db_list,
             data::db_get,
             data::db_upsert,
