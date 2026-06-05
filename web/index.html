@@ -1820,8 +1820,9 @@ async function openDocsManager(){
     [...m.querySelectorAll('[data-docdel]')].forEach(b=>b.onclick=()=>{
       if(!G||!G.confirmDestructive) return;
       const d=rows.find(x=>String(x.docId)===String(b.dataset.docdel));
-      G.confirmDestructive({ title:tt('删除文档?','Delete doc?'), detail:(tt('将从知识库删除:','Remove from knowledge: '))+(d?d.name:''), confirmLabel:tt('删除','Delete'),
-        onConfirm:async()=>{ try{ await rt.docs.remove(b.dataset.docdel); }catch(_e){} await render(); } });
+      G.confirmDestructive({ title:tt('删除文档?','Delete doc?'), detail:(tt('将从知识库删除:','Remove from knowledge: '))+(d?d.name:''), confirmLabel:tt('删除','Delete'), undoText:tt('已删除文档','Doc deleted'),
+        onConfirm:async()=>{ try{ await rt.docs.remove(b.dataset.docdel); }catch(_e){} await render(); },
+        onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } });
     });
     const cb=m.querySelector('#docClear'); if(cb) cb.style.display=rows.length?'':'none';
   };
@@ -1842,8 +1843,9 @@ async function openDocsManager(){
       reader.readAsText(f); fileI.value=''; }; }
   const clr=m.querySelector('#docClear');
   if(clr) clr.onclick=()=>{ if(!G||!G.confirmDestructive) return;
-    G.confirmDestructive({ title:tt('清空全部文档?','Clear all docs?'), detail:tt('将删除知识库里的全部文档。','Removes every doc from the knowledge base.'), confirmLabel:tt('清空','Clear'),
-      onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); } }); };
+    G.confirmDestructive({ title:tt('清空全部文档?','Clear all docs?'), detail:tt('将删除知识库里的全部文档。可在几秒内撤销。','Removes every doc. Undoable for a few seconds.'), confirmLabel:tt('清空','Clear'), undoText:tt('已清空知识库','Knowledge cleared'),
+      onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); },
+      onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } }); };
 }
 function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;

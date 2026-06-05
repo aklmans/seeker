@@ -176,6 +176,7 @@ export function createDesktopRuntime() {
       list: () => invoke('doc_list'),
       remove: (docId) => invoke('doc_remove', { docId }),
       clear: () => invoke('doc_clear'),
+      undo: () => invoke('doc_undo'), // 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)
     },
   };
 }

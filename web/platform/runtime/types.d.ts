@@ -222,6 +222,8 @@ export interface DocsApi {
   list(): Promise<DocInfo[]>;
   remove(docId: string): Promise<number>;
   clear(): Promise<number>;
+  /** 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)。返回还原片段数。 */
+  undo(): Promise<number>;
 }
 
 // ── 顶层 Runtime ────────────────────────────────────────────────

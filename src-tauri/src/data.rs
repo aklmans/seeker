@@ -680,20 +680,98 @@ pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
-/// 删除一篇文档(其全部切块)。
-#[tauri::command]
-pub fn doc_remove(db: State<'_, Db>, doc_id: String) -> Result<usize, String> {
-    let conn = db.0.lock().unwrap();
-    conn.execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
-        .map_err(|e| e.to_string())
+// ── 文档销毁撤销(DocTrash;与 MemTrash 对称)──────────────────────────
+/// 暂存"最近一次文档销毁(删一篇 / 清空)"的整行(含 embedding),供 doc_undo 还原。进程内、重启即失。
+type DocRow = (String, String, String, String, Vec<f32>, i64); // (id, doc_id, doc_name, text, embedding, created_at)
+#[derive(Default)]
+pub struct DocTrash(pub Mutex<Vec<DocRow>>);
+
+fn map_doc_row(r: &rusqlite::Row) -> rusqlite::Result<DocRow> {
+    let blob: Option<Vec<u8>> = r.get(4)?;
+    Ok((
+        r.get(0)?,
+        r.get(1)?,
+        r.get(2)?,
+        r.get(3)?,
+        blob.map(|b| blob_to_vec(&b)).unwrap_or_default(),
+        r.get(5)?,
+    ))
 }
 
-/// 清空全部文档。
+/// 快照 doc_chunks 整行(doc_id=Some → 一篇;None → 全部),含 embedding。
+fn doc_snapshot(conn: &Connection, doc_id: Option<&str>) -> Result<Vec<DocRow>, String> {
+    let sql = "SELECT id, doc_id, doc_name, text, embedding, created_at FROM doc_chunks";
+    let mut out = Vec::new();
+    match doc_id {
+        Some(did) => {
+            let mut stmt = conn
+                .prepare(&format!("{sql} WHERE doc_id = ?1"))
+                .map_err(|e| e.to_string())?;
+            let it = stmt
+                .query_map(params![did], map_doc_row)
+                .map_err(|e| e.to_string())?;
+            for r in it {
+                out.push(r.map_err(|e| e.to_string())?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+            let it = stmt.query_map([], map_doc_row).map_err(|e| e.to_string())?;
+            for r in it {
+                out.push(r.map_err(|e| e.to_string())?);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn doc_restore_rows(conn: &Connection, rows: &[DocRow]) -> Result<usize, String> {
+    let mut n = 0;
+    for (id, doc_id, doc_name, text, emb, ts) in rows {
+        conn.execute(
+            "INSERT OR REPLACE INTO doc_chunks (id, doc_id, doc_name, text, embedding, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+            params![id, doc_id, doc_name, text, vec_to_blob(emb), ts],
+        )
+        .map_err(|e| e.to_string())?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// 删除一篇文档(其全部切块)。**删前快照进 DocTrash**,供撤销。
 #[tauri::command]
-pub fn doc_clear(db: State<'_, Db>) -> Result<usize, String> {
+pub fn doc_remove(
+    db: State<'_, Db>,
+    trash: State<'_, DocTrash>,
+    doc_id: String,
+) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    conn.execute("DELETE FROM doc_chunks", [])
-        .map_err(|e| e.to_string())
+    let snap = doc_snapshot(&conn, Some(&doc_id))?;
+    let n = conn
+        .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())?;
+    *trash.0.lock().unwrap() = snap;
+    Ok(n)
+}
+
+/// 清空全部文档。**删前快照进 DocTrash**,供撤销。
+#[tauri::command]
+pub fn doc_clear(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    let snap = doc_snapshot(&conn, None)?;
+    let n = conn
+        .execute("DELETE FROM doc_chunks", [])
+        .map_err(|e| e.to_string())?;
+    *trash.0.lock().unwrap() = snap;
+    Ok(n)
+}
+
+/// 撤销最近一次文档销毁(删一篇 / 清空):从 DocTrash 还原(原 id / embedding / 时间无损)→ 清空 trash。
+#[tauri::command]
+pub fn doc_undo(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<usize, String> {
+    let conn = db.0.lock().unwrap();
+    let rows = std::mem::take(&mut *trash.0.lock().unwrap());
+    doc_restore_rows(&conn, &rows)
 }
 
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
@@ -887,6 +965,30 @@ mod tests {
         assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 1);
         conn.execute("DELETE FROM doc_chunks", []).unwrap();
         assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn doc_snapshot_restore_keeps_all_fields() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-docundo");
+        migrate(&mut conn, &tmp).unwrap();
+        super::doc_chunks_insert(&conn, "d1", "JD", &[("a".into(), vec![0.1, 0.2]), ("b".into(), vec![0.3, 0.4])]).unwrap();
+        super::doc_chunks_insert(&conn, "d2", "笔记", &[("c".into(), vec![0.5, 0.6])]).unwrap();
+        // 快照一篇 + 删 + 还原:字段/embedding 无损(doc_remove→doc_undo 的内部)。
+        let snap1 = super::doc_snapshot(&conn, Some("d1")).unwrap();
+        assert_eq!(snap1.len(), 2);
+        conn.execute("DELETE FROM doc_chunks WHERE doc_id='d1'", []).unwrap();
+        assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 1);
+        assert_eq!(super::doc_restore_rows(&conn, &snap1).unwrap(), 2);
+        let all = super::doc_chunks_all(&conn).unwrap();
+        assert_eq!(all.len(), 3);
+        assert!(all.iter().any(|(dn, txt, emb)| dn == "JD" && txt == "a" && emb == &vec![0.1, 0.2]));
+        // 快照全部 + 清空 + 还原全部(doc_clear→doc_undo 的内部)。
+        let snap_all = super::doc_snapshot(&conn, None).unwrap();
+        assert_eq!(snap_all.len(), 3);
+        conn.execute("DELETE FROM doc_chunks", []).unwrap();
+        assert_eq!(super::doc_restore_rows(&conn, &snap_all).unwrap(), 3);
+        assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 3);
     }
 
     #[test]
