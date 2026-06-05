@@ -181,6 +181,8 @@ export function createDesktopRuntime() {
       remove: (docId) => invoke('doc_remove', { docId }),
       clear: () => invoke('doc_clear'),
       undo: () => invoke('doc_undo'), // 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)
+      // 块3b:从 PDF(data-URL 或 base64)提取纯文本(纯本地,不出网)。供 AI 录入把 PDF 转文本喂抽取路径。
+      pdfText: (dataBase64) => invoke('pdf_extract_text', { dataBase64 }),
     },
     // MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。server = 用户主动安装的不可信程序。
     mcp: {

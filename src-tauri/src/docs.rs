@@ -88,6 +88,40 @@ pub async fn doc_add(app: AppHandle, name: String, text: String) -> Result<Value
     Ok(json!({ "docId": doc_id, "name": doc_name, "chunks": n }))
 }
 
+/// 块3b:从 PDF 提取纯文本(供「AI 智能录入」的文本路径)。输入 = 前端 data-URL(或其 base64 部分)。
+///
+/// OpenAI 兼容 chat **无标准 PDF 内容块**,故不能"直接把 PDF 扔给模型";平台层在此取文字 → 喂既有文本抽取路径
+/// (多数 JD 是文字版 PDF)。扫描件 / 图片型 PDF 取不到字 → 报错引导改用「扔图片 / 截图」(走多模态图片路径)。
+///
+/// 纯本地、不出网、不碰 profile / 钥匙串;CPU 密集放 spawn_blocking,且 pdf-extract 对畸形输入可能 panic,
+/// 用 catch_unwind 兜住(坏文件只报错、不崩应用)。
+#[tauri::command]
+pub async fn pdf_extract_text(data_base64: String) -> Result<String, String> {
+    use base64::Engine;
+    // 容忍带 data-URL 前缀:取 "base64," 之后的部分。
+    let b64 = match data_base64.rsplit_once("base64,") {
+        Some((_, b)) => b.trim().to_string(),
+        None => data_base64.trim().to_string(),
+    };
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("PDF 数据解码失败:{e}"))?;
+    let text = tokio::task::spawn_blocking(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            pdf_extract::extract_text_from_mem(&bytes)
+        }))
+        .map_err(|_| "解析 PDF 失败(文件可能损坏或加密)".to_string())?
+        .map_err(|e| format!("解析 PDF 失败:{e}"))
+    })
+    .await
+    .map_err(|e| format!("PDF 解析任务失败:{e}"))??;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("未能从 PDF 提取到文字(可能是扫描件 / 图片型 PDF)—— 试试用「扔图片 / 截图」录入".into());
+    }
+    Ok(text)
+}
+
 pub struct DocContext;
 
 impl DocContext {

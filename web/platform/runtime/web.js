@@ -188,6 +188,7 @@ export function createWebRuntime() {
       remove: () => Promise.resolve(0),
       clear: () => Promise.resolve(0),
       undo: () => Promise.resolve(0),
+      pdfText: () => notImpl('rt.docs.pdfText', 'web'),
     },
 
     // MCP 需本机 spawn 子进程,web 端不支持 → 列表空、其余降级。

@@ -226,6 +226,8 @@ export interface DocsApi {
   clear(): Promise<number>;
   /** 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)。返回还原片段数。 */
   undo(): Promise<number>;
+  /** 块3b:从 PDF(data-URL 或 base64)提取纯文本(纯本地,不出网)。供 AI 录入把 PDF 转文本;扫描件取不到字会 reject。 */
+  pdfText(dataBase64: string): Promise<string>;
 }
 
 /** 一个 MCP server 的状态(列表用)。 */

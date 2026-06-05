@@ -36,3 +36,6 @@ keyring = { version = "3", features = ["windows-native", "apple-native"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 # 能力层:trait 异步方法对 dyn 对象安全(#2 C2 起 invoke/contribute 含网络:嵌入/检索)
 async-trait = "0.1"
+# 块3b PDF 录入:解前端 data-URL 的 base64 + 从 PDF 提取文字(喂 AI 抽取的文本路径)
+base64 = "0.22"
+pdf-extract = "0.7"

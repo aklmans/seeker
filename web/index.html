@@ -2327,9 +2327,9 @@ function openNewJob(editId){
         <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…(或选文件 / 直接扔招聘截图)','Paste a JD or full page content… (or pick a file / drop a screenshot)')}" style="min-height:84px;font-family:inherit;"></textarea>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn btn-accent" id="aiExtract">${tt('让 AI 整理 →','Let AI organize →')}</button>
-          <button class="btn" id="aiFileBtn">${tt('选文件 .txt/.md','Pick .txt/.md')}</button>
+          <button class="btn" id="aiFileBtn">${tt('选文件 .txt/.md/.pdf','Pick .txt/.md/.pdf')}</button>
           <button class="btn" id="aiImgBtn">${tt('扔图片 / 截图','Image / screenshot')}</button>
-          <input type="file" id="aiFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
+          <input type="file" id="aiFile" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" style="display:none">
           <input type="file" id="aiImg" accept="image/*" style="display:none">
           <span class="mono" id="aiStatus" style="font-size:11px;color:var(--ink-mute);"></span>
         </div>
@@ -2403,7 +2403,16 @@ function openNewJob(editId){
   };
   const aiFileBtn=$('#aiFileBtn',m), aiFile=$('#aiFile',m);
   if(aiFileBtn&&aiFile){ aiFileBtn.onclick=()=>aiFile.click();
-    aiFile.onchange=()=>{ const f=aiFile.files&&aiFile.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ const ta=$('#aiBlob',m); if(ta) ta.value=String(rd.result||''); }; rd.readAsText(f); aiFile.value=''; }; }
+    aiFile.onchange=()=>{ const f=aiFile.files&&aiFile.files[0]; if(!f) return; const ta=$('#aiBlob',m), sEl=$('#aiStatus',m);
+      const isPdf = f.type==='application/pdf' || /\.pdf$/i.test(f.name||'');
+      if(isPdf){
+        // 块3b:PDF → 平台层提取文字 → 填粘贴框(用户核对后点「整理」;扫描件取不到字会报错引导用截图)。
+        if(sEl) sEl.textContent=tt('提取 PDF 文字…','Extracting PDF text…');
+        const rd=new FileReader(); rd.onload=async()=>{ try{ const text=await window.SeekerRT.docs.pdfText(String(rd.result||'')); if(ta) ta.value=text; if(sEl) sEl.textContent=tt('已提取文字 → 点「让 AI 整理」(或先编辑)','Text extracted → click "Let AI organize" (or edit first)'); }catch(e){ if(sEl) sEl.textContent=String((e&&e.message)||e); } }; rd.readAsDataURL(f);
+      } else {
+        const rd=new FileReader(); rd.onload=()=>{ if(ta) ta.value=String(rd.result||''); }; rd.readAsText(f);
+      }
+      aiFile.value=''; }; }
   // 块3:选图片(招聘截图 / 海报)→ 转 data-URL → 多模态抽取(不入粘贴框,直接整理)。
   const aiImgBtn=$('#aiImgBtn',m), aiImg=$('#aiImg',m);
   if(aiImgBtn&&aiImg){ aiImgBtn.onclick=()=>aiImg.click();
