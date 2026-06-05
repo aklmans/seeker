@@ -43,11 +43,13 @@ button{font-family:inherit;}
 .brand{padding:22px 20px 18px; font-family:var(--font-mono); font-size:12px; letter-spacing:0.3em; font-weight:600; color:var(--ink);}
 .nav{flex:1; padding:4px 12px;}
 .nav-item{
-  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left; position:relative;
   padding:9px 10px; margin:1px 0; border:none; background:transparent; cursor:pointer;
   font-family:var(--font-sans); font-size:13.5px; color:var(--ink-2); border-radius:3px;
   transition:background 120ms ease, color 120ms ease;
 }
+/* 选中态非色指示(竖条):位置/形状线索,不依赖辨色(色盲鲁棒);合设计语言「竖线」,绝对定位不挤布局 */
+.nav-item.active::before{content:''; position:absolute; left:0; top:50%; transform:translateY(-50%); width:2px; height:56%; background:var(--accent); border-radius:0 2px 2px 0;}
 .nav-item:hover{background:rgba(0,0,0,0.035);}
 html[data-theme="dark"] .nav-item:hover{background:rgba(255,255,255,0.04);}
 .nav-item .marker{width:8px; height:8px; flex:0 0 8px; border:1px solid var(--border-strong); background:transparent;}
