@@ -3316,6 +3316,13 @@ function aiErrHTML(err){
 function frameQuery(text){
   const t = String(text || '');
   const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
+  // 块4:AI 对话式 CRUD(放最前 —— 否则"把薪资改成X"会误命中下面的 value-card 等查询意图)。AI 一律只提案,落库由我在卡片确认。
+  if(/删除|删掉|移除|撤掉|不要(这个|那个|它|了)/.test(t) && /岗位|职位|公司|它|这个|那个/.test(t))
+    return G + '确认我指的是哪个岗位(拿到 id)后,**不要直接删**,在回答末尾附一个代码块发起删除提案(由我在卡片确认、可撤销):\n```seeker:job-delete\n{"id":<该岗位 id>}\n```\n我的原始请求:' + t;
+  if(/(修改|更新|改成|换成|设为|设成|改为|标记为|标成)/.test(t) && /岗位|职位|薪资|状态|城市|年限|学历|公司|JD|技能|它|这个|那个/.test(t))
+    return G + '确认是哪个岗位(拿到 id)、相关字段当前值后,**不要直接改**,在回答末尾附一个代码块发起修改提案(我在卡片确认、可撤销):\n```seeker:job-update\n{"id":<该岗位 id>,"changes":[{"field":"<co/role/city/pay/years/edu/jd/summary/seniority/workMode/kind/status/need/plus 之一>","after":<新值;need/plus 为数组;status 仅 fav/todo/sent/interview/reject/skip>}]}\n```\n我的原始请求:' + t;
+  if(/(加|添加|新增|录入|收藏|记一下|帮我加|存一下|存个)/.test(t) && /岗位|职位|公司/.test(t))
+    return '我想新增一个目标岗位。请据我下面的描述整理字段(只填能推断的,其余留空),在回答末尾附一个代码块发起新增提案(由我在卡片确认):\n```seeker:job-create\n{"co":"","role":"","city":"","pay":"","years":"","edu":"","need":[],"plus":[],"jd":"","summary":"","seniority":"","workMode":"","highlights":[],"kind":""}\n```\n我的原始请求:' + t;
   if(/简历/.test(t))
     return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式,每个模块有 key)与目标 jobs(拿到 jobId),据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。'
       + '若你给出了具体可直接套用的改写,请在回答**末尾**附一个代码块以便我一键应用(先正常用自然语言说明改动思路,再附代码块):\n```seeker:resume-edit\n{"jobId":<目标岗位 id>,"edits":[{"module":"<模块 key,如 summary / skills / honors / portfolio,或自定义模块 key>","content":<文本模块为字符串;skills 模块为字符串数组>}]}\n```\n'
@@ -3422,6 +3429,97 @@ function reviewResumeProposal(jid, changes){
       try{ if(typeof renderResumes==='function') renderResumes(); }catch(_e){}
     },
   });
+}
+/* ===== 块4:AI 对话式 CRUD —— AI 出 ```seeker:job-{create,update,delete} 提案块,domain 渲染卡 + 用户确认后落库。
+   红线:AI 从不静默增删改库;一律先卡片预览,扳机在用户;改/删走 guardrail(预览 + 撤销),新增卡即预览、按钮即确认。 ===== */
+function jobsReRender(){ [renderJobs,renderOverview,renderAnalysis,renderInterview].forEach(f=>{ try{ f&&f(); }catch(_e){} }); }
+function jobLabel(j){ const s = j ? ((j.co||'')+(j.role?(' · '+j.role):'')) : ''; return (s.replace(/</g,'&lt;')) || tt('该岗位','this job'); }
+const JOB_FIELD_META = {
+  co:{label:'公司'}, role:{label:'岗位'}, city:{label:'城市'}, pay:{label:'薪资'}, years:{label:'年限'}, edu:{label:'学历'},
+  jd:{label:'JD'}, summary:{label:'一句话'}, seniority:{label:'职级'}, workMode:{label:'工作方式'}, kind:{label:'类型'},
+  status:{label:'状态', status:true}, need:{label:'必需技能', array:true}, plus:{label:'加分技能', array:true},
+};
+function parseJobVal(field, v){
+  const meta = JOB_FIELD_META[field]||{};
+  if(meta.array) return (Array.isArray(v) ? v : String(v==null?'':v).split(/[、,，\/|\n]+/)).map(s=>String(s).trim()).filter(Boolean);
+  if(meta.status){ const s=String(v==null?'':v).trim(); if(STATUS[s]) return s; const hit=Object.keys(STATUS).find(k=>STATUS[k].label===s); return hit||s; } // AI 给标签("已投")→ 归一为键("sent")
+  return String(v==null?'':v);
+}
+function fmtJobVal(field, v){
+  const meta = JOB_FIELD_META[field]||{};
+  if(meta.array) return parseJobVal(field, v).join(' · ');
+  if(meta.status) return (STATUS[v]&&STATUS[v].label) || String(v==null?'':v);
+  return String(v==null?'':v);
+}
+// 新增提案:AI 建议加一个岗位 → 卡片即预览、按钮即确认(非破坏,无需 guardrail)。
+function showJobCreateProposal(bubble, d, who){
+  const co=String(d.co||'').trim(), role=String(d.role||'').trim();
+  if(!co && !role) return;
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const rows=[['公司',co],['岗位',role],['城市',d.city],['薪资',d.pay],['年限',d.years]].filter(r=>r[1]).map(r=>esc(tt(r[0],r[0]))+':'+esc(r[1])).join('  ·  ');
+  const card = el(`<div class="cop-card" style="margin-top:8px;"><div class="cct">🗂 ${tt('AI 建议新增岗位','AI suggests adding a job')}</div><div class="ccm">${rows||esc(co||role)}</div></div>`);
+  const acts = el('<div class="cop-actions"></div>');
+  const btn = el(`<button class="btn btn-accent">${tt('保存岗位','Save job')}</button>`);
+  btn.onclick = ()=>{
+    const job = { id:nextJobId(), status:'todo', kind:String(d.kind||''), edu:String(d.edu||''),
+      co, role, city:String(d.city||''), src:String(d.src||'AI'), pay:String(d.pay||''), years:String(d.years||''),
+      jd:String(d.jd||''), interest:0, growth:0, match:0, chance:0,
+      need:parseJobVal('need', d.need), plus:parseJobVal('plus', d.plus),
+      summary:String(d.summary||''), seniority:String(d.seniority||''), workMode:String(d.workMode||''),
+      highlights:Array.isArray(d.highlights)?d.highlights:[] };
+    JOBS.unshift(job); persistJob(job); jobsReRender();
+    btn.disabled=true; btn.textContent=tt('✓ 已添加','✓ Added'); toast(tt('已添加岗位','Job added'));
+  };
+  acts.appendChild(btn); card.appendChild(acts);
+  const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card);
+}
+// 修改提案:AI 建议改某岗位字段 → guardrail 预览(before→after)+ 应用 + 撤销。
+function showJobUpdateProposal(bubble, d, who){
+  const job = JOBS.find(j=>String(j.id)===String(d.id)); if(!job) return;
+  const changes=[];
+  for(const c of (d.changes||[])){
+    if(!c || !c.field || c.field==='id' || !(c.field in JOB_FIELD_META)) continue;
+    const stored=parseJobVal(c.field, c.after);                  // 先归一(status 标签→键、数组拆分)
+    const after=fmtJobVal(c.field, stored), before=fmtJobVal(c.field, job[c.field]);
+    if(!after || after===before) continue;                       // 无变化/空值不提议
+    changes.push({ field:c.field, label:JOB_FIELD_META[c.field].label, before, after, stored });
+  }
+  if(!changes.length) return;
+  const card = el(`<div class="cop-card" style="margin-top:8px;"><div class="cct">✎ ${tt('AI 建议修改岗位','AI suggests editing a job')} · ${jobLabel(job)}</div><div class="ccm">${changes.map(c=>c.label).join('、')}</div></div>`);
+  const acts = el('<div class="cop-actions"></div>');
+  const btn = el(`<button class="btn btn-accent">${tt('预览并应用 →','Preview & apply →')}</button>`);
+  btn.onclick = ()=>{
+    const G=window.SeekerGuardrail; if(!G||!G.confirmDestructive){ toast(tt('该端暂不支持','Not supported here')); return; }
+    const snap = Object.assign({}, job);
+    G.confirmDestructive({
+      title: tt('应用 AI 修改?','Apply AI edits?'), detail: tt('将更新该岗位的以下字段(可撤销)。','Updates these fields (undoable).'),
+      changes: changes.map(c=>({label:c.label, before:c.before, after:c.after})),
+      source: jobLabel(job)+' · AI', confirmLabel: tt('应用','Apply'), undoText: tt('已应用修改','Edits applied'),
+      onConfirm: ()=>{ for(const c of changes) job[c.field]=c.stored; persistJob(job); jobsReRender(); btn.disabled=true; btn.textContent=tt('✓ 已应用','✓ Applied'); },
+      onUndo: ()=>{ Object.assign(job, snap); persistJob(job); jobsReRender(); },
+    });
+  };
+  acts.appendChild(btn); card.appendChild(acts);
+  const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card);
+}
+// 删除提案:AI 建议删某岗位 → guardrail(破坏性)预览 + 删 + 撤销(还原内存 + DB)。
+function showJobDeleteProposal(bubble, d, who){
+  const job = JOBS.find(j=>String(j.id)===String(d.id)); if(!job) return;
+  const card = el(`<div class="cop-card" style="margin-top:8px;"><div class="cct">🗑 ${tt('AI 建议删除岗位','AI suggests deleting a job')}</div><div class="ccm">${jobLabel(job)}</div></div>`);
+  const acts = el('<div class="cop-actions"></div>');
+  const btn = el(`<button class="btn">${tt('删除 →','Delete →')}</button>`);
+  btn.onclick = ()=>{
+    const G=window.SeekerGuardrail; if(!G||!G.confirmDestructive){ toast(tt('该端暂不支持','Not supported here')); return; }
+    let snap=Object.assign({}, job);
+    G.confirmDestructive({
+      title: tt('删除岗位?','Delete job?'), detail:(tt('将删除:','Will delete: '))+jobLabel(job),
+      confirmLabel: tt('删除','Delete'), undoText: tt('已删除岗位','Job deleted'),
+      onConfirm: async()=>{ try{ if(window.SeekerRT) snap=(await window.SeekerRT.db.remove('jobs', String(job.id)))||snap; }catch(_e){} const i=JOBS.findIndex(x=>String(x.id)===String(job.id)); if(i>=0) JOBS.splice(i,1); jobsReRender(); btn.disabled=true; btn.textContent=tt('✓ 已删除','✓ Deleted'); },
+      onUndo: async()=>{ try{ if(window.SeekerRT) await window.SeekerRT.db.upsert('jobs', snap); }catch(_e){} if(!JOBS.some(x=>String(x.id)===String(snap.id))) JOBS.unshift(snap); jobsReRender(); },
+    });
+  };
+  acts.appendChild(btn); card.appendChild(acts);
+  const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card);
 }
 /** 岗位能力雷达 SVG(真实数据:job.need 维度 × 我的技能等级 lvl/4)。维度<3 不画。 */
 function matchRadarSVG(job){
@@ -3612,6 +3710,10 @@ const SEEKER_CARDS = {
   'value-card':     { valid: ()=>true,         show: showValueCard,     persist:true },
   'gaps-card':      { valid: ()=>true,         show: showGapsCard,      persist:true },
   'next-card':      { valid: ()=>true,         show: showNextCard,      persist:true },
+  // 块4:AI 对话式 CRUD 提案(非持久 —— 一次性动作,重渲会重复提议;落库扳机在用户,改/删走 guardrail)。
+  'job-create':     { valid: d=>!!(d && (d.co||d.role)),                                  show: showJobCreateProposal },
+  'job-update':     { valid: d=>!!(d && d.id!=null && Array.isArray(d.changes) && d.changes.length), show: showJobUpdateProposal },
+  'job-delete':     { valid: d=>!!(d && d.id!=null),                                       show: showJobDeleteProposal },
 };
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 function aiHTML(text){
