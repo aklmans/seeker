@@ -456,7 +456,7 @@ html[data-theme="dark"] .pill.on{color:#1A1A1A;}
 .cop-launch{position:fixed; right:22px; bottom:22px; z-index:150; display:flex; align-items:center; gap:9px; padding:11px 16px; background:var(--ink); color:var(--bg-elevated); border:none; cursor:pointer; font-family:var(--font-mono); font-size:11px; letter-spacing:0.14em; box-shadow:0 2px 14px rgba(0,0,0,0.18); transition:transform 150ms ease;}
 .cop-launch:hover{transform:translateY(-1px);}
 .cop-launch .ld{width:7px; height:7px; border-radius:50%; background:var(--accent);}
-html[data-theme="dark"] .cop-launch{background:var(--bg-elevated); color:var(--ink); border:0.5px solid var(--border-strong);}
+/* 不再为暗色单独覆写:base 用 var(--ink)/var(--bg-elevated),随主题自动反相 → 亮色=深药丸+浅字、暗色=浅药丸+深字,清晰随主题变化 */
 .cop-panel{position:fixed; top:0; right:0; bottom:0; width:420px; max-width:92vw; background:var(--bg-elevated); border-left:0.5px solid var(--border-strong); z-index:160; display:flex; flex-direction:column; transform:translateX(100%); transition:transform 240ms cubic-bezier(.4,0,.2,1); box-shadow:-8px 0 30px rgba(0,0,0,0.10);}
 .cop-panel.open{transform:none;}
 .cop-head{display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:0.5px solid var(--border);}
@@ -767,8 +767,8 @@ html[data-theme="dark"] .rb-ic.on{color:#1A1A1A;}
 body[data-sidebar="collapsed"] .sidebar{display:none;}
 body[data-sidebar="collapsed"] .sb-expand{display:inline-flex;}
 .nav-abbr{display:none; font-size:13px; color:var(--ink-2);}
-.nav-ic{display:none; align-items:center; justify-content:center; width:20px; height:20px; flex:0 0 20px;}
-.nav-ic svg{width:19px; height:19px;}
+.nav-ic{display:flex; align-items:center; justify-content:center; width:18px; height:18px; flex:0 0 18px;}  /* 展开+收起都显示;currentColor → 选中随 .nav-item.active 取暖橙 */
+.nav-ic svg{width:17px; height:17px;}
 /* collapsed → icon/abbr rail (sidebar stays visible) */
 body[data-sidebar="rail"] .sidebar{width:60px; flex:0 0 60px;}
 body[data-sidebar="rail"] .brand{display:none;}
@@ -1182,7 +1182,7 @@ function buildNav(){
       : p.id==='actions' ? `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`
       : p.count;
     const right=liveCount?`<span class="count">${liveCount}</span>`:(p.ai?`<span class="ai-tag">AI</span>`:'');
-    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="marker"></span><span class="nav-ic">${NAV_ICONS[p.id]||''}</span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
+    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="nav-ic">${NAV_ICONS[p.id]||''}</span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
     b.onclick=()=>go(p.id);
     nav.appendChild(b);
   });
@@ -1199,6 +1199,7 @@ function setLang(l){
   buildNav(); renderModeSwitch();
   const p=PAGES.find(x=>x.id===current); if(p)$('#crumb').innerHTML=L(p);
   renderTopActions(current); updateAgentChrome(); updateCopChrome();
+  if(typeof syncSbToggleTitle==='function') syncSbToggleTitle();
   rerenderPages();
 }
 function tt(zh,en){return setState.lang==='en'?en:zh;}
@@ -4171,10 +4172,12 @@ function cmdClose(){const p=$('#cmdPop');if(p)p.classList.remove('open');}
 function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').value='';$('#agentInput').style.height='auto';cmdClose();c.run();}
 
 /* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
+function syncSbToggleTitle(){ const col=$('#sbCollapse'); if(col) col.title=(document.body.dataset.sidebar==='rail')?tt('展开侧栏','Expand sidebar'):tt('收起侧栏','Collapse sidebar'); }
 function toggleSidebar(){
   const r=document.body.dataset.sidebar==='rail';
   document.body.dataset.sidebar=r?'':'rail';
   const col=$('#sbCollapse'); if(col)col.textContent=r?'«':'»';
+  syncSbToggleTitle();   // 提示词随状态切换(此前一直是「收起侧栏」)
 }
 function isDesktop(){return !!(window.__TAURI__);}
 function pageSearchInput(id){
