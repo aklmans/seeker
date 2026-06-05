@@ -767,6 +767,8 @@ html[data-theme="dark"] .rb-ic.on{color:#1A1A1A;}
 body[data-sidebar="collapsed"] .sidebar{display:none;}
 body[data-sidebar="collapsed"] .sb-expand{display:inline-flex;}
 .nav-abbr{display:none; font-size:13px; color:var(--ink-2);}
+.nav-ic{display:none; align-items:center; justify-content:center; width:20px; height:20px; flex:0 0 20px;}
+.nav-ic svg{width:19px; height:19px;}
 /* collapsed → icon/abbr rail (sidebar stays visible) */
 body[data-sidebar="rail"] .sidebar{width:60px; flex:0 0 60px;}
 body[data-sidebar="rail"] .brand{display:none;}
@@ -780,9 +782,9 @@ body[data-sidebar="rail"] .nav-item{justify-content:center; padding:10px 0;}
 body[data-sidebar="rail"] .nav-label,
 body[data-sidebar="rail"] .nav-item .count,
 body[data-sidebar="rail"] .nav-item .ai-tag,
+body[data-sidebar="rail"] .nav-abbr,
 body[data-sidebar="rail"] .nav-item .marker{display:none;}
-body[data-sidebar="rail"] .nav-abbr{display:block;}
-body[data-sidebar="rail"] .nav-item.active .nav-abbr{color:var(--accent);}
+body[data-sidebar="rail"] .nav-ic{display:flex;}  /* 收起态:图标替缩写;icon 用 currentColor → active 自动取暖橙 */
 body[data-sidebar="rail"] .sidebar-foot{flex-direction:column; gap:8px; align-items:center;}
 body[data-sidebar="rail"] .ver{display:none;}
 .sb-resize{position:absolute; top:0; right:-3px; width:6px; height:100%; cursor:col-resize; z-index:6;}
@@ -1154,6 +1156,18 @@ const PAGES=[
   {id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system'}
 ];
 const GROUPS={core:{zh:'核心',en:'CORE'},research:{zh:'研究',en:'RESEARCH'},growth:{zh:'成长',en:'GROWTH'},system:{zh:'系统',en:'SYSTEM'}};
+// 侧栏收起(rail)时每个导航项的图标:沿用 IC 的细线风格(fill:none + stroke:currentColor + 1.5px + 圆角端),随 active 自动取暖橙。
+const NAV_ICONS={
+  overview:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>',
+  match:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.5V5M12 19v3.5M1.5 12H5M19 12h3.5"/></svg>',
+  resumes:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3z"/><path d="M14 3v4.5h4.5"/><path d="M9 13h6M9 16.5h4"/></svg>',
+  jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="1.5"/><path d="M8 7.5V6A2 2 0 0 1 10 4h4a2 2 0 0 1 2 2v1.5"/><path d="M3 12.5h18"/></svg>',
+  analysis:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5h17"/><path d="M7 20.5v-6.5"/><path d="M12 20.5V7"/><path d="M17 20.5v-4"/></svg>',
+  skills:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.4 7 21l5-2.7L17 21l-1.5-7.6"/></svg>',
+  actions:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M4 6l1.3 1.3L7.5 5"/><path d="M4 11.7l1.3 1.3L7.5 10.7"/><path d="M4 17.3l1.3 1.3L7.5 16.3"/></svg>',
+  interview:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M8.5 9.5h7M8.5 13h4"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>'
+};
 const I18N={editor:{zh:'编辑器',en:'Editor'},agentSub:{zh:'说出需求,我判断并执行 · 需要展示时右侧画布才出现',en:'Tell me what you need — I decide & act; the canvas appears on the right when needed'},collapseCanvas:{zh:'⤜ 收起画布',en:'⤜ Collapse'},cmdLabel:{zh:'技能 / 命令 · 也可输入 /',en:'Skills / commands · or type /'},agentPh:{zh:'说出需求,或输入 / 唤起命令',en:'Tell me what you need, or type / for commands'},agentGreet:{zh:'嗨,我是你的求职 Agent。直接说需求,我来判断该做什么并执行 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行,结果会显示在右侧画布。也可以点下面的技能快捷开始。',en:"Hi, I'm your job-hunt Agent. Just tell me what you need and I'll figure out what to do — match jobs, tailor your resume, run interview prep, plan training, find gaps — results show on the right canvas. Or tap a skill below."}};
 function L(p){return setState.lang==='en'?(p.en||p.label):p.label;}
 function T(k){const e=I18N[k];return e?(setState.lang==='en'?e.en:e.zh):k;}
@@ -1168,7 +1182,7 @@ function buildNav(){
       : p.id==='actions' ? `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`
       : p.count;
     const right=liveCount?`<span class="count">${liveCount}</span>`:(p.ai?`<span class="ai-tag">AI</span>`:'');
-    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="marker"></span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
+    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="marker"></span><span class="nav-ic">${NAV_ICONS[p.id]||''}</span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
     b.onclick=()=>go(p.id);
     nav.appendChild(b);
   });
