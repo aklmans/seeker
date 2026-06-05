@@ -9,9 +9,14 @@
 //! - 工具**结果**接入网关时将标 `Trust::Untrusted`(数据非指令、防注入);非只读工具经 `guardrail`。
 //! - 本模块只负责协议管线;不碰密钥、不入提示、不自动执行任何工具。
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
+use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
@@ -223,6 +228,179 @@ pub async fn mcp_probe(command: String, args: Vec<String>) -> Result<Value, Stri
     }))
 }
 
+// ── MCP server 配置(mcp.json,非密钥)+ 连接缓存(McpManager)──────
+
+/// 一个 MCP server 的配置(非密钥,设置页可显示)。`name` 唯一,作 server id。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerConfig {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+fn default_true() -> bool {
+    true
+}
+
+fn mcp_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("mcp.json"))
+}
+
+/// 读 MCP server 配置列表(mcp.json)。缺失 / 损坏 → 空列表。
+pub fn load_servers(app: &AppHandle) -> Vec<McpServerConfig> {
+    mcp_config_path(app)
+        .ok()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_servers(app: &AppHandle, servers: &[McpServerConfig]) -> Result<(), String> {
+    let p = mcp_config_path(app)?;
+    let json = serde_json::to_string_pretty(servers).map_err(|e| e.to_string())?;
+    fs::write(p, json).map_err(|e| e.to_string())
+}
+
+struct ConnectedServer {
+    // 持有 live 连接以**复用**(避免重 spawn)+ Drop 时 kill 子进程;
+    // Commit 3 的 call_tool 将经它发 tools/call(届时移除 allow)。
+    #[allow(dead_code)]
+    client: McpClient,
+    tools: Vec<McpTool>,
+}
+
+/// 已连接 MCP server 的运行时缓存(name → 连接 + 工具)。spawn 昂贵故缓存复用;
+/// Drop / disconnect 即 kill 子进程。**进程内**状态,重启重连。
+#[derive(Default)]
+pub struct McpManager {
+    inner: tokio::sync::Mutex<HashMap<String, ConnectedServer>>,
+}
+
+impl McpManager {
+    /// 确保 server 已连接(未连则按 config 连 + 列工具);返回工具。失败不缓存。
+    async fn ensure_connected(&self, cfg: &McpServerConfig) -> Result<Vec<McpTool>, String> {
+        let mut map = self.inner.lock().await;
+        if let Some(cs) = map.get(&cfg.name) {
+            return Ok(cs.tools.clone());
+        }
+        let mut client = McpClient::connect(&cfg.command, &cfg.args).await?;
+        let tools = client.list_tools().await?;
+        map.insert(
+            cfg.name.clone(),
+            ConnectedServer {
+                client,
+                tools: tools.clone(),
+            },
+        );
+        Ok(tools)
+    }
+
+    /// 断开并清除某 server 连接(Drop → kill 子进程)。
+    async fn disconnect(&self, name: &str) {
+        self.inner.lock().await.remove(name);
+    }
+}
+
+/// 设置页:列出配置的 server + 各自实时工具 / 状态(enabled 的会尝试连接)。
+#[tauri::command]
+pub async fn mcp_list(app: AppHandle, mgr: State<'_, McpManager>) -> Result<Value, String> {
+    let servers = load_servers(&app);
+    let mut out = Vec::new();
+    for s in &servers {
+        let mut entry = json!({
+            "name": s.name, "command": s.command, "args": s.args, "enabled": s.enabled,
+            "connected": false, "toolCount": 0, "tools": [], "error": Value::Null,
+        });
+        if s.enabled {
+            match mgr.ensure_connected(s).await {
+                Ok(tools) => {
+                    entry["connected"] = json!(true);
+                    entry["toolCount"] = json!(tools.len());
+                    entry["tools"] = json!(tools
+                        .iter()
+                        .map(|t| json!({
+                            "name": t.name, "description": t.description, "readOnly": t.read_only,
+                        }))
+                        .collect::<Vec<_>>());
+                }
+                Err(e) => entry["error"] = json!(e),
+            }
+        }
+        out.push(entry);
+    }
+    Ok(json!(out))
+}
+
+/// 添加一个 MCP server。**会在本机 spawn 一个程序——调用方(UI)须已取得用户知情同意。**
+#[tauri::command]
+pub async fn mcp_add(
+    app: AppHandle,
+    name: String,
+    command: String,
+    args: Vec<String>,
+) -> Result<(), String> {
+    let name = name.trim().to_string();
+    let command = command.trim().to_string();
+    if name.is_empty() || command.is_empty() {
+        return Err("server 名称与命令不能为空".into());
+    }
+    let mut servers = load_servers(&app);
+    if servers.iter().any(|s| s.name == name) {
+        return Err(format!("已存在同名 server:{name}"));
+    }
+    servers.push(McpServerConfig {
+        name,
+        command,
+        args,
+        enabled: true,
+    });
+    save_servers(&app, &servers)
+}
+
+/// 删除一个 MCP server(移出配置 + 断开连接)。可重新添加,UI 走 guardrail 确认。
+#[tauri::command]
+pub async fn mcp_remove(
+    app: AppHandle,
+    mgr: State<'_, McpManager>,
+    name: String,
+) -> Result<(), String> {
+    let mut servers = load_servers(&app);
+    let before = servers.len();
+    servers.retain(|s| s.name != name);
+    if servers.len() == before {
+        return Err(format!("未找到 server:{name}"));
+    }
+    save_servers(&app, &servers)?;
+    mgr.disconnect(&name).await;
+    Ok(())
+}
+
+/// 启用 / 停用一个 server(停用即断开、不再暴露其工具)。
+#[tauri::command]
+pub async fn mcp_set_enabled(
+    app: AppHandle,
+    mgr: State<'_, McpManager>,
+    name: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut servers = load_servers(&app);
+    let s = servers
+        .iter_mut()
+        .find(|s| s.name == name)
+        .ok_or_else(|| format!("未找到 server:{name}"))?;
+    s.enabled = enabled;
+    save_servers(&app, &servers)?;
+    if !enabled {
+        mgr.disconnect(&name).await;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +467,25 @@ mod tests {
     fn parse_tools_empty_when_missing_or_malformed() {
         assert!(parse_tools(&json!({})).is_empty());
         assert!(parse_tools(&json!({ "tools": "not-array" })).is_empty());
+    }
+
+    #[test]
+    fn server_config_serde_roundtrip_and_default_enabled() {
+        // 无 enabled 字段 → 默认启用(default_true)。
+        let json = r#"[{"name":"fs","command":"node","args":["server.js"]}]"#;
+        let servers: Vec<McpServerConfig> = serde_json::from_str(json).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "fs");
+        assert_eq!(servers[0].command, "node");
+        assert_eq!(servers[0].args, vec!["server.js"]);
+        assert!(servers[0].enabled);
+        // 往返:enabled 显式序列化。
+        let out = serde_json::to_string(&servers).unwrap();
+        assert!(out.contains("\"enabled\":true"));
+        // 缺 args → 空 vec(serde default)。
+        let no_args: Vec<McpServerConfig> =
+            serde_json::from_str(r#"[{"name":"x","command":"y","enabled":false}]"#).unwrap();
+        assert!(no_args[0].args.is_empty());
+        assert!(!no_args[0].enabled);
     }
 }
