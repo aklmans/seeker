@@ -1849,6 +1849,76 @@ async function openDocsManager(){
       onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); },
       onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } }); };
 }
+// MCP 服务器管理(#2 C4):增删启停 + 测试连接;知情同意「会在本机运行程序」。删走 guardrail。
+async function openMcpManager(){
+  const rt=window.SeekerRT, G=window.SeekerGuardrail;
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— EXTENSIONS</p><h2 style="margin-top:5px;">${tt('MCP 服务器','MCP servers')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;">
+        <input class="input" id="mcpName" placeholder="${tt('名称(如 filesystem)','Name (e.g. filesystem)')}">
+        <input class="input" id="mcpCmd" placeholder="${tt('命令(如 npx 或 node)','Command (e.g. npx or node)')}">
+        <input class="input" id="mcpArgs" placeholder="${tt('参数,空格分隔(如 -y @modelcontextprotocol/server-filesystem ./docs)','Args, space-separated')}">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-accent" id="mcpAddBtn">${tt('添加服务器','Add server')}</button>
+          <button class="btn" id="mcpTestBtn">${tt('测试连接','Test connection')}</button>
+          <span class="mono" id="mcpHint" style="font-size:11px;color:var(--ink-mute);"></span>
+        </div>
+      </div>
+      <div class="lock-note" style="margin:2px 0 14px;"><span class="li">🧩</span><span>${tt('添加 = 在本机运行该程序。只加你信任的来源;AI 调用其工具时每次都会先问你。','Adding runs the program on your machine. Only add trusted sources; the AI asks before each tool call.')}</span></div>
+      <div id="mcpList">${tt('加载中…','Loading…')}</div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const parseArgs=s=>String(s||'').trim().split(/\s+/).filter(Boolean);
+  const render=async()=>{
+    let rows=[]; try{ rows=await rt.mcp.list(); }catch(_e){}
+    const body=m.querySelector('#mcpList'); if(!body) return;
+    body.innerHTML = rows.length
+      ? rows.map(s=>{
+          const tools=(s.tools||[]).map(t=>esc(t.name)).join('、');
+          const status = s.error ? `<span style="color:var(--ink-3);">${tt('连接失败','Failed')}</span>`
+            : s.enabled ? (s.connected ? `<span style="color:var(--status-done);">${s.toolCount} ${tt('工具','tools')}</span>` : tt('连接中…','Connecting…'))
+            : `<span style="color:var(--ink-3);">${tt('已停用','Disabled')}</span>`;
+          return `<div style="padding:9px 0;border-bottom:0.5px solid var(--border);"><div style="display:flex;gap:10px;align-items:center;">
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${esc(s.name)} · ${status}</div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.command)} ${esc((s.args||[]).join(' '))}</div>
+              ${tools?`<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${tools}</div>`:''}
+              ${s.error?`<div style="font-size:11px;color:var(--ink-3);margin-top:3px;">${esc(s.error)}</div>`:''}</div>
+            <button class="btn" data-mcptoggle="${esc(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${s.enabled?tt('停用','Disable'):tt('启用','Enable')}</button>
+            <button class="btn" data-mcpdel="${esc(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Remove')}</button>
+          </div></div>`;
+        }).join('')
+      : `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('还没有 MCP 服务器。添加一个,让 AI 用上外部工具(每次调用都会先问你)。','No MCP servers yet. Add one to give the AI external tools — it asks before each call.')}</p>`;
+    [...m.querySelectorAll('[data-mcptoggle]')].forEach(b=>b.onclick=async()=>{
+      const s=rows.find(x=>x.name===b.dataset.mcptoggle); if(!s) return;
+      try{ await rt.mcp.setEnabled(s.name, !s.enabled); }catch(e){ toast(String((e&&e.message)||e)); } await render();
+    });
+    [...m.querySelectorAll('[data-mcpdel]')].forEach(b=>b.onclick=()=>{
+      if(!G||!G.confirmDestructive) return;
+      G.confirmDestructive({ title:tt('删除 MCP 服务器?','Remove MCP server?'), detail:(tt('将移除并断开:','Remove and disconnect: '))+b.dataset.mcpdel, confirmLabel:tt('删除','Remove'),
+        onConfirm:async()=>{ try{ await rt.mcp.remove(b.dataset.mcpdel); }catch(_e){} await render(); } });
+    });
+  };
+  await render();
+  const nameI=m.querySelector('#mcpName'), cmdI=m.querySelector('#mcpCmd'), argsI=m.querySelector('#mcpArgs'), hint=m.querySelector('#mcpHint');
+  const addBtn=m.querySelector('#mcpAddBtn');
+  if(addBtn) addBtn.onclick=async()=>{
+    const name=((nameI&&nameI.value)||'').trim(), cmd=((cmdI&&cmdI.value)||'').trim();
+    if(!name||!cmd){ toast(tt('请填名称与命令','Enter name and command')); return; }
+    addBtn.disabled=true;
+    try{ await rt.mcp.add(name, cmd, parseArgs(argsI&&argsI.value)); toast(tt('已添加 ','Added ')+name); if(nameI)nameI.value=''; if(cmdI)cmdI.value=''; if(argsI)argsI.value=''; if(hint)hint.textContent=''; await render(); }
+    catch(e){ toast(String((e&&e.message)||e)); }
+    finally{ addBtn.disabled=false; }
+  };
+  const testBtn=m.querySelector('#mcpTestBtn');
+  if(testBtn) testBtn.onclick=async()=>{
+    const cmd=((cmdI&&cmdI.value)||'').trim(); if(!cmd){ toast(tt('请先填命令','Enter command first')); return; }
+    testBtn.disabled=true; if(hint)hint.textContent=tt('连接中…','Connecting…');
+    try{ const r=await rt.mcp.probe(cmd, parseArgs(argsI&&argsI.value)); if(hint)hint.textContent=tt('成功 · ','OK · ')+r.toolCount+tt(' 个工具',' tools'); toast(tt('连接成功 · ','Connected · ')+r.toolCount+tt(' 工具',' tools')); }
+    catch(e){ if(hint)hint.textContent=''; toast(String((e&&e.message)||e)); }
+    finally{ testBtn.disabled=false; }
+  };
+}
 function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
@@ -1927,6 +1997,9 @@ function renderSettings(){
     ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
     ${row(tt('知识库 · 文档','Knowledge · docs'),`<button class="btn" id="mgrDocs">${tt('管理文档','Manage docs')}</button>`)}
     <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除。<b>知识库文档</b>是你主动加入、供 AI 检索作答的语料(需配嵌入模型),其相关片段会用于回答 —— 同样只存本地、可随时删除。你掌控自己的数据。','Chat history and long-term memory stay local only. <b>AI cannot query your chat history</b> (only in-conversation context); review/clear volunteered memory here anytime. <b>Knowledge docs</b> are material you add for the AI to retrieve from (needs an embed model); relevant chunks are used in answers — also local-only and deletable anytime. You control your data.')}</span></div>
+    <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('扩展 · MCP 工具','Extensions · MCP tools')}</p></div>
+    ${row(tt('MCP 服务器','MCP servers'),`<button class="btn" id="mgrMcp">${tt('管理服务器','Manage servers')}</button>`)}
+    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🧩</span><span>${tt('MCP 让 AI 接入外部工具(文件 / 数据库 / API…)。<b>添加服务器 = 在你电脑上运行一个程序</b>,请只加你信任的来源;AI 每次调用其工具都会<b>先征得你同意</b>,返回内容被当作数据(不可信、防注入)。仅桌面端可用。','MCP lets the AI use external tools (files / databases / APIs). <b>Adding a server runs a program on your machine</b> — only add sources you trust. The AI <b>asks your permission every time</b> it calls a tool; returned content is treated as untrusted data. Desktop only.')}</span></div>
     ${row(tt('清空所有数据','Clear all data'),`<button class="btn" onclick="toast('已取消 — 数据已安全保留')">${tt('清空','Clear')}</button>`)}
   </div>`;
   sections.about=`<p class="seclabel">— ABOUT</p><h2 class="sectitle">${tt('关于','About')}<span class="dot">.</span></h2>
@@ -1981,6 +2054,7 @@ function wireDataIO(){
   const mh=$('#mgrHistory'); if(mh) mh.onclick=openHistoryManager;   // 历史与记忆掌控(#4),web/桌面皆可
   const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
   const md=$('#mgrDocs'); if(md) md.onclick=openDocsManager;          // RAG 知识库管理(#2)
+  const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=openMcpManager;       // MCP server 管理(#2 C4)
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
   if(!on){
     exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');
