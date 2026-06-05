@@ -1407,6 +1407,14 @@ function renderJobs(){
   $$('#page-jobs tr[data-job]').forEach(r=>r.onclick=()=>openJobDetail(+r.dataset.job, r));
 }
 
+// 投递时间线(评审 P2-13):per-job 纯记录日志,严守反焦虑 —— 无倒计时、无截止红色,只是"投了哪些 / 几轮 / 何时跟进"。
+function jobTimelineRows(j){
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tl=Array.isArray(j.timeline)?j.timeline:[];
+  return tl.length
+    ? tl.map((e,i)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-bottom:0.5px solid var(--border);"><span class="mono" style="font-size:11px;color:var(--accent);white-space:nowrap;flex-shrink:0;min-width:42px;">${esc(e.date||'')}</span><span style="flex:1;font-size:13px;color:var(--ink-2);">${esc(e.note||'')}</span><button class="btn-text" data-tldel="${i}" style="font-size:11px;color:var(--ink-3);flex-shrink:0;">${tt('删','×')}</button></div>`).join('')
+    : `<p style="font-size:13px;color:var(--ink-3);padding:6px 0;line-height:1.6;">${tt('还没有记录 —— 投了就记一笔:哪天投的、几轮了、何时跟进。纯记录,不催你。','Nothing logged yet — jot down milestones: applied date, interview rounds, follow-ups. Just a log, no pressure.')}</p>`;
+}
 function openJobDetail(id, row){
   selectedJob=id;
   $$('#page-jobs tr[data-job]').forEach(r=>r.classList.toggle('selected', +r.dataset.job===id));
@@ -1448,8 +1456,12 @@ function openJobDetail(id, row){
         <p style="font-size:13px;color:var(--ink-3);margin:6px 0 12px;">${tt('可补充: 在训练项目中加入 '+gapSkill+' 的生产实践,沉淀为可展示证据。','Add '+gapSkill+' to a training project as production practice, and turn it into demonstrable evidence.')}</p>
         <button class="btn-text" id="addToActions">${tt('一键加入行动清单','Add to action list')} →</button>
       </div>
-      <div class="msec" style="border-bottom:none;"><p class="seclabel">— STATUS</p><h3 class="sectitle" style="font-size:16px;margin-bottom:10px;">${tt('状态','Status')}<span class="dot">.</span></h3>
+      <div class="msec"><p class="seclabel">— STATUS</p><h3 class="sectitle" style="font-size:16px;margin-bottom:10px;">${tt('状态','Status')}<span class="dot">.</span></h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">${statusBtns}</div></div>
+      <div class="msec" style="border-bottom:none;"><p class="seclabel">— TIMELINE</p><h3 class="sectitle" style="font-size:16px;margin-bottom:4px;">${tt('申请时间线','Application timeline')}<span class="dot">.</span></h3>
+        <p style="font-size:12.5px;color:var(--ink-3);margin:0 0 10px;">${tt('记录投递与进展 —— 纯日志,无倒计时、不催你。','Log your applications and progress — just a journal, no countdowns, no pressure.')}</p>
+        <div id="jobTimeline">${jobTimelineRows(j)}</div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;"><input class="input" id="tlDate" placeholder="${tt('日期 如 5/20','Date e.g. 5/20')}" style="max-width:120px;"><input class="input" id="tlNote" placeholder="${tt('如 · 投递 / 一面 / 等回复','e.g. applied / round 1 / waiting')}" style="flex:1;min-width:160px;"><button class="btn" id="tlAdd">${tt('记一笔','Log')}</button></div></div>
     </div>`;
   const m=openModal(html);
   $('#addToActions',m).onclick=()=>{genPlanFromGap(gapSkill, j.co+' · '+j.role.split('·')[0].trim());renderActions();renderOverview();closeModal();toast('已生成训练计划: 补齐 '+gapSkill);go('actions');};
@@ -1457,6 +1469,18 @@ function openJobDetail(id, row){
   $('#aiPlan',m).onclick=()=>{genPlanFromGap(gapSkill, j.co+' · '+j.role.split('·')[0].trim());renderActions();renderOverview();closeModal();toast('已生成「'+gapSkill+'」训练计划');go('actions');};
   $('#aiIv',m).onclick=()=>goInterview(j.id);
   $$('[data-setstatus]',m).forEach(b=>b.onclick=()=>{j.status=b.dataset.setstatus;toast('状态已更新: '+STATUS[j.status].label);closeModal();renderJobs();renderOverview();});
+  // 投递时间线:记一笔 / 删一笔 → 写 j.timeline + persistJob(随岗位持久化)+ 就地重渲(不重建整模态)。
+  const redrawTl=()=>{ const c=$('#jobTimeline',m); if(!c) return; c.innerHTML=jobTimelineRows(j);
+    c.querySelectorAll('[data-tldel]').forEach(b=>b.onclick=()=>{ if(Array.isArray(j.timeline)) j.timeline.splice(+b.dataset.tldel,1); persistJob(j); redrawTl(); }); };
+  redrawTl();
+  const tlAdd=$('#tlAdd',m); if(tlAdd) tlAdd.onclick=()=>{
+    const d=(($('#tlDate',m)||{}).value||'').trim(), nt=(($('#tlNote',m)||{}).value||'').trim();
+    if(!d&&!nt){ toast(tt('填日期或内容再记','Add a date or note first')); return; }
+    if(!Array.isArray(j.timeline)) j.timeline=[];
+    j.timeline.push({date:d, note:nt}); persistJob(j);
+    if($('#tlDate',m))$('#tlDate',m).value=''; if($('#tlNote',m))$('#tlNote',m).value='';
+    redrawTl();
+  };
 }
 </script>
 <script>
