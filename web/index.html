@@ -69,7 +69,7 @@ html[data-theme="dark"] .nav-item:hover{background:rgba(255,255,255,0.04);}
 .crumb b{color:var(--ink-2); font-weight:600;}
 .topbar-actions{margin-left:auto; display:flex; align-items:center; gap:10px;}
 
-.content{flex:1; padding:0 28px 0; max-width:1180px; width:100%; margin:0 auto;}
+.content{flex:1; min-width:0; padding:0 28px 0; max-width:1180px; width:100%; margin:0 auto;}
 .page{display:none;}
 .page.active{display:block; opacity:1;}
 @media (prefers-reduced-motion:no-preference){
@@ -794,7 +794,11 @@ body[data-sidebar="rail"] .ver{display:none;}
 .mode-switch button.on{background:var(--accent-soft); color:var(--accent);}
 /* ===== Agent pane (inside main body) ===== */
 .main-body{flex:1; display:flex; min-height:0; min-width:0;}
-.agent-chat{display:none; flex:0 1 420px; min-width:0; border-right:0.5px solid var(--border); background:var(--bg-subtle); flex-direction:column; overflow:hidden; transition:background 280ms ease;}
+.agent-chat{display:none; flex:0 1 var(--agent-w,420px); min-width:0; border-right:0.5px solid var(--border); background:var(--bg-subtle); flex-direction:column; overflow:hidden; transition:background 280ms ease;}
+/* split 模式:agent-chat 与右侧画布(#content)间的可拖拽分隔条 —— 拖动改 chat 宽度,画布取其余(让用户调右侧展示栏宽窄)。 */
+.agent-resize{display:none; flex:0 0 6px; cursor:col-resize; background:transparent; transition:background 120ms ease;}
+body[data-appmode="agent"][data-agent="split"] .agent-resize{display:block;}
+.agent-resize:hover,.agent-resize.dragging{background:var(--accent-soft);}
 body[data-appmode="agent"] .agent-chat{display:flex;}
 body[data-appmode="agent"] .cop-launch{display:none;}
 .agent-head{padding:18px 20px 14px; border-bottom:0.5px solid var(--border);}
@@ -828,7 +832,7 @@ body[data-appmode="agent"][data-agent="centered"] .agent-chat .agent-cmds,
 body[data-appmode="agent"][data-agent="centered"] .agent-chat .cop-input{max-width:760px; margin-left:auto; margin-right:auto; width:100%;}
 body[data-appmode="agent"][data-agent="centered"] #content{display:none;}
 body[data-appmode="agent"][data-agent="centered"] #agentCanvasToggle{display:none;}
-body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
+body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-w,420px);}  /* split:按 --agent-w 固定宽、不缩,右侧画布(#content min-width:0)吸收其余 → 拖分隔条即调画布宽 */
 @media (max-width:900px){ .agent-chat{flex-basis:340px;} }
 
 .hide{display:none !important;}
@@ -884,6 +888,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
         <div class="agent-cmds" id="agentCmds"></div>
         <div class="cop-input" style="position:relative;"><div class="cmd-pop" id="cmdPop"></div><textarea id="agentInput" rows="1" placeholder="说出需求,或输入 / 唤起命令"></textarea><button class="cop-send" id="agentSend"></button></div>
       </aside>
+      <div class="agent-resize" id="agentResize" title="拖动调节宽度"></div>
       <div class="content" id="content"></div>
     </div>
   </div>
@@ -1168,6 +1173,12 @@ function buildNav(){
     nav.appendChild(b);
   });
 }
+// 导航徽标随真实数据刷新:buildNav 只在 init/切语言时跑,岗位/行动增删后须就地更新计数(否则陈旧、看着像写死)。
+function syncNavCounts(){
+  const set=(id,txt)=>{ const c=$(`.nav-item[data-id="${id}"] .count`); if(c) c.textContent=txt; };
+  set('jobs', `${JOBS.length}/${setState.goal||20}`);
+  set('actions', `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`);
+}
 function setLang(l){
   setState.lang=l; try{localStorage.setItem('jh-lang',l);}catch(e){}
   const lb=$('#langBtn'); if(lb)lb.textContent=l==='en'?'EN':'中';
@@ -1204,12 +1215,11 @@ function go(id){
 }
 function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
-  const themeIcon=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
   const map={
     overview:[{t:'智能匹配', a:'btn-accent', fn:()=>go('match')}],
     match:[{t:'我的简历', fn:openResumeModal}],
     resumes:[{t:'+ 生成针对性简历', a:'btn-accent', fn:()=>resumeGenerate(resumeState.jobId, renderResumes)}],
-    jobs:[{t:'筛选', fn:()=>toast('筛选已在下方展开')},{t:'+ 录入岗位', a:'btn-accent', fn:openNewJob}],
+    jobs:[{t:'+ 录入岗位', a:'btn-accent', fn:openNewJob}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
     analysis:[{t:'导出报告', fn:()=>toast('已导出分析报告 (mock)')}],
     skills:[{t:'市场价值报告', fn:openMarketValue}],
     actions:[{t:'+ 添加行动', a:'btn-accent', fn:openNewAction}],
@@ -1219,7 +1229,7 @@ function renderTopActions(id){
   (map[id]||[]).forEach(b=>{
     const btn=el(`<button class="btn ${b.a||''}">${b.t}</button>`); btn.onclick=b.fn; host.appendChild(btn);
   });
-  const tb=el(`<button class="iconbtn" title="切换主题">${themeIcon}</button>`); tb.onclick=toggleTheme; host.appendChild(tb);
+  // 主题切换器去除:主题已可在「数据设置 · 主题模式」+ 侧栏脚按钮(themeBtn2)+ 快捷键 Mod+Shift+D 三处切换,顶部图标冗余。
 }
 
 /* ============ THEME ============ */
@@ -1228,8 +1238,7 @@ function toggleTheme(){
   const next=cur==='dark'?'light':'dark';
   document.documentElement.dataset.theme=next;
   try{localStorage.setItem('jh-theme',next);}catch(e){}
-  renderTopActions(current);
-  $('#themeBtn2').innerHTML=next==='dark'?IC.sun:IC.moon;
+  const tb2=$('#themeBtn2'); if(tb2) tb2.innerHTML=next==='dark'?IC.sun:IC.moon;
 }
 (function initTheme(){
   let t='light'; try{t=localStorage.getItem('jh-theme')||'light';}catch(e){}
@@ -1313,6 +1322,7 @@ function buildPages(){
 
 /* ---------- OVERVIEW ---------- */
 function renderOverview(){
+  syncNavCounts();
   if(!onboarded()){ renderFirstRun(); return; }   // 首启未决定 → 价值主张落地页 + 岔路(开始我的 / 逛示例)
   const n=JOBS.length||1;
   const avgI=(JOBS.reduce((a,j)=>a+(j.interest||0),0)/n).toFixed(1);
@@ -1372,6 +1382,7 @@ function renderOverview(){
 let jobFilter={city:'全部', status:'全部'};
 let selectedJob=null;
 function renderJobs(){
+  syncNavCounts();
   const cities=['全部','北京','上海','深圳','杭州'];
   const statuses=[['全部','全部'],['fav','收藏'],['todo','待投'],['sent','已投'],['interview','面试'],['reject','拒绝']];
   const filterbar=`<div class="filterbar">
@@ -1691,6 +1702,7 @@ function openSkillDetail(name){
 let actTab='全部';
 function sessMins(a){return (a.sessions||[]).reduce((x,s)=>x+s.mins,0);}
 function renderActions(){
+  syncNavCounts();
   const counts={全部:ACTIONS.length, 进行中:ACTIONS.filter(a=>a.state==='doing').length, 待开始:ACTIONS.filter(a=>a.state==='todo').length, 已完成:ACTIONS.filter(a=>a.state==='done').length};
   const tabs=[['全部',tt('全部','All')],['进行中',tt('进行中','In progress')],['待开始',tt('待开始','Not started')],['已完成',tt('已完成','Done')]];
   const tabbar=`<div class="tabs">${tabs.map(t=>`<button class="tab ${actTab===t[0]?'on':''}" data-at="${t[0]}">${t[1]} (${counts[t[0]]||0})</button>`).join('')}</div>`;
@@ -3985,6 +3997,7 @@ function renderModeSwitch(){
 }
 function initShell(){
   try{const w=localStorage.getItem('jh-sbw'); if(w)document.documentElement.style.setProperty('--sb-w',w+'px');}catch(e){}
+  try{const aw=localStorage.getItem('jh-agentw'); if(aw)document.documentElement.style.setProperty('--agent-w',aw+'px');}catch(e){} // Agent 右栏宽度(画布)恢复
   try{const lg=localStorage.getItem('jh-lang'); if(lg)setState.lang=lg;}catch(e){}
   hydrateSettings(); // 目标/权重/外观偏好 从 localStorage 恢复(profile 走 rt.profile,见 hydrateProfile)
   const col=$('#sbCollapse'); if(col)col.onclick=toggleSidebar;
@@ -3994,6 +4007,13 @@ function initShell(){
     e.preventDefault(); const sx=e.clientX; const sb=$('#sidebar'); const sw=sb?sb.offsetWidth:212;
     const mv=(ev)=>{const w=Math.max(180,Math.min(360,sw+(ev.clientX-sx)));document.documentElement.style.setProperty('--sb-w',w+'px');};
     const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);try{localStorage.setItem('jh-sbw',($('#sidebar')||{}).offsetWidth||212);}catch(e){}};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  };
+  // Agent split 模式:拖分隔条调 agent-chat 宽度 → 右侧画布取其余(镜像侧栏拖拽,持久化 jh-agentw)。
+  const arz=$('#agentResize'); if(arz)arz.onmousedown=(e)=>{
+    e.preventDefault(); arz.classList.add('dragging'); const sx=e.clientX; const ac=$('#agentChat'); const aw=ac?ac.offsetWidth:420;
+    const mv=(ev)=>{const w=Math.max(300,Math.min(820,aw+(ev.clientX-sx)));document.documentElement.style.setProperty('--agent-w',w+'px');};
+    const up=()=>{arz.classList.remove('dragging');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);try{localStorage.setItem('jh-agentw',($('#agentChat')||{}).offsetWidth||420);}catch(e){}};
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   };
   setLang(setState.lang);
