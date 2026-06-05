@@ -1527,14 +1527,17 @@ function renderAnalysis(){
   const maxSal=100;
   const salRows=SALARY.map(s=>`<div class="sal-row"><span class="sn">${s.role}</span><div class="sal-bar"><i style="left:${s.lo}%;width:${s.hi-s.lo}%;"></i><span class="you" style="left:${YOU_VALUE}%;"></span></div><span class="sal-val">${s.lo}-${s.hi}万</span></div>`).join('');
   const market=`<div class="sec"><p class="seclabel">— MARKET INTEL</p><h2 class="sectitle">${tt('市场情报','Market intel')}<span class="dot">.</span></h2>
-    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 18px;max-width:680px;line-height:1.7;">聚合你的 12 份目标 JD 与市场样本得出 —— 这是只有"持续收集 JD"才攒得出的独家数据,也是产品真正的护城河。趋势仅作机会参考,不必焦虑。</p>
+    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 18px;max-width:680px;line-height:1.7;">${tt('聚合你的 '+JOBS.length+' 份目标 JD 与市场样本得出 —— 这是只有"持续收集 JD"才攒得出的独家数据。趋势仅作机会参考,不必焦虑。','Aggregated from your '+JOBS.length+' target JDs and market samples — exclusive data only built by collecting JDs over time. Trends are for opportunity-spotting only; no need to stress.')}</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">技能需求趋势 · 近 6 个月</p>${trendRows}
       <p style="font-size:11px;color:var(--ink-mute);margin:12px 0 0;">绿 = 需求上行 · 灰 = 平稳/回落</p></div>
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">薪资 benchmark · <span style="color:var(--accent);">│</span> 为你的估算位</p>${salRows}
       <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">你的估算位约 <b style="color:var(--accent);">${YOU_VALUE} 万</b>,处「高级」带中上沿。<button class="btn-text" onclick="openMarketValue()">看完整市场价值报告 →</button></p></div>
     </div></div>`;
-  $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+skillTable+matrix+dist+market+cloud+signFoot();
+  // 私人市场地图(评审 P2-12 护城河前置 + P2-11 研究资产定位):把"持续收集才攒得出"提到显眼处。
+  const marketMap=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="ai-bar" style="border:0.5px solid var(--border);">
+    <span class="dot"></span><span class="lbl">${tt('你的私人市场地图 · 已从 '+JOBS.length+' 份 JD 聚合出 '+distinctNeedSkills()+' 个高频技能 —— 持续收集,地图越长越值钱(只有你才有的研究资产)。','Your private market map · '+distinctNeedSkills()+' high-frequency skills from '+JOBS.length+' JDs — the more you collect, the more valuable it gets (a research asset only you have).')}</span></div></div>`;
+  $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+marketMap+skillTable+matrix+dist+market+cloud+signFoot();
 }
 
 /* ---------- SKILLS ---------- */
