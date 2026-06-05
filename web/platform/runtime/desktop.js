@@ -119,9 +119,11 @@ export function createDesktopRuntime() {
 
     db: {
       list: (collection, query) => invoke('db_list', { collection, query: query ?? null }),
-      get: (collection, id) => invoke('db_get', { collection, id }),
+      // id 用 String() 兜底:记录可能用数值 id(种子/Math.max+1),后端 db_get/db_remove 形参是 String,
+      // 不转则 Tauri 反序列化数值→String 失败,导致数值 id 记录无法 get/删除(删岗位等潜在 bug)。
+      get: (collection, id) => invoke('db_get', { collection, id: String(id) }),
       upsert: (collection, record) => invoke('db_upsert', { collection, record }),
-      remove: (collection, id) => invoke('db_remove', { collection, id }), // 返快照 → toastUndo
+      remove: (collection, id) => invoke('db_remove', { collection, id: String(id) }), // 返快照 → toastUndo
       export: (redact) => invoke('db_export', { redact: !!redact }),
       import: (json) => invoke('db_import', { json }),
       backup: () => invoke('db_backup'),

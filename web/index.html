@@ -2233,14 +2233,27 @@ function openNewJob(){
 /* ---------- NEW ACTION MODAL ---------- */
 function openNewAction(){
   const html=`
-    <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">添加行动</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('添加行动','New action')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
-      <div class="field"><label>标题</label><input class="input" placeholder="如 · 完成 Rust 实战项目"></div>
-      <div class="field-row"><div class="field"><label>优先级</label><select class="select"><option>高</option><option selected>中</option><option>低</option></select></div><div class="field"><label>截止日期</label><input class="input" placeholder="2026.06.30"></div></div>
-      <div class="field-row"><div class="field"><label>关联技能</label><select class="select">${SKILLS.map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class="field"><label>关联岗位</label><select class="select"><option>不关联</option>${JOBS.map(j=>`<option>${j.co} · ${j.role}</option>`).join('')}</select></div></div>
+      <div class="field"><label>${tt('标题','Title')}</label><input class="input" id="naTitle" placeholder="${tt('如 · 完成 Rust 实战项目','e.g. Finish a Rust project')}"></div>
+      <div class="field-row"><div class="field"><label>${tt('优先级','Priority')}</label><select class="select" id="naPri"><option value="high">${tt('高','High')}</option><option value="mid" selected>${tt('中','Mid')}</option><option value="low">${tt('低','Low')}</option></select></div><div class="field"><label>${tt('截止日期','Due')}</label><input class="input" id="naDue" placeholder="2026.06.30"></div></div>
+      <div class="field-row"><div class="field"><label>${tt('关联技能','Skill')}</label><select class="select" id="naSkill"><option value="">${tt('不关联','None')}</option>${SKILLS.map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class="field"><label>${tt('关联岗位','Job')}</label><select class="select" id="naJob"><option value="">${tt('不关联','None')}</option>${JOBS.map(j=>`<option>${j.co} · ${j.role}</option>`).join('')}</select></div></div>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn btn-accent" onclick="closeModal();toast('行动已添加 (mock)')">添加</button></div>`;
-  openModal(html);
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="naAdd">${tt('添加','Add')}</button></div>`;
+  const m=openModal(html);
+  $('#naAdd',m).onclick=()=>{
+    const title=(($('#naTitle',m)||{}).value||'').trim();
+    if(!title){ toast(tt('请填写标题','Enter a title')); return; }
+    const skill=($('#naSkill',m)||{}).value||'';
+    const id=Math.max(0,...ACTIONS.map(a=>+a.id||0))+1; // 空数组也安全(0 起)
+    ACTIONS.push({ id, title, state:'todo', pri:($('#naPri',m)||{}).value||'mid', fromJobs:0,
+      due:(($('#naDue',m)||{}).value||'').trim(), skill, cap:skill, jobs:($('#naJob',m)||{}).value||'', est:'', note:'',
+      progress:0, goal:'', milestones:[], sessions:[], reflection:'' });
+    persistColl('actions', ACTIONS);                  // 真落库(桌面 rt.db,web IndexedDB)
+    [renderActions,renderOverview].forEach(f=>{try{f();}catch(_e){}});
+    closeModal();
+    toast(tt('行动已添加','Action added'));
+  };
 }
 
 /* ============ AI ENGINE + P0/P1/P2 FEATURES ============ */
