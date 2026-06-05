@@ -1173,7 +1173,7 @@ function setLang(l){
   const lb=$('#langBtn'); if(lb)lb.textContent=l==='en'?'EN':'中';
   buildNav(); renderModeSwitch();
   const p=PAGES.find(x=>x.id===current); if(p)$('#crumb').innerHTML=L(p);
-  renderTopActions(current); updateAgentChrome();
+  renderTopActions(current); updateAgentChrome(); updateCopChrome();
   rerenderPages();
 }
 function tt(zh,en){return setState.lang==='en'?en:zh;}
@@ -1183,6 +1183,12 @@ function updateAgentChrome(){
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
   const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
   const al=$('#agentCmds .ac-label'); if(al)al.textContent=T('cmdLabel');
+}
+// Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
+function updateCopChrome(){
+  const cl=$('#copLaunch'); if(cl) cl.innerHTML='<span class="ld"></span>'+tt('问问 AI · ⌘K','Ask AI · ⌘K');
+  const hs=$('#copPanel .hs'); if(hs) hs.textContent=tt('· 用一句话指挥整个工作台','· Command the whole workbench in one line');
+  const ci=$('#copInput'); if(ci) ci.placeholder=tt('试试:我现在最该做什么?','Try: what should I do next?');
 }
 function go(id){
   current=id;
@@ -1349,13 +1355,13 @@ function renderOverview(){
     </div>
     <p style="font-size:12px;color:var(--ink-3);margin-top:14px;">${tt('已记录 '+JOBS.length+' 个岗位 · 持续推进中',JOBS.length+' jobs logged · steady progress')}</p>
   </div>`;
-  const nextAct=recommendNextAction(); // null-safe(空 ACTIONS 返 null,不再崩)
+  const ns=nextStep(); // 阶段自适应:有行动→最该做的;无行动且无岗位→录岗位;有岗位无行动→做匹配
   const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="next-hero"><div class="nh-in">
     <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0 0 9px;">— ${tt('AI 建议 · 下一步最该做的一件事','AI · the one thing to do next')}</p>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;">
-      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${nextAct?nextAct.title:tt('从添加一个目标岗位开始','Start by adding a target job')}</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${nextAct?((nextAct.cap?(tt('练 ','Train ')+nextAct.cap+' · '):'')+(nextAct.goal||tt('持续推进,保持节奏。','Keep the momentum.'))):tt('录入岗位 → 分析缺口 → AI 给你下一步该做的事。','Add a job → analyze gaps → the AI suggests your next move.')}</p></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${nextAct?'actions':'jobs'}')">${nextAct?tt('去完成','Go do it'):tt('添加岗位','Add a job')} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
+      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${ns.title}</h3>
+        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${ns.desc}</p></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${ns.ctaGo}')">${ns.ctaLabel} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
     </div></div></div></div>`;
   $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+stats+two+pipe+signFoot();
 }
@@ -3015,6 +3021,12 @@ const cCard=(t,m)=>`<div class="cop-card"><div class="cct">${t}</div>${m?`<div c
 const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</div>`:'';
 const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc}">${l}</button>`;
 const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button onclick="copSend('${s}')">${s}</button>`).join('')}</div>`;
+// 开场建议随数据态(评审 P0-6):零数据 → 引导上手(原"我和字节匹配吗"对新用户是死链);有数据 → 真实可用查询。EN 避撇号(cSuggs 内联 onclick)。
+function aiSuggs(){
+  return JOBS.length
+    ? [tt('我最该投哪个岗位?','Which job fits me best?'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?'), tt('帮我改简历','Help me tune my resume'), tt('我现在最该做什么?','What should I do next?')]
+    : [tt('这个工具能帮我做什么?','What can this tool do for me?'), tt('我该从哪一步开始?','Where should I start?'), tt('你能读到我的哪些数据?','What data can you read?')];
+}
 
 /* operations the copilot can perform (also callable from buttons) */
 function copGo(id){copClose();go(id);}
@@ -3392,6 +3404,13 @@ function recommendNextAction(){
   const pr={high:0,mid:1,low:2};
   return ACTIONS.filter(a=>a.state==='doing').sort((a,b)=>pr[a.pri]-pr[b.pri])[0] || ACTIONS.find(a=>a.state==='todo') || ACTIONS[0] || null;
 }
+/** 总览「下一步」阶段自适应(评审 P0-4):有行动→最该做的;无行动且无岗位→录岗位;有岗位无行动→做匹配找缺口。 */
+function nextStep(){
+  const a=recommendNextAction();
+  if(a) return { title:a.title, desc:(a.cap?(tt('练 ','Train ')+a.cap+' · '):'')+(a.goal||tt('持续推进,保持节奏。','Keep the momentum.')), ctaLabel:tt('去完成','Go do it'), ctaGo:'actions' };
+  if(!JOBS.length) return { title:tt('从添加一个目标岗位开始','Start by adding a target job'), desc:tt('录入岗位 → 分析缺口 → AI 给你下一步该做的事。','Add a job → analyze gaps → the AI suggests your next move.'), ctaLabel:tt('添加岗位','Add a job'), ctaGo:'jobs' };
+  return { title:tt('做一次智能匹配,看清你的缺口','Run a smart match to see your gaps'), desc:tt('挑一个岗位,AI 算出匹配度与该补的能力,再一键排进行动。','Pick a job; AI computes your fit and what to build, then turn it into actions.'), ctaLabel:tt('智能匹配','Smart match'), ctaGo:'match' };
+}
 /** 下一步轻卡(原生 · 真实 ACTIONS):最该做的一件事 + CTA;无行动则引导智能匹配。 */
 function renderNextCardEl(){
   const esc=s=>String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -3680,7 +3699,7 @@ function copInit(){
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
   inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
   /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
-  copAppend('ai','<span class="who">Copilot</span>嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:'+cSuggs(['我和字节那个岗位匹配吗?','我最大的能力缺口是什么?','帮我改腾讯那个岗位的简历','我现在最该做什么?']));
+  copAppend('ai','<span class="who">Copilot</span>'+tt('嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:','Hi, I\'m your job-hunt Copilot. Command the whole workbench in one line — match jobs, tune resumes, generate interview questions, plan training, find gaps. Try:')+cSuggs(aiSuggs()));
 }
 
 /* ============ AGENT MODE ============ */
