@@ -1363,7 +1363,9 @@ function renderOverview(){
         <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${ns.desc}</p></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${ns.ctaGo}')">${ns.ctaLabel} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
     </div></div></div></div>`;
-  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+stats+two+pipe+signFoot();
+  const dg=calmDigest();
+  const digestHtml=dg?`<div class="sec" style="border-bottom:none;padding:2px 0 0;"><p style="font-size:12px;color:var(--ink-3);font-family:var(--font-mono);letter-spacing:0.04em;">${dg}</p></div>`:'';
+  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+digestHtml+stats+two+pipe+signFoot();
 }
 
 /* ---------- JOBS ---------- */
@@ -2221,14 +2223,15 @@ function renderFirstRun(){
     <h2 class="sectitle" style="font-size:28px;margin:11px 0 0;">${tt('把求职,当成一个研究项目','Run your job hunt like a research project')}<span class="dot">.</span></h2>
     <p style="font-size:14.5px;color:var(--ink-2);line-height:1.75;max-width:620px;margin:14px 0 0;">${tt('收集你心仪的岗位,Seeker 帮你反推出「该补什么能力、简历怎么改、面试怎么练」。所有数据只存在你的电脑里,联系方式永不参与 AI。','Collect the jobs you want, and Seeker reverse-engineers what skills to build, how to tune your resume, and how to prep interviews. All your data stays on this machine — your contact details never go to AI.')}</p></div>`;
   const steps=`<div class="sec" style="border-bottom:none;padding-top:10px;">
-    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('录入 3-5 个你最向往的岗位','Add 3-5 jobs you want most')}</h3><p>${tt('从最有激情的开始 — 粘贴 JD,Seeker 自动抽取要求。','Start with the ones you\'re most excited about — paste a JD and Seeker extracts the requirements.')}</p></div></div>
-    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('看清你与目标的差距','See where you stand')}</h3><p>${tt('AI 读你的真实数据,算出匹配度与能力缺口 —— 有依据、不外发。','AI reads your real data to compute fit and skill gaps — grounded, never sent out.')}</p></div></div>
-    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('定行动:补能力 / 改简历 / 练面试','Act: build skills / tune resume / prep interviews')}</h3><p>${tt('把求职拆成可推进的小步,稳步前进 —— 你没有落后。','Break it into steady, doable steps — you\'re not behind.')}</p></div></div>
+    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('上传你的简历','Upload your resume')}</h3><p>${tt('AI 自动把你的技能 / 经历建成「能力档案」—— 本地处理、联系方式不参与 AI;解锁匹配与缺口分析。','AI builds your skills & experience into a career-asset profile — local-only, contact details excluded; unlocks matching & gap analysis.')}</p><button class="btn" id="frResume" style="margin-top:10px;">${tt('+ 上传简历','+ Upload resume')}</button></div></div>
+    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('录入 3-5 个心仪岗位','Add 3-5 jobs you want')}</h3><p>${tt('粘贴 JD,Seeker 自动抽取要求 —— 简历 + 岗位齐了,才算得准匹配、找得出缺口。','Paste a JD and Seeker auto-extracts the requirements — with both resume and jobs, it can compute fit and find gaps.')}</p></div></div>
+    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('看匹配与缺口,定行动','See fit & gaps, then act')}</h3><p>${tt('AI 算出你与每个岗位的差距、该补什么,一键排进行动:补能力 / 改简历 / 练面试。稳步推进 —— 你没有落后。','AI computes your gap to each job and what to build — turn it into actions: skills / resume / interviews. Steady progress — you\'re not behind.')}</p></div></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:26px;">
       <button class="btn btn-accent" id="frStart">${tt('+ 录入第一个岗位','+ Add your first job')}</button>
       <button class="btn" id="frDemo">${tt('先用示例数据逛一圈 →','Explore with sample data →')}</button>
     </div></div>`;
   $('#page-overview').innerHTML=frontis('OVERVIEW',tt('开始吧','Get started'))+hero+steps+signFoot();
+  const rb=$('#frResume'); if(rb) rb.onclick=()=>{ markOnboarded(); renderOverview(); openResumeModal(); }; // 上传简历:标记上手 → 工作台 → 简历模态(解锁匹配/缺口)
   const s=$('#frStart'); if(s) s.onclick=()=>{ markOnboarded(); renderOverview(); openNewJob(); };  // 开始我的:标记上手 → 空工作台 → 录第一个岗位
   const d=$('#frDemo'); if(d) d.onclick=()=>{ seedDemoData(); };                                     // 先逛示例:显式播种 + 示例提示条
 }
@@ -2300,7 +2303,7 @@ function openNewJob(){
       years:(($('#njYears',m)||{}).value||'').trim(),
       jd:(($('#jdInput',m)||{}).value||'').trim(),
       interest:scores.interest, growth:scores.growth, match:scores.match, chance:scores.chance,
-      status:'active', kind:'', need:extracted.slice(), plus:[]   // 存 JD 抽取的技能(此前写死 []→用户岗位匹配/分析全空)
+      status:'todo', kind:'', need:extracted.slice(), plus:[]   // status='todo'(待投,合法 STATUS 键;此前 'active' 不进流转/筛选);need 存 JD 抽取(此前写死 []→匹配/分析全空)
     };
     JOBS.unshift(job);
     persistJob(job);                                  // 桌面:rt.db.upsert('jobs', job)
@@ -3431,6 +3434,18 @@ function nextStep(){
   if(a) return { title:a.title, desc:(a.cap?(tt('练 ','Train ')+a.cap+' · '):'')+(a.goal||tt('持续推进,保持节奏。','Keep the momentum.')), ctaLabel:tt('去完成','Go do it'), ctaGo:'actions' };
   if(!JOBS.length) return { title:tt('从添加一个目标岗位开始','Start by adding a target job'), desc:tt('录入岗位 → 分析缺口 → AI 给你下一步该做的事。','Add a job → analyze gaps → the AI suggests your next move.'), ctaLabel:tt('添加岗位','Add a job'), ctaGo:'jobs' };
   return { title:tt('做一次智能匹配,看清你的缺口','Run a smart match to see your gaps'), desc:tt('挑一个岗位,AI 算出匹配度与该补的能力,再一键排进行动。','Pick a job; AI computes your fit and what to build, then turn it into actions.'), ctaLabel:tt('智能匹配','Smart match'), ctaGo:'match' };
+}
+/** 回访 calm 摘要(评审 P1-10):平静呈现当前推进(无红 / 无倒计时 / 不施压);无活动则空。 */
+function calmDigest(){
+  if(!JOBS.length) return '';
+  const inPlay=JOBS.filter(j=>['fav','todo','sent','interview'].includes(j.status)).length;
+  const doing=ACTIONS.filter(a=>a.state==='doing').length;
+  const mins=ACTIONS.reduce((s,a)=>s+((a.sessions||[]).reduce((x,ss)=>x+(+ss.mins||0),0)),0);
+  const parts=[];
+  if(inPlay) parts.push(tt(inPlay+' 个岗位在跟进', inPlay+' jobs in play'));
+  if(doing) parts.push(tt(doing+' 项行动进行中', doing+' actions in progress'));
+  if(mins>=30) parts.push(tt('累计训练 '+(mins/60).toFixed(1)+'h', (mins/60).toFixed(1)+'h trained'));
+  return parts.length ? tt('你在稳步推进 · ','Steady progress · ')+parts.join(' · ') : '';
 }
 /** 下一步轻卡(原生 · 真实 ACTIONS):最该做的一件事 + CTA;无行动则引导智能匹配。 */
 function renderNextCardEl(){
