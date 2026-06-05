@@ -1460,6 +1460,11 @@ function openJobDetail(id, row){
 <script>
 /* ---------- ANALYSIS ---------- */
 function renderAnalysis(){
+  if(!JOBS.length){   // 空态教学(评审 P1-9):无岗位 → 讲清这页干嘛 + 指回录入
+    $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+
+      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位,这页就活了','Add target jobs and this comes alive')}</h3><p style="max-width:600px;">${tt('录入岗位后,这里从你的 JD 聚合:高频技能、能力缺口、城市 / 公司类型分布、JD 关键词 —— 你的私人市场地图,只有持续收集才攒得出。','Once you add jobs, this aggregates from your JDs: high-frequency skills, skill gaps, city / company-type distribution, and JD keywords — your private market map, built only by collecting over time.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
+    return;
+  }
   const top=[...SKILLS].filter(s=>s.cat==='tech').sort((a,b)=>b.demand-a.demand).slice(0,10);
   const skillRows=top.map((s,i)=>{
     const occ=s.demand+Math.round(s.demand*0.6);
@@ -1467,12 +1472,12 @@ function renderAnalysis(){
       <td class="idx">${String(i+1).padStart(2,'0')}</td>
       <td><span class="co" style="font-weight:500;">${s.name}</span></td>
       <td class="mono" style="font-size:12px;color:var(--ink-2);">${occ} 次</td>
-      <td class="mono" style="font-size:12px;color:var(--ink-3);">${s.demand}/12</td>
+      <td class="mono" style="font-size:12px;color:var(--ink-3);">${s.demand}/${JOBS.length}</td>
       <td>${dotsHTML(s.lvl,'lvl')}</td>
     </tr>`;
   }).join('');
   const skillTable=`<div class="sec"><p class="seclabel">— TOP SKILLS</p><h2 class="sectitle">${tt('高频技能','High-frequency skills')}<span class="dot">.</span></h2>
-    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 16px;">基于 12 个岗位 JD 抽取 · 按需求频次排序</p>
+    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 16px;">${tt('基于 '+JOBS.length+' 个岗位 JD 抽取 · 按需求频次排序','From '+JOBS.length+' job JDs · by demand frequency')}</p>
     <div style="border:0.5px solid var(--border);"><table>
       <thead><tr><th style="width:44px;">排名</th><th>技能</th><th>出现次数</th><th>覆盖岗位</th><th>你的掌握</th></tr></thead>
       <tbody>${skillRows}</tbody></table></div></div>`;
@@ -1587,7 +1592,9 @@ function renderSkills(){
       <p style="font-size:12px;color:var(--ink-3);margin:6px 0 0;">${noteMap[cat]}</p>
       <div class="skill-grid" style="margin-top:16px;">${arr.map(capCard).join('')}</div></div>`;
   });
-  if(!sections) sections=`<div class="sec"><p style="color:var(--ink-3);padding:20px 0;text-align:center;">${tt('没有符合筛选的能力','No abilities match the filter')}</p></div>`;
+  if(!sections) sections = SKILLS.length
+    ? `<div class="sec"><p style="color:var(--ink-3);padding:20px 0;text-align:center;">${tt('没有符合筛选的能力','No abilities match the filter')}</p></div>`
+    : `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('你的能力档案来自简历','Your career assets come from your resume')}</h3><p style="max-width:600px;">${tt('在「我的简历」上传简历后,AI 自动把你的技能、年限、经历建成"职业资产"档案(复利型 / 积累型 / 易折旧),并和岗位需求对照。本地处理、联系方式不参与。','Upload your resume in "My resume" and AI builds your skills, years and experience into a career-asset profile (compounding / accumulating / depreciating), matched against job demand. Local-only; contact details excluded.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="openResumeModal()">${tt('上传 / 管理简历','Upload / manage resume')} →</button></div></div></div>`;
   const assetIntro=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="ai-bar" style="border:0.5px solid var(--border);">
     <span class="dot"></span><span class="lbl">${tt('由简历 <b>'+RESUME.filename+'</b> 自动建档 · 这是你贯穿职业生涯的长期资产,在职时也值得每季度盘点','Auto-built from <b>'+RESUME.filename+'</b> · a long-term career asset worth reviewing quarterly, even while employed')}</span>
     <button class="btn-text" style="margin-left:auto;" onclick="openMarketValue()">${tt('市场价值报告','Market value report')} →</button></div></div>`;
@@ -2229,8 +2236,19 @@ function renderFirstRun(){
 function showEmptyState(){ go('overview'); renderFirstRun(); }
 
 /* ---------- NEW JOB MODAL ---------- */
+// 真·JD 技能抽取(评审 P1-8):扫 JD 文本匹配已知技能词(用户 SKILLS 名 + 技术词表),反映真实 JD,非写死。
+const TECH_VOCAB=['Go','Java','Python','Rust','C++','C#','JavaScript','TypeScript','Node','React','Vue','Spring','MySQL','PostgreSQL','MongoDB','Redis','Kafka','RabbitMQ','Elasticsearch','gRPC','RPC','GraphQL','RESTful','微服务','分布式系统','分布式','高并发','性能优化','系统设计','服务治理','容量规划','DDD','缓存','消息队列','K8s','Kubernetes','Docker','云原生','中间件','稳定性','高可用','可用性','监控','CI/CD','算法','数据结构','Linux','网络','多线程','并发','存储','数据库','大数据','Hadoop','Spark','Flink'];
+function extractJdSkills(text){
+  if(!text || !text.trim()) return [];
+  const vocab=Array.from(new Set([...SKILLS.map(s=>s.name), ...TECH_VOCAB]));
+  const found=vocab.filter(v=>v && text.includes(v));
+  // 去子串重复(有"分布式系统"则去"分布式")+ 去重 + 上限
+  const out=found.filter(v=>!found.some(o=>o!==v && o.includes(v)));
+  return Array.from(new Set(out)).slice(0,12);
+}
 function openNewJob(){
   let scores={interest:8,growth:6,match:7,chance:5};
+  let extracted=[];   // JD 抽取的技能 → 存进 job.need(此前写死 need:[],用户岗位匹配/分析全空,真 bug)
   const scoreInput=(key,name,q)=>`<div class="scoreinput" data-score="${key}"><div class="si-head"><span class="si-name">${name}<span class="si-q">${q}</span></span><span class="si-val" data-sv="${key}">${scores[key]} / 10</span></div><div class="dotsrow" data-dots="${key}">${[...Array(10)].map((_,i)=>`<span class="${i<scores[key]?'on':''}" data-i="${i+1}"></span>`).join('')}</div></div>`;
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
@@ -2241,7 +2259,7 @@ function openNewJob(){
         <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" id="njPay" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" id="njYears" placeholder="${tt('如 · 5+','e.g. 5+')}"></div></div>
       </div>
       <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}"></textarea></div>
-        <button class="btn" id="analyzeBtn">${tt('模拟分析 JD','Analyze JD')}</button><div id="analyzeResult" style="margin-top:14px;"></div></div>
+        <button class="btn" id="analyzeBtn">${tt('重新解析','Re-parse')}</button><span class="mono" style="font-size:11px;color:var(--ink-mute);margin-left:8px;">${tt('粘贴 JD 自动抽取技能','Paste JD to auto-extract skills')}</span><div id="analyzeResult" style="margin-top:14px;"></div></div>
       <div class="msec" style="border-bottom:none;"><p class="seclabel">— SCORING</p><div style="margin-top:8px;">
         ${scoreInput('interest',tt('兴趣','Interest'),tt('这个岗位让我激动吗?','Does this job excite me?'))}
         ${scoreInput('growth',tt('成长','Growth'),tt('能让我变强吗?','Will it make me stronger?'))}
@@ -2257,16 +2275,19 @@ function openNewJob(){
       dot.onclick=()=>{const v=+dot.dataset.i;scores[key]=v;$$('span',row).forEach(d=>d.classList.toggle('on',+d.dataset.i<=v));$(`[data-sv="${key}"]`,m).textContent=v+' / 10';};
     });
   });
-  $('#analyzeBtn',m).onclick=()=>{
-    const res=$('#analyzeResult',m);
-    res.innerHTML=`<p class="mono" style="font-size:12px;color:var(--ink-3);">${tt('解析中…','Analyzing…')}</p>`;
-    setTimeout(()=>{
-      res.innerHTML=`<div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);">
-        <p style="font-size:12px;color:var(--ink-3);margin:0 0 6px;">${tt('抽取的必需技能','Extracted required skills')}</p>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${['Go','微服务','MySQL','Redis','高并发'].map(s=>`<span class="chip">${s}</span>`).join('')}</div>
-        <div style="display:flex;gap:28px;margin-top:12px;font-size:12.5px;color:var(--ink-2);"><span>${tt('年限','Years')} · <b class="mono">5+</b></span><span>${tt('学历','Edu')} · <b class="mono">${tt('本科+','BS+')}</b></span><span>${tt('关键词','Keywords')} · <b class="mono">${tt('稳定性 / 高并发','stability / scale')}</b></span></div></div>`;
-    },1400);
+  const jdEl=$('#jdInput',m), resEl=$('#analyzeResult',m);
+  const runParse=()=>{                                 // 真抽取(扫 JD 文本),存 extracted 供 saveJob 写 need
+    extracted=extractJdSkills(jdEl?jdEl.value:'');
+    if(!resEl) return;
+    resEl.innerHTML = extracted.length
+      ? `<div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);">
+          <p style="font-size:12px;color:var(--ink-3);margin:0 0 6px;">${tt('抽取的技能 · 作为该岗位要求','Extracted skills · this job\'s requirements')} (${extracted.length})</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${extracted.map(s=>`<span class="chip">${String(s).replace(/</g,'&lt;')}</span>`).join('')}</div></div>`
+      : ((jdEl&&jdEl.value.trim()) ? `<p class="mono" style="font-size:12px;color:var(--ink-mute);">${tt('未识别到明确技能,可录入后手动补充。','No clear skills detected — add them after saving.')}</p>` : '');
   };
+  let _pt=null;
+  if(jdEl) jdEl.oninput=()=>{ clearTimeout(_pt); _pt=setTimeout(runParse, 400); }; // 粘贴 / 输入即自动解析(防抖,去多余点击)
+  const ab=$('#analyzeBtn',m); if(ab) ab.onclick=runParse;                          // 按钮 = 重新解析
   $('#saveJob',m).onclick=()=>{
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();
@@ -2279,7 +2300,7 @@ function openNewJob(){
       years:(($('#njYears',m)||{}).value||'').trim(),
       jd:(($('#jdInput',m)||{}).value||'').trim(),
       interest:scores.interest, growth:scores.growth, match:scores.match, chance:scores.chance,
-      status:'active', kind:'', need:[], plus:[]
+      status:'active', kind:'', need:extracted.slice(), plus:[]   // 存 JD 抽取的技能(此前写死 []→用户岗位匹配/分析全空)
     };
     JOBS.unshift(job);
     persistJob(job);                                  // 桌面:rt.db.upsert('jobs', job)
