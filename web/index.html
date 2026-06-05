@@ -1327,13 +1327,13 @@ function renderOverview(){
     </div>
     <p style="font-size:12px;color:var(--ink-3);margin-top:14px;">${tt('已记录 '+JOBS.length+' 个岗位 · 持续推进中',JOBS.length+' jobs logged · steady progress')}</p>
   </div>`;
-  const nextAct=ACTIONS.filter(a=>a.state==='doing').sort((a,b)=>({high:0,mid:1,low:2})[a.pri]-({high:0,mid:1,low:2})[b.pri])[0]||ACTIONS.find(a=>a.state==='todo')||ACTIONS[0];
+  const nextAct=recommendNextAction(); // null-safe(空 ACTIONS 返 null,不再崩)
   const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="next-hero"><div class="nh-in">
     <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0 0 9px;">— ${tt('AI 建议 · 下一步最该做的一件事','AI · the one thing to do next')}</p>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;">
-      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${nextAct.title}</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${nextAct.cap?(tt('练 ','Train ')+nextAct.cap+' · '):''}${nextAct.goal||tt('持续推进,保持节奏。','Keep the momentum.')}</p></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('actions')">${tt('去完成','Go do it')} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
+      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${nextAct?nextAct.title:tt('从添加一个目标岗位开始','Start by adding a target job')}</h3>
+        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${nextAct?((nextAct.cap?(tt('练 ','Train ')+nextAct.cap+' · '):'')+(nextAct.goal||tt('持续推进,保持节奏。','Keep the momentum.'))):tt('录入岗位 → 分析缺口 → AI 给你下一步该做的事。','Add a job → analyze gaps → the AI suggests your next move.')}</p></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${nextAct?'actions':'jobs'}')">${nextAct?tt('去完成','Go do it'):tt('添加岗位','Add a job')} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
     </div></div></div></div>`;
   $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+stats+two+pipe+signFoot();
 }
@@ -1367,7 +1367,7 @@ function renderJobs(){
     <div class="matrix-wrap" style="overflow-x:auto;border:0.5px solid var(--border);">
     <table style="min-width:880px;">
       <thead><tr><th style="width:44px;">#</th><th>${tt('公司','Company')}</th><th>${tt('岗位','Role')}</th><th>${tt('城市','City')}</th><th>${tt('状态','Status')}</th><th>${tt('兴趣','Interest')}</th><th>${tt('匹配','Match')}</th><th>${tt('薪资','Pay')}</th><th>${tt('关键技能','Key skills')}</th></tr></thead>
-      <tbody>${rows||`<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:30px;">${tt('没有符合条件的岗位','No matching jobs')}</td></tr>`}</tbody>
+      <tbody>${rows||`<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:30px;">${JOBS.length?tt('没有符合条件的岗位','No matching jobs'):tt('还没有岗位 — 点上方「+ 新增岗位」添加第一个目标岗位开始','No jobs yet — add your first target job to get started')}</td></tr>`}</tbody>
     </table></div>
     <p style="font-size:12px;color:var(--ink-3);margin-top:12px;">${tt('共 '+JOBS.length+' 个岗位 · 点击任意行查看完整 JD 与匹配分析', JOBS.length+' jobs · click a row for full JD & match analysis')}</p>
   </div>`;
@@ -1657,7 +1657,7 @@ function renderActions(){
       </div>
     </div>`;
   }).join('');
-  const body=`<div class="sec" style="border-bottom:none;padding-top:18px;">${cards||`<p style="color:var(--ink-3);padding:30px 0;text-align:center;">${tt('这个分类暂无行动','No actions in this category')}</p>`}</div>`;
+  const body=`<div class="sec" style="border-bottom:none;padding-top:18px;">${cards||`<p style="color:var(--ink-3);padding:30px 0;text-align:center;">${ACTIONS.length?tt('这个分类暂无行动','No actions in this category'):tt('还没有行动 — 点「+ 添加行动」,或在智能匹配里让 AI 从能力缺口生成计划','No actions yet — add one, or let AI plan from your skill gaps in Smart Match')}</p>`}</div>`;
   $('#page-actions').innerHTML=frontis('ACTIONS',tt('行动清单','Action list'))+summary+tabbar+body+signFoot();
   $$('#page-actions [data-at]').forEach(b=>b.onclick=()=>{actTab=b.dataset.at;renderActions();});
   $$('#page-actions [data-toggle]').forEach(cb=>cb.onclick=(e)=>{e.stopPropagation();toggleAction(+cb.dataset.toggle);});
@@ -1946,6 +1946,25 @@ async function openMcpManager(){
     finally{ testBtn.disabled=false; }
   };
 }
+// 清空所有业务数据(#业务打磨):清前自动备份;种子守卫保证清后不再播种演示数据。
+const CLEARABLE_COLLS=['jobs','skills','actions','resumes','iv_records','messages'];
+async function clearAllCollections(){ // 抽出便于安全测试 + 不依赖 reload
+  const rt=window.SeekerRT; if(!rt) return;
+  try{ await rt.db.backup(); }catch(_e){}                 // 清前自动备份(可日后导入恢复)
+  for(const c of CLEARABLE_COLLS){
+    try{ const rows=await rt.db.list(c); for(const r of rows){ try{ await rt.db.remove(c, r.id); }catch(_e){} } }catch(_e){}
+  }
+}
+function clearAllDataFlow(){
+  const G=window.SeekerGuardrail;
+  if(!G||!G.confirmDestructive||!window.SeekerRT){ toast(tt('该端暂不支持','Not supported here')); return; }
+  G.confirmDestructive({
+    title:tt('清空所有业务数据?','Clear all data?'),
+    detail:tt('将删除全部岗位 / 技能 / 行动 / 简历 / 面试记录 / 对话历史。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all jobs / skills / actions / resumes / interview records / chat history. Personal info and settings stay. A backup is saved first — you can re-import it later.'),
+    confirmLabel:tt('清空','Clear'),
+    onConfirm:async()=>{ await clearAllCollections(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
+  });
+}
 function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
@@ -2027,7 +2046,7 @@ function renderSettings(){
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('扩展 · MCP 工具','Extensions · MCP tools')}</p></div>
     ${row(tt('MCP 服务器','MCP servers'),`<button class="btn" id="mgrMcp">${tt('管理服务器','Manage servers')}</button>`)}
     <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🧩</span><span>${tt('MCP 让 AI 接入外部工具(文件 / 数据库 / API…)。<b>添加服务器 = 在你电脑上运行一个程序</b>,请只加你信任的来源;AI 每次调用其工具都会<b>先征得你同意</b>,返回内容被当作数据(不可信、防注入)。仅桌面端可用。','MCP lets the AI use external tools (files / databases / APIs). <b>Adding a server runs a program on your machine</b> — only add sources you trust. The AI <b>asks your permission every time</b> it calls a tool; returned content is treated as untrusted data. Desktop only.')}</span></div>
-    ${row(tt('清空所有数据','Clear all data'),`<button class="btn" onclick="toast('已取消 — 数据已安全保留')">${tt('清空','Clear')}</button>`)}
+    ${row(tt('清空所有数据','Clear all data'),`<button class="btn" id="clearAllData">${tt('清空','Clear')}</button>`)}
   </div>`;
   sections.about=`<p class="seclabel">— ABOUT</p><h2 class="sectitle">${tt('关于','About')}<span class="dot">.</span></h2>
     <div style="margin-top:14px;font-size:14px;color:var(--ink-2);line-height:1.9;">
@@ -2082,6 +2101,7 @@ function wireDataIO(){
   const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
   const md=$('#mgrDocs'); if(md) md.onclick=openDocsManager;          // RAG 知识库管理(#2)
   const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=openMcpManager;       // MCP server 管理(#2 C4)
+  const cad=$('#clearAllData'); if(cad) cad.onclick=clearAllDataFlow;  // 真·清空所有数据(guardrail+备份+种子守卫)
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
   if(!on){
     exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');
@@ -3434,10 +3454,11 @@ async function hydrateJobs(){
   if(!jobsPersistOn()) return;
   try{
     let rows = await window.SeekerRT.db.list('jobs');
-    if(!rows.length){                                   // 首启:内存 mock 作种子写入仓库
+    if(!rows.length && !seededColl('jobs')){            // 首启且从未播种:内存 mock 作种子写入仓库
       for(const j of JOBS){ await window.SeekerRT.db.upsert('jobs', j); }
       rows = await window.SeekerRT.db.list('jobs');
     }
+    markSeededColl('jobs');                             // 标记已初始化(清空后不再播种)
     JOBS.length=0; JOBS.push(...rows);                  // 水合(const 数组可变)
     [renderOverview, renderJobs, renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
   }catch(e){ console.error('[data] jobs 水合失败', e); }
@@ -3447,6 +3468,9 @@ window.addEventListener('seeker-rt-ready', hydrateJobs);
 /* ===== 业务数据落地:其余集合接仓库(skills/actions/iv_records;jobs 见上,resumes 紧随) =====
    通用「整集合 upsert + 水合(首启种子)」。记录少,整集合写简单稳妥;隐私表不在此(走 profile)。 */
 function collPersistOn(){ return jobsPersistOn(); } // 同条件:桌面 + SeekerRT
+// 种子守卫:首启把内存 mock 作种子写一次;之后(含"清空所有数据"后)不再播种,演示数据不复活。
+function seededColl(name){ try{ return localStorage.getItem('jh-seeded-'+name)==='1'; }catch(_e){ return false; } }
+function markSeededColl(name){ try{ localStorage.setItem('jh-seeded-'+name,'1'); }catch(_e){} }
 /** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。 */
 function withCollId(name, r){
   if(r && r.id!=null) return r;
@@ -3463,10 +3487,11 @@ async function hydrateColl(name, arr){
   if(!collPersistOn()) return;
   try{
     let rows = await window.SeekerRT.db.list(name);
-    if(!rows.length && arr.length){                 // 首启:种子写仓库
+    if(!rows.length && arr.length && !seededColl(name)){ // 首启且从未播种:种子写仓库
       for(const r of arr){ await window.SeekerRT.db.upsert(name, withCollId(name, r)); }
       rows = await window.SeekerRT.db.list(name);
     }
+    markSeededColl(name);                            // 标记已初始化(清空后不再播种)
     arr.length=0; arr.push(...rows);                 // 水合(const 数组可变内容)
   }catch(e){ console.error('[data] hydrate '+name, e); }
 }
