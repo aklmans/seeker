@@ -226,6 +226,40 @@ export interface DocsApi {
   undo(): Promise<number>;
 }
 
+/** 一个 MCP server 的状态(列表用)。 */
+export interface McpServerInfo {
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  /** 是否已连接(enabled 且握手成功)。 */
+  connected: boolean;
+  toolCount: number;
+  tools: Array<{ name: string; description: string; readOnly: boolean }>;
+  /** 连接失败时的错误(否则 null)。 */
+  error: string | null;
+}
+
+/**
+ * MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。
+ * **server = 用户主动安装的不可信程序**(本机 spawn、非沙箱);模型每次调用 MCP 工具都经 guardrail
+ * 确认、结果标 Untrusted。网页端不支持(需 spawn 子进程)→ 列空、其余降级。
+ */
+export interface McpApi {
+  list(): Promise<McpServerInfo[]>;
+  /** 添加一个 server(会本机 spawn 程序——调用方须已取得用户知情同意)。 */
+  add(name: string, command: string, args: string[]): Promise<void>;
+  remove(name: string): Promise<void>;
+  setEnabled(name: string, enabled: boolean): Promise<void>;
+  /** 连接测试:连一次、列工具、断开。 */
+  probe(
+    command: string,
+    args: string[],
+  ): Promise<{ ok: boolean; toolCount: number; tools: Array<{ name: string; description: string; inputSchema: unknown; readOnly: boolean }> }>;
+  /** 模型想调用某 MCP 工具时,前端经 guardrail 取得允许/拒绝后回传(唤醒挂起的网关)。 */
+  confirmResolve(confirmId: string, approved: boolean): Promise<void>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -239,6 +273,7 @@ export interface RuntimeApi {
   readonly capability: CapabilityApi;
   readonly memory: MemoryApi;
   readonly docs: DocsApi;
+  readonly mcp: McpApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

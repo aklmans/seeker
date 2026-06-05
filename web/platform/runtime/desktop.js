@@ -178,5 +178,15 @@ export function createDesktopRuntime() {
       clear: () => invoke('doc_clear'),
       undo: () => invoke('doc_undo'), // 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)
     },
+    // MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。server = 用户主动安装的不可信程序。
+    mcp: {
+      list: () => invoke('mcp_list'),
+      add: (name, command, args) => invoke('mcp_add', { name, command, args }),
+      remove: (name) => invoke('mcp_remove', { name }),
+      setEnabled: (name, enabled) => invoke('mcp_set_enabled', { name, enabled }),
+      probe: (command, args) => invoke('mcp_probe', { command, args }),
+      // 模型想调用某 MCP 工具时,前端经 guardrail 取得允许/拒绝后回传(唤醒挂起的网关)。
+      confirmResolve: (confirmId, approved) => invoke('mcp_confirm_resolve', { confirmId, approved }),
+    },
   };
 }

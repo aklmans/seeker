@@ -188,5 +188,15 @@ export function createWebRuntime() {
       clear: () => Promise.resolve(0),
       undo: () => Promise.resolve(0),
     },
+
+    // MCP 需本机 spawn 子进程,web 端不支持 → 列表空、其余降级。
+    mcp: {
+      list: () => Promise.resolve([]),
+      add: () => notImpl('rt.mcp.add', 'web'),
+      remove: () => Promise.resolve(),
+      setEnabled: () => Promise.resolve(),
+      probe: () => notImpl('rt.mcp.probe', 'web'),
+      confirmResolve: () => Promise.resolve(),
+    },
   };
 }

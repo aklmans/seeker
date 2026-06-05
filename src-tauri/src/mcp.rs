@@ -206,6 +206,33 @@ impl McpClient {
         let result = self.request("tools/list", json!({})).await?;
         Ok(parse_tools(&result))
     }
+
+    /// 调用一个工具(tools/call)。返回 server 的原始 result(含 content / isError)。
+    pub async fn call_tool(&mut self, name: &str, args: Value) -> Result<Value, String> {
+        self.request("tools/call", json!({ "name": name, "arguments": args }))
+            .await
+    }
+}
+
+/// 把 `tools/call` 的 result 展平成给模型的纯文本(拼接 content[].text;非文本类型标注占位)。
+/// 注:返回值是**不可信外部数据**,调用方(网关)须以"数据非指令"包裹后再回灌(防注入)。
+pub fn flatten_content(result: &Value) -> String {
+    let Some(items) = result.get("content").and_then(|c| c.as_array()) else {
+        return result.to_string();
+    };
+    let parts: Vec<String> = items
+        .iter()
+        .map(|it| match it.get("type").and_then(|t| t.as_str()) {
+            Some("text") => it
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string(),
+            Some(other) => format!("[{other} 内容]"),
+            None => it.to_string(),
+        })
+        .collect();
+    parts.join("\n")
 }
 
 // ── Tauri 命令:连接测试(供 UI「添加 server」验证 + 列工具)────────
@@ -267,11 +294,21 @@ fn save_servers(app: &AppHandle, servers: &[McpServerConfig]) -> Result<(), Stri
 }
 
 struct ConnectedServer {
-    // 持有 live 连接以**复用**(避免重 spawn)+ Drop 时 kill 子进程;
-    // Commit 3 的 call_tool 将经它发 tools/call(届时移除 allow)。
-    #[allow(dead_code)]
+    // 持有 live 连接以**复用**(避免重 spawn)+ Drop 时 kill 子进程;`call` 经它发 tools/call。
     client: McpClient,
     tools: Vec<McpTool>,
+}
+
+/// 一个可调用的 MCP 工具描述符(网关组装工具表 + 路由用)。
+/// `qualified_name` = `mcp__<server>__<tool>`,模型所见 + 回传;按它路由回 (server, tool)。
+#[derive(Debug, Clone)]
+pub struct McpToolDescriptor {
+    pub qualified_name: String,
+    pub server: String,
+    pub tool: String,
+    pub description: String,
+    pub input_schema: Value,
+    pub read_only: bool,
 }
 
 /// 已连接 MCP server 的运行时缓存(name → 连接 + 工具)。spawn 昂贵故缓存复用;
@@ -304,6 +341,59 @@ impl McpManager {
     async fn disconnect(&self, name: &str) {
         self.inner.lock().await.remove(name);
     }
+
+    /// 确保所有 enabled server 已连接(单个失败忽略 → 该 server 工具不暴露,优雅降级)。
+    /// 网关在每轮对话组装工具表前调用。
+    pub async fn ensure_all_connected(&self, app: &AppHandle) {
+        for s in load_servers(app).iter().filter(|s| s.enabled) {
+            let _ = self.ensure_connected(s).await;
+        }
+    }
+
+    /// 当前已连接 server 的全部工具描述符(网关组装工具表 + 调用路由)。
+    pub async fn tool_descriptors(&self) -> Vec<McpToolDescriptor> {
+        let map = self.inner.lock().await;
+        let mut out = Vec::new();
+        for (server, cs) in map.iter() {
+            for t in &cs.tools {
+                out.push(McpToolDescriptor {
+                    qualified_name: format!("mcp__{server}__{}", t.name),
+                    server: server.clone(),
+                    tool: t.name.clone(),
+                    description: t.description.clone(),
+                    input_schema: t.input_schema.clone(),
+                    read_only: t.read_only,
+                });
+            }
+        }
+        out
+    }
+
+    /// 调用某 server 的某工具(经缓存的 live 连接发 tools/call)。
+    pub async fn call(&self, server: &str, tool: &str, args: Value) -> Result<Value, String> {
+        let mut map = self.inner.lock().await;
+        let cs = map
+            .get_mut(server)
+            .ok_or_else(|| format!("MCP server 未连接:{server}"))?;
+        cs.client.call_tool(tool, args).await
+    }
+}
+
+/// 模型调用 MCP 工具时,网关挂起等待用户确认的通道表(confirmId → oneshot 发送端)。
+#[derive(Default)]
+pub struct PendingConfirms(pub std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>);
+
+/// 前端确认结果回传:唤醒挂起的网关。approved=true 执行、false 拒绝。
+#[tauri::command]
+pub fn mcp_confirm_resolve(
+    pending: State<'_, PendingConfirms>,
+    confirm_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    if let Some(tx) = pending.0.lock().unwrap().remove(&confirm_id) {
+        let _ = tx.send(approved);
+    }
+    Ok(())
 }
 
 /// 设置页:列出配置的 server + 各自实时工具 / 状态(enabled 的会尝试连接)。
@@ -467,6 +557,19 @@ mod tests {
     fn parse_tools_empty_when_missing_or_malformed() {
         assert!(parse_tools(&json!({})).is_empty());
         assert!(parse_tools(&json!({ "tools": "not-array" })).is_empty());
+    }
+
+    #[test]
+    fn flatten_content_joins_text_and_marks_nontext() {
+        let r = json!({ "content": [
+            { "type": "text", "text": "第一段" },
+            { "type": "image", "data": "..." },
+            { "type": "text", "text": "第二段" }
+        ] });
+        assert_eq!(flatten_content(&r), "第一段\n[image 内容]\n第二段");
+        // 无 content → 回退到整体 JSON 字符串(不丢数据)。
+        let weird = json!({ "isError": true });
+        assert!(flatten_content(&weird).contains("isError"));
     }
 
     #[test]

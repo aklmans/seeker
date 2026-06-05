@@ -847,10 +847,12 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex-grow:0;}
   import { renderWidget } from './platform/capability/widgets/render.js';
   import { confirmDestructive } from './platform/guardrail/index.js';
   import { renderMarkdown } from './platform/markdown/render.js';
+  import { initMcpConfirm } from './platform/capability/mcp/confirm.js';
   window.SeekerRT = rt;
   window.SeekerGuardrail = { confirmDestructive }; // 破坏性护栏(#2 · W3)
   window.SeekerWidgets = { renderWidget };          // show_widget 沙箱渲染(#2 · W1/W2)
   window.SeekerMarkdown = { render: renderMarkdown }; // 安全 Markdown 渲染(不可信模型输出)
+  initMcpConfirm({ rt, confirmDestructive });        // MCP 工具调用确认桥(#2 · C4)
   window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
 </script>
 </head>

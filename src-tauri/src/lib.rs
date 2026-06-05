@@ -20,6 +20,7 @@ pub fn run() {
         .manage(data::MemTrash::default())
         .manage(data::DocTrash::default())
         .manage(mcp::McpManager::default())
+        .manage(mcp::PendingConfirms::default())
         .setup(|app| {
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
             let conn = data::open(app.handle())?;
@@ -66,6 +67,7 @@ pub fn run() {
             mcp::mcp_add,
             mcp::mcp_remove,
             mcp::mcp_set_enabled,
+            mcp::mcp_confirm_resolve,
             capability::cap_list,
             capability::cap_available,
             capability::cap_invoke,
