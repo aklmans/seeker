@@ -1435,7 +1435,10 @@ function openJobDetail(id, row){
     <div class="modal-head">
       <div><h2>${j.co} · ${j.role}</h2>
       <div class="sub"><span>${j.city}</span><span>·</span><span class="badge ${st.cls}">${st.label}</span><span>${tt('兴趣','Interest')} ${j.interest.toFixed(1)}</span><span>·</span><span>${tt('匹配','Match')} ${j.match.toFixed(1)}</span><span>·</span><span>${j.pay}</span></div></div>
-      <button class="x">${IC.x}</button>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0;">
+        <button class="btn" id="jdEdit" style="padding:5px 11px;font-size:12px;">${tt('编辑','Edit')}</button>
+        <button class="btn" id="jdDel" style="padding:5px 11px;font-size:12px;">${tt('删除','Delete')}</button>
+        <button class="x">${IC.x}</button></div>
     </div>
     <div class="modal-body">
       <div style="display:flex;gap:28px;padding:6px 0 18px;border-bottom:0.5px solid var(--border);">
@@ -1465,6 +1468,15 @@ function openJobDetail(id, row){
     </div>`;
   const m=openModal(html);
   $('#addToActions',m).onclick=()=>{genPlanFromGap(gapSkill, j.co+' · '+j.role.split('·')[0].trim());renderActions();renderOverview();closeModal();toast('已生成训练计划: 补齐 '+gapSkill);go('actions');};
+  // 手动 CRUD 完善:编辑(复用录入表单预填+更新)/ 删除(走 guardrail 预览+确认+撤销;同 widget delete-job 纪律)。
+  const eb=$('#jdEdit',m); if(eb) eb.onclick=()=>{ closeModal(); openNewJob(j.id); };
+  const db=$('#jdDel',m); if(db) db.onclick=()=>{ const G=window.SeekerGuardrail; if(!G||!G.confirmDestructive) return;
+    const reJobs=()=>[renderJobs,renderOverview,renderAnalysis,renderInterview].forEach(f=>{try{f();}catch(_e){}});
+    let snap=Object.assign({}, j);   // 内存兜底快照(web 无后端时也能撤销)
+    G.confirmDestructive({ title:tt('删除岗位?','Delete job?'), detail:(tt('将删除:','Will delete: '))+j.co+' · '+j.role, confirmLabel:tt('删除','Delete'), undoText:tt('已删除岗位','Job deleted'),
+      onConfirm:async()=>{ try{ if(window.SeekerRT) snap=(await window.SeekerRT.db.remove('jobs', String(j.id)))||snap; }catch(_e){} const i=JOBS.findIndex(x=>x.id===j.id); if(i>=0) JOBS.splice(i,1); closeModal(); reJobs(); },
+      onUndo:async()=>{ try{ if(window.SeekerRT) await window.SeekerRT.db.upsert('jobs', snap); }catch(_e){} if(!JOBS.some(x=>x.id===snap.id)) JOBS.unshift(snap); reJobs(); } });
+  };
   $('#aiResume',m).onclick=()=>aiResumeForJob(j.id);
   $('#aiPlan',m).onclick=()=>{genPlanFromGap(gapSkill, j.co+' · '+j.role.split('·')[0].trim());renderActions();renderOverview();closeModal();toast('已生成「'+gapSkill+'」训练计划');go('actions');};
   $('#aiIv',m).onclick=()=>goInterview(j.id);
@@ -2276,19 +2288,21 @@ function extractJdSkills(text){
   const out=found.filter(v=>!found.some(o=>o!==v && o.includes(v)));
   return Array.from(new Set(out)).slice(0,12);
 }
-function openNewJob(){
-  let scores={interest:8,growth:6,match:7,chance:5};
-  let extracted=[];   // JD 抽取的技能 → 存进 job.need(此前写死 need:[],用户岗位匹配/分析全空,真 bug)
+function openNewJob(editId){
+  const editing = (editId!=null) ? JOBS.find(j=>String(j.id)===String(editId)) : null;  // 编辑模式:预填 + 更新(否则新建)
+  const av=s=>String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;');           // 属性值转义(预填)
+  let scores = editing ? {interest:+editing.interest||5,growth:+editing.growth||5,match:+editing.match||5,chance:+editing.chance||5} : {interest:8,growth:6,match:7,chance:5};
+  let extracted = (editing && Array.isArray(editing.need)) ? editing.need.slice() : [];   // JD 抽取的技能 → 存进 job.need;编辑时预填现有 need
   const scoreInput=(key,name,q)=>`<div class="scoreinput" data-score="${key}"><div class="si-head"><span class="si-name">${name}<span class="si-q">${q}</span></span><span class="si-val" data-sv="${key}">${scores[key]} / 10</span></div><div class="dotsrow" data-dots="${key}">${[...Array(10)].map((_,i)=>`<span class="${i<scores[key]?'on':''}" data-i="${i+1}"></span>`).join('')}</div></div>`;
   const html=`
-    <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-head"><div><p class="eyebrow">— ${editing?'EDIT':'NEW'}</p><h2 style="margin-top:5px;">${editing?tt('编辑岗位','Edit job'):tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="msec"><p class="seclabel">— BASIC INFO</p>
-        <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}"></div></div>
-        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity"><option>北京</option><option>上海</option><option>深圳</option><option>杭州</option><option>广州</option></select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource"><option>BOSS直聘</option><option>拉勾</option><option>内推</option><option>猎头</option></select></div></div>
-        <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" id="njPay" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" id="njYears" placeholder="${tt('如 · 5+','e.g. 5+')}"></div></div>
+        <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}" value="${editing?av(editing.co):''}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}" value="${editing?av(editing.role):''}"></div></div>
+        <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity">${['北京','上海','深圳','杭州','广州'].map(c=>`<option ${editing&&editing.city===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource">${['BOSS直聘','拉勾','内推','猎头'].map(o=>`<option ${editing&&editing.src===o?'selected':''}>${o}</option>`).join('')}</select></div></div>
+        <div class="field-row"><div class="field"><label>${tt('薪资范围','Salary')}</label><input class="input" id="njPay" placeholder="${tt('如 · 40-65万','e.g. 40-65w')}" value="${editing?av(editing.pay):''}"></div><div class="field"><label>${tt('年限要求','Years')}</label><input class="input" id="njYears" placeholder="${tt('如 · 5+','e.g. 5+')}" value="${editing?av(editing.years):''}"></div></div>
       </div>
-      <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}"></textarea></div>
+      <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}">${editing?String(editing.jd||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}</textarea></div>
         <button class="btn" id="analyzeBtn">${tt('重新解析','Re-parse')}</button><span class="mono" style="font-size:11px;color:var(--ink-mute);margin-left:8px;">${tt('粘贴 JD 自动抽取技能','Paste JD to auto-extract skills')}</span><div id="analyzeResult" style="margin-top:14px;"></div></div>
       <div class="msec" style="border-bottom:none;"><p class="seclabel">— SCORING</p><div style="margin-top:8px;">
         ${scoreInput('interest',tt('兴趣','Interest'),tt('这个岗位让我激动吗?','Does this job excite me?'))}
@@ -2306,15 +2320,15 @@ function openNewJob(){
     });
   });
   const jdEl=$('#jdInput',m), resEl=$('#analyzeResult',m);
-  const runParse=()=>{                                 // 真抽取(扫 JD 文本),存 extracted 供 saveJob 写 need
-    extracted=extractJdSkills(jdEl?jdEl.value:'');
-    if(!resEl) return;
+  const paint=()=>{ if(!resEl) return;                  // 渲染当前 extracted(不重新抽取;编辑时展示现有 need 不丢)
     resEl.innerHTML = extracted.length
       ? `<div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);">
           <p style="font-size:12px;color:var(--ink-3);margin:0 0 6px;">${tt('抽取的技能 · 作为该岗位要求','Extracted skills · this job\'s requirements')} (${extracted.length})</p>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">${extracted.map(s=>`<span class="chip">${String(s).replace(/</g,'&lt;')}</span>`).join('')}</div></div>`
       : ((jdEl&&jdEl.value.trim()) ? `<p class="mono" style="font-size:12px;color:var(--ink-mute);">${tt('未识别到明确技能,可录入后手动补充。','No clear skills detected — add them after saving.')}</p>` : '');
   };
+  const runParse=()=>{ extracted=extractJdSkills(jdEl?jdEl.value:''); paint(); }; // 重新抽取(扫 JD 文本)
+  if(editing && extracted.length) paint();               // 编辑:先展示现有 need(用户改 JD 再触发重抽取)
   let _pt=null;
   if(jdEl) jdEl.oninput=()=>{ clearTimeout(_pt); _pt=setTimeout(runParse, 400); }; // 粘贴 / 输入即自动解析(防抖,去多余点击)
   const ab=$('#analyzeBtn',m); if(ab) ab.onclick=runParse;                          // 按钮 = 重新解析
@@ -2322,21 +2336,20 @@ function openNewJob(){
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();
     if(!co||!role){ toast(tt('请填写公司与岗位','Company and role required')); return; }
-    const job={
-      id: nextJobId(), co, role,
+    const fields={ co, role,
       city:(($('#njCity',m)||{}).value)||'',
-      source:(($('#njSource',m)||{}).value)||'',
+      src:(($('#njSource',m)||{}).value)||'',         // 修真 bug:字段名 src(此前 'source',与详情页 j.src 不一致→来源不显示)
       pay:(($('#njPay',m)||{}).value||'').trim(),
       years:(($('#njYears',m)||{}).value||'').trim(),
       jd:(($('#jdInput',m)||{}).value||'').trim(),
       interest:scores.interest, growth:scores.growth, match:scores.match, chance:scores.chance,
-      status:'todo', kind:'', need:extracted.slice(), plus:[]   // status='todo'(待投,合法 STATUS 键;此前 'active' 不进流转/筛选);need 存 JD 抽取(此前写死 []→匹配/分析全空)
+      need:extracted.slice()                          // need 存 JD 抽取(此前写死 []→用户岗位匹配/分析全空)
     };
-    JOBS.unshift(job);
-    persistJob(job);                                  // 桌面:rt.db.upsert('jobs', job)
-    [renderJobs,renderOverview,renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
+    if(editing){ Object.assign(editing, fields); persistJob(editing); }  // 编辑:就地更新 + 持久化(不新建)
+    else{ const job=Object.assign({ id:nextJobId(), status:'todo', kind:'', edu:'', plus:[] }, fields); JOBS.unshift(job); persistJob(job); } // 新建(status='todo' 合法键;补 edu 防详情 undefined)
+    [renderJobs,renderOverview,renderAnalysis,renderInterview].forEach(f=>{try{f();}catch(_e){}});
     closeModal();
-    toast(tt('岗位已录入','Job added'));
+    toast(editing?tt('岗位已更新','Job updated'):tt('岗位已录入','Job added'));
   };
 }
 
@@ -2644,8 +2657,16 @@ function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; iv
 let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};
 let ivRec=null;
 function renderInterview(){
-  const jobPills=JOBS.map(x=>`<button class="pill ${x.id===ivState.jobId?'on':''}" data-ij="${x.id}">${x.co} · ${x.role.split('·')[0].trim()}</button>`).join('');
-  const jb=JOBS.find(x=>x.id===ivState.jobId); const st=styleFor(jb.co);
+  // 面试岗位与目标岗位一一对应:只取活跃岗位(排除 放弃/拒绝;与岗位列表口径一致),空则引导先加岗位(修 jb.co 空崩)。
+  const activeJobs=JOBS.filter(j=>!['skip','reject'].includes(j.status));
+  if(!activeJobs.length){
+    $('#page-interview').innerHTML=frontis('INTERVIEW',tt('面试陪练','Interview prep'))+
+      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位后开始针对性练习','Add a target job to start tailored practice')}</h3><p style="max-width:600px;">${tt('面试陪练围绕你的目标岗位 + 简历展开,各公司风格不同。先添加一个岗位(放弃 / 拒绝的不计),再来这里针对性练。','Interview prep revolves around your target jobs + resume; each company differs. Add a job (skipped / rejected ones excluded), then come back for tailored practice.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
+    return;
+  }
+  const jobPills=activeJobs.map(x=>`<button class="pill ${x.id===ivState.jobId?'on':''}" data-ij="${x.id}">${x.co} · ${x.role.split('·')[0].trim()}</button>`).join('');
+  let jb=activeJobs.find(x=>x.id===ivState.jobId); if(!jb){ jb=activeJobs[0]; ivState.jobId=jb.id; } // null-safe:默认首个活跃岗位
+  const st=styleFor(jb.co);
   const styleLine=`<div class="style-line"><span class="sl-co">${tt(jb.co+' 面试风格',jb.co+' style')}</span>${st.tags.map(t=>`<span class="chip">${t}</span>`).join('')}<span class="sl-note">${st.note}</span></div>`;
   const setup=`<div class="sec">
     <p class="seclabel">— SETUP</p><h2 class="sectitle">${tt('选岗位 · 先备一份针对性简历','Pick a job · prep a tailored resume')}<span class="dot">.</span></h2>
