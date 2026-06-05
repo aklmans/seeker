@@ -1444,6 +1444,7 @@ function openJobDetail(id, row){
       <div style="display:flex;gap:28px;padding:6px 0 18px;border-bottom:0.5px solid var(--border);">
         ${[[tt('兴趣','Interest'),j.interest],[tt('成长','Growth'),j.growth],[tt('匹配','Match'),j.match],[tt('机会','Odds'),j.chance]].map(s=>`<div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0;">${s[0]}</p><p style="font-family:var(--font-serif);font-size:24px;font-weight:500;margin:4px 0 0;color:var(--ink);">${s[1].toFixed(1)}<span style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);">/10</span></p></div>`).join('')}
       </div>
+      ${aiMetaHtml(j)}
       <div class="msec"><p class="seclabel">— JD ORIGINAL</p><h3 class="sectitle" style="font-size:16px;margin-bottom:12px;">${tt('完整 JD','Full JD')}<span class="dot">.</span></h3><div class="jd-text">${j.jd}</div></div>
       <div class="msec"><p class="seclabel">— EXTRACTED</p><h3 class="sectitle" style="font-size:16px;margin-bottom:12px;">${tt('抽取的要求','Extracted requirements')}<span class="dot">.</span></h3>
         <p style="font-size:12px;color:var(--ink-3);margin:0 0 6px;">${tt('必需技能','Required skills')}</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${need}</div>
@@ -2288,8 +2289,28 @@ function extractJdSkills(text){
   const out=found.filter(v=>!found.some(o=>o!==v && o.includes(v)));
   return Array.from(new Set(out)).slice(0,12);
 }
+// AI 智能录入(块2):把整段招聘内容框定成"提取结构化岗位、只返回 seeker:job-create 块"。AI 不止摘抄,还归纳 summary/seniority/workMode/highlights/kind。
+function frameJobExtract(blob){
+  return '你是岗位信息整理助手。从下面的招聘内容里提取一个结构化岗位。**只**输出一个 ```seeker:job-create 代码块,'
+    +'JSON 含字段:co(公司)、role(岗位名)、city(城市)、pay(薪资)、years(年限要求)、edu(学历)、need(必需技能数组)、'
+    +'plus(加分技能数组)、jd(整理后的 JD 正文)、summary(一句话:这是什么岗 / 亮点)、seniority(初级/中级/高级/专家)、'
+    +'workMode(远程/混合/驻场/未知)、highlights(2-3 条核心职责或亮点的数组)、kind(一线大厂/独角兽/外企/创业/其他)。'
+    +'缺失字段留空字符串或空数组,可据内容合理归纳推断。不要调用任何工具,不要输出代码块以外的任何文字。\n\n招聘内容:\n"""\n'+blob+'\n"""';
+}
+function aiMetaHtml(mt){
+  if(!mt || (!mt.summary && !mt.seniority && !mt.workMode && !mt.kind && !(mt.highlights&&mt.highlights.length))) return '';
+  const e=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const tags=[mt.seniority,mt.workMode,mt.kind].filter(Boolean).map(t=>`<span class="chip">${e(t)}</span>`).join(' ');
+  const hl=(mt.highlights||[]).map(h=>`<li>${e(h)}</li>`).join('');
+  return `<div style="border:0.5px solid var(--border);padding:12px 14px;background:var(--bg-subtle);margin-top:12px;">
+    <p class="mono" style="font-size:10px;letter-spacing:.12em;color:var(--ink-3);margin:0;">${tt('AI 归纳','AI SUMMARY')}</p>
+    ${mt.summary?`<p style="font-size:13.5px;color:var(--ink);margin:7px 0 0;line-height:1.6;">${e(mt.summary)}</p>`:''}
+    ${tags?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 0;">${tags}</div>`:''}
+    ${hl?`<ul style="margin:8px 0 0;padding-left:16px;font-size:12.5px;color:var(--ink-2);line-height:1.7;">${hl}</ul>`:''}</div>`;
+}
 function openNewJob(editId){
   const editing = (editId!=null) ? JOBS.find(j=>String(j.id)===String(editId)) : null;  // 编辑模式:预填 + 更新(否则新建)
+  let aiMeta = editing ? {summary:editing.summary||'',seniority:editing.seniority||'',workMode:editing.workMode||'',highlights:Array.isArray(editing.highlights)?editing.highlights.slice():[],kind:editing.kind||''} : {summary:'',seniority:'',workMode:'',highlights:[],kind:''};
   const av=s=>String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;');           // 属性值转义(预填)
   let scores = editing ? {interest:+editing.interest||5,growth:+editing.growth||5,match:+editing.match||5,chance:+editing.chance||5} : {interest:8,growth:6,match:7,chance:5};
   let extracted = (editing && Array.isArray(editing.need)) ? editing.need.slice() : [];   // JD 抽取的技能 → 存进 job.need;编辑时预填现有 need
@@ -2297,6 +2318,17 @@ function openNewJob(editId){
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— ${editing?'EDIT':'NEW'}</p><h2 style="margin-top:5px;">${editing?tt('编辑岗位','Edit job'):tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
+      <div class="msec"><p class="seclabel">— AI 智能录入</p>
+        <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 10px;line-height:1.6;">${tt('粘贴 JD / 招聘网页正文,或选文件,让 AI 自动整理成下面的表单 —— 你只需核对、改两笔再保存。','Paste a JD / job-page content, or pick a file; AI fills the form below — you just review, tweak, and save.')}</p>
+        <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…','Paste a JD or full page content…')}" style="min-height:84px;font-family:inherit;"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <button class="btn btn-accent" id="aiExtract">${tt('让 AI 整理 →','Let AI organize →')}</button>
+          <button class="btn" id="aiFileBtn">${tt('选文件 .txt/.md','Pick .txt/.md')}</button>
+          <input type="file" id="aiFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
+          <span class="mono" id="aiStatus" style="font-size:11px;color:var(--ink-mute);"></span>
+        </div>
+        <div id="aiMeta">${editing?aiMetaHtml(aiMeta):''}</div>
+      </div>
       <div class="msec"><p class="seclabel">— BASIC INFO</p>
         <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}" value="${editing?av(editing.co):''}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}" value="${editing?av(editing.role):''}"></div></div>
         <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity">${['北京','上海','深圳','杭州','广州'].map(c=>`<option ${editing&&editing.city===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource">${['BOSS直聘','拉勾','内推','猎头'].map(o=>`<option ${editing&&editing.src===o?'selected':''}>${o}</option>`).join('')}</select></div></div>
@@ -2332,6 +2364,34 @@ function openNewJob(editId){
   let _pt=null;
   if(jdEl) jdEl.oninput=()=>{ clearTimeout(_pt); _pt=setTimeout(runParse, 400); }; // 粘贴 / 输入即自动解析(防抖,去多余点击)
   const ab=$('#analyzeBtn',m); if(ab) ab.onclick=runParse;                          // 按钮 = 重新解析
+  // AI 智能录入(块2):粘贴/文件 → AI 整理 → 填下方表单 + 归纳;用户核对后保存(AI 只填,扳机在用户)。
+  const fillFromExtract=(d)=>{
+    const set=(sel,v)=>{ const el=$(sel,m); if(el && v!=null && String(v)!=='') el.value=String(v); };
+    set('#njCo', d.co); set('#njRole', d.role); set('#njPay', d.pay); set('#njYears', d.years);
+    const cs=$('#njCity',m); if(cs && d.city){ const opt=[...cs.options].find(o=>o.value===d.city||o.textContent===d.city); if(opt) cs.value=opt.value; }
+    set('#jdInput', d.jd);
+    if(Array.isArray(d.need)) extracted=d.need.slice();
+    paint();
+    aiMeta={ summary:d.summary||'', seniority:d.seniority||'', workMode:d.workMode||'', highlights:Array.isArray(d.highlights)?d.highlights:[], kind:d.kind||'' };
+    const mt=$('#aiMeta',m); if(mt) mt.innerHTML=aiMetaHtml(aiMeta);
+  };
+  const aiExtractBtn=$('#aiExtract',m);
+  if(aiExtractBtn) aiExtractBtn.onclick=async()=>{
+    const blob=(($('#aiBlob',m)||{}).value||'').trim();
+    if(!blob){ toast(tt('先粘贴 JD / 内容','Paste a JD or content first')); return; }
+    if(!aiChatAvailable()){ toast(tt('需先在「数据设置」配置 AI 模型','Configure an AI model in Settings first')); return; }
+    const sEl=$('#aiStatus',m), old=aiExtractBtn.textContent; aiExtractBtn.disabled=true; aiExtractBtn.textContent=tt('整理中…','Organizing…'); if(sEl) sEl.textContent='';
+    try{
+      const res=await window.SeekerRT.ai.complete({ userText: frameJobExtract(blob) });
+      const b=extractSeekerBlock((res&&res.text)||'', 'job-create');
+      if(b.data){ fillFromExtract(b.data); if(sEl) sEl.textContent=tt('已整理,请核对下方表单 ↓','Done — review the form below ↓'); }
+      else if(sEl) sEl.textContent=tt('未能解析,请手动填写或重试','Could not parse — fill manually or retry');
+    }catch(e){ if(sEl) sEl.textContent=String((e&&e.message)||e); }
+    finally{ aiExtractBtn.disabled=false; aiExtractBtn.textContent=old; }
+  };
+  const aiFileBtn=$('#aiFileBtn',m), aiFile=$('#aiFile',m);
+  if(aiFileBtn&&aiFile){ aiFileBtn.onclick=()=>aiFile.click();
+    aiFile.onchange=()=>{ const f=aiFile.files&&aiFile.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ const ta=$('#aiBlob',m); if(ta) ta.value=String(rd.result||''); }; rd.readAsText(f); aiFile.value=''; }; }
   $('#saveJob',m).onclick=()=>{
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();
@@ -2343,7 +2403,8 @@ function openNewJob(editId){
       years:(($('#njYears',m)||{}).value||'').trim(),
       jd:(($('#jdInput',m)||{}).value||'').trim(),
       interest:scores.interest, growth:scores.growth, match:scores.match, chance:scores.chance,
-      need:extracted.slice()                          // need 存 JD 抽取(此前写死 []→用户岗位匹配/分析全空)
+      need:extracted.slice(),                         // need 存 JD 抽取(此前写死 []→用户岗位匹配/分析全空)
+      summary:aiMeta.summary||'', seniority:aiMeta.seniority||'', workMode:aiMeta.workMode||'', highlights:Array.isArray(aiMeta.highlights)?aiMeta.highlights:[], kind:aiMeta.kind||(editing&&editing.kind)||''  // AI 归纳字段
     };
     if(editing){ Object.assign(editing, fields); persistJob(editing); }  // 编辑:就地更新 + 持久化(不新建)
     else{ const job=Object.assign({ id:nextJobId(), status:'todo', kind:'', edu:'', plus:[] }, fields); JOBS.unshift(job); persistJob(job); } // 新建(status='todo' 合法键;补 edu 防详情 undefined)
