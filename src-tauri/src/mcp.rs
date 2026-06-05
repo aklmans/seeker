@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -299,8 +299,44 @@ struct ConnectedServer {
     tools: Vec<McpTool>,
 }
 
+/// 规整成 OpenAI 工具名约束 `^[a-zA-Z0-9_-]{1,64}$`:非法字符 → `_`、截断 ≤64、非空。
+/// MCP server / 工具名可能含中文 / 空格 / 超长 → 模型 API 会拒不合规名,故必须规整。
+/// 路由用 map(qualified_name → 描述符)不靠解析,规整后仍能回路由,故安全。
+fn sanitize_tool_name(raw: &str) -> String {
+    let mut s: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    s.truncate(64); // 规整后全 ASCII,按字节截断即按字符,无边界问题
+    if s.is_empty() {
+        s.push('_');
+    }
+    s
+}
+
+/// 规整 + 去重:sanitize / 截断后可能撞名 → 加 `_<n>` 后缀(保证 ≤64 且唯一),避免工具被静默遮蔽。
+fn unique_tool_name(raw: &str, seen: &mut HashSet<String>) -> String {
+    let mut qn = sanitize_tool_name(raw);
+    let mut n = 2;
+    while seen.contains(&qn) {
+        let suffix = format!("_{n}");
+        let mut base = sanitize_tool_name(raw);
+        base.truncate(64usize.saturating_sub(suffix.len())); // 留出后缀位
+        qn = format!("{base}{suffix}");
+        n += 1;
+    }
+    seen.insert(qn.clone());
+    qn
+}
+
 /// 一个可调用的 MCP 工具描述符(网关组装工具表 + 路由用)。
-/// `qualified_name` = `mcp__<server>__<tool>`,模型所见 + 回传;按它路由回 (server, tool)。
+/// `qualified_name` = 规整后的 `mcp__<server>__<tool>`,模型所见 + 回传;按它路由回 (server, tool)。
 #[derive(Debug, Clone)]
 pub struct McpToolDescriptor {
     pub qualified_name: String,
@@ -354,10 +390,12 @@ impl McpManager {
     pub async fn tool_descriptors(&self) -> Vec<McpToolDescriptor> {
         let map = self.inner.lock().await;
         let mut out = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new(); // 跨 server 工具名去重(规整后)
         for (server, cs) in map.iter() {
             for t in &cs.tools {
+                let qualified_name = unique_tool_name(&format!("mcp__{server}__{}", t.name), &mut seen);
                 out.push(McpToolDescriptor {
-                    qualified_name: format!("mcp__{server}__{}", t.name),
+                    qualified_name,
                     server: server.clone(),
                     tool: t.name.clone(),
                     description: t.description.clone(),
@@ -570,6 +608,35 @@ mod tests {
         // 无 content → 回退到整体 JSON 字符串(不丢数据)。
         let weird = json!({ "isError": true });
         assert!(flatten_content(&weird).contains("isError"));
+    }
+
+    #[test]
+    fn sanitize_tool_name_conforms_to_openai() {
+        let ok = |s: &str| {
+            !s.is_empty()
+                && s.len() <= 64
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        };
+        // 合法名原样保留
+        assert_eq!(sanitize_tool_name("mcp__fs__read_file"), "mcp__fs__read_file");
+        // 非法字符 → _
+        assert_eq!(sanitize_tool_name("mcp__fs__read file!"), "mcp__fs__read_file_");
+        // 中文 / 超长 / 全非法 → 仍合规、非空、保前缀
+        let cn = sanitize_tool_name("mcp__本地__工具");
+        assert!(ok(&cn) && cn.starts_with("mcp__"));
+        let long = sanitize_tool_name(&("mcp__s__".to_string() + &"a".repeat(100)));
+        assert!(long.len() == 64 && ok(&long));
+        assert!(ok(&sanitize_tool_name("中文"))); // 全非法 ASCII → 不空、合规
+    }
+
+    #[test]
+    fn unique_tool_name_dedups_collisions() {
+        let mut seen = HashSet::new();
+        let a = unique_tool_name("mcp__s__tool!", &mut seen); // → mcp__s__tool_
+        let b = unique_tool_name("mcp__s__tool?", &mut seen); // 规整后同名 → 撞 → 加后缀
+        assert_ne!(a, b);
+        assert!(b.len() <= 64);
+        assert!(seen.contains(&a) && seen.contains(&b));
     }
 
     #[test]
