@@ -262,6 +262,23 @@ pub fn ai_cancel(sessions: State<'_, Sessions>, session_id: String) -> Result<()
     Ok(())
 }
 
+/// 组装一次性抽取请求体(抽出为纯函数以单测锁住红线:**单条 user、无 system 消息、无 tools**)。
+/// 有图片 → OpenAI 兼容多模态 content 数组;否则纯文本字符串。
+fn build_extract_body(model: &str, prompt: String, image_data_url: Option<String>) -> Value {
+    let content: Value = match image_data_url {
+        Some(url) if !url.is_empty() => json!([
+            { "type": "text", "text": prompt },
+            { "type": "image_url", "image_url": { "url": url } },
+        ]),
+        _ => Value::String(prompt),
+    };
+    json!({
+        "model": model,
+        "stream": false,
+        "messages": [ { "role": "user", "content": content } ],
+    })
+}
+
 /// 一次性抽取(块3 · 多模态录入):把 `prompt`(+可选图片)发给模型,取最终文本返回。
 ///
 /// 与 `ai_chat` 的区别 —— **无工具循环、无多轮历史、无系统提示、非流式**:
@@ -284,19 +301,7 @@ pub async fn ai_extract(
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
 
-    // 单条 user 消息;有图片则用多模态 content 数组,否则纯文本字符串。
-    let content: Value = match image_data_url {
-        Some(url) if !url.is_empty() => json!([
-            { "type": "text", "text": prompt },
-            { "type": "image_url", "image_url": { "url": url } },
-        ]),
-        _ => Value::String(prompt),
-    };
-    let body = json!({
-        "model": cfg.model,
-        "stream": false,
-        "messages": [ { "role": "user", "content": content } ],
-    });
+    let body = build_extract_body(&cfg.model, prompt, image_data_url);
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
 
     // 多模态响应可能较慢(图片处理),给足整体超时。
@@ -904,5 +909,51 @@ mod tests {
         }
         assert_eq!(messages[0]["role"], "system");
         assert_eq!(messages.last().unwrap()["role"], "user");
+    }
+
+    // ── ai_extract 请求体红线(块3):一次性抽取是新的够到模型的路,单测锁住无 system / 无 tools / profile-free。
+    #[test]
+    fn extract_body_text_has_no_system_no_tools() {
+        let b = build_extract_body("gpt-x", "提取这段 JD".into(), None);
+        assert_eq!(b["model"], "gpt-x");
+        assert_eq!(b["stream"], false);
+        assert!(b.get("tools").is_none(), "一次性抽取不带 tools(此路够不到破坏性工具/MCP)");
+        let msgs = b["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 1, "只一条 user 消息");
+        assert_eq!(msgs[0]["role"], "user");
+        assert!(
+            !msgs.iter().any(|m| m["role"] == "system"),
+            "无 system 消息(纯抽取不注入系统提示)"
+        );
+        assert_eq!(msgs[0]["content"], "提取这段 JD", "纯文本 → content 为字符串");
+    }
+
+    #[test]
+    fn extract_body_image_is_multimodal() {
+        let b = build_extract_body("gpt-x", "看图".into(), Some("data:image/png;base64,QUJD".into()));
+        let content = &b["messages"][0]["content"];
+        assert!(content.is_array(), "有图 → content 为多模态数组");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["text"], "看图");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+        assert!(b.get("tools").is_none());
+        assert!(!b["messages"].as_array().unwrap().iter().any(|m| m["role"] == "system"));
+    }
+
+    #[test]
+    fn extract_body_empty_image_falls_back_to_text() {
+        // 空图片 URL 视作无图(纯文本字符串),不产生空 image_url 块。
+        let b = build_extract_body("gpt-x", "hi".into(), Some(String::new()));
+        assert_eq!(b["messages"][0]["content"], "hi");
+    }
+
+    #[test]
+    fn extract_body_has_no_profile_keys() {
+        let b = build_extract_body("gpt-x", "提取岗位".into(), Some("data:image/png;base64,AA".into()));
+        let s = serde_json::to_string(&b).unwrap();
+        for k in ["profile", "phone", "email", "\"name\""] {
+            assert!(!s.contains(k), "抽取请求体不应含隐私键: {k}");
+        }
     }
 }

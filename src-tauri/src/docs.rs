@@ -95,17 +95,22 @@ pub async fn doc_add(app: AppHandle, name: String, text: String) -> Result<Value
 ///
 /// 纯本地、不出网、不碰 profile / 钥匙串;CPU 密集放 spawn_blocking,且 pdf-extract 对畸形输入可能 panic,
 /// 用 catch_unwind 兜住(坏文件只报错、不崩应用)。
-#[tauri::command]
-pub async fn pdf_extract_text(data_base64: String) -> Result<String, String> {
+/// 解前端传来的 PDF data-URL(或裸 base64)为字节。抽出为纯函数以单测(前缀剥离 + 坏输入报错)。
+fn decode_pdf_b64(data_base64: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     // 容忍带 data-URL 前缀:取 "base64," 之后的部分。
     let b64 = match data_base64.rsplit_once("base64,") {
-        Some((_, b)) => b.trim().to_string(),
-        None => data_base64.trim().to_string(),
+        Some((_, b)) => b.trim(),
+        None => data_base64.trim(),
     };
-    let bytes = base64::engine::general_purpose::STANDARD
+    base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|e| format!("PDF 数据解码失败:{e}"))?;
+        .map_err(|e| format!("PDF 数据解码失败:{e}"))
+}
+
+#[tauri::command]
+pub async fn pdf_extract_text(data_base64: String) -> Result<String, String> {
+    let bytes = decode_pdf_b64(&data_base64)?;
     let text = tokio::task::spawn_blocking(move || {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             pdf_extract::extract_text_from_mem(&bytes)
@@ -181,7 +186,7 @@ impl Capability for DocContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{chunk_text, embed_configured, CHUNK_SIZE};
+    use super::{chunk_text, decode_pdf_b64, embed_configured, CHUNK_SIZE};
 
     #[test]
     fn chunk_empty_and_short() {
@@ -204,5 +209,19 @@ mod tests {
         assert!(!embed_configured(""));
         assert!(!embed_configured("   "));
         assert!(embed_configured("text-embedding-3-small"));
+    }
+
+    #[test]
+    fn pdf_b64_strips_data_url_prefix() {
+        // "hi" 的 base64 = aGk=
+        assert_eq!(decode_pdf_b64("data:application/pdf;base64,aGk=").unwrap(), b"hi");
+        assert_eq!(decode_pdf_b64("aGk=").unwrap(), b"hi"); // 裸 base64 也接受
+        assert_eq!(decode_pdf_b64("  aGk=  ").unwrap(), b"hi"); // 容忍前后空白
+    }
+
+    #[test]
+    fn pdf_b64_bad_input_errs_not_panics() {
+        // 不可信输入坏 base64 → Err(不 panic);畸形 PDF 的 panic 另由命令体 catch_unwind 兜。
+        assert!(decode_pdf_b64("!!!not-base64!!!").is_err());
     }
 }

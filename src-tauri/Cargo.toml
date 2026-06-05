@@ -37,5 +37,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # 能力层:trait 异步方法对 dyn 对象安全(#2 C2 起 invoke/contribute 含网络:嵌入/检索)
 async-trait = "0.1"
 # 块3b PDF 录入:解前端 data-URL 的 base64 + 从 PDF 提取文字(喂 AI 抽取的文本路径)
+# 红线:pdf_extract_text 用 catch_unwind 兜畸形 PDF 的 panic —— **依赖默认 panic="unwind"**。
+# 切勿为缩包给 release profile 设 panic="abort"(会令 catch_unwind 静默失效 → 坏 PDF 可重新崩应用);
+# 如确需 abort,须另兜(如改在独立进程提取)。pdf-extract 为纯 Rust(无 C 绑定,免经典 C 解析器内存安全问题)。
 base64 = "0.22"
 pdf-extract = "0.7"
