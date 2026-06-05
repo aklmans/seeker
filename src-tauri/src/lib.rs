@@ -4,6 +4,7 @@ mod config;
 mod data;
 mod docs;
 mod embed;
+mod mcp;
 mod memory;
 mod prompts;
 mod secret;
@@ -59,6 +60,7 @@ pub fn run() {
             data::doc_remove,
             data::doc_clear,
             data::doc_undo,
+            mcp::mcp_probe,
             capability::cap_list,
             capability::cap_available,
             capability::cap_invoke,

@@ -26,7 +26,8 @@ tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 # AI 网关:reqwest 用 rustls(避开 Windows OpenSSL),流式 + json
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
-tokio = { version = "1", features = ["macros", "sync", "rt", "rt-multi-thread", "time"] }
+# 注:process + io-util 供 #2 C4 MCP stdio 客户端(spawn server + 异步读写 JSON-RPC)
+tokio = { version = "1", features = ["macros", "sync", "rt", "rt-multi-thread", "time", "process", "io-util"] }
 tokio-util = "0.7"
 futures-util = "0.3"
 # 密钥:系统钥匙串(Win 凭据管理器 / macOS Keychain)
