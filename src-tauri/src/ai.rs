@@ -302,6 +302,7 @@ pub async fn ai_extract(
         .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
     let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
 
+    let has_image = image_data_url.as_deref().is_some_and(|u| !u.is_empty());
     let body = build_extract_body(&cfg.model, prompt, image_data_url);
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
 
@@ -318,6 +319,10 @@ pub async fn ai_extract(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let txt = resp.text().await.unwrap_or_default();
+        // 带图却 400 / 报 image_url 不识别 → 多半是纯文本模型不支持图片(如 DeepSeek 拒 image_url)。
+        if has_image && (code == 400 || txt.contains("image_url") || txt.contains("image")) {
+            return Err("当前模型不支持图片输入(端点返回 400)。请在「数据设置」改用支持视觉 / 多模态的模型,或改用粘贴文本 / 选 PDF 录入。".to_string());
+        }
         return Err(http_err_msg(code, &txt));
     }
     let v: Value = resp
