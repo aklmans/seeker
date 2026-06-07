@@ -300,6 +300,7 @@ pub async fn ai_extract(
     }
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
+    let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
 
     let body = build_extract_body(&cfg.model, prompt, image_data_url);
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
@@ -317,7 +318,7 @@ pub async fn ai_extract(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let txt = resp.text().await.unwrap_or_default();
-        return Err(format!("模型返回 HTTP {} · {}", code, redact(&txt)));
+        return Err(http_err_msg(code, &txt));
     }
     let v: Value = resp
         .json()
@@ -351,6 +352,7 @@ async fn run_chat(
     }
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
+    let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
 
     // 系统提示(配置化):平台安全/行为基线 + 域 overlay(按 task 选取);见 prompts.rs。
     // 消息仅 system + user(+ 工具循环产生的 assistant/tool),**结构上不含 profile**
@@ -593,7 +595,7 @@ async fn stream_round(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        let msg = format!("模型返回 HTTP {} · {}", code, redact(&body));
+        let msg = http_err_msg(code, &body);
         return Err(if code == 401 || code == 403 {
             ChatError::auth(msg)
         } else if code == 408 || code == 429 || code >= 500 {
@@ -763,6 +765,21 @@ fn build_context_message(chunks: &[ContextChunk]) -> Option<Value> {
 /// 错误回报脱敏:截断响应体,避免把可能含敏感串的内容整体外泄。
 fn redact(s: &str) -> String {
     s.chars().take(300).collect()
+}
+
+/// 把模型端点的 HTTP 错误整理成简洁、对用户有用的说明。
+/// 5xx 或 HTML 响应体(典型如代理网关错误 nginx 502 Bad Gateway)→ 提示端点临时不可用,**不堆原始 HTML**;
+/// 其余(多为 4xx 的 JSON 错误)→ 截断回吐,保留可诊断信息。
+fn http_err_msg(code: u16, body: &str) -> String {
+    let head = body.trim_start();
+    let looks_html = head.starts_with('<') || head.to_ascii_lowercase().contains("<html");
+    if code == 401 || code == 403 {
+        format!("模型端点拒绝了 API Key(HTTP {code})—— 请在「数据设置」检查或重新填写 API Key(注意勿带多余空格 / 换行,或确认密钥未过期 / 额度未用尽)。")
+    } else if code >= 500 || looks_html {
+        format!("模型端点返回 HTTP {code} —— 上游服务暂时不可用(多为端点 / 代理波动)。请稍后重试,或在「数据设置」检查模型端点。")
+    } else {
+        format!("模型返回 HTTP {} · {}", code, redact(body))
+    }
 }
 
 #[cfg(test)]
@@ -955,5 +972,18 @@ mod tests {
         for k in ["profile", "phone", "email", "\"name\""] {
             assert!(!s.contains(k), "抽取请求体不应含隐私键: {k}");
         }
+    }
+
+    #[test]
+    fn http_err_msg_cleans_gateway_and_html() {
+        // 5xx / HTML(代理网关错误)→ 简洁提示,不堆原始 HTML。
+        let m = http_err_msg(502, "<html><head><title>502 Bad Gateway</title></head><body><center>nginx</center></body></html>");
+        assert!(m.contains("502"));
+        assert!(!m.contains("<html"), "不应把原始 HTML 堆给用户");
+        assert!(m.contains("暂时不可用"));
+        // 4xx JSON → 保留可诊断信息。
+        let m2 = http_err_msg(400, "{\"error\":\"unknown model\"}");
+        assert!(m2.contains("unknown model"));
+        assert!(m2.contains("400"));
     }
 }
