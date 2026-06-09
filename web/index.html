@@ -289,6 +289,8 @@ table.matrix tbody td{font-size:13px;}
 /* 键盘可访问性:仅键盘聚焦(focus-visible)时给按钮/链接/可聚焦项一个清晰焦点环(鼠标点击不显);输入框已有 border-accent。 */
 button:focus-visible,a:focus-visible,[tabindex]:focus-visible,.nav-item:focus-visible,.tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
 .textarea{font-family:var(--font-mono); font-size:12.5px; line-height:1.7; resize:vertical; min-height:150px;}
+/* AI 录入拖放高亮:用 outline 不挤布局;暖橙虚线 + 浅底,符合设计语言 */
+#aiDrop.ai-dragover{outline:1.5px dashed var(--accent); outline-offset:4px; background:var(--accent-soft); border-radius:3px;}
 .field-row{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
 .scoreinput{margin:13px 0;}
 .scoreinput .si-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
@@ -2362,8 +2364,8 @@ function openNewJob(editId){
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— ${editing?'EDIT':'NEW'}</p><h2 style="margin-top:5px;">${editing?tt('编辑岗位','Edit job'):tt('录入新岗位','Add a new job')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
-      <div class="msec"><p class="seclabel">— ${tt('AI 智能录入','AI SMART ENTRY')}</p>
-        <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 10px;line-height:1.6;">${tt('粘贴 JD / 招聘网页正文,或选文件,让 AI 自动整理成下面的表单 —— 你只需核对、改两笔再保存。','Paste a JD / job-page content, or pick a file; AI fills the form below — you just review, tweak, and save.')}</p>
+      <div class="msec" id="aiDrop"><p class="seclabel">— ${tt('AI 智能录入','AI SMART ENTRY')}</p>
+        <p style="font-size:12.5px;color:var(--ink-3);margin:6px 0 10px;line-height:1.6;">${tt('粘贴 JD / 招聘网页正文,选文件,或<b>直接把图片 · PDF · 文本拖进来</b>,让 AI 自动整理成下面的表单 —— 你只需核对、改两笔再保存。','Paste a JD / job-page content, pick a file, or <b>drag an image · PDF · text file in here</b>; AI fills the form below — review, tweak, save.')}</p>
         <textarea class="textarea" id="aiBlob" placeholder="${tt('粘贴 JD 或整页内容…(或选文件 / 直接扔招聘截图)','Paste a JD or full page content… (or pick a file / drop a screenshot)')}" style="min-height:84px;font-family:inherit;"></textarea>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn btn-accent" id="aiExtract">${tt('让 AI 整理 →','Let AI organize →')}</button>
@@ -2441,23 +2443,36 @@ function openNewJob(editId){
     await doExtract(frameJobExtract(blob), null);
     aiExtractBtn.disabled=false; aiExtractBtn.textContent=old;
   };
+  // 共享文件摄入(文件选择器 + 拖放共用):图片→多模态抽取;PDF→平台提取文字填框;文本→读入框。
+  const ingestFile=(f)=>{
+    if(!f) return; const ta=$('#aiBlob',m), sEl=$('#aiStatus',m);
+    const name=(f.name||'').toLowerCase();
+    const isImg=(f.type||'').startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name);
+    const isPdf=f.type==='application/pdf' || /\.pdf$/.test(name);
+    const isText=(f.type||'').startsWith('text/') || /\.(txt|md|markdown|csv|json)$/.test(name);
+    if(isImg){
+      if(sEl) sEl.textContent=tt('读取图片…','Reading image…');
+      const rd=new FileReader(); rd.onload=async()=>{ await doExtract(frameJobExtract('', true), String(rd.result||'')); }; rd.readAsDataURL(f);
+    } else if(isPdf){
+      // 块3b:PDF → 平台层提取文字 → 填粘贴框(用户核对后点「整理」;扫描件取不到字会报错引导用截图)。
+      if(sEl) sEl.textContent=tt('提取 PDF 文字…','Extracting PDF text…');
+      const rd=new FileReader(); rd.onload=async()=>{ try{ const text=await window.SeekerRT.docs.pdfText(String(rd.result||'')); if(ta) ta.value=text; if(sEl) sEl.textContent=tt('已提取文字 → 点「让 AI 整理」(或先编辑)','Text extracted → click "Let AI organize" (or edit first)'); }catch(e){ if(sEl) sEl.textContent=String((e&&e.message)||e); } }; rd.readAsDataURL(f);
+    } else if(isText){
+      const rd=new FileReader(); rd.onload=()=>{ if(ta) ta.value=String(rd.result||''); if(sEl) sEl.textContent=tt('已读入 → 点「让 AI 整理」','Loaded → click "Let AI organize"'); }; rd.readAsText(f);
+    } else if(sEl){ sEl.textContent=tt('不支持的文件类型(用图片 / PDF / 文本)','Unsupported file (use image / PDF / text)'); }
+  };
   const aiFileBtn=$('#aiFileBtn',m), aiFile=$('#aiFile',m);
-  if(aiFileBtn&&aiFile){ aiFileBtn.onclick=()=>aiFile.click();
-    aiFile.onchange=()=>{ const f=aiFile.files&&aiFile.files[0]; if(!f) return; const ta=$('#aiBlob',m), sEl=$('#aiStatus',m);
-      const isPdf = f.type==='application/pdf' || /\.pdf$/i.test(f.name||'');
-      if(isPdf){
-        // 块3b:PDF → 平台层提取文字 → 填粘贴框(用户核对后点「整理」;扫描件取不到字会报错引导用截图)。
-        if(sEl) sEl.textContent=tt('提取 PDF 文字…','Extracting PDF text…');
-        const rd=new FileReader(); rd.onload=async()=>{ try{ const text=await window.SeekerRT.docs.pdfText(String(rd.result||'')); if(ta) ta.value=text; if(sEl) sEl.textContent=tt('已提取文字 → 点「让 AI 整理」(或先编辑)','Text extracted → click "Let AI organize" (or edit first)'); }catch(e){ if(sEl) sEl.textContent=String((e&&e.message)||e); } }; rd.readAsDataURL(f);
-      } else {
-        const rd=new FileReader(); rd.onload=()=>{ if(ta) ta.value=String(rd.result||''); }; rd.readAsText(f);
-      }
-      aiFile.value=''; }; }
-  // 块3:选图片(招聘截图 / 海报)→ 转 data-URL → 多模态抽取(不入粘贴框,直接整理)。
+  if(aiFileBtn&&aiFile){ aiFileBtn.onclick=()=>aiFile.click(); aiFile.onchange=()=>{ ingestFile(aiFile.files&&aiFile.files[0]); aiFile.value=''; }; }
   const aiImgBtn=$('#aiImgBtn',m), aiImg=$('#aiImg',m);
-  if(aiImgBtn&&aiImg){ aiImgBtn.onclick=()=>aiImg.click();
-    aiImg.onchange=()=>{ const f=aiImg.files&&aiImg.files[0]; if(!f) return; const sEl=$('#aiStatus',m); if(sEl) sEl.textContent=tt('读取图片…','Reading image…');
-      const rd=new FileReader(); rd.onload=async()=>{ await doExtract(frameJobExtract('', true), String(rd.result||'')); }; rd.readAsDataURL(f); aiImg.value=''; }; }
+  if(aiImgBtn&&aiImg){ aiImgBtn.onclick=()=>aiImg.click(); aiImg.onchange=()=>{ ingestFile(aiImg.files&&aiImg.files[0]); aiImg.value=''; }; }
+  // 拖放:把图片/PDF/文本直接拖进 AI 录入区(与选择器并存)。仅当拖的是文件时拦默认 → 文本拖入文本框仍走浏览器默认。
+  const aiDrop=$('#aiDrop',m);
+  if(aiDrop){
+    const hasFiles=e=>!!(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files'));
+    ['dragenter','dragover'].forEach(ev=>aiDrop.addEventListener(ev, e=>{ if(!hasFiles(e)) return; e.preventDefault(); aiDrop.classList.add('ai-dragover'); }));
+    aiDrop.addEventListener('dragleave', e=>{ if(!aiDrop.contains(e.relatedTarget)) aiDrop.classList.remove('ai-dragover'); });
+    aiDrop.addEventListener('drop', e=>{ if(!hasFiles(e)) return; e.preventDefault(); aiDrop.classList.remove('ai-dragover'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) ingestFile(f); });
+  }
   $('#saveJob',m).onclick=()=>{
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();
