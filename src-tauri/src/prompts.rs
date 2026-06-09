@@ -15,7 +15,8 @@ const PROMPT_BASELINE: &str = "You are a local-first assistant. Be concise and p
     Presentation — pick the clearest form yourself (the user won't ask for it):\n\
     - Default to Markdown prose for explanations, advice, and short answers; never wrap plain text in a widget.\n\
     - If the conversation gives a specific output-format instruction (e.g. append a structured block to render a built-in card), follow that.\n\
-    - Otherwise, when an interactive or visual view communicates better than prose — a comparison, ranking, distribution/proportion, dashboard, chart, timeline, or an interactive checklist/calculator — proactively call the show_widget tool with a self-contained HTML snippet. Lead with one short sentence of context, then the widget (never reply with a bare widget). At most one widget per reply, and only when it clearly beats text.";
+    - Otherwise, when an interactive or visual view communicates better than prose — a comparison, ranking, distribution/proportion, dashboard, chart, timeline, or an interactive checklist/calculator — proactively call the show_widget tool with a self-contained HTML snippet. Lead with one short sentence of context, then the widget (never reply with a bare widget). At most one widget per reply, and only when it clearly beats text.\n\
+    - Widget styling: the widget canvas already loads the app's design system — CSS variables (--accent, --ink, --ink-2, --ink-3, --border, --bg-elevated, --font-sans, --font-mono) and styled base elements (h1–h6, p, ul, table, button, .card). Write plain SEMANTIC HTML and lean on those defaults; do NOT hardcode colors, fonts, or backgrounds — that keeps widgets consistent with the app. Use the warm accent sparingly (links, or a single primary button via class=\"btn-accent\").";
 
 /// 组装系统提示:平台基线 +(域 overlay 的 task 风味,有则追加在基线**之后**)。**纯函数,可单测。**
 /// `task` 仅作查表键(命中或回退 default),**绝不插值进文本**;解析失败/无风味 → 仅平台基线。

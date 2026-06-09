@@ -26,6 +26,42 @@ const THEME_VARS = [
 /** widget 高度上限(占视口比例),防超长 widget 撑爆对话。 */
 const MAX_HEIGHT_RATIO = 0.7;
 
+/** 字体栈(静态;与原型一致)注入 widget,使设计底座可用 --font-*。 */
+const FONT_VARS =
+  "--font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;" +
+  "--font-mono:'SF Mono',Menlo,Monaco,Consolas,'Courier New',monospace;" +
+  "--font-serif:'Iowan Old Style',Georgia,'Times New Roman','Songti SC',serif";
+
+/**
+ * 设计底座样式表:把 widget 里的常见元素(标题/段落/列表/按钮/表格/代码/输入/链接…)默认就渲成
+ * Seeker 设计语言 —— 系统字体栈、暖橙节制(仅链接/CTA/选中)、0.5px 边框、Mono 大写标签。
+ * 这样**即便 LLM 只写朴素语义 HTML 也自动合风格**(不再吃浏览器默认的 Times 标题/灰按钮)。
+ * 注:用元素选择器(低特异性),LLM 若显式硬编码样式仍可覆盖——故系统提示同时引导其用语义标签、勿乱设颜色字体。
+ */
+const BASE_CSS =
+  "*{box-sizing:border-box}html,body{margin:0;padding:0}" +
+  "body{padding:12px 14px;background:var(--bg-elevated,#fff);color:var(--ink,#1a1a1a);font-family:var(--font-sans);font-size:13.5px;line-height:1.6;-webkit-font-smoothing:antialiased}" +
+  "h1,h2,h3,h4,h5,h6{font-family:var(--font-sans);color:var(--ink,#1a1a1a);font-weight:600;line-height:1.3;margin:0 0 9px;letter-spacing:-0.01em}" +
+  "h1{font-size:19px}h2{font-size:16px}h3{font-size:14px}h4,h5,h6{font-size:12.5px}" +
+  "p{margin:0 0 9px;color:var(--ink-2,#3a3a3a)}" +
+  "a{color:var(--accent,#c95f3d);text-decoration:none}a:hover{text-decoration:underline}" +
+  "strong,b{color:var(--ink,#1a1a1a);font-weight:600}" +
+  "small,.eyebrow,.label{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3,#6b6b6b)}" +
+  "ul,ol{margin:0 0 9px;padding-left:18px}li{margin:3px 0;color:var(--ink-2,#3a3a3a)}" +
+  "hr{border:0;border-top:0.5px solid var(--border,#e5e3de);margin:12px 0}" +
+  "code{font-family:var(--font-mono);font-size:12px;background:var(--bg-subtle,#f5f2ec);padding:1px 5px}" +
+  "pre{font-family:var(--font-mono);font-size:12px;background:var(--bg-subtle,#f5f2ec);padding:10px 12px;border:0.5px solid var(--border,#e5e3de);overflow:auto}pre code{background:none;padding:0}" +
+  "button{font-family:var(--font-sans);font-size:12.5px;color:var(--ink,#1a1a1a);background:var(--bg-elevated,#fff);border:0.5px solid var(--border-strong,#c0bfba);padding:7px 14px;cursor:pointer;transition:border-color 120ms ease,color 120ms ease}" +
+  "button:hover{border-color:var(--accent,#c95f3d);color:var(--accent,#c95f3d)}" +
+  "button.btn-accent,button.primary,button[data-accent]{background:var(--accent,#c95f3d);color:#fff;border-color:var(--accent,#c95f3d)}" +
+  "button.btn-accent:hover,button.primary:hover,button[data-accent]:hover{opacity:.92;color:#fff}" +
+  "table{border-collapse:collapse;width:100%;font-size:12.5px;margin:0 0 9px}" +
+  "th,td{text-align:left;padding:7px 10px;border-bottom:0.5px solid var(--border,#e5e3de)}" +
+  "th{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3,#6b6b6b);font-weight:500}td{color:var(--ink-2,#3a3a3a)}" +
+  "input,select,textarea{font-family:var(--font-sans);font-size:13px;color:var(--ink,#1a1a1a);background:var(--bg-elevated,#fff);border:0.5px solid var(--border-strong,#c0bfba);padding:6px 9px}" +
+  ".card,.box,.panel{border:0.5px solid var(--border,#e5e3de);background:var(--bg-elevated,#fff);padding:12px 14px;margin:0 0 9px}" +
+  ".muted{color:var(--ink-3,#6b6b6b)}.accent,.dot{color:var(--accent,#c95f3d)}";
+
 /** @returns {{[k:string]:string}} 父窗口当前主题 CSS 变量快照。 */
 function themeVarsObject() {
   /** @type {{[k:string]:string}} */
@@ -97,11 +133,7 @@ export function buildSrcDoc(html) {
   return (
     '<!doctype html><html><head><meta charset="utf-8">' +
     `<meta http-equiv="Content-Security-Policy" content="${SRCDOC_CSP}">` +
-    `<style>:root{${theme}}*{box-sizing:border-box}` +
-    'html,body{margin:0;padding:0}' +
-    "body{padding:4px;background:var(--bg,#fff);color:var(--ink,#1a1a1a);" +
-    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.55}" +
-    'a{color:var(--accent,#c95f3d)}</style></head><body>' +
+    `<style>:root{${theme};${FONT_VARS}}${BASE_CSS}</style></head><body>` +
     '<script>' + BRIDGE + '<\/script>' + // bridge 先于不可信内容,确保 window.seeker 就绪
     (html || '') +
     '</body></html>'
