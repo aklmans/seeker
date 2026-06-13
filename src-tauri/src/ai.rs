@@ -611,6 +611,7 @@ async fn stream_round(
         body["tools"] = Value::Array(tools.to_vec());
     }
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    log::info!("[ai] POST {url}");
 
     let client = reqwest::Client::new();
     let send = client
@@ -631,7 +632,11 @@ async fn stream_round(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        let msg = http_err_msg(code, &body);
+        log::warn!(
+            "[ai] {url} → HTTP {code}: {}",
+            body.chars().take(300).collect::<String>()
+        );
+        let msg = format!("{}(端点:{url})", http_err_msg(code, &body));
         return Err(if code == 401 || code == 403 {
             ChatError::auth(msg)
         } else if code == 408 || code == 429 || code >= 500 {
