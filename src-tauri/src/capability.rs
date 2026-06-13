@@ -312,13 +312,7 @@ pub async fn cap_invoke(
 /// 工具可见的业务集合 —— `data::table_for`(可持久化)的**子集**,刻意排除会话日志。
 /// **profile / secrets / settings 永不可读**(隐私红线);**messages 可持久化但不可读**:
 /// 对话历史可能含用户主动写出的 PII,AI 经多轮 History 拿上下文即可,不应数据挖掘全量会话日志(最小权限)。
-const QUERYABLE: &[&str] = &[
-    "jobs",
-    "skills",
-    "actions",
-    "resumes",
-    "iv_records",
-];
+const QUERYABLE: &[&str] = &["jobs", "skills", "actions", "resumes", "iv_records"];
 
 fn is_queryable(collection: &str) -> bool {
     QUERYABLE.contains(&collection)

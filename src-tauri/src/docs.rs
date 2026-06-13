@@ -16,7 +16,10 @@ use tauri::AppHandle;
 const CHUNK_SIZE: usize = 500; // 近似字符数(按 char,中文友好)
 const CHUNK_OVERLAP: usize = 80;
 // 编译期保证:切块步进 = SIZE-OVERLAP > 0 → chunk_text 必前进、不死循环(比运行时 assert 更强)。
-const _: () = assert!(CHUNK_SIZE > CHUNK_OVERLAP, "chunk step (SIZE - OVERLAP) must be > 0");
+const _: () = assert!(
+    CHUNK_SIZE > CHUNK_OVERLAP,
+    "chunk step (SIZE - OVERLAP) must be > 0"
+);
 const TOP_K: usize = 4;
 const MIN_SCORE: f32 = 0.2; // 相关度下限,过滤噪声
 static DOC_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -122,7 +125,9 @@ pub async fn pdf_extract_text(data_base64: String) -> Result<String, String> {
     .map_err(|e| format!("PDF 解析任务失败:{e}"))??;
     let text = text.trim().to_string();
     if text.is_empty() {
-        return Err("未能从 PDF 提取到文字(可能是扫描件 / 图片型 PDF)—— 试试用「扔图片 / 截图」录入".into());
+        return Err(
+            "未能从 PDF 提取到文字(可能是扫描件 / 图片型 PDF)—— 试试用「扔图片 / 截图」录入".into(),
+        );
     }
     Ok(text)
 }
@@ -214,7 +219,10 @@ mod tests {
     #[test]
     fn pdf_b64_strips_data_url_prefix() {
         // "hi" 的 base64 = aGk=
-        assert_eq!(decode_pdf_b64("data:application/pdf;base64,aGk=").unwrap(), b"hi");
+        assert_eq!(
+            decode_pdf_b64("data:application/pdf;base64,aGk=").unwrap(),
+            b"hi"
+        );
         assert_eq!(decode_pdf_b64("aGk=").unwrap(), b"hi"); // 裸 base64 也接受
         assert_eq!(decode_pdf_b64("  aGk=  ").unwrap(), b"hi"); // 容忍前后空白
     }

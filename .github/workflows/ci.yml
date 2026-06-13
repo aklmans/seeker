@@ -18,8 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      # 工具链版本由 rust-toolchain.toml 固定(防 rustfmt/clippy 漂移);此处装组件。
+      - name: Install Rust (pinned via rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt, clippy
 
@@ -37,6 +38,10 @@ jobs:
 
       - name: build (debug, no bundle)
         run: cargo build --manifest-path src-tauri/Cargo.toml
+
+      # 关键路径测试进关卡(令牌不入库 / scrub 脱敏 / profile 隔离 / HTTP 端到端等)。
+      - name: test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
   typecheck:
     name: typecheck (tsc --noEmit)

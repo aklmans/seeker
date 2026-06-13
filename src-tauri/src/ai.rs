@@ -364,7 +364,7 @@ async fn run_chat(
     // (ai_chat 命令签名只有 user_text,网关无从拿到 profile;工具结果只来自白名单业务集合)。
     let system = crate::prompts::system_prompt(app, task);
     let mut messages = build_messages(&system, user_text); // [system, user]
-                                                          // 多轮历史(#1 G2):已完成轮次插在 system 之后、当前 user 之前。
+                                                           // 多轮历史(#1 G2):已完成轮次插在 system 之后、当前 user 之前。
     let mut at = 1;
     for h in history {
         messages.insert(at, h.clone());
@@ -461,28 +461,29 @@ async fn run_chat(
                     // MCP 外部工具(mcp__server__tool):不经 registry —— 走「用户确认 → 执行 → Untrusted 回灌」专路。
                     // 其余内置能力:经 invoke_raw 统一执行(破坏性能力被拒);Widget 输出额外下发 ai_widget。
                     let (content, ok) = if let Some(desc) = mcp_route.get(&call.name) {
-                        mcp_confirm_and_call(app, session_id, mcp, pending, desc, args, &token).await
+                        mcp_confirm_and_call(app, session_id, mcp, pending, desc, args, &token)
+                            .await
                     } else {
                         match registry.invoke_raw(&call.name, &args, &cx).await {
-                        Ok(Output::Widget(w)) => {
-                            let title = w.title.clone();
-                            let _ = app.emit(
-                                "ai_widget",
-                                WidgetEv {
-                                    session_id: session_id.to_string(),
-                                    id: w.id,
-                                    html: w.html,
-                                    title: w.title,
-                                    min_height: w.min_height,
-                                },
-                            );
-                            (
-                                format!("已向用户渲染交互式组件「{title}」(用户可见)。"),
-                                true,
-                            )
-                        }
-                        Ok(out) => (out.to_model_text(), true),
-                        Err(e) => (json!({ "error": e }).to_string(), false),
+                            Ok(Output::Widget(w)) => {
+                                let title = w.title.clone();
+                                let _ = app.emit(
+                                    "ai_widget",
+                                    WidgetEv {
+                                        session_id: session_id.to_string(),
+                                        id: w.id,
+                                        html: w.html,
+                                        title: w.title,
+                                        min_height: w.min_height,
+                                    },
+                                );
+                                (
+                                    format!("已向用户渲染交互式组件「{title}」(用户可见)。"),
+                                    true,
+                                )
+                            }
+                            Ok(out) => (out.to_model_text(), true),
+                            Err(e) => (json!({ "error": e }).to_string(), false),
                         }
                     };
                     let _ = app.emit(
@@ -939,7 +940,10 @@ mod tests {
         let b = build_extract_body("gpt-x", "提取这段 JD".into(), None);
         assert_eq!(b["model"], "gpt-x");
         assert_eq!(b["stream"], false);
-        assert!(b.get("tools").is_none(), "一次性抽取不带 tools(此路够不到破坏性工具/MCP)");
+        assert!(
+            b.get("tools").is_none(),
+            "一次性抽取不带 tools(此路够不到破坏性工具/MCP)"
+        );
         let msgs = b["messages"].as_array().unwrap();
         assert_eq!(msgs.len(), 1, "只一条 user 消息");
         assert_eq!(msgs[0]["role"], "user");
@@ -947,12 +951,19 @@ mod tests {
             !msgs.iter().any(|m| m["role"] == "system"),
             "无 system 消息(纯抽取不注入系统提示)"
         );
-        assert_eq!(msgs[0]["content"], "提取这段 JD", "纯文本 → content 为字符串");
+        assert_eq!(
+            msgs[0]["content"], "提取这段 JD",
+            "纯文本 → content 为字符串"
+        );
     }
 
     #[test]
     fn extract_body_image_is_multimodal() {
-        let b = build_extract_body("gpt-x", "看图".into(), Some("data:image/png;base64,QUJD".into()));
+        let b = build_extract_body(
+            "gpt-x",
+            "看图".into(),
+            Some("data:image/png;base64,QUJD".into()),
+        );
         let content = &b["messages"][0]["content"];
         assert!(content.is_array(), "有图 → content 为多模态数组");
         assert_eq!(content[0]["type"], "text");
@@ -960,7 +971,11 @@ mod tests {
         assert_eq!(content[1]["type"], "image_url");
         assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
         assert!(b.get("tools").is_none());
-        assert!(!b["messages"].as_array().unwrap().iter().any(|m| m["role"] == "system"));
+        assert!(!b["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["role"] == "system"));
     }
 
     #[test]
@@ -972,7 +987,11 @@ mod tests {
 
     #[test]
     fn extract_body_has_no_profile_keys() {
-        let b = build_extract_body("gpt-x", "提取岗位".into(), Some("data:image/png;base64,AA".into()));
+        let b = build_extract_body(
+            "gpt-x",
+            "提取岗位".into(),
+            Some("data:image/png;base64,AA".into()),
+        );
         let s = serde_json::to_string(&b).unwrap();
         for k in ["profile", "phone", "email", "\"name\""] {
             assert!(!s.contains(k), "抽取请求体不应含隐私键: {k}");

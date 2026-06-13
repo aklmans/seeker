@@ -537,7 +537,12 @@ fn memory_rows_full(conn: &Connection) -> Result<Vec<MemRow>, String> {
             let fact: String = r.get(1)?;
             let blob: Option<Vec<u8>> = r.get(2)?;
             let ts: i64 = r.get(3)?;
-            Ok((id, fact, blob.map(|b| blob_to_vec(&b)).unwrap_or_default(), ts))
+            Ok((
+                id,
+                fact,
+                blob.map(|b| blob_to_vec(&b)).unwrap_or_default(),
+                ts,
+            ))
         })
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -582,7 +587,11 @@ pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usi
 
 /// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。
 #[tauri::command]
-pub fn memory_remove(db: State<'_, Db>, trash: State<'_, MemTrash>, id: String) -> Result<(), String> {
+pub fn memory_remove(
+    db: State<'_, Db>,
+    trash: State<'_, MemTrash>,
+    id: String,
+) -> Result<(), String> {
     let conn = db.0.lock().unwrap();
     let mut stmt = conn
         .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
@@ -933,7 +942,9 @@ mod tests {
         let m1 = all.iter().find(|x| x.0 == "m1").unwrap();
         assert_eq!(m1.2, vec![0.1, 0.2, 0.3]); // embedding 往返无损
         let restored_ts1: i64 = conn
-            .query_row("SELECT created_at FROM memories WHERE id='m1'", [], |r| r.get(0))
+            .query_row("SELECT created_at FROM memories WHERE id='m1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(restored_ts1, ts1); // 原时间保留(非 now)
     }
@@ -949,7 +960,10 @@ mod tests {
             &conn,
             "d1",
             "JD-字节",
-            &[("片段A".into(), vec![0.1, 0.2]), ("片段B".into(), vec![0.3, 0.4])],
+            &[
+                ("片段A".into(), vec![0.1, 0.2]),
+                ("片段B".into(), vec![0.3, 0.4]),
+            ],
         )
         .unwrap();
         super::doc_chunks_insert(&conn, "d2", "笔记", &[("片段C".into(), vec![0.5, 0.6])]).unwrap();
@@ -960,7 +974,9 @@ mod tests {
             .iter()
             .any(|(dn, txt, emb)| dn == "JD-字节" && txt == "片段A" && emb == &vec![0.1, 0.2]));
         // 删一篇 → 剩另一篇的块;清空 → 空。
-        let n = conn.execute("DELETE FROM doc_chunks WHERE doc_id='d1'", []).unwrap();
+        let n = conn
+            .execute("DELETE FROM doc_chunks WHERE doc_id='d1'", [])
+            .unwrap();
         assert_eq!(n, 2);
         assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 1);
         conn.execute("DELETE FROM doc_chunks", []).unwrap();
@@ -972,17 +988,26 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         let tmp = std::env::temp_dir().join("seeker-test-backups-docundo");
         migrate(&mut conn, &tmp).unwrap();
-        super::doc_chunks_insert(&conn, "d1", "JD", &[("a".into(), vec![0.1, 0.2]), ("b".into(), vec![0.3, 0.4])]).unwrap();
+        super::doc_chunks_insert(
+            &conn,
+            "d1",
+            "JD",
+            &[("a".into(), vec![0.1, 0.2]), ("b".into(), vec![0.3, 0.4])],
+        )
+        .unwrap();
         super::doc_chunks_insert(&conn, "d2", "笔记", &[("c".into(), vec![0.5, 0.6])]).unwrap();
         // 快照一篇 + 删 + 还原:字段/embedding 无损(doc_remove→doc_undo 的内部)。
         let snap1 = super::doc_snapshot(&conn, Some("d1")).unwrap();
         assert_eq!(snap1.len(), 2);
-        conn.execute("DELETE FROM doc_chunks WHERE doc_id='d1'", []).unwrap();
+        conn.execute("DELETE FROM doc_chunks WHERE doc_id='d1'", [])
+            .unwrap();
         assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 1);
         assert_eq!(super::doc_restore_rows(&conn, &snap1).unwrap(), 2);
         let all = super::doc_chunks_all(&conn).unwrap();
         assert_eq!(all.len(), 3);
-        assert!(all.iter().any(|(dn, txt, emb)| dn == "JD" && txt == "a" && emb == &vec![0.1, 0.2]));
+        assert!(all
+            .iter()
+            .any(|(dn, txt, emb)| dn == "JD" && txt == "a" && emb == &vec![0.1, 0.2]));
         // 快照全部 + 清空 + 还原全部(doc_clear→doc_undo 的内部)。
         let snap_all = super::doc_snapshot(&conn, None).unwrap();
         assert_eq!(snap_all.len(), 3);

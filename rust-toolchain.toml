@@ -1,0 +1,6 @@
+# 固定 Rust 工具链版本,保证本地与 CI 的 rustfmt / clippy 输出一致(防 fmt drift)。
+# 审查 [应改]①:CI 原用浮动 `@stable`,与本地 rustfmt 漂移致 `cargo fmt --check` 变红。
+# 升级 Rust 时改这里一处,本地 + CI 同步;改后跑一次 `cargo fmt`。
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
