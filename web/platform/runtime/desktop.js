@@ -196,5 +196,9 @@ export function createDesktopRuntime() {
       // 模型想调用某 MCP 工具时,前端经 guardrail 取得允许/拒绝后回传(唤醒挂起的网关)。
       confirmResolve: (confirmId, approved) => invoke('mcp_confirm_resolve', { confirmId, approved }),
     },
+    // 导出/渲染(平台层 · 业务无关「文档模型 → 文件」)。.docx 零依赖手写,返回 base64。纯本地不出网。
+    render: {
+      docx: (doc) => invoke('export_docx', { doc }),
+    },
   };
 }

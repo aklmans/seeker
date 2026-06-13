@@ -3173,7 +3173,21 @@ function downloadText(filename, text, mime){
     return true;
   }catch(e){ toast(String((e&&e.message)||e)); return false; }
 }
-// 从针对性简历构造「导出模型」(单一来源):title + 各段 blocks。MD / 逐段复制共用。
+// 文档模型 → .docx(Rust 零依赖渲染 → base64 → Blob 下载)。纯本地、不出网;web 端降级会报错(已被按钮门控隐藏)。
+async function exportDocx(fname, model){
+  try{
+    const b64=await window.SeekerRT.render.docx(model);
+    const bin=atob(b64), bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=fname+'.docx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast(tt('已下载 Word','Downloaded Word'));
+  }catch(e){ toast(String((e&&e.message)||e)); }
+}
+// 从针对性简历构造「导出模型」(单一来源):title + 各段 blocks。MD / 逐段复制 / Word 共用。
 function resumeExportModel(id){
   const j=JOBS.find(x=>x.id===id), r=RESUME_TAILORED[id];
   const title=`${PROFILE.name} · ${tt('针对','for')} ${j.co} · ${j.role.split('·')[0].trim()}`;
@@ -3228,6 +3242,7 @@ function resumeExport(id){
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button class="btn btn-accent" id="exCopyMd">${tt('复制 Markdown','Copy Markdown')}</button>
         <button class="btn" id="exDlMd">${tt('下载 .md','Download .md')}</button>
+        ${(window.SeekerRT&&window.SeekerRT.platform!=='web')?`<button class="btn" id="exDlDocx">${tt('下载 Word','Download Word')}</button>`:''}
       </div>
       <p style="font-size:12px;color:var(--ink-3);margin:0 0 8px;line-height:1.6;">${tt('在招聘网站表单里逐字段填写时,点每段/每条经历的「复制」最省力;Markdown 便于整份保存或再编辑。<b>所有导出纯本地,不出网。</b>','Filling a job-site form field by field? Hit “Copy” on each section or role. Markdown is for saving or further editing. <b>All exports are local — nothing leaves your machine.</b>')}</p>
       ${sectionsHTML}
@@ -3235,6 +3250,7 @@ function resumeExport(id){
     <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('关闭','Close')}</button></div>`, true);
   $('#exCopyMd',m).onclick=()=>copyWithToast(md);
   $('#exDlMd',m).onclick=()=>{ if(downloadText(fname+'.md',md,'text/markdown')) toast(tt('已下载 .md','Downloaded .md')); };
+  const dx=$('#exDlDocx',m); if(dx) dx.onclick=()=>exportDocx(fname,model);
   [...m.querySelectorAll('[data-copysec]')].forEach(b=>b.onclick=()=>copyWithToast(exportSectionText(model.sections[+b.dataset.copysec])));
   [...m.querySelectorAll('[data-copyblk]')].forEach(b=>b.onclick=()=>{const a=b.dataset.copyblk.split('|');copyWithToast(exportBlockText(model.sections[+a[0]].blocks[+a[1]]));});
 }

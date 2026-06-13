@@ -3,6 +3,7 @@ mod capability;
 mod config;
 mod data;
 mod docs;
+mod docx;
 mod embed;
 mod mcp;
 mod memory;
@@ -60,6 +61,7 @@ pub fn run() {
             data::memory_undo,
             docs::doc_add,
             docs::pdf_extract_text,
+            docx::export_docx,
             data::doc_list,
             data::doc_remove,
             data::doc_clear,

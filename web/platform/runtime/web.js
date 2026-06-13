@@ -201,5 +201,9 @@ export function createWebRuntime() {
       probe: () => notImpl('rt.mcp.probe', 'web'),
       confirmResolve: () => Promise.resolve(),
     },
+    // .docx 渲染在 Rust 核;web 端无 → 降级(domain 仍可走 Markdown 导出/复制)。
+    render: {
+      docx: () => notImpl('rt.render.docx', 'web'),
+    },
   };
 }

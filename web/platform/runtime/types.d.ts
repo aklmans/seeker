@@ -293,6 +293,22 @@ export interface McpApi {
   confirmResolve(confirmId: string, approved: boolean): Promise<void>;
 }
 
+/** 「文档模型」(**业务无关**):导出渲染器(如 .docx)的输入;domain 产出、platform 渲染。 */
+export interface ExportDoc {
+  title: string;
+  sections: Array<{ label: string; blocks: ExportDocBlock[] }>;
+}
+/** 文档块:段落 `para`(text)或条目 `entry`(head/date/bullets,简历的经历/项目)。 */
+export type ExportDocBlock =
+  | { kind: 'para'; text: string }
+  | { kind: 'entry'; head: string; date?: string; bullets?: string[] };
+
+/** 导出 / 渲染(平台层 · 业务无关「文档模型 → 文件」)。 */
+export interface RenderApi {
+  /** 文档模型 → .docx 的 base64(前端 `atob` → Blob 下载)。**纯本地、不出网**;桌面端,web 降级。 */
+  docx(doc: ExportDoc): Promise<string>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -307,6 +323,7 @@ export interface RuntimeApi {
   readonly memory: MemoryApi;
   readonly docs: DocsApi;
   readonly mcp: McpApi;
+  readonly render: RenderApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与
