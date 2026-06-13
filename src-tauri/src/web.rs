@@ -7,11 +7,10 @@
 //! 处理(P0 经现有 JD 录入的人审 + 抽取提示框定,不进系统提示、不直接喂工具循环)。
 //! 无新依赖:URL 解析用 `reqwest::Url`,IP 段判定用 std。
 //!
-//! **P0 已知边界(P1/P2 前收口)**:DNS rebinding(TOCTOU)—— `check_host_allowed` 解析校验后,
-//! reqwest 连接时会**二次解析**,存在改绑窗口。P0 威胁模型可接受(URL 用户自填、逐个核验,
-//! 且 web_fetch 非 AI 能力、模型无法触发)。**P1/P2 由 agent 跟搜索结果 URL 时威胁升级**,
-//! 届时改「解析一次 → 校验 → 按 IP 直连(钉 IP + 保留 Host 头)」。6to4 / Teredo 隧道已在
-//! `is_blocked_ip` 拦。
+//! **DNS rebinding(TOCTOU)已收口(P2)**:`resolve_allowed` 解析校验后,fetch 用 reqwest
+//! `.resolve(host, addr)` **按已校验 IP 直连**(Host/SNI 仍用 host),reqwest 不再二次解析该 host
+//! → 关掉"校验与连接之间改绑"的窗口(P2 起 agent 自动抓搜索结果 URL,威胁升级,故必收)。
+//! 6to4 / Teredo 隧道在 `is_blocked_ip` 拦。
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -58,23 +57,24 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
 }
 
 /// 解析 `host:port` → IP 列表,**任一**落在禁止段即拒(保守);无法解析 / 无结果 → 拒。
+/// 返回**钉定的已校验 `SocketAddr`**——供 fetch 按 IP 直连(关 DNS rebinding 窗口)。
 /// 阻塞 DNS 调用放 `spawn_blocking`,不卡异步运行时。
-async fn check_host_allowed(host: String, port: u16) -> Result<(), String> {
+async fn resolve_allowed(host: String, port: u16) -> Result<std::net::SocketAddr, String> {
     tokio::task::spawn_blocking(move || {
         use std::net::ToSocketAddrs;
         let addrs: Vec<_> = (host.as_str(), port)
             .to_socket_addrs()
             .map_err(|e| format!("无法解析主机 {host}:{e}"))?
             .collect();
-        if addrs.is_empty() {
-            return Err(format!("主机 {host} 无解析结果"));
-        }
+        let first = *addrs
+            .first()
+            .ok_or_else(|| format!("主机 {host} 无解析结果"))?;
         for a in &addrs {
             if is_blocked_ip(&a.ip()) {
                 return Err(format!("拒绝抓取内网 / 保留地址({})", a.ip()));
             }
         }
-        Ok(())
+        Ok(first) // 全部校验通过,钉首个
     })
     .await
     .map_err(|e| format!("解析任务失败:{e}"))?
@@ -207,22 +207,22 @@ fn html_to_text(html: &str) -> String {
 // ── 抓取(逐跳 SSRF 复检 + 限额)──────────────────────────────────
 
 async fn fetch_guarded(url: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none()) // 手动跟,逐跳复检 SSRF
-        .timeout(FETCH_TIMEOUT)
-        .user_agent(FETCH_UA)
-        .build()
-        .map_err(|e| format!("构建抓取客户端失败:{e}"))?;
-
     let mut current = validate_fetch_url(url)?;
     for _ in 0..=MAX_REDIRECTS {
-        // 每一跳都校验 scheme + 主机 IP(防重定向绕到内网)。
+        // 每一跳:校验 scheme + 解析主机 IP 校验 + **钉定 IP**(关 DNS rebinding:reqwest 不再二次解析该 host)。
         let parsed = validate_fetch_url(current.as_str())?;
         let host = parsed.host_str().unwrap_or("").to_string();
         let port = parsed
             .port_or_known_default()
             .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
-        check_host_allowed(host, port).await?;
+        let addr = resolve_allowed(host.clone(), port).await?;
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none()) // 手动跟,逐跳复检 + 重新钉 IP
+            .timeout(FETCH_TIMEOUT)
+            .user_agent(FETCH_UA)
+            .resolve(&host, addr) // 钉:host → 已校验 IP(Host/SNI 仍用 host),杜绝二次解析改绑
+            .build()
+            .map_err(|e| format!("构建抓取客户端失败:{e}"))?;
 
         let resp = client
             .get(current.clone())
