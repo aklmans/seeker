@@ -568,7 +568,7 @@ async fn connect_client(
     transient_token: Option<&str>,
 ) -> Result<McpClient, String> {
     if let Some(url) = &cfg.url {
-        let auth = resolve_auth_header(cfg, transient_token)?;
+        let auth = resolve_auth_header(cfg, transient_token);
         let transport = HttpTransport::new(url.clone(), auth)?;
         McpClient::with_transport(Box::new(transport)).await
     } else {
@@ -576,32 +576,28 @@ async fn connect_client(
     }
 }
 
-/// 解析远程鉴权头 `(name, value)`。令牌优先用 `transient_token`(存盘前测试),
-/// 否则从钥匙串取(account=`mcp.<name>.token`)。无鉴权方案 → `None`;有方案但无令牌 → Err。
-/// **令牌只在此短暂取用拼头,用完即弃,不外传、不记录**。
-fn resolve_auth_header(
-    cfg: &McpServerConfig,
-    transient_token: Option<&str>,
-) -> Result<Option<(String, String)>, String> {
-    let Some(auth) = &cfg.auth else {
-        return Ok(None);
+/// 由(可选)令牌拼远程鉴权头 `(名, 值)`。**无令牌 → `None`**(不带鉴权,由 server 决定是否放行——
+/// 无鉴权 server 正常连,需鉴权 server 会回 401)。头名 / 方案:`config.auth` 覆盖(供 `X-Api-Key` 等),
+/// 缺省 `Authorization` / `Bearer`。(纯函数,可单测——不碰钥匙串)
+fn build_auth_header(cfg: &McpServerConfig, token: Option<&str>) -> Option<(String, String)> {
+    let token = token.map(str::trim).filter(|t| !t.is_empty())?;
+    let (header, scheme) = match &cfg.auth {
+        Some(a) => (a.header.as_str(), a.scheme.as_str()),
+        None => ("Authorization", "Bearer"),
     };
-    let token = match transient_token {
-        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
-        _ => crate::secret::get_secret(&mcp_token_account(&cfg.name))
-            .map_err(|_| {
-                format!("远程 MCP server「{}」需要鉴权令牌:请在 MCP 设置为它填写", cfg.name)
-            })?
-            .trim()
-            .to_string(),
-    };
-    if token.is_empty() {
-        return Err(format!(
-            "远程 MCP server「{}」的鉴权令牌为空:请在 MCP 设置填写",
-            cfg.name
-        ));
+    Some((header.to_string(), auth_header_value(scheme, token)))
+}
+
+/// 解析远程鉴权头:令牌优先用 `transient_token`(存盘前测试),否则从钥匙串取
+/// (account=`mcp.<name>.token`)。**令牌只在此短暂取用拼头,用完即弃,不外传、不记录**。
+fn resolve_auth_header(cfg: &McpServerConfig, transient_token: Option<&str>) -> Option<(String, String)> {
+    match transient_token {
+        Some(t) if !t.trim().is_empty() => build_auth_header(cfg, Some(t)),
+        _ => {
+            let token = crate::secret::get_secret(&mcp_token_account(&cfg.name)).ok();
+            build_auth_header(cfg, token.as_deref())
+        }
     }
-    Ok(Some((auth.header.clone(), auth_header_value(&auth.scheme, &token))))
 }
 
 fn mcp_config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1125,44 +1121,38 @@ mod tests {
     }
 
     #[test]
-    fn resolve_auth_header_transient_path_skips_keychain() {
-        // 无鉴权方案 → None(不读钥匙串)。
-        let stdio = McpServerConfig {
-            name: "x".into(),
-            command: "node".into(),
-            args: vec![],
-            url: None,
-            auth: None,
-            enabled: true,
-        };
-        assert!(resolve_auth_header(&stdio, None).unwrap().is_none());
-        // 远程 + 临时令牌 → 直接拼头(不读钥匙串),令牌被 trim、加 Bearer 前缀。
+    fn build_auth_header_token_gated() {
         let remote = McpServerConfig {
             name: "r".into(),
             command: String::new(),
             args: vec![],
             url: Some("https://x/mcp".into()),
-            auth: Some(McpAuth {
-                header: "Authorization".into(),
-                scheme: "Bearer".into(),
-            }),
+            auth: None, // 缺省方案
             enabled: true,
         };
-        let h = resolve_auth_header(&remote, Some("  tok  ")).unwrap().unwrap();
-        assert_eq!(h, ("Authorization".to_string(), "Bearer tok".to_string()));
-        // 自定义头 + 空 scheme → 裸 token 作头值。
-        let remote2 = McpServerConfig {
+        // 无令牌 / 空白令牌 → 不带鉴权(None)。
+        assert!(build_auth_header(&remote, None).is_none());
+        assert!(build_auth_header(&remote, Some("  ")).is_none());
+        // 有令牌、缺省方案 → Authorization: Bearer(令牌被 trim)。
+        assert_eq!(
+            build_auth_header(&remote, Some("  tok ")).unwrap(),
+            ("Authorization".to_string(), "Bearer tok".to_string())
+        );
+        // config.auth 覆盖头名 / 方案(X-Api-Key + 空 scheme = 裸 token)。
+        let custom = McpServerConfig {
             name: "r2".into(),
             command: String::new(),
             args: vec![],
-            url: Some("https://x/mcp".into()),
+            url: Some("https://x".into()),
             auth: Some(McpAuth {
                 header: "X-Api-Key".into(),
                 scheme: String::new(),
             }),
             enabled: true,
         };
-        let h2 = resolve_auth_header(&remote2, Some("KEY")).unwrap().unwrap();
-        assert_eq!(h2, ("X-Api-Key".to_string(), "KEY".to_string()));
+        assert_eq!(
+            build_auth_header(&custom, Some("KEY")).unwrap(),
+            ("X-Api-Key".to_string(), "KEY".to_string())
+        );
     }
 }
