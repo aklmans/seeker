@@ -3229,6 +3229,7 @@ function modelToMarkdown(model){
 }
 function resumeExport(id){
   const j=JOBS.find(x=>x.id===id);
+  if(!RESUME_TAILORED[id]){ toast(tt('请先生成针对性简历','Generate a tailored resume first')); return; }  // 守卫:无简历则 r.modules 会 TypeError
   const model=resumeExportModel(id);
   const md=modelToMarkdown(model);
   const fname=`${(PROFILE.name||'resume').replace(/\s+/g,'_')}_${(j.co||'').replace(/\s+/g,'_')}`;
