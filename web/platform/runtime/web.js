@@ -210,6 +210,8 @@ export function createWebRuntime() {
       fetch: () => notImpl('rt.web.fetch', 'web'),
       // web 端:在新标签打开(浏览器原生);noopener 防被开页反向操控。
       open: (url) => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_e) { /* 弹窗拦截 */ } return Promise.resolve(); },
+      // web 端无平台核出网 → 验链降级返空(domain 视作未验,照常展示)。
+      verifySources: () => Promise.resolve([]),
     },
   };
 }

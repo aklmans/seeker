@@ -205,6 +205,7 @@ export function createDesktopRuntime() {
     web: {
       fetch: (url) => invoke('web_fetch', { url }),
       open: (url) => invoke('open_external', { url }),
+      verifySources: (urls) => invoke('verify_sources', { urls }),
     },
   };
 }

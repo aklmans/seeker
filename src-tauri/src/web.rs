@@ -295,7 +295,11 @@ fn extract_title(html: &str) -> Option<String> {
     let chars: Vec<char> = html.chars().collect();
     let start = ci_find(&chars, 0, &['<', 't', 'i', 't', 'l', 'e'])?;
     let content_start = (start..chars.len()).find(|&k| chars[k] == '>')? + 1;
-    let content_end = ci_find(&chars, content_start, &['<', '/', 't', 'i', 't', 'l', 'e', '>'])?;
+    let content_end = ci_find(
+        &chars,
+        content_start,
+        &['<', '/', 't', 'i', 't', 'l', 'e', '>'],
+    )?;
     let raw: String = chars[content_start..content_end].iter().collect();
     let t = raw
         .replace("&amp;", "&")
@@ -460,7 +464,10 @@ mod tests {
             extract_title("<html><head><title> Jobs &amp; Careers </title></head>"),
             Some("Jobs & Careers".into())
         );
-        assert_eq!(extract_title("<TITLE>大写标签</TITLE>"), Some("大写标签".into())); // 大小写不敏感
+        assert_eq!(
+            extract_title("<TITLE>大写标签</TITLE>"),
+            Some("大写标签".into())
+        ); // 大小写不敏感
         assert!(extract_title("<p>no title</p>").is_none());
         assert!(extract_title("<title></title>").is_none()); // 空 → None
     }
@@ -475,7 +482,10 @@ mod tests {
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["ok"], false);
         let e = arr[0]["error"].as_str().unwrap_or("");
-        assert!(e.contains("内网") || e.contains("保留"), "应记 SSRF 拒因:{e}");
+        assert!(
+            e.contains("内网") || e.contains("保留"),
+            "应记 SSRF 拒因:{e}"
+        );
     }
 
     // 真实抓取 happy-path(打公网 example.com):验证 fetch + html→text 全链路。

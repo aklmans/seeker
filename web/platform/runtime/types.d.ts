@@ -317,6 +317,8 @@ export interface WebApi {
   fetch(url: string): Promise<string>;
   /** 在**系统默认浏览器**打开用户选定的 URL(仅 http/https)。不在应用内打开外链(守「用户自己浏览器」)。 */
   open(url: string): Promise<void>;
+  /** 批量验链(发现 agent P2):逐个经平台核受控抓取验存活 + 抽 title;**模型不可调**(domain 用)。桌面端,web 降级返空。 */
+  verifySources(urls: string[]): Promise<Array<{ url: string; ok: boolean; title?: string | null; error?: string }>>;
 }
 
 // ── 顶层 Runtime ────────────────────────────────────────────────

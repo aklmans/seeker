@@ -65,6 +65,7 @@ pub fn run() {
             docx::export_docx,
             web::web_fetch,
             web::open_external,
+            web::verify_sources,
             data::doc_list,
             data::doc_remove,
             data::doc_clear,
