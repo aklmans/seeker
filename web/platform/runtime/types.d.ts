@@ -315,6 +315,8 @@ export interface RenderApi {
 export interface WebApi {
   /** 抓用户自填的 URL(JD / 招聘页)→ 纯文本(**不可信外部数据**)。仅 http/https + SSRF 护栏 + 大小/超时/重定向限额;桌面端,web 降级。 */
   fetch(url: string): Promise<string>;
+  /** 在**系统默认浏览器**打开用户选定的 URL(仅 http/https)。不在应用内打开外链(守「用户自己浏览器」)。 */
+  open(url: string): Promise<void>;
 }
 
 // ── 顶层 Runtime ────────────────────────────────────────────────

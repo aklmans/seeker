@@ -208,6 +208,8 @@ export function createWebRuntime() {
     // 网页抓取需平台核出网;web 端无 → 降级(出口红线:前端绝不直接出网)。
     web: {
       fetch: () => notImpl('rt.web.fetch', 'web'),
+      // web 端:在新标签打开(浏览器原生);noopener 防被开页反向操控。
+      open: (url) => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_e) { /* 弹窗拦截 */ } return Promise.resolve(); },
     },
   };
 }

@@ -289,6 +289,42 @@ pub async fn web_fetch(url: String) -> Result<String, String> {
     Ok(text)
 }
 
+// ── 在系统浏览器打开外链(发现 agent · P0/P1)─────────────────────
+
+/// 命令:在**系统默认浏览器**打开用户选定的 URL(仅 http/https,拒 `file:`/`javascript:`/`data:`)。
+/// 用户主动点击触发;Seeker **不在应用内 / WebView 打开外链**——守「用户在自己浏览器浏览」+
+/// 不可信外链不进 WebView。复用 `validate_fetch_url` 作 scheme 闸。
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    let u = validate_fetch_url(&url)?; // 仅 http/https + 有主机(拒 file/javascript/data/ftp)
+    open_in_browser(u.as_str())
+}
+
+#[cfg(target_os = "macos")]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开浏览器失败:{e}"))
+}
+#[cfg(target_os = "windows")]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开浏览器失败:{e}"))
+}
+#[cfg(target_os = "linux")]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开浏览器失败:{e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,6 +363,7 @@ mod tests {
         assert!(validate_fetch_url("file:///etc/passwd").is_err());
         assert!(validate_fetch_url("ftp://x/y").is_err());
         assert!(validate_fetch_url("data:text/html,<b>x</b>").is_err());
+        assert!(validate_fetch_url("javascript:alert(1)").is_err()); // open_external 的 XSS 闸
         assert!(validate_fetch_url("not a url").is_err());
     }
 

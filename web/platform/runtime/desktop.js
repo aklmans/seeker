@@ -204,6 +204,7 @@ export function createDesktopRuntime() {
     // 受控网页抓取(发现 agent · P0):出口只在 Rust 核(SSRF 护栏 + 限额),前端不出网。
     web: {
       fetch: (url) => invoke('web_fetch', { url }),
+      open: (url) => invoke('open_external', { url }),
     },
   };
 }
