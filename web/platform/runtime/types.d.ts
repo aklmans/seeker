@@ -145,6 +145,8 @@ export interface AiConfig {
   models: string[];
   /** key 是否已配置(钥匙串);**绝不含明文**。 */
   keyStatus: SecretStatus;
+  /** 请求 User-Agent(高级;空 = 用默认)。某些供应商(如 Kimi For Coding)按 UA 限定编程 agent。 */
+  userAgent: string;
 }
 
 export interface AiApi {
@@ -157,7 +159,7 @@ export interface AiApi {
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
   getConfig(): Promise<AiConfig>;
   /** 写非密钥配置(baseUrl/model/embedModel);model 非空 = 加入已存列表 + 设为当前;key 走 rt.secret.set 进钥匙串。 */
-  setConfig(patch: { baseUrl?: string; model?: string; embedModel?: string }): Promise<void>;
+  setConfig(patch: { baseUrl?: string; model?: string; embedModel?: string; userAgent?: string }): Promise<void>;
   /** 一协议多模型:从已保存列表选当前使用的模型。 */
   selectModel(model: string): Promise<void>;
   /** 删除一个已保存模型(删当前则改用剩余第一个)。 */

@@ -2187,6 +2187,8 @@ function renderSettings(){
       <div id="mdModelList" class="md-models"></div>
       <div style="display:flex;gap:8px;"><input class="input" id="mdModelAdd" placeholder="${tt('添加模型名,如 gpt-4o','Add a model, e.g. gpt-4o')}"><button class="btn" id="mdModelAddBtn">${tt('添加','Add')}</button></div></div>`)}
     ${row(tt('嵌入模型','Embed model'),`<input class="input" id="mdEmbed" placeholder="text-embedding-3-small" value="${(MODEL.embedModel||'').replace(/"/g,'&quot;')}">`)}
+    ${row(tt('User-Agent · 高级','User-Agent · advanced'),`<input class="input" id="mdUA" placeholder="claude-cli/1.0.0 (external, cli)" value="${(MODEL.userAgent||'').replace(/"/g,'&quot;')}">`)}
+    <p style="font-size:11.5px;color:var(--ink-3);margin:2px 0 8px;line-height:1.6;">${tt('某些供应商(如 Kimi For Coding)按 User-Agent 限定「编程 agent」;留空用默认。改后下次调用即生效,无需重启。','Some providers (e.g. Kimi For Coding) gate by User-Agent to coding agents; leave blank for the default. Takes effect on the next call — no restart.')}</p>
     ${row(tt('连接','Connection'),`<button class="btn btn-accent" id="mdTest">${tt('测试连接','Test connection')}</button>`)}
     <p class="seclabel" style="margin:24px 0 10px;">— SPEECH · STT</p>
     ${row(tt('STT 引擎','STT engine'),`<select class="select" id="mdStt">${sttEng.map(e=>`<option value="${e[0]}" ${e[0]===MODEL.stt?'selected':''}>${e[1]}</option>`).join('')}</select>`)}
@@ -2350,12 +2352,12 @@ function addModelUI(m){ m=(m||'').trim(); if(!m) return; if(!(MODEL.models||[]).
 async function wireModelConfigDesktop(){
   if(typeof isDesktop!=='function' || !isDesktop() || !window.SeekerRT) return;
   const base=$('#mdBase'); if(!base) return;            // 仅 BYO · LLM 页有这些输入
-  const key=$('#mdKey'), embed=$('#mdEmbed'), test=$('#mdTest');
+  const key=$('#mdKey'), embed=$('#mdEmbed'), test=$('#mdTest'), ua=$('#mdUA');
   const rt=window.SeekerRT, KEYACC='provider.openai.key';
   const cfgPh=()=>tt('已配置 · 留空则保持不变','Configured · leave blank to keep');
   try{
     const c=await rt.ai.getConfig();
-    base.value=c.baseUrl||''; if(embed) embed.value=c.embedModel||'';
+    base.value=c.baseUrl||''; if(embed) embed.value=c.embedModel||''; if(ua) ua.value=c.userAgent||'';
     MODEL.models=Array.isArray(c.models)?c.models:[]; MODEL.model=c.model||''; renderModelList(); // 用后端真实已存模型列表覆盖重渲
     if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : 'sk-…'; }
   }catch(_e){ /* 未就绪 */ }
@@ -2364,6 +2366,8 @@ async function wireModelConfigDesktop(){
     .catch(e=>toast(String((e&&e.message)||e))); };
   if(embed) embed.onblur=()=>{ rt.ai.setConfig({embedModel:embed.value.trim()})
     .then(()=>toast(tt('已保存嵌入模型(长期记忆 / 检索用)','Embed model saved'))).catch(()=>{}); };
+  if(ua) ua.onblur=()=>{ rt.ai.setConfig({userAgent:ua.value.trim()})
+    .then(()=>toast(tt('已保存 User-Agent','User-Agent saved'))).catch(e=>toast(String((e&&e.message)||e))); };
   if(key) key.onblur=()=>{ const v=key.value.trim(); if(!v) return;
     rt.secret.set(KEYACC, v).then(()=>{
       key.value=''; try{ if(typeof MODEL!=='undefined') MODEL.apiKey=''; }catch(_e){}

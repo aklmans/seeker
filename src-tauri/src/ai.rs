@@ -25,6 +25,20 @@ use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 const KEY_ACCOUNT: &str = "provider.openai.key";
+/// 默认请求 User-Agent。某些供应商(如 Kimi For Coding)按 UA 限定「编程 agent」——
+/// 默认 reqwest UA 会被 403 拒;Seeker 本是编程 / agent 应用,故默认以编程 agent UA 标识。
+/// 用户可在「数据设置」覆盖(provider.user_agent;空 = 用此默认),运行时即时生效、无需重启。
+const DEFAULT_USER_AGENT: &str = "claude-cli/1.0.0 (external, cli)";
+
+/// 生效 User-Agent:配置非空则用(trim),否则用默认。(纯函数,可单测)
+fn effective_user_agent(configured: &str) -> &str {
+    let t = configured.trim();
+    if t.is_empty() {
+        DEFAULT_USER_AGENT
+    } else {
+        t
+    }
+}
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 工具循环最多轮数;最后一轮强制不带 tools,逼模型给出最终文本(避免悬在工具调用上)。
@@ -310,7 +324,15 @@ pub async fn ai_extract(
     let client = reqwest::Client::new();
     let resp = tokio::time::timeout(
         Duration::from_secs(120),
-        client.post(&url).bearer_auth(&key).json(&body).send(),
+        client
+            .post(&url)
+            .header(
+                reqwest::header::USER_AGENT,
+                effective_user_agent(&cfg.user_agent),
+            )
+            .bearer_auth(&key)
+            .json(&body)
+            .send(),
     )
     .await
     .map_err(|_| "连接模型端点超时".to_string())?
@@ -358,6 +380,7 @@ async fn run_chat(
     let key = crate::secret::get_secret(KEY_ACCOUNT)
         .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
     let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
+    let ua = effective_user_agent(&cfg.user_agent).to_string(); // 生效 UA(供应商可能按 UA 限定)
 
     // 系统提示(配置化):平台安全/行为基线 + 域 overlay(按 task 选取);见 prompts.rs。
     // 消息仅 system + user(+ 工具循环产生的 assistant/tool),**结构上不含 profile**
@@ -420,6 +443,7 @@ async fn run_chat(
                     &cfg.base_url,
                     &cfg.model,
                     &key,
+                    &ua,
                     &messages,
                     round_tools,
                     &token,
@@ -576,6 +600,7 @@ async fn stream_round(
     base_url: &str,
     model: &str,
     key: &str,
+    user_agent: &str,
     messages: &[Value],
     tools: &[Value],
     token: &CancellationToken,
@@ -588,7 +613,12 @@ async fn stream_round(
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     let client = reqwest::Client::new();
-    let send = client.post(&url).bearer_auth(key).json(&body).send();
+    let send = client
+        .post(&url)
+        .header(reqwest::header::USER_AGENT, user_agent)
+        .bearer_auth(key)
+        .json(&body)
+        .send();
 
     let resp = tokio::select! {
         _ = token.cancelled() => return Ok(RoundOutcome::Cancelled),
@@ -996,6 +1026,14 @@ mod tests {
         for k in ["profile", "phone", "email", "\"name\""] {
             assert!(!s.contains(k), "抽取请求体不应含隐私键: {k}");
         }
+    }
+
+    #[test]
+    fn effective_user_agent_default_and_override() {
+        assert_eq!(effective_user_agent(""), DEFAULT_USER_AGENT); // 空 → 默认
+        assert_eq!(effective_user_agent("   "), DEFAULT_USER_AGENT); // 纯空白 → 默认
+        assert_eq!(effective_user_agent("MyAgent/1.0"), "MyAgent/1.0"); // 非空 → 原样
+        assert_eq!(effective_user_agent("  X/2  "), "X/2"); // 去首尾空白
     }
 
     #[test]

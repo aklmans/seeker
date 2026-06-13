@@ -25,6 +25,10 @@ pub struct ProviderConfig {
     /// 同一协议下保存的多个模型名(一协议多模型);除非用户删除否则保留。
     #[serde(default)]
     pub models: Vec<String>,
+    /// 请求 User-Agent(高级)。某些供应商(如 Kimi For Coding)按 UA 限定「编程 agent」,
+    /// 默认 UA 会被 403 拒;空 = 用默认(见 `ai.rs` DEFAULT_USER_AGENT)。**非密钥**,可显示。
+    #[serde(default)]
+    pub user_agent: String,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -58,6 +62,8 @@ pub struct ConfigView {
     models: Vec<String>,
     /// "configured" | "empty" —— key 是否已在钥匙串(不含明文)。
     key_status: String,
+    /// 请求 User-Agent(高级;空 = 用默认)。
+    user_agent: String,
 }
 
 #[tauri::command]
@@ -80,6 +86,7 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
         embed_model: c.embed_model,
         models,
         key_status,
+        user_agent: c.user_agent,
     })
 }
 
@@ -89,6 +96,7 @@ pub fn ai_config_set(
     base_url: Option<String>,
     model: Option<String>,
     embed_model: Option<String>,
+    user_agent: Option<String>,
 ) -> Result<(), String> {
     let mut c = load(&app);
     if let Some(b) = base_url {
@@ -106,6 +114,9 @@ pub fn ai_config_set(
     }
     if let Some(em) = embed_model {
         c.embed_model = em.trim().to_string();
+    }
+    if let Some(ua) = user_agent {
+        c.user_agent = ua.trim().to_string();
     }
     save(&app, &c)
 }
