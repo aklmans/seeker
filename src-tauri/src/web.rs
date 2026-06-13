@@ -12,6 +12,7 @@
 //! → 关掉"校验与连接之间改绑"的窗口(P2 起 agent 自动抓搜索结果 URL,威胁升级,故必收)。
 //! 6to4 / Teredo 隧道在 `is_blocked_ip` 拦。
 
+use serde_json::{json, Value};
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -20,6 +21,10 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_REDIRECTS: usize = 3;
 /// 抓页面用的 UA(普通浏览器标识;与 AI 网关的可配置 UA 无关)。
 const FETCH_UA: &str = "Mozilla/5.0 (compatible; Seeker/0.1; +local)";
+/// 验链(verify_sources)上限:最多验 N 条、并发 K、每条读小额(够确认存活 + 抽 <title>)。
+const VERIFY_MAX_URLS: usize = 20;
+const VERIFY_CONCURRENCY: usize = 5;
+const VERIFY_BODY: usize = 256 * 1024; // 256KB
 
 // ── SSRF 护栏 ──────────────────────────────────────────────────
 
@@ -206,7 +211,9 @@ fn html_to_text(html: &str) -> String {
 
 // ── 抓取(逐跳 SSRF 复检 + 限额)──────────────────────────────────
 
-async fn fetch_guarded(url: &str) -> Result<String, String> {
+/// 受控抓取核心(逐跳 SSRF 复检 + **钉 IP 直连** + 限额):返回 `(是否 html, 原始文本)`。
+/// `max_body`:响应体读取上限(web_fetch 取全文 MAX_BODY;验链取小额省流)。
+async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String> {
     let mut current = validate_fetch_url(url)?;
     for _ in 0..=MAX_REDIRECTS {
         // 每一跳:校验 scheme + 解析主机 IP 校验 + **钉定 IP**(关 DNS rebinding:reqwest 不再二次解析该 host)。
@@ -260,22 +267,44 @@ async fn fetch_guarded(url: &str) -> Result<String, String> {
         if !text_ok {
             return Err(format!("不支持的内容类型:{ctype}(仅抓网页 / 文本)"));
         }
-        // 大小上限:流式读到 MAX_BODY 即停。
+        // 大小上限:流式读到 max_body 即停。
         use futures_util::StreamExt;
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("读取响应失败:{e}"))?;
             buf.extend_from_slice(&chunk);
-            if buf.len() >= MAX_BODY {
-                buf.truncate(MAX_BODY);
+            if buf.len() >= max_body {
+                buf.truncate(max_body);
                 break;
             }
         }
-        let raw = String::from_utf8_lossy(&buf).into_owned();
-        return Ok(if is_html { html_to_text(&raw) } else { raw });
+        return Ok((is_html, String::from_utf8_lossy(&buf).into_owned()));
     }
     Err("重定向次数过多".into())
+}
+
+/// 抓取并抽纯文本(web_fetch 用):全文 + html→text。
+async fn fetch_guarded(url: &str) -> Result<String, String> {
+    let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
+    Ok(if is_html { html_to_text(&raw) } else { raw })
+}
+
+/// 从 HTML 抽 `<title>`(验链展示用;Unicode 安全 char 级)。无 / 空 → None。
+fn extract_title(html: &str) -> Option<String> {
+    let chars: Vec<char> = html.chars().collect();
+    let start = ci_find(&chars, 0, &['<', 't', 'i', 't', 'l', 'e'])?;
+    let content_start = (start..chars.len()).find(|&k| chars[k] == '>')? + 1;
+    let content_end = ci_find(&chars, content_start, &['<', '/', 't', 'i', 't', 'l', 'e', '>'])?;
+    let raw: String = chars[content_start..content_end].iter().collect();
+    let t = raw
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!t.is_empty()).then_some(t)
 }
 
 /// 命令:抓取用户自填的 URL(JD / 招聘页),返回**纯文本**(不可信外部数据)。
@@ -287,6 +316,30 @@ pub async fn web_fetch(url: String) -> Result<String, String> {
         return Err("抓取成功但未提取到文本(可能是脚本渲染页 / 非文本)".into());
     }
     Ok(text)
+}
+
+/// 命令:批量验链——逐个经受控抓取(复用 SSRF / 钉 IP / 限额)验存活 + 抽 `<title>`。
+/// 单条失败 / 被拒不影响其余;并发 + 数量上限。供发现 agent · P2「自动验链」:
+/// **由 domain 调用,非 AI 能力**(模型不能 fetch);验的是模型已产出、来自搜索的 source URL。
+/// 返回 `[{url, ok, title?|error?}]`。
+#[tauri::command]
+pub async fn verify_sources(urls: Vec<String>) -> Result<Value, String> {
+    use futures_util::{stream, StreamExt};
+    let urls: Vec<String> = urls.into_iter().take(VERIFY_MAX_URLS).collect();
+    let results: Vec<Value> = stream::iter(urls)
+        .map(|url| async move {
+            match fetch_raw(&url, VERIFY_BODY).await {
+                Ok((is_html, raw)) => {
+                    let title = if is_html { extract_title(&raw) } else { None };
+                    json!({ "url": url, "ok": true, "title": title })
+                }
+                Err(e) => json!({ "url": url, "ok": false, "error": e }),
+            }
+        })
+        .buffer_unordered(VERIFY_CONCURRENCY)
+        .collect()
+        .await;
+    Ok(Value::Array(results))
 }
 
 // ── 在系统浏览器打开外链(发现 agent · P0/P1)─────────────────────
@@ -399,6 +452,30 @@ mod tests {
             err.contains("内网") || err.contains("保留"),
             "应被 SSRF 拒:{err}"
         );
+    }
+
+    #[test]
+    fn extract_title_finds_and_decodes() {
+        assert_eq!(
+            extract_title("<html><head><title> Jobs &amp; Careers </title></head>"),
+            Some("Jobs & Careers".into())
+        );
+        assert_eq!(extract_title("<TITLE>大写标签</TITLE>"), Some("大写标签".into())); // 大小写不敏感
+        assert!(extract_title("<p>no title</p>").is_none());
+        assert!(extract_title("<title></title>").is_none()); // 空 → None
+    }
+
+    #[tokio::test]
+    async fn verify_sources_blocks_loopback() {
+        // loopback 被 SSRF 拒 → ok:false;不 panic、条目独立返回。
+        let v = verify_sources(vec!["http://127.0.0.1:9/x".into()])
+            .await
+            .unwrap();
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["ok"], false);
+        let e = arr[0]["error"].as_str().unwrap_or("");
+        assert!(e.contains("内网") || e.contains("保留"), "应记 SSRF 拒因:{e}");
     }
 
     // 真实抓取 happy-path(打公网 example.com):验证 fetch + html→text 全链路。
