@@ -58,6 +58,8 @@
 - **(A) BYO 搜索 provider**:用户自配一个搜索 API(如 Brave Search / Bing / SerpAPI 之类)端点 + key。**key 进钥匙串**(套现有 `secret.rs` 通用模式,前端只见 configured/empty),Rust 核临时取用拼请求、用完即弃、Authorization 头不入日志。
 - **(B) 搜索 MCP server**:复用**刚落地的远程 MCP**——把搜索/招聘数据源做成一个远程 MCP server,令牌已走钥匙串、结果已标 Untrusted、调用已过 guardrail。**零新机制**,直接吃现成红线护栏。
 > 倾向 (B):它让远程 MCP 的投入立刻有真实用途,且复用全套既有红线;(A) 更轻但要新写一套 provider 适配 + 密钥面。
+>
+> **实测后续(2026-06-13)**:已选**搜索 MCP 通道**(检索经现有 MCP 工具循环)。端到端管线已实证——可信本地 mock 搜索 MCP + `McpClient` stdio 全握手 + `verify_sources` 真连真实招聘页(commit `1392dce`,3 个 `#[ignore]` live 测试绿)。**但真实搜索 MCP 接入有 key 注入缺口**:stdio 传输**不注入 env**(`spawn` 无 `.env(s)`、`McpServerConfig` 无 env 字段)→ 靠 `API_KEY` env 的主流搜索 MCP(Brave / Exa-stdio)接不进;URL-参数式(`?tavilyApiKey=`)会把密钥落进 `mcp.json` 的 url = **违密钥红线**;仅 `Authorization` 头式可用现成钥匙串令牌(`mcp_set_auth`)。**推荐解 = 给 stdio MCP 加 per-server env、敏感值进钥匙串**(变量名留 `mcp.json`、值进 keychain、spawn 时注入)——补缺口又守红线。用户 2026-06-13 选**暂缓**,列为下一步候选。
 
 ### 3.3 抓取护栏(SSRF / 资源滥用)
 当需要抓取 JD 页面(扔回 / 验链 / 取正文)时,Rust 核 fetch **必须**:
