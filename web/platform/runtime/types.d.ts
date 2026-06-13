@@ -230,12 +230,26 @@ export interface DocsApi {
   pdfText(dataBase64: string): Promise<string>;
 }
 
+/** 远程 MCP 鉴权方案(**不含令牌**;令牌经 setAuth 入钥匙串)。头名/方案的可选覆盖,缺省 Authorization/Bearer。 */
+export interface McpAuth {
+  /** 鉴权头名,默认 `Authorization`。 */
+  header?: string;
+  /** 方案前缀,拼成 `<scheme> <token>`;空串 = 裸 token 作头值。默认 `Bearer`。 */
+  scheme?: string;
+}
+
 /** 一个 MCP server 的状态(列表用)。 */
 export interface McpServerInfo {
   name: string;
   command: string;
   args: string[];
   enabled: boolean;
+  /** 传输类型:`stdio`(本机 spawn)或 `http`(远程端点)。 */
+  transport: 'stdio' | 'http';
+  /** 远程 server 的 HTTP 端点(stdio 为 null)。 */
+  url: string | null;
+  /** 远程鉴权令牌是否已配置(**仅状态**,前端永不见明文)。 */
+  authConfigured: boolean;
   /** 是否已连接(enabled 且握手成功)。 */
   connected: boolean;
   toolCount: number;
@@ -244,21 +258,36 @@ export interface McpServerInfo {
   error: string | null;
 }
 
+/** 添加 / 测试一个 MCP server 的入参:本地 `{ command, args }` 或远程 `{ url, auth? }`。 */
+export interface McpServerSpec {
+  /** 本地 stdio:要 spawn 的命令(如 `npx` / `node`)。 */
+  command?: string;
+  /** 本地 stdio:命令参数。 */
+  args?: string[];
+  /** 远程 http:Streamable HTTP 端点 URL。 */
+  url?: string;
+  /** 远程鉴权方案(头名/方案覆盖;**不含令牌**)。 */
+  auth?: McpAuth;
+}
+
 /**
- * MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。
- * **server = 用户主动安装的不可信程序**(本机 spawn、非沙箱);模型每次调用 MCP 工具都经 guardrail
- * 确认、结果标 Untrusted。网页端不支持(需 spawn 子进程)→ 列空、其余降级。
+ * MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。**两种 server**:
+ * 本地 = 本机 spawn 的不可信程序;远程 = 用户自填的 HTTP 端点(Streamable HTTP)。
+ * 两者都须用户知情同意;模型每次调用 MCP 工具都经 guardrail 确认、结果标 Untrusted。
+ * **令牌只进系统钥匙串**(`setAuth`),前端永不见明文。网页端不支持(本地需 spawn、
+ * 远程需平台核出网)→ 列空、其余降级。
  */
 export interface McpApi {
   list(): Promise<McpServerInfo[]>;
-  /** 添加一个 server(会本机 spawn 程序——调用方须已取得用户知情同意)。 */
-  add(name: string, command: string, args: string[]): Promise<void>;
+  /** 添加一个 server(本地会 spawn 程序 / 远程会连端点——调用方须已取得用户知情同意)。**不含令牌**。 */
+  add(name: string, spec: McpServerSpec): Promise<void>;
+  /** 设置 / 清除某远程 server 的鉴权令牌(空 = 清除)。**令牌直送钥匙串**,前端不留、不回读。 */
+  setAuth(name: string, token: string): Promise<void>;
   remove(name: string): Promise<void>;
   setEnabled(name: string, enabled: boolean): Promise<void>;
-  /** 连接测试:连一次、列工具、断开。 */
+  /** 连接测试:连一次、列工具、断开。远程可带临时 `token`(仅测试用、不持久化)。 */
   probe(
-    command: string,
-    args: string[],
+    spec: McpServerSpec & { token?: string },
   ): Promise<{ ok: boolean; toolCount: number; tools: Array<{ name: string; description: string; inputSchema: unknown; readOnly: boolean }> }>;
   /** 模型想调用某 MCP 工具时,前端经 guardrail 取得允许/拒绝后回传(唤醒挂起的网关)。 */
   confirmResolve(confirmId: string, approved: boolean): Promise<void>;

@@ -184,13 +184,15 @@ export function createDesktopRuntime() {
       // 块3b:从 PDF(data-URL 或 base64)提取纯文本(纯本地,不出网)。供 AI 录入把 PDF 转文本喂抽取路径。
       pdfText: (dataBase64) => invoke('pdf_extract_text', { dataBase64 }),
     },
-    // MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。server = 用户主动安装的不可信程序。
+    // MCP 开放扩展(#2 C4):server 管理 + 工具调用确认回传。本地 = spawn 程序,远程 = 连 HTTP 端点;
+    // 令牌只进钥匙串(setAuth),前端不持明文。spec = { command,args }(本地)或 { url,auth }(远程)。
     mcp: {
       list: () => invoke('mcp_list'),
-      add: (name, command, args) => invoke('mcp_add', { name, command, args }),
+      add: (name, spec) => invoke('mcp_add', { name, ...(spec || {}) }),
+      setAuth: (name, token) => invoke('mcp_set_auth', { name, token }),
       remove: (name) => invoke('mcp_remove', { name }),
       setEnabled: (name, enabled) => invoke('mcp_set_enabled', { name, enabled }),
-      probe: (command, args) => invoke('mcp_probe', { command, args }),
+      probe: (spec) => invoke('mcp_probe', { ...(spec || {}) }),
       // 模型想调用某 MCP 工具时,前端经 guardrail 取得允许/拒绝后回传(唤醒挂起的网关)。
       confirmResolve: (confirmId, approved) => invoke('mcp_confirm_resolve', { confirmId, approved }),
     },

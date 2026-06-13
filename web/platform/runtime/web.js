@@ -191,10 +191,11 @@ export function createWebRuntime() {
       pdfText: () => notImpl('rt.docs.pdfText', 'web'),
     },
 
-    // MCP 需本机 spawn 子进程,web 端不支持 → 列表空、其余降级。
+    // MCP:本地需 spawn 子进程、远程需平台核出网,web 端均不支持 → 列表空、其余降级。
     mcp: {
       list: () => Promise.resolve([]),
       add: () => notImpl('rt.mcp.add', 'web'),
+      setAuth: () => notImpl('rt.mcp.setAuth', 'web'),
       remove: () => Promise.resolve(),
       setEnabled: () => Promise.resolve(),
       probe: () => notImpl('rt.mcp.probe', 'web'),
