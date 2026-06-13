@@ -39,6 +39,16 @@ fn effective_user_agent(configured: &str) -> &str {
         t
     }
 }
+
+/// 从文本抹掉 `secret`(provider 偶尔在错误体回显鉴权材料 → 防进日志 / 错误提示)。
+/// 纵深防御,与 MCP 的 scrub 同向;`secret` 空则原样返回。(纯函数,可单测)
+fn redact_secret(text: &str, secret: &str) -> String {
+    if secret.is_empty() {
+        text.to_string()
+    } else {
+        text.replace(secret, "[已脱敏]")
+    }
+}
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 工具循环最多轮数;最后一轮强制不带 tools,逼模型给出最终文本(避免悬在工具调用上)。
@@ -341,7 +351,8 @@ pub async fn ai_extract(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let txt = resp.text().await.unwrap_or_default();
-        // 带图却 400 / 报 image_url 不识别 → 多半是纯文本模型不支持图片(如 DeepSeek 拒 image_url)。
+        let txt = redact_secret(&txt, &key); // 同 stream:脱敏 provider 可能回显的鉴权材料
+                                             // 带图却 400 / 报 image_url 不识别 → 多半是纯文本模型不支持图片(如 DeepSeek 拒 image_url)。
         if has_image && (code == 400 || txt.contains("image_url") || txt.contains("image")) {
             return Err("当前模型不支持图片输入(端点返回 400)。请在「数据设置」改用支持视觉 / 多模态的模型,或改用粘贴文本 / 选 PDF 录入。".to_string());
         }
@@ -632,6 +643,7 @@ async fn stream_round(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
+        let body = redact_secret(&body, key); // provider 偶尔回显鉴权材料 → 脱敏后再记日志 / 进错误
         log::warn!(
             "[ai] {url} → HTTP {code}: {}",
             body.chars().take(300).collect::<String>()
@@ -1039,6 +1051,16 @@ mod tests {
         assert_eq!(effective_user_agent("   "), DEFAULT_USER_AGENT); // 纯空白 → 默认
         assert_eq!(effective_user_agent("MyAgent/1.0"), "MyAgent/1.0"); // 非空 → 原样
         assert_eq!(effective_user_agent("  X/2  "), "X/2"); // 去首尾空白
+    }
+
+    #[test]
+    fn redact_secret_removes_key() {
+        assert_eq!(
+            redact_secret("err: key=sk-ABC123 leaked", "sk-ABC123"),
+            "err: key=[已脱敏] leaked"
+        );
+        assert_eq!(redact_secret("nothing", ""), "nothing"); // 空 secret → 原样
+        assert_eq!(redact_secret("clean body", "sk-XYZ"), "clean body"); // 不含 → 不变
     }
 
     #[test]

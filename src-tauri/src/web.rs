@@ -6,6 +6,12 @@
 //! 只抽**纯文本**、绝不在 WebView 渲染。抓回内容是**不可信外部数据**——调用方按「数据非指令」
 //! 处理(P0 经现有 JD 录入的人审 + 抽取提示框定,不进系统提示、不直接喂工具循环)。
 //! 无新依赖:URL 解析用 `reqwest::Url`,IP 段判定用 std。
+//!
+//! **P0 已知边界(P1/P2 前收口)**:DNS rebinding(TOCTOU)—— `check_host_allowed` 解析校验后,
+//! reqwest 连接时会**二次解析**,存在改绑窗口。P0 威胁模型可接受(URL 用户自填、逐个核验,
+//! 且 web_fetch 非 AI 能力、模型无法触发)。**P1/P2 由 agent 跟搜索结果 URL 时威胁升级**,
+//! 届时改「解析一次 → 校验 → 按 IP 直连(钉 IP + 保留 Host 头)」。6to4 / Teredo 隧道已在
+//! `is_blocked_ip` 拦。
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -33,10 +39,19 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
                 || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64)
         }
         IpAddr::V6(v6) => {
+            let seg = v6.segments();
             v6.is_loopback()
                 || v6.is_unspecified()
-                || (v6.segments()[0] & 0xfe00) == 0xfc00 // ULA fc00::/7
-                || (v6.segments()[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+                || (seg[0] & 0xfe00) == 0xfc00 // ULA fc00::/7
+                || (seg[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+                || (seg[0] == 0x2001 && seg[1] == 0x0000) // Teredo 2001:0::/32(可中继 IPv4)→ 拒
+                || (seg[0] == 0x2002 // 6to4 2002::/16:校验内嵌 IPv4(防绕到内网)
+                    && is_blocked_ip(&IpAddr::V4(std::net::Ipv4Addr::new(
+                        (seg[1] >> 8) as u8,
+                        (seg[1] & 0xff) as u8,
+                        (seg[2] >> 8) as u8,
+                        (seg[2] & 0xff) as u8,
+                    ))))
                 || v6.to_ipv4_mapped().is_some_and(|m| is_blocked_ip(&IpAddr::V4(m)))
         }
     }
@@ -295,7 +310,10 @@ mod tests {
         assert!(is_blocked_ip(&IpAddr::V6(Ipv6Addr::new(
             0, 0, 0, 0, 0, 0xffff, 0x7f00, 1
         )))); // ::ffff:127.0.0.1
-              // 公网放行
+        assert!(b("2002:c0a8:0101::1")); // 6to4 内嵌 192.168.1.1 → 私网
+        assert!(b("2001:0:abcd::1")); // Teredo 2001:0::/32
+        assert!(!b("2002:0808:0808::1")); // 6to4 内嵌 8.8.8.8 → 公网,放行
+                                          // 公网放行
         assert!(!b("8.8.8.8"));
         assert!(!b("1.1.1.1"));
         assert!(!is_blocked_ip(&IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)))); // example.com
