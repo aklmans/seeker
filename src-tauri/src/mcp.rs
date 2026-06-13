@@ -443,11 +443,40 @@ pub fn flatten_content(result: &Value) -> String {
 
 // ── Tauri 命令:连接测试(供 UI「添加 server」验证 + 列工具)────────
 
-/// 连一个 MCP server、列出其工具、随即断开(drop 即 kill)。供设置页「测试连接」。
-/// **command/args 来自用户配置**——这会在本机 `spawn` 一个程序,调用方(UI)须已取得用户知情同意。
+/// 连一个 MCP server、列出其工具、随即断开(drop 即 kill / http 即丢)。供设置页「测试连接」。
+/// 本地(command/args):会在本机 `spawn` 一个程序;远程(url/auth):会连用户自填的 HTTP 端点。
+/// 调用方(UI)须已取得用户知情同意。`token`:远程存盘前测试用的**临时**令牌(不持久化、不记录)。
 #[tauri::command]
-pub async fn mcp_probe(command: String, args: Vec<String>) -> Result<Value, String> {
-    let mut client = McpClient::connect(&command, &args).await?;
+pub async fn mcp_probe(
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    url: Option<String>,
+    auth: Option<McpAuth>,
+    token: Option<String>,
+) -> Result<Value, String> {
+    let command = command.unwrap_or_default().trim().to_string();
+    let url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+    let is_remote = validate_transport(&command, url.as_deref())?;
+    let cfg = if is_remote {
+        McpServerConfig {
+            name: "probe".into(),
+            command: String::new(),
+            args: Vec::new(),
+            url,
+            auth,
+            enabled: true,
+        }
+    } else {
+        McpServerConfig {
+            name: "probe".into(),
+            command,
+            args: args.unwrap_or_default(),
+            url: None,
+            auth: None,
+            enabled: true,
+        }
+    };
+    let mut client = connect_client(&cfg, token.as_deref()).await?;
     let tools = client.list_tools().await?;
     Ok(json!({
         "ok": true,
@@ -520,10 +549,26 @@ fn auth_header_value(scheme: &str, token: &str) -> String {
     }
 }
 
-/// 据 config 选传输建立连接:有 `url` → http(从钥匙串取令牌拼鉴权头),否则 → stdio。
-async fn connect_client(cfg: &McpServerConfig) -> Result<McpClient, String> {
+/// 校验传输:command(本地)与 url(远程)**恰好一个**非空。返回 `is_remote`。
+fn validate_transport(command: &str, url: Option<&str>) -> Result<bool, String> {
+    let has_url = url.map(|u| !u.trim().is_empty()).unwrap_or(false);
+    let has_cmd = !command.trim().is_empty();
+    match (has_cmd, has_url) {
+        (true, false) => Ok(false),
+        (false, true) => Ok(true),
+        (false, false) => Err("请填命令(本地 stdio)或 URL(远程 http)".into()),
+        (true, true) => Err("命令(本地)与 URL(远程)只能填一个".into()),
+    }
+}
+
+/// 据 config 选传输建立连接:有 `url` → http(拼鉴权头),否则 → stdio。
+/// `transient_token`:存盘前「测试连接」用的临时令牌(优先于钥匙串;不持久化)。
+async fn connect_client(
+    cfg: &McpServerConfig,
+    transient_token: Option<&str>,
+) -> Result<McpClient, String> {
     if let Some(url) = &cfg.url {
-        let auth = build_auth_header(cfg)?;
+        let auth = resolve_auth_header(cfg, transient_token)?;
         let transport = HttpTransport::new(url.clone(), auth)?;
         McpClient::with_transport(Box::new(transport)).await
     } else {
@@ -531,23 +576,32 @@ async fn connect_client(cfg: &McpServerConfig) -> Result<McpClient, String> {
     }
 }
 
-/// 据鉴权方案 + 钥匙串令牌拼出鉴权头 `(name, value)`。
-/// 无方案 → `None`;有方案但钥匙串无令牌 / 令牌空 → Err(清晰引导去设置填令牌)。
+/// 解析远程鉴权头 `(name, value)`。令牌优先用 `transient_token`(存盘前测试),
+/// 否则从钥匙串取(account=`mcp.<name>.token`)。无鉴权方案 → `None`;有方案但无令牌 → Err。
 /// **令牌只在此短暂取用拼头,用完即弃,不外传、不记录**。
-fn build_auth_header(cfg: &McpServerConfig) -> Result<Option<(String, String)>, String> {
+fn resolve_auth_header(
+    cfg: &McpServerConfig,
+    transient_token: Option<&str>,
+) -> Result<Option<(String, String)>, String> {
     let Some(auth) = &cfg.auth else {
         return Ok(None);
     };
-    let token = crate::secret::get_secret(&mcp_token_account(&cfg.name))
-        .map_err(|_| format!("远程 MCP server「{}」需要鉴权令牌:请在 MCP 设置为它填写", cfg.name))?;
-    let token = token.trim();
+    let token = match transient_token {
+        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => crate::secret::get_secret(&mcp_token_account(&cfg.name))
+            .map_err(|_| {
+                format!("远程 MCP server「{}」需要鉴权令牌:请在 MCP 设置为它填写", cfg.name)
+            })?
+            .trim()
+            .to_string(),
+    };
     if token.is_empty() {
         return Err(format!(
             "远程 MCP server「{}」的鉴权令牌为空:请在 MCP 设置填写",
             cfg.name
         ));
     }
-    Ok(Some((auth.header.clone(), auth_header_value(&auth.scheme, token))))
+    Ok(Some((auth.header.clone(), auth_header_value(&auth.scheme, &token))))
 }
 
 fn mcp_config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -639,7 +693,7 @@ impl McpManager {
         if let Some(cs) = map.get(&cfg.name) {
             return Ok(cs.tools.clone());
         }
-        let mut client = connect_client(cfg).await?;
+        let mut client = connect_client(cfg, None).await?;
         let tools = client.list_tools().await?;
         map.insert(
             cfg.name.clone(),
@@ -718,8 +772,14 @@ pub async fn mcp_list(app: AppHandle, mgr: State<'_, McpManager>) -> Result<Valu
     let servers = load_servers(&app);
     let mut out = Vec::new();
     for s in &servers {
+        let auth_configured = s.auth.is_some()
+            && crate::secret::secret_status(mcp_token_account(&s.name))
+                .map(|st| st == "configured")
+                .unwrap_or(false);
         let mut entry = json!({
             "name": s.name, "command": s.command, "args": s.args, "enabled": s.enabled,
+            "transport": if s.url.is_some() { "http" } else { "stdio" },
+            "url": s.url, "authConfigured": auth_configured,
             "connected": false, "toolCount": 0, "tools": [], "error": Value::Null,
         });
         if s.enabled {
@@ -742,32 +802,62 @@ pub async fn mcp_list(app: AppHandle, mgr: State<'_, McpManager>) -> Result<Valu
     Ok(json!(out))
 }
 
-/// 添加一个 MCP server。**会在本机 spawn 一个程序——调用方(UI)须已取得用户知情同意。**
+/// 添加一个 MCP server。本地(command/args)= 在本机 spawn 程序;远程(url/auth)= 连用户自填 HTTP 端点。
+/// 调用方(UI)须已取得用户知情同意。**此命令不收令牌**——远程令牌经 `mcp_set_auth` 单独入钥匙串。
 #[tauri::command]
 pub async fn mcp_add(
     app: AppHandle,
     name: String,
-    command: String,
-    args: Vec<String>,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    url: Option<String>,
+    auth: Option<McpAuth>,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
-    let command = command.trim().to_string();
-    if name.is_empty() || command.is_empty() {
-        return Err("server 名称与命令不能为空".into());
+    if name.is_empty() {
+        return Err("server 名称不能为空".into());
     }
+    let command = command.unwrap_or_default().trim().to_string();
+    let url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+    let is_remote = validate_transport(&command, url.as_deref())?;
     let mut servers = load_servers(&app);
     if servers.iter().any(|s| s.name == name) {
         return Err(format!("已存在同名 server:{name}"));
     }
-    servers.push(McpServerConfig {
-        name,
-        command,
-        args,
-        url: None,
-        auth: None,
-        enabled: true,
-    });
+    let cfg = if is_remote {
+        McpServerConfig {
+            name,
+            command: String::new(),
+            args: Vec::new(),
+            url,
+            auth,
+            enabled: true,
+        }
+    } else {
+        McpServerConfig {
+            name,
+            command,
+            args: args.unwrap_or_default(),
+            url: None,
+            auth: None,
+            enabled: true,
+        }
+    };
+    servers.push(cfg);
     save_servers(&app, &servers)
+}
+
+/// 为某远程 server 设置 / 清除鉴权令牌。**令牌直送系统钥匙串**(account=`mcp.<name>.token`),
+/// 绝不入 mcp.json / 前端 / 日志(红线①,套 `secret.rs` 通用模式)。空令牌 = 清除。
+/// 前端只能查 `authConfigured`(见 `mcp_list`),无任何命令返回令牌明文。
+#[tauri::command]
+pub fn mcp_set_auth(name: String, token: String) -> Result<(), String> {
+    let account = mcp_token_account(name.trim());
+    if token.trim().is_empty() {
+        crate::secret::secret_clear(account)
+    } else {
+        crate::secret::secret_set(account, token)
+    }
 }
 
 /// 删除一个 MCP server(移出配置 + 断开连接)。可重新添加,UI 走 guardrail 确认。
@@ -785,6 +875,8 @@ pub async fn mcp_remove(
     }
     save_servers(&app, &servers)?;
     mgr.disconnect(&name).await;
+    // 顺带清除该 server 的钥匙串令牌(若有)——可重新添加,不留孤儿密钥。
+    let _ = crate::secret::secret_clear(mcp_token_account(&name));
     Ok(())
 }
 
@@ -1021,5 +1113,56 @@ mod tests {
         // 无鉴权 → 原样返回。
         let t2 = HttpTransport::new("https://x".into(), None).unwrap();
         assert_eq!(t2.scrub("plain text".into()), "plain text");
+    }
+
+    #[test]
+    fn validate_transport_exactly_one() {
+        assert!(!validate_transport("node", None).unwrap()); // 仅命令 → 本地
+        assert!(validate_transport("", Some("https://x")).unwrap()); // 仅 url → 远程
+        assert!(validate_transport("", None).is_err()); // 都没填
+        assert!(validate_transport("node", Some("https://x")).is_err()); // 都填
+        assert!(validate_transport("  ", Some("  ")).is_err()); // 空白视作未填
+    }
+
+    #[test]
+    fn resolve_auth_header_transient_path_skips_keychain() {
+        // 无鉴权方案 → None(不读钥匙串)。
+        let stdio = McpServerConfig {
+            name: "x".into(),
+            command: "node".into(),
+            args: vec![],
+            url: None,
+            auth: None,
+            enabled: true,
+        };
+        assert!(resolve_auth_header(&stdio, None).unwrap().is_none());
+        // 远程 + 临时令牌 → 直接拼头(不读钥匙串),令牌被 trim、加 Bearer 前缀。
+        let remote = McpServerConfig {
+            name: "r".into(),
+            command: String::new(),
+            args: vec![],
+            url: Some("https://x/mcp".into()),
+            auth: Some(McpAuth {
+                header: "Authorization".into(),
+                scheme: "Bearer".into(),
+            }),
+            enabled: true,
+        };
+        let h = resolve_auth_header(&remote, Some("  tok  ")).unwrap().unwrap();
+        assert_eq!(h, ("Authorization".to_string(), "Bearer tok".to_string()));
+        // 自定义头 + 空 scheme → 裸 token 作头值。
+        let remote2 = McpServerConfig {
+            name: "r2".into(),
+            command: String::new(),
+            args: vec![],
+            url: Some("https://x/mcp".into()),
+            auth: Some(McpAuth {
+                header: "X-Api-Key".into(),
+                scheme: String::new(),
+            }),
+            enabled: true,
+        };
+        let h2 = resolve_auth_header(&remote2, Some("KEY")).unwrap().unwrap();
+        assert_eq!(h2, ("X-Api-Key".to_string(), "KEY".to_string()));
     }
 }
