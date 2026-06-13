@@ -3145,19 +3145,98 @@ function resumeGenerate(id, after){
         <button class="btn btn-accent" style="margin-top:14px;" onclick="closeModal();go('resumes')">${tt('去编辑','Go edit')} →</button>`;
     },{label:tt('AI 生成简历中…','Generating resume…')});
 }
-function resumeExport(id){
-  const j=JOBS.find(x=>x.id===id); const r=RESUME_TAILORED[id];
-  let md=`# ${PROFILE.name} · 针对 ${j.co} · ${j.role.split('·')[0].trim()}\n`;
+// ── 导出工具(纯本地:真剪贴板 + Blob 下载;不出网)─────────────────
+// 复制到剪贴板(真实):navigator.clipboard 优先 → 退回 execCommand → 失败返回 false。
+async function copyText(text){
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return true; } }catch(_e){}
+  try{
+    const ta=document.createElement('textarea'); ta.value=text;
+    ta.style.position='fixed'; ta.style.opacity='0'; ta.style.pointerEvents='none';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok=document.execCommand('copy'); document.body.removeChild(ta);
+    return ok;
+  }catch(_e){ return false; }
+}
+async function copyWithToast(text){
+  const ok=await copyText(text);
+  toast(ok?tt('已复制','Copied'):tt('复制失败,请手动选择文本','Copy failed — select the text manually'));
+  return ok;
+}
+// 下载一个文本文件(Blob + a[download],纯本地、不出网)。
+function downloadText(filename, text, mime){
+  try{
+    const blob=new Blob([text],{type:(mime||'text/plain')+';charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    return true;
+  }catch(e){ toast(String((e&&e.message)||e)); return false; }
+}
+// 从针对性简历构造「导出模型」(单一来源):title + 各段 blocks。MD / 逐段复制共用。
+function resumeExportModel(id){
+  const j=JOBS.find(x=>x.id===id), r=RESUME_TAILORED[id];
+  const title=`${PROFILE.name} · ${tt('针对','for')} ${j.co} · ${j.role.split('·')[0].trim()}`;
+  const sections=[];
   r.modules.filter(m=>m.on).forEach(m=>{
-    if(m.type==='locked') md+=`\n## 基本信息\n求职意向:${PROFILE.intent} · 城市:${PROFILE.city} · 经验:${PROFILE.exp}\n电话:${PROFILE.phone} · 邮箱:${PROFILE.email}\n`;
-    else if(m.type==='skills') md+=`\n## ${m.label}\n${(m.content||[]).join(' · ')}\n`;
-    else if(m.type==='entries') md+=`\n## ${m.label}\n${(m.items||[]).map(it=>`### ${it.org||''}${it.title?' · '+it.title:''}${it.date?'  ('+it.date+')':''}\n${(it.bullets||[]).map(b=>'- '+b).join('\n')}`).join('\n\n')}\n`;
-    else if(m.type==='projects') md+=`\n## ${m.label}\n${(m.items||[]).map(p=>`### ${p.star?'★ ':''}${p.name||''}${p.date?'  ('+p.date+')':''}\n${(p.bullets||[]).map(b=>'- '+b).join('\n')}`).join('\n\n')}\n`;
-    else md+=`\n## ${m.label}\n${m.content||''}\n`;
+    if(m.type==='locked') sections.push({label:tt('基本信息','Basics'),blocks:[
+      {kind:'para',text:`${tt('求职意向','Intent')}:${PROFILE.intent} · ${tt('城市','City')}:${PROFILE.city} · ${tt('经验','Exp')}:${PROFILE.exp}`},
+      {kind:'para',text:`${tt('电话','Phone')}:${PROFILE.phone} · ${tt('邮箱','Email')}:${PROFILE.email}`}]});
+    else if(m.type==='skills') sections.push({label:m.label,blocks:[{kind:'para',text:(m.content||[]).join(' · ')}]});
+    else if(m.type==='entries') sections.push({label:m.label,blocks:(m.items||[]).map(it=>({kind:'entry',head:`${it.org||''}${it.title?' · '+it.title:''}`,date:it.date||'',bullets:it.bullets||[]}))});
+    else if(m.type==='projects') sections.push({label:m.label,blocks:(m.items||[]).map(p=>({kind:'entry',head:`${p.star?'★ ':''}${p.name||''}`,date:p.date||'',bullets:p.bullets||[]}))});
+    else sections.push({label:m.label,blocks:[{kind:'para',text:m.content||''}]});
   });
-  openModal(`<div class="modal-head"><div><p class="eyebrow">— EXPORT</p><h2 style="margin-top:5px;">${tt('导出简历 · Markdown','Export resume · Markdown')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body"><div class="jd-text" style="white-space:pre-wrap;">${md.replace(/</g,'&lt;')}</div></div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">关闭</button><button class="btn btn-accent" onclick="toast('已复制到剪贴板 (mock)')">复制 Markdown</button></div>`);
+  return {title,sections};
+}
+function exportBlockText(b){
+  if(b.kind==='entry') return `${b.head}${b.date?'  ('+b.date+')':''}\n`+(b.bullets||[]).map(x=>'- '+x).join('\n');
+  return b.text||'';
+}
+function exportSectionText(s){ return s.label+'\n'+s.blocks.map(exportBlockText).join('\n'); }
+function modelToMarkdown(model){
+  let md=`# ${model.title}\n`;
+  model.sections.forEach(s=>{
+    md+=`\n## ${s.label}\n`;
+    s.blocks.forEach(b=>{
+      if(b.kind==='entry'){ md+=`### ${b.head}${b.date?'  ('+b.date+')':''}\n`+(b.bullets||[]).map(x=>'- '+x).join('\n')+'\n'; }
+      else md+=`${b.text||''}\n`;
+    });
+  });
+  return md;
+}
+function resumeExport(id){
+  const j=JOBS.find(x=>x.id===id);
+  const model=resumeExportModel(id);
+  const md=modelToMarkdown(model);
+  const fname=`${(PROFILE.name||'resume').replace(/\s+/g,'_')}_${(j.co||'').replace(/\s+/g,'_')}`;
+  const esc=s=>(''+(s||'')).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const sectionsHTML=model.sections.map((s,i)=>{
+    const body=s.blocks.map((b,k)=>{
+      if(b.kind==='entry') return `<div style="margin-top:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="min-width:0;"><b>${esc(b.head)}</b>${b.date?` <span style="color:var(--ink-3);">(${esc(b.date)})</span>`:''}${(b.bullets||[]).map(x=>`<div style="color:var(--ink-2);">· ${esc(x)}</div>`).join('')}</div><button class="btn" data-copyblk="${i}|${k}" style="padding:2px 8px;font-size:10.5px;flex-shrink:0;">${tt('复制','Copy')}</button></div>`;
+      return `<div style="color:var(--ink-2);white-space:pre-wrap;">${esc(b.text)}</div>`;
+    }).join('');
+    return `<div style="padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <span class="seclabel" style="margin:0;">— ${esc(s.label)}</span>
+        <button class="btn" data-copysec="${i}" style="padding:3px 10px;font-size:11px;flex-shrink:0;">${tt('复制本段','Copy section')}</button>
+      </div>
+      <div style="margin-top:6px;font-size:13px;line-height:1.6;">${body}</div></div>`;
+  }).join('');
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— EXPORT</p><h2 style="margin-top:5px;">${tt('导出 / 填表','Export / Fill')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn btn-accent" id="exCopyMd">${tt('复制 Markdown','Copy Markdown')}</button>
+        <button class="btn" id="exDlMd">${tt('下载 .md','Download .md')}</button>
+      </div>
+      <p style="font-size:12px;color:var(--ink-3);margin:0 0 8px;line-height:1.6;">${tt('在招聘网站表单里逐字段填写时,点每段/每条经历的「复制」最省力;Markdown 便于整份保存或再编辑。<b>所有导出纯本地,不出网。</b>','Filling a job-site form field by field? Hit “Copy” on each section or role. Markdown is for saving or further editing. <b>All exports are local — nothing leaves your machine.</b>')}</p>
+      ${sectionsHTML}
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('关闭','Close')}</button></div>`, true);
+  $('#exCopyMd',m).onclick=()=>copyWithToast(md);
+  $('#exDlMd',m).onclick=()=>{ if(downloadText(fname+'.md',md,'text/markdown')) toast(tt('已下载 .md','Downloaded .md')); };
+  [...m.querySelectorAll('[data-copysec]')].forEach(b=>b.onclick=()=>copyWithToast(exportSectionText(model.sections[+b.dataset.copysec])));
+  [...m.querySelectorAll('[data-copyblk]')].forEach(b=>b.onclick=()=>{const a=b.dataset.copyblk.split('|');copyWithToast(exportBlockText(model.sections[+a[0]].blocks[+a[1]]));});
 }
 function ivBankHTML(){
   const cats=['全部',...IV_CATS.map(c=>c[1])];
