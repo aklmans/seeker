@@ -9,6 +9,7 @@ mod mcp;
 mod memory;
 mod prompts;
 mod secret;
+mod web;
 
 use tauri::Manager;
 
@@ -62,6 +63,7 @@ pub fn run() {
             docs::doc_add,
             docs::pdf_extract_text,
             docx::export_docx,
+            web::web_fetch,
             data::doc_list,
             data::doc_remove,
             data::doc_clear,
