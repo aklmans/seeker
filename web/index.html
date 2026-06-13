@@ -2455,6 +2455,8 @@ function openNewJob(editId){
         </div>
         <div id="aiMeta">${editing?aiMetaHtml(aiMeta):''}</div>
       </div>
+      ${editing?'':`<button class="btn-text" id="njManualToggle" style="margin:2px 0 12px;color:var(--ink-mute);">${tt('或手动填写全部字段 ▾','Or fill in all fields manually ▾')}</button>`}
+      <div id="njManual"${editing?'':' style="display:none;"'}>
       <div class="msec"><p class="seclabel">— BASIC INFO</p>
         <div class="field-row"><div class="field"><label>${tt('公司','Company')}</label><input class="input" id="njCo" placeholder="${tt('如 · 字节跳动','e.g. ByteDance')}" value="${editing?av(editing.co):''}"></div><div class="field"><label>${tt('岗位','Role')}</label><input class="input" id="njRole" placeholder="${tt('如 · 后端高级工程师','e.g. Senior Backend Engineer')}" value="${editing?av(editing.role):''}"></div></div>
         <div class="field-row"><div class="field"><label>${tt('城市','City')}</label><select class="select" id="njCity">${['北京','上海','深圳','杭州','广州'].map(c=>`<option ${editing&&editing.city===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>${tt('来源','Source')}</label><select class="select" id="njSource">${[['BOSS直聘','BOSS Zhipin'],['官网','Official site'],['社群','Community / group'],['内推','Referral'],['猎头','Headhunter'],['其他','Other']].map(o=>`<option value="${o[0]}" ${editing&&editing.src===o[0]?'selected':''}>${tt(o[0],o[1])}</option>`).join('')}</select></div></div>
@@ -2468,6 +2470,7 @@ function openNewJob(editId){
         ${scoreInput('match',tt('匹配','Match'),tt('我现在的能力对得上吗?','Do my skills fit now?'))}
         ${scoreInput('chance',tt('机会','Odds'),tt('我能拿下吗?','Can I land it?'))}
       </div></div>
+      </div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="toast('已保存草稿')">${tt('保存草稿','Save draft')}</button><button class="btn btn-accent" id="saveJob">${tt('完成录入','Save job')}</button></div>`;
   const m=openModal(html, true);
@@ -2477,6 +2480,10 @@ function openNewJob(editId){
       dot.onclick=()=>{const v=+dot.dataset.i;scores[key]=v;$$('span',row).forEach(d=>d.classList.toggle('on',+d.dataset.i<=v));$(`[data-sv="${key}"]`,m).textContent=v+' / 10';};
     });
   });
+  // 渐进式表单(新建态):手动区默认折叠;点「或手动填写」或 AI 填好后展开(编辑态本就展开)。
+  const njMan=$('#njManual',m), njTog=$('#njManualToggle',m);
+  const revealManual=()=>{ if(njMan) njMan.style.display=''; if(njTog) njTog.style.display='none'; };
+  if(njTog) njTog.onclick=revealManual;
   const jdEl=$('#jdInput',m), resEl=$('#analyzeResult',m);
   const paint=()=>{ if(!resEl) return;                  // 渲染当前 extracted(不重新抽取;编辑时展示现有 need 不丢)
     resEl.innerHTML = extracted.length
@@ -2501,6 +2508,7 @@ function openNewJob(editId){
     paint();
     aiMeta={ summary:d.summary||'', seniority:d.seniority||'', workMode:d.workMode||'', highlights:Array.isArray(d.highlights)?d.highlights:[], kind:d.kind||'' };
     const mt=$('#aiMeta',m); if(mt) mt.innerHTML=aiMetaHtml(aiMeta);
+    revealManual(); // AI 填好 → 自动展开手动区供核对
   };
   const doExtract=async(prompt, imageDataUrl)=>{
     const sEl=$('#aiStatus',m);
