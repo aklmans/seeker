@@ -1312,4 +1312,29 @@ mod tests {
             assert!(auth.is_none(), "method {m} 不该带鉴权头");
         }
     }
+
+    #[tokio::test]
+    async fn manager_connects_remote_and_routes_call() {
+        // 网关实际走的路径(McpManager):连远程 → 缓存 → 命名空间工具 → 路由调用,
+        // 与 stdio 一视同仁(ai.rs 不感知传输)。no-auth 远程(钥匙串无令牌即不带鉴权)。
+        let record = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let port = spawn_mock_mcp(false, record);
+        let cfg = McpServerConfig {
+            name: "mock".into(),
+            command: String::new(),
+            args: vec![],
+            url: Some(format!("http://127.0.0.1:{port}/mcp")),
+            auth: None,
+            enabled: true,
+        };
+        let mgr = McpManager::default();
+        let tools = mgr.ensure_connected(&cfg).await.expect("ensure_connected");
+        assert_eq!(tools.len(), 1);
+        // 工具描述符带 mcp__<server>__ 命名空间(网关据此组装工具表 + 路由)。
+        let descs = mgr.tool_descriptors().await;
+        assert!(descs.iter().any(|d| d.qualified_name.starts_with("mcp__mock__")));
+        // 经缓存的 live 连接路由 tools/call。
+        let result = mgr.call("mock", "echo", json!({})).await.expect("call");
+        assert_eq!(flatten_content(&result), "echoed");
+    }
 }
