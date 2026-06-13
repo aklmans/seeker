@@ -1155,4 +1155,161 @@ mod tests {
             ("X-Api-Key".to_string(), "KEY".to_string())
         );
     }
+
+    // ── http 传输端到端(进程内 mock server;真打 socket,覆盖 reqwest 路径)──
+    //
+    // 用 std::net 起一个最小 HTTP server(独立线程),客户端在 tokio 上跑,经真实 TCP
+    // 往返。覆盖单测覆盖不到的:请求头组装(鉴权 / Accept / 会话 id)、initialize 握手、
+    // application/json 与 text/event-stream 两路响应解析、会话 id 捕获并回带。
+
+    fn find_sub(h: &[u8], n: &[u8]) -> Option<usize> {
+        h.windows(n.len()).position(|w| w == n)
+    }
+
+    /// 读一个 HTTP 请求(headers 小写键 + body)。
+    fn read_request(
+        stream: &mut std::net::TcpStream,
+    ) -> Option<(std::collections::HashMap<String, String>, String)> {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 2048];
+        let hend = loop {
+            let n = stream.read(&mut tmp).ok()?;
+            if n == 0 {
+                return None;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(p) = find_sub(&buf, b"\r\n\r\n") {
+                break p;
+            }
+        };
+        let head = String::from_utf8_lossy(&buf[..hend]).to_string();
+        let mut headers = std::collections::HashMap::new();
+        for line in head.lines().skip(1) {
+            if let Some((k, v)) = line.split_once(':') {
+                headers.insert(k.trim().to_lowercase(), v.trim().to_string());
+            }
+        }
+        let clen: usize = headers
+            .get("content-length")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let mut body = buf[hend + 4..].to_vec();
+        while body.len() < clen {
+            let n = stream.read(&mut tmp).ok()?;
+            if n == 0 {
+                break;
+            }
+            body.extend_from_slice(&tmp[..n]);
+        }
+        Some((headers, String::from_utf8_lossy(&body).to_string()))
+    }
+
+    fn write_response(stream: &mut std::net::TcpStream, status: &str, ctype: &str, extra: &str, body: &str) {
+        use std::io::Write;
+        let resp = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+    }
+
+    type SeenReq = (String, Option<String>, Option<String>); // (method, authorization, mcp-session-id)
+
+    /// 起一个最小 Streamable-HTTP MCP mock(`sse_tools=true` 则 tools/list 回 SSE)。返回端口。
+    /// 每个请求记录到 `record`(供断言);响应均 `Connection: close`(一请求一连接)。
+    fn spawn_mock_mcp(sse_tools: bool, record: std::sync::Arc<std::sync::Mutex<Vec<SeenReq>>>) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut stream) = conn else { continue };
+                let Some((headers, body)) = read_request(&mut stream) else {
+                    continue;
+                };
+                let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                let id = v.get("id").cloned().unwrap_or(Value::Null);
+                record.lock().unwrap().push((
+                    method.clone(),
+                    headers.get("authorization").cloned(),
+                    headers.get("mcp-session-id").cloned(),
+                ));
+                match method.as_str() {
+                    "initialize" => {
+                        let r = json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":PROTOCOL_VERSION,"capabilities":{},"serverInfo":{"name":"mock","version":"0"}}});
+                        write_response(&mut stream, "200 OK", "application/json", "Mcp-Session-Id: sess-1\r\n", &r.to_string());
+                    }
+                    "notifications/initialized" => {
+                        write_response(&mut stream, "202 Accepted", "text/plain", "", "");
+                    }
+                    "tools/list" => {
+                        let r = json!({"jsonrpc":"2.0","id":id,"result":{"tools":[{"name":"echo","description":"回声","inputSchema":{"type":"object"}}]}});
+                        if sse_tools {
+                            let sse = format!("event: message\r\ndata: {}\r\n\r\n", r);
+                            write_response(&mut stream, "200 OK", "text/event-stream", "", &sse);
+                        } else {
+                            write_response(&mut stream, "200 OK", "application/json", "", &r.to_string());
+                        }
+                    }
+                    "tools/call" => {
+                        let r = json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"echoed"}]}});
+                        write_response(&mut stream, "200 OK", "application/json", "", &r.to_string());
+                    }
+                    _ => write_response(&mut stream, "404 Not Found", "text/plain", "", ""),
+                }
+            }
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn http_transport_e2e_json_auth_and_session() {
+        let record = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let port = spawn_mock_mcp(false, record.clone());
+        // 直接建 HttpTransport(带鉴权头)——绕开钥匙串,只测传输机制。
+        let transport = HttpTransport::new(
+            format!("http://127.0.0.1:{port}/mcp"),
+            Some(("Authorization".to_string(), "Bearer testtoken".to_string())),
+        )
+        .unwrap();
+        let mut client = McpClient::with_transport(Box::new(transport)).await.expect("握手");
+        let tools = client.list_tools().await.expect("list_tools");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "echo");
+        let result = client.call_tool("echo", json!({"x":1})).await.expect("call_tool");
+        assert_eq!(flatten_content(&result), "echoed");
+
+        let seen = record.lock().unwrap().clone();
+        assert!(seen.iter().any(|(m, _, _)| m == "initialize"));
+        // 每个请求都带正确鉴权头。
+        for (m, auth, _) in &seen {
+            assert_eq!(auth.as_deref(), Some("Bearer testtoken"), "method {m} 缺鉴权头");
+        }
+        // initialize 之后的请求带回 server 下发的 session id。
+        let after: Vec<_> = seen
+            .iter()
+            .filter(|(m, _, _)| m == "tools/list" || m == "tools/call")
+            .collect();
+        assert_eq!(after.len(), 2);
+        for (m, _, sess) in after {
+            assert_eq!(sess.as_deref(), Some("sess-1"), "method {m} 缺 session id");
+        }
+    }
+
+    #[tokio::test]
+    async fn http_transport_reads_sse_response_and_no_auth() {
+        let record = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let port = spawn_mock_mcp(true, record.clone()); // tools/list 回 text/event-stream
+        let transport = HttpTransport::new(format!("http://127.0.0.1:{port}/mcp"), None).unwrap();
+        let mut client = McpClient::with_transport(Box::new(transport)).await.expect("握手");
+        let tools = client.list_tools().await.expect("list via sse");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "echo");
+        // 无令牌 → 不发 Authorization 头。
+        for (m, auth, _) in record.lock().unwrap().iter() {
+            assert!(auth.is_none(), "method {m} 不该带鉴权头");
+        }
+    }
 }
