@@ -3642,7 +3642,7 @@ function frameQuery(text){
   if(/(加|添加|新增|录入|收藏|记一下|帮我加|存一下|存个|add|create|new|save)/i.test(t) && /岗位|职位|公司|job|position|role/i.test(t))
     return '我想新增一个目标岗位。请据我下面的描述整理字段(只填能推断的,其余留空),在回答末尾附一个代码块发起新增提案(由我在卡片确认):\n```seeker:job-create\n{"co":"","role":"","city":"","pay":"","years":"","edu":"","need":[],"plus":[],"jd":"","summary":"","seniority":"","workMode":"","highlights":[],"kind":""}\n```\n我的原始请求:' + t;
   if(/(找工作|找岗位|找机会|有哪些(公司|岗位|机会|职位)|哪里(在招|有岗|招人)|帮我找|搜(一下)?(岗位|工作|职位|公司)|find (jobs|roles|companies|openings)|job openings|who.?s hiring|search.*(jobs|positions|roles))/i.test(t))
-    return '我想找符合我需求的**真实在招岗位 / 公司官方招聘页**。**请用你可用的搜索工具(如已连接的搜索 MCP)检索真实结果——绝不要凭记忆编造公司、岗位或网址**;优先公司官方招聘页地址。整理后在回答**末尾**附一个代码块渲染「机会来源卡」(每条 url 必须来自搜索结果、不得臆造;正文简短概述即可):\n```seeker:job-sources\n{"sources":[{"company":"","role":"","url":"https://…","why":"为何契合(一句)","kind":"官网/招聘网/社群 之一"}]}\n```\n若你没有可用的搜索工具,请直说「需先在 MCP 设置连接一个搜索 server」——**不要编造结果**。我的原始请求:' + t;
+    return G + '我想找符合我背景与需求的**真实在招岗位 / 公司官方招聘页**。先读取我的 resumes(专业内容:技能/项目/经历,**不含联系方式**)了解我的背景;**用你可用的搜索工具(如已连接的搜索 MCP)检索真实结果——绝不凭记忆编造公司、岗位或网址**,优先公司官方招聘页地址;**按与我的契合度排序**。在回答**末尾**附一个代码块渲染「机会来源卡」(url 必来自搜索结果、不得臆造;why 一句点出契合点,fit 填 高/中/低):\n```seeker:job-sources\n{"sources":[{"company":"","role":"","url":"https://…","why":"为何契合(一句)","fit":"高/中/低","kind":"官网/招聘网/社群 之一"}]}\n```\n没有可用搜索工具就直说「需先在 MCP 设置连接一个搜索 server」——**不要编造结果**。我的原始请求:' + t;
   if(/简历|resume|cv|tailor/i.test(t))
     return G + '读取我的 resumes(简历的专业内容:概要 / 技能 / 项目 / 教育 —— 本就不含联系方式,每个模块有 key)与目标 jobs(拿到 jobId),据此给出针对该岗位的简历重写建议;**只改专业内容,绝不涉及姓名 / 电话 / 邮箱 / 城市等联系方式与个人身份信息**。'
       + '若你给出了具体可直接套用的改写,请在回答**末尾**附一个代码块以便我一键应用(先正常用自然语言说明改动思路,再附代码块):\n```seeker:resume-edit\n{"jobId":<目标岗位 id>,"edits":[{"module":"<模块 key,如 summary / skills / honors / portfolio,或自定义模块 key>","content":<文本模块为字符串;skills 模块为字符串数组>}]}\n```\n'
@@ -4030,8 +4030,8 @@ function renderJobSourcesEl(data){
     const kind=s.kind?`<span class="mono" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);border-radius:3px;padding:0 4px;">${esc(s.kind)}</span> `:'';
     return `<div style="padding:9px 0;border-bottom:0.5px solid var(--border);"><div style="display:flex;gap:10px;align-items:flex-start;">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13.5px;color:var(--ink);font-weight:500;">${kind}${esc(s.company||host)}${s.role?` · ${esc(s.role)}`:''}</div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(host)}</div>
+        <div style="font-size:13.5px;color:var(--ink);font-weight:500;">${kind}${esc(s.company||host)}${s.role?` · ${esc(s.role)}`:''}${s.fit?` <span class="mono" style="font-size:9.5px;color:var(--accent);border:0.5px solid var(--accent);border-radius:3px;padding:0 4px;">${tt('契合','fit')} ${esc(s.fit)}</span>`:''}</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span data-srcstatus="${i}">${tt('验链中…','checking…')}</span> · ${esc(host)}</div>
         ${s.why?`<div style="font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.6;">${esc(s.why)}</div>`:''}
       </div>
       <button class="btn" data-opensrc="${i}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('在浏览器打开','Open')} ↗</button></div></div>`;
@@ -4048,7 +4048,27 @@ function renderJobSourcesEl(data){
   return card;
 }
 function showJobSources(bubble, data, who){
-  try{ const card=renderJobSourcesEl(data); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); }catch(e){ console.error('[job-sources] render', e); }
+  try{ const card=renderJobSourcesEl(data); const host=(bubble&&bubble.parentElement)||bubble; if(host) host.appendChild(card); verifyJobSources(card, data); }catch(e){ console.error('[job-sources] render', e); }
+}
+/** 渲染后自动验链(P2):平台核受控抓取(rt.web.verifySources)逐个验存活 → 标「有效/已失效」、死链禁打开。
+   模型不参与抓取(web 出口非 AI 能力);死链多为模型臆造/已下架,标出来避免用户白点。 */
+async function verifyJobSources(card, data){
+  const rt=window.SeekerRT; if(!card||!rt||!rt.web||!rt.web.verifySources) return;
+  const sources=(data.sources||[]).filter(s=>s&&s.url&&/^https?:\/\//i.test(String(s.url)));
+  if(!sources.length) return;
+  let results=[]; try{ results=await rt.web.verifySources(sources.map(s=>String(s.url))); }catch(_e){ return; }
+  const byUrl={}; for(const r of (results||[])) byUrl[r.url]=r;
+  sources.forEach((s,i)=>{
+    const st=card.querySelector(`[data-srcstatus="${i}"]`); if(!st) return;
+    const r=byUrl[String(s.url)];
+    if(!r){ st.textContent=''; return; }
+    if(r.ok){ st.innerHTML=`<span style="color:var(--status-done);">${tt('链接有效','live')}</span>`; }
+    else {
+      st.innerHTML=`<span style="color:var(--ink-3);">${tt('链接已失效','dead')}</span>`;
+      const ob=card.querySelector(`[data-opensrc="${i}"]`);
+      if(ob){ ob.disabled=true; ob.style.opacity='0.45'; ob.title=tt('链接已失效','Link is dead'); }
+    }
+  });
 }
 /** 卡注册表:AI 出 ```seeker:<kind> 块 → domain 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。 */
 const SEEKER_CARDS = {
