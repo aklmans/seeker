@@ -110,18 +110,31 @@ fn parse_tools(result: &Value) -> Vec<McpTool> {
         .unwrap_or_default()
 }
 
-// ── stdio 客户端(IO;端到端需真实 server,CDP/集成覆盖)─────────────
+// ── 传输层抽象(stdio / http 共用协议层)──────────────────────────
+//
+// 协议层(initialize / tools-list / tools-call,见 McpClient)与具体传输解耦:
+// stdio = spawn 子进程、换行分隔 JSON-RPC;http = Streamable HTTP(远程 MCP)。
+// 加传输 = 实现 Transport,协议层与网关零改动。
 
-/// 一个已连接的 MCP server(stdio)。Drop 即 kill 子进程(`kill_on_drop`)。
-pub struct McpClient {
+/// 一个 MCP 传输通道:发请求(等响应)/ 发通知(不等)。JSON-RPC 帧由协议层构造。
+#[async_trait::async_trait]
+trait Transport: Send {
+    /// 发一个 JSON-RPC 请求并取回 `result`(`error` → Err)。id 由传输内部分配。
+    async fn request(&mut self, method: &str, params: Value) -> Result<Value, String>;
+    /// 发一个 JSON-RPC 通知(无 id,不期望响应)。
+    async fn notify(&mut self, method: &str, params: Value) -> Result<(), String>;
+}
+
+/// stdio 传输:spawn 子进程,JSON-RPC over 换行分隔 stdin/stdout。Drop 即 kill(`kill_on_drop`)。
+struct StdioTransport {
     _child: Child, // 仅持有以维持子进程生命周期 + Drop 时 kill
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
 }
 
-impl McpClient {
-    /// `spawn command args...` 并完成 initialize 握手。失败 → Err(不 panic)。
-    pub async fn connect(command: &str, args: &[String]) -> Result<Self, String> {
+impl StdioTransport {
+    /// `spawn command args...`(不含握手——握手由 McpClient 统一做)。
+    async fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
         let mut child = Command::new(command)
             .args(args)
             .stdin(std::process::Stdio::piped())
@@ -132,15 +145,11 @@ impl McpClient {
             .map_err(|e| format!("启动 MCP server 失败({command}): {e}"))?;
         let stdin = child.stdin.take().ok_or("无法取得 server stdin")?;
         let stdout = BufReader::new(child.stdout.take().ok_or("无法取得 server stdout")?);
-        let mut client = McpClient {
+        Ok(StdioTransport {
             _child: child,
             stdin,
             stdout,
-        };
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, client.initialize())
-            .await
-            .map_err(|_| "MCP 握手超时".to_string())??;
-        Ok(client)
+        })
     }
 
     async fn send(&mut self, msg: &Value) -> Result<(), String> {
@@ -176,7 +185,10 @@ impl McpClient {
             }
         }
     }
+}
 
+#[async_trait::async_trait]
+impl Transport for StdioTransport {
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
         let id = next_id();
         self.send(&rpc_request(id, method, params)).await?;
@@ -185,31 +197,62 @@ impl McpClient {
             .map_err(|_| format!("MCP 请求超时: {method}"))?
     }
 
+    async fn notify(&mut self, method: &str, params: Value) -> Result<(), String> {
+        self.send(&rpc_notification(method, params)).await
+    }
+}
+
+// ── MCP 客户端(协议层;传输无关)──────────────────────────────────
+
+/// 一个已连接的 MCP server。持有一个传输通道,跑 MCP 协议(握手 / 列工具 / 调用)。
+pub struct McpClient {
+    transport: Box<dyn Transport>,
+}
+
+impl McpClient {
+    /// 连一个 stdio server:spawn + initialize 握手。失败 → Err(不 panic)。
+    pub async fn connect(command: &str, args: &[String]) -> Result<Self, String> {
+        let transport = StdioTransport::spawn(command, args).await?;
+        Self::with_transport(Box::new(transport)).await
+    }
+
+    /// 用已建好的传输完成 initialize 握手(stdio / http 共用)。
+    async fn with_transport(transport: Box<dyn Transport>) -> Result<Self, String> {
+        let mut client = McpClient { transport };
+        tokio::time::timeout(HANDSHAKE_TIMEOUT, client.initialize())
+            .await
+            .map_err(|_| "MCP 握手超时".to_string())??;
+        Ok(client)
+    }
+
     async fn initialize(&mut self) -> Result<(), String> {
-        self.request(
-            "initialize",
-            json!({
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": { "name": "Seeker", "version": env!("CARGO_PKG_VERSION") }
-            }),
-        )
-        .await?;
+        self.transport
+            .request(
+                "initialize",
+                json!({
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": { "name": "Seeker", "version": env!("CARGO_PKG_VERSION") }
+                }),
+            )
+            .await?;
         // 握手后必须发 initialized 通知,server 方可服务后续请求。
-        self.send(&rpc_notification("notifications/initialized", json!({})))
+        self.transport
+            .notify("notifications/initialized", json!({}))
             .await?;
         Ok(())
     }
 
     /// 发现 server 暴露的工具。
     pub async fn list_tools(&mut self) -> Result<Vec<McpTool>, String> {
-        let result = self.request("tools/list", json!({})).await?;
+        let result = self.transport.request("tools/list", json!({})).await?;
         Ok(parse_tools(&result))
     }
 
     /// 调用一个工具(tools/call)。返回 server 的原始 result(含 content / isError)。
     pub async fn call_tool(&mut self, name: &str, args: Value) -> Result<Value, String> {
-        self.request("tools/call", json!({ "name": name, "arguments": args }))
+        self.transport
+            .request("tools/call", json!({ "name": name, "arguments": args }))
             .await
     }
 }
