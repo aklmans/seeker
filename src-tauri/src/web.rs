@@ -499,4 +499,20 @@ mod tests {
         assert!(text.contains("Example Domain"), "应抽到正文:{text}");
         assert!(!text.contains('<'), "应已去标签");
     }
+
+    // verify_sources 真连真实招聘页:验链 + 抽 title 全链路(P2 命令的 live 冒烟)。
+    // `#[ignore]`:依赖联网,CI 不跑;手动 `cargo test -- --ignored verify_sources_live` 验。
+    #[tokio::test]
+    #[ignore]
+    async fn verify_sources_live() {
+        let urls = vec![
+            "https://www.anthropic.com/careers".to_string(),
+            "https://stripe.com/jobs/search".to_string(),
+        ];
+        let out = verify_sources(urls).await.expect("verify_sources");
+        let arr = out.as_array().expect("应返回数组");
+        assert_eq!(arr.len(), 2);
+        assert!(arr.iter().any(|r| r["ok"] == true), "应至少一条存活:{out}");
+        eprintln!("verify_sources live → {out}");
+    }
 }

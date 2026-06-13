@@ -1457,4 +1457,33 @@ mod tests {
         let result = mgr.call("mock", "echo", json!({})).await.expect("call");
         assert_eq!(flatten_content(&result), "echoed");
     }
+
+    // stdio spawn 路径冒烟:用 Seeker 自己的 McpClient 连一个真实子进程 server(可信本地
+    // mock 搜索 MCP),走 initialize→tools/list→tools/call 全握手。这正是搜索 MCP(stdio 型)
+    // 实际走的路径——补上"连真实子进程"的覆盖(HTTP 路径已有进程内 mock)。
+    // `#[ignore]`:spawn python3 + fixture,CI 不跑;
+    // 手动 `cargo test -- --ignored stdio_search_mcp_smoke` 验。
+    #[tokio::test]
+    #[ignore]
+    async fn stdio_search_mcp_smoke() {
+        let fixture = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/mock_search_mcp.py"
+        );
+        let mut client = McpClient::connect("python3", &[fixture.to_string()])
+            .await
+            .expect("连 mock 搜索 MCP");
+        let tools = client.list_tools().await.expect("list_tools");
+        assert!(
+            tools.iter().any(|t| t.name == "web_search"),
+            "应暴露 web_search 工具"
+        );
+        let result = client
+            .call_tool("web_search", json!({ "query": "remote rust jobs" }))
+            .await
+            .expect("call web_search");
+        let text = flatten_content(&result);
+        assert!(text.contains("https://"), "应返回真实 URL:{text}");
+        eprintln!("stdio search mcp → {text}");
+    }
 }
