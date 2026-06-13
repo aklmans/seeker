@@ -202,6 +202,169 @@ impl Transport for StdioTransport {
     }
 }
 
+// ── http 传输:Streamable HTTP(远程 MCP)─────────────────────────
+//
+// MCP 现行 spec 的远程传输:POST 一个 JSON-RPC 请求,响应为 `application/json`
+// (单 JSON-RPC)或 `text/event-stream`(SSE)。我们只做**请求/响应**——不开常驻
+// SSE GET 流(不消费 server 主动通知)。鉴权令牌只在内存里拼成头、随请求发出,
+// **绝不记录**;若 server 在错误体回显令牌,经 `scrub` 脱敏。
+
+/// 从一个 SSE 事件块拼接 `data:` 行 → 试解析为 JSON。非数据 / 非 JSON → None。(纯函数,可单测)
+fn parse_sse_event(event: &str) -> Option<Value> {
+    let mut data = String::new();
+    for line in event.lines() {
+        if let Some(rest) = line.strip_prefix("data:") {
+            if !data.is_empty() {
+                data.push('\n');
+            }
+            data.push_str(rest.strip_prefix(' ').unwrap_or(rest));
+        }
+    }
+    if data.is_empty() {
+        return None;
+    }
+    serde_json::from_str(&data).ok()
+}
+
+/// 从 SSE 响应流读出匹配 `id` 的 JSON-RPC 响应(**找到即返回**——避免 server 持流不关时挂死)。
+async fn read_sse_response(resp: reqwest::Response, id: i64) -> Result<Value, String> {
+    use futures_util::StreamExt;
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读 MCP SSE 流失败: {e}"))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+        buf = buf.replace("\r\n", "\n"); // 归一化换行,便于按空行切事件
+        while let Some(pos) = buf.find("\n\n") {
+            let event: String = buf.drain(..pos + 2).collect();
+            if let Some(v) = parse_sse_event(&event) {
+                if is_response_to(&v, id) {
+                    return rpc_result(&v);
+                }
+            }
+        }
+    }
+    // 流结束:把剩余 buffer 当最后一个事件再试一次。
+    if let Some(v) = parse_sse_event(&buf) {
+        if is_response_to(&v, id) {
+            return rpc_result(&v);
+        }
+    }
+    Err("MCP SSE 流结束但未返回该请求的响应".into())
+}
+
+/// http 传输:Streamable HTTP。每次 `request`/`notify` 都 POST 一个 JSON-RPC 消息。
+struct HttpTransport {
+    client: reqwest::Client,
+    url: String,
+    /// 鉴权头 `(名, 值)`,值已含方案前缀(如 `Bearer xxx`);None = 无鉴权。**绝不记录。**
+    auth: Option<(String, String)>,
+    /// initialize 响应回带的 `Mcp-Session-Id`,后续请求须带(server 据此认会话)。
+    session_id: Option<String>,
+}
+
+impl HttpTransport {
+    fn new(url: String, auth: Option<(String, String)>) -> Result<Self, String> {
+        // 不设全局 timeout——每次请求由 Transport 层用 tokio::time::timeout 包(与 stdio 一致)。
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
+        Ok(HttpTransport {
+            client,
+            url,
+            auth,
+            session_id: None,
+        })
+    }
+
+    /// 防御性脱敏:若 server 在错误体里回显了我们的令牌,从文本抹掉(令牌本不该外传)。
+    fn scrub(&self, s: String) -> String {
+        match &self.auth {
+            Some((_, value)) => {
+                let token = value.rsplit(' ').next().unwrap_or(value.as_str());
+                s.replace(value.as_str(), "[已脱敏]").replace(token, "[已脱敏]")
+            }
+            None => s,
+        }
+    }
+
+    /// POST 一个 JSON-RPC 消息。`expect_id=Some(id)` → 读回该 id 的响应;`None`(通知)→ 只验状态码。
+    async fn post(&mut self, body: &Value, expect_id: Option<i64>) -> Result<Value, String> {
+        let mut req = self
+            .client
+            .post(&self.url)
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", PROTOCOL_VERSION);
+        if let Some((name, value)) = &self.auth {
+            req = req.header(name.as_str(), value.as_str()); // 鉴权头——不记录
+        }
+        if let Some(sid) = &self.session_id {
+            req = req.header("mcp-session-id", sid.as_str());
+        }
+        let resp = req
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| format!("连接 MCP server 失败: {}", self.scrub(e.to_string())))?;
+        // initialize 等响应可能回带会话 id;捕获以供后续请求。
+        if let Some(sid) = resp
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+        {
+            self.session_id = Some(sid.to_string());
+        }
+        let status = resp.status();
+        let ctype = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_lowercase();
+        let Some(id) = expect_id else {
+            // 通知:无需响应体(202 Accepted 常见);仅非 2xx 报错。
+            return if status.is_success() {
+                Ok(Value::Null)
+            } else {
+                Err(format!("MCP server 返回 HTTP {}", status.as_u16()))
+            };
+        };
+        if !status.is_success() {
+            let body = self.scrub(resp.text().await.unwrap_or_default());
+            let body: String = body.chars().take(300).collect();
+            return Err(format!("MCP server 返回 HTTP {}: {body}", status.as_u16()));
+        }
+        if ctype.contains("text/event-stream") {
+            read_sse_response(resp, id).await
+        } else {
+            let v: Value = resp
+                .json()
+                .await
+                .map_err(|e| format!("解析 MCP 响应失败: {}", self.scrub(e.to_string())))?;
+            rpc_result(&v)
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Transport for HttpTransport {
+    async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        let id = next_id();
+        let body = rpc_request(id, method, params);
+        tokio::time::timeout(REQUEST_TIMEOUT, self.post(&body, Some(id)))
+            .await
+            .map_err(|_| format!("MCP 请求超时: {method}"))?
+    }
+
+    async fn notify(&mut self, method: &str, params: Value) -> Result<(), String> {
+        let body = rpc_notification(method, params);
+        tokio::time::timeout(REQUEST_TIMEOUT, self.post(&body, None))
+            .await
+            .map_err(|_| format!("MCP 通知超时: {method}"))?
+            .map(|_| ())
+    }
+}
+
 // ── MCP 客户端(协议层;传输无关)──────────────────────────────────
 
 /// 一个已连接的 MCP server。持有一个传输通道,跑 MCP 协议(握手 / 列工具 / 调用)。
@@ -300,19 +463,91 @@ pub async fn mcp_probe(command: String, args: Vec<String>) -> Result<Value, Stri
 
 // ── MCP server 配置(mcp.json,非密钥)+ 连接缓存(McpManager)──────
 
-/// 一个 MCP server 的配置(非密钥,设置页可显示)。`name` 唯一,作 server id。
+/// 一个 MCP server 的配置(**非密钥**,设置页可显示)。`name` 唯一,作 server id。
+/// `url` 有值 → 远程 http(Streamable)传输;否则 → 本地 stdio(command/args)。
+/// 远程鉴权**令牌不在此**——只在钥匙串(见 [`mcp_token_account`]);这里只存非密钥的鉴权方案。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServerConfig {
     pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
+    /// 远程 server 的 HTTP 端点;`Some` = http 传输。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// 远程鉴权方案(令牌在钥匙串,不在配置)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<McpAuth>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
 fn default_true() -> bool {
     true
+}
+
+/// 远程 MCP 的鉴权方案(**绝不含令牌**——令牌只进钥匙串,见 [`mcp_token_account`])。
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuth {
+    /// 鉴权头名,默认 `Authorization`。
+    #[serde(default = "default_auth_header")]
+    pub header: String,
+    /// 方案前缀,拼成 `<scheme> <token>`;空串 = 直接用 token 作头值。默认 `Bearer`。
+    #[serde(default = "default_auth_scheme")]
+    pub scheme: String,
+}
+fn default_auth_header() -> String {
+    "Authorization".into()
+}
+fn default_auth_scheme() -> String {
+    "Bearer".into()
+}
+
+/// 远程 MCP server 鉴权令牌在钥匙串里的 account 名。
+/// **令牌只进钥匙串,绝不入 mcp.json / 前端 / 日志**(红线①;套 `secret.rs` 通用模式)。
+fn mcp_token_account(name: &str) -> String {
+    format!("mcp.{name}.token")
+}
+
+/// 拼鉴权头值:`<scheme> <token>`;scheme 空 → 裸 token。(纯函数,可单测)
+fn auth_header_value(scheme: &str, token: &str) -> String {
+    if scheme.is_empty() {
+        token.to_string()
+    } else {
+        format!("{scheme} {token}")
+    }
+}
+
+/// 据 config 选传输建立连接:有 `url` → http(从钥匙串取令牌拼鉴权头),否则 → stdio。
+async fn connect_client(cfg: &McpServerConfig) -> Result<McpClient, String> {
+    if let Some(url) = &cfg.url {
+        let auth = build_auth_header(cfg)?;
+        let transport = HttpTransport::new(url.clone(), auth)?;
+        McpClient::with_transport(Box::new(transport)).await
+    } else {
+        McpClient::connect(&cfg.command, &cfg.args).await
+    }
+}
+
+/// 据鉴权方案 + 钥匙串令牌拼出鉴权头 `(name, value)`。
+/// 无方案 → `None`;有方案但钥匙串无令牌 / 令牌空 → Err(清晰引导去设置填令牌)。
+/// **令牌只在此短暂取用拼头,用完即弃,不外传、不记录**。
+fn build_auth_header(cfg: &McpServerConfig) -> Result<Option<(String, String)>, String> {
+    let Some(auth) = &cfg.auth else {
+        return Ok(None);
+    };
+    let token = crate::secret::get_secret(&mcp_token_account(&cfg.name))
+        .map_err(|_| format!("远程 MCP server「{}」需要鉴权令牌:请在 MCP 设置为它填写", cfg.name))?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(format!(
+            "远程 MCP server「{}」的鉴权令牌为空:请在 MCP 设置填写",
+            cfg.name
+        ));
+    }
+    Ok(Some((auth.header.clone(), auth_header_value(&auth.scheme, token))))
 }
 
 fn mcp_config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -404,7 +639,7 @@ impl McpManager {
         if let Some(cs) = map.get(&cfg.name) {
             return Ok(cs.tools.clone());
         }
-        let mut client = McpClient::connect(&cfg.command, &cfg.args).await?;
+        let mut client = connect_client(cfg).await?;
         let tools = client.list_tools().await?;
         map.insert(
             cfg.name.clone(),
@@ -528,6 +763,8 @@ pub async fn mcp_add(
         name,
         command,
         args,
+        url: None,
+        auth: None,
         enabled: true,
     });
     save_servers(&app, &servers)
@@ -700,5 +937,89 @@ mod tests {
             serde_json::from_str(r#"[{"name":"x","command":"y","enabled":false}]"#).unwrap();
         assert!(no_args[0].args.is_empty());
         assert!(!no_args[0].enabled);
+    }
+
+    // ── 远程 MCP(http 传输 + 鉴权)──────────────────────────────
+
+    #[test]
+    fn parse_sse_event_extracts_json() {
+        // event: 行被忽略,单条 data: 行解析为 JSON。
+        let e = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n";
+        assert_eq!(parse_sse_event(e).unwrap()["id"], 1);
+        // 多条 data: 行按换行拼接再解析(SSE 规范)。
+        let e2 = "data: {\"a\":\ndata: 1}\n";
+        assert_eq!(parse_sse_event(e2).unwrap()["a"], 1);
+        // data:{...} 无空格也吃。
+        assert_eq!(parse_sse_event("data:{\"b\":2}").unwrap()["b"], 2);
+        // 无 data / 非 JSON → None。
+        assert!(parse_sse_event("event: ping\nid: 7\n").is_none());
+        assert!(parse_sse_event("data: not json").is_none());
+    }
+
+    #[test]
+    fn auth_header_value_scheme_and_bare() {
+        assert_eq!(auth_header_value("Bearer", "tok"), "Bearer tok");
+        assert_eq!(auth_header_value("", "tok"), "tok"); // 空 scheme = 裸 token 作头值
+    }
+
+    #[test]
+    fn mcp_token_account_is_namespaced() {
+        assert_eq!(mcp_token_account("github"), "mcp.github.token");
+    }
+
+    #[test]
+    fn remote_config_serde_roundtrip_no_token_leak() {
+        // 远程 server:url + 自定义鉴权方案显式 round-trip;command/args 省略。
+        let json = r#"[{"name":"remote","url":"https://x/mcp","auth":{"header":"X-Api-Key","scheme":""}}]"#;
+        let servers: Vec<McpServerConfig> = serde_json::from_str(json).unwrap();
+        assert_eq!(servers[0].url.as_deref(), Some("https://x/mcp"));
+        assert!(servers[0].command.is_empty());
+        assert!(servers[0].enabled); // 默认启用
+        let auth = servers[0].auth.as_ref().unwrap();
+        assert_eq!(auth.header, "X-Api-Key");
+        assert_eq!(auth.scheme, ""); // 显式空串保留(default 仅在字段缺失时生效)
+        // auth 字段缺省 → header/scheme 取默认(Authorization / Bearer)。
+        let s2: Vec<McpServerConfig> =
+            serde_json::from_str(r#"[{"name":"r2","url":"https://y/mcp","auth":{}}]"#).unwrap();
+        let a2 = s2[0].auth.as_ref().unwrap();
+        assert_eq!(a2.header, "Authorization");
+        assert_eq!(a2.scheme, "Bearer");
+        // 序列化:url/auth 在,**令牌(token)绝不在配置里**,stdio 字段省略。
+        let out = serde_json::to_string(&servers).unwrap();
+        assert!(out.contains("\"url\":\"https://x/mcp\""));
+        assert!(!out.contains("token"), "令牌绝不能出现在 mcp.json:{out}");
+        assert!(!out.contains("\"command\""));
+    }
+
+    #[test]
+    fn stdio_config_omits_remote_fields_when_serialized() {
+        let servers = vec![McpServerConfig {
+            name: "fs".into(),
+            command: "node".into(),
+            args: vec!["s.js".into()],
+            url: None,
+            auth: None,
+            enabled: true,
+        }];
+        let out = serde_json::to_string(&servers).unwrap();
+        assert!(!out.contains("\"url\"")); // 无 url → 省略
+        assert!(!out.contains("\"auth\"")); // 无 auth → 省略
+        assert!(out.contains("\"command\":\"node\""));
+    }
+
+    #[test]
+    fn scrub_redacts_token_from_text() {
+        // server 即使在错误体回显令牌,也被抹掉(令牌本不该外传)。
+        let t = HttpTransport::new(
+            "https://x".into(),
+            Some(("Authorization".into(), "Bearer SECRET123".into())),
+        )
+        .unwrap();
+        let out = t.scrub("HTTP 401: 'Bearer SECRET123' / SECRET123 invalid".into());
+        assert!(!out.contains("SECRET123"), "令牌不得残留:{out}");
+        assert!(out.contains("[已脱敏]"));
+        // 无鉴权 → 原样返回。
+        let t2 = HttpTransport::new("https://x".into(), None).unwrap();
+        assert_eq!(t2.scrub("plain text".into()), "plain text");
     }
 }
