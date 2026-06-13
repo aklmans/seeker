@@ -311,6 +311,12 @@ export interface RenderApi {
   docx(doc: ExportDoc): Promise<string>;
 }
 
+/** 受控网页抓取(平台层出口能力)。**出口只在 Rust 核,前端不出网**(connect-src 不松)。 */
+export interface WebApi {
+  /** 抓用户自填的 URL(JD / 招聘页)→ 纯文本(**不可信外部数据**)。仅 http/https + SSRF 护栏 + 大小/超时/重定向限额;桌面端,web 降级。 */
+  fetch(url: string): Promise<string>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -326,6 +332,7 @@ export interface RuntimeApi {
   readonly docs: DocsApi;
   readonly mcp: McpApi;
   readonly render: RenderApi;
+  readonly web: WebApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

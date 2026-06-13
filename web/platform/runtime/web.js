@@ -205,5 +205,9 @@ export function createWebRuntime() {
     render: {
       docx: () => notImpl('rt.render.docx', 'web'),
     },
+    // 网页抓取需平台核出网;web 端无 → 降级(出口红线:前端绝不直接出网)。
+    web: {
+      fetch: () => notImpl('rt.web.fetch', 'web'),
+    },
   };
 }
