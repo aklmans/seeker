@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -282,7 +283,8 @@ impl HttpTransport {
         match &self.auth {
             Some((_, value)) => {
                 let token = value.rsplit(' ').next().unwrap_or(value.as_str());
-                s.replace(value.as_str(), "[已脱敏]").replace(token, "[已脱敏]")
+                s.replace(value.as_str(), "[已脱敏]")
+                    .replace(token, "[已脱敏]")
             }
             None => s,
         }
@@ -561,6 +563,22 @@ fn validate_transport(command: &str, url: Option<&str>) -> Result<bool, String> 
     }
 }
 
+/// `url` 是否「明文 http 发往非本机地址」(令牌经此外发会明文上网,触出口红线)。
+/// 环回(127.x / localhost / ::1)放行(本地网关常见);https / 非 http 一律放行。(纯函数,可单测)
+fn is_plaintext_remote(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return false; // https / 非 http → 不算明文外发
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let hostport = authority.rsplit('@').next().unwrap_or(authority); // 去 userinfo@
+    let host = match hostport.strip_prefix('[') {
+        Some(h) => h.split(']').next().unwrap_or(h), // [::1]:port → ::1
+        None => hostport.split(':').next().unwrap_or(hostport), // host:port → host
+    };
+    !(host == "localhost" || host == "::1" || host.starts_with("127."))
+}
+
 /// 据 config 选传输建立连接:有 `url` → http(拼鉴权头),否则 → stdio。
 /// `transient_token`:存盘前「测试连接」用的临时令牌(优先于钥匙串;不持久化)。
 async fn connect_client(
@@ -569,6 +587,12 @@ async fn connect_client(
 ) -> Result<McpClient, String> {
     if let Some(url) = &cfg.url {
         let auth = resolve_auth_header(cfg, transient_token);
+        // 红线:鉴权令牌绝不经明文 http 发往非本机地址(令牌只进钥匙串、绝不外发)。
+        if auth.is_some() && is_plaintext_remote(url) {
+            return Err(
+                "远程 MCP 鉴权令牌不会经明文 http 发往非本机地址;请改用 https(本机 127.0.0.1 / localhost 例外)".into(),
+            );
+        }
         let transport = HttpTransport::new(url.clone(), auth)?;
         McpClient::with_transport(Box::new(transport)).await
     } else {
@@ -590,7 +614,10 @@ fn build_auth_header(cfg: &McpServerConfig, token: Option<&str>) -> Option<(Stri
 
 /// 解析远程鉴权头:令牌优先用 `transient_token`(存盘前测试),否则从钥匙串取
 /// (account=`mcp.<name>.token`)。**令牌只在此短暂取用拼头,用完即弃,不外传、不记录**。
-fn resolve_auth_header(cfg: &McpServerConfig, transient_token: Option<&str>) -> Option<(String, String)> {
+fn resolve_auth_header(
+    cfg: &McpServerConfig,
+    transient_token: Option<&str>,
+) -> Option<(String, String)> {
     match transient_token {
         Some(t) if !t.trim().is_empty() => build_auth_header(cfg, Some(t)),
         _ => {
@@ -623,7 +650,9 @@ fn save_servers(app: &AppHandle, servers: &[McpServerConfig]) -> Result<(), Stri
 
 struct ConnectedServer {
     // 持有 live 连接以**复用**(避免重 spawn)+ Drop 时 kill 子进程;`call` 经它发 tools/call。
-    client: McpClient,
+    // client 包 per-server 锁:同一 server 的调用串行(单 stdio 管线不可交错),跨 server 并发。
+    client: tokio::sync::Mutex<McpClient>,
+    // tools 连接后不变 → 读不需锁(tool_descriptors 无锁快照,不阻塞在飞调用)。
     tools: Vec<McpTool>,
 }
 
@@ -677,31 +706,38 @@ pub struct McpToolDescriptor {
 
 /// 已连接 MCP server 的运行时缓存(name → 连接 + 工具)。spawn 昂贵故缓存复用;
 /// Drop / disconnect 即 kill 子进程。**进程内**状态,重启重连。
+/// 外锁只护「映射」、短持即放;每个 server 自带锁 → 慢端点只串行化自己,不阻塞其余。
 #[derive(Default)]
 pub struct McpManager {
-    inner: tokio::sync::Mutex<HashMap<String, ConnectedServer>>,
+    inner: tokio::sync::Mutex<HashMap<String, Arc<ConnectedServer>>>,
 }
 
 impl McpManager {
     /// 确保 server 已连接(未连则按 config 连 + 列工具);返回工具。失败不缓存。
     async fn ensure_connected(&self, cfg: &McpServerConfig) -> Result<Vec<McpTool>, String> {
+        // 已连:短持外锁取 Arc,释外锁后返回工具(tools 不变,无需 per-server 锁)。
+        if let Some(cs) = self.inner.lock().await.get(&cfg.name).cloned() {
+            return Ok(cs.tools.clone());
+        }
+        // 未连:**不持外锁**地连接 + 列工具(慢端点不阻塞别的 server)。
+        let mut client = connect_client(cfg, None).await?;
+        let tools = client.list_tools().await?;
         let mut map = self.inner.lock().await;
+        // 双检:并发下可能别人已插入 → 复用既有、丢弃本次(避免重 spawn 泄漏)。
         if let Some(cs) = map.get(&cfg.name) {
             return Ok(cs.tools.clone());
         }
-        let mut client = connect_client(cfg, None).await?;
-        let tools = client.list_tools().await?;
         map.insert(
             cfg.name.clone(),
-            ConnectedServer {
-                client,
+            Arc::new(ConnectedServer {
+                client: tokio::sync::Mutex::new(client),
                 tools: tools.clone(),
-            },
+            }),
         );
         Ok(tools)
     }
 
-    /// 断开并清除某 server 连接(Drop → kill 子进程)。
+    /// 断开并清除某 server 连接(丢弃 Arc → 最后引用释放时 Drop → kill 子进程)。
     async fn disconnect(&self, name: &str) {
         self.inner.lock().await.remove(name);
     }
@@ -716,12 +752,17 @@ impl McpManager {
 
     /// 当前已连接 server 的全部工具描述符(网关组装工具表 + 调用路由)。
     pub async fn tool_descriptors(&self) -> Vec<McpToolDescriptor> {
-        let map = self.inner.lock().await;
+        // 短持外锁快照 (name, Arc),释外锁后读各自 tools(不变,无锁;不阻塞在飞调用)。
+        let servers: Vec<(String, Arc<ConnectedServer>)> = {
+            let map = self.inner.lock().await;
+            map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
         let mut out = Vec::new();
         let mut seen: HashSet<String> = HashSet::new(); // 跨 server 工具名去重(规整后)
-        for (server, cs) in map.iter() {
+        for (server, cs) in &servers {
             for t in &cs.tools {
-                let qualified_name = unique_tool_name(&format!("mcp__{server}__{}", t.name), &mut seen);
+                let qualified_name =
+                    unique_tool_name(&format!("mcp__{server}__{}", t.name), &mut seen);
                 out.push(McpToolDescriptor {
                     qualified_name,
                     server: server.clone(),
@@ -736,18 +777,23 @@ impl McpManager {
     }
 
     /// 调用某 server 的某工具(经缓存的 live 连接发 tools/call)。
+    /// 短持外锁取该 server 的 Arc,释外锁;再持 **per-server 锁** await(同 server 串行、跨 server 并发)。
     pub async fn call(&self, server: &str, tool: &str, args: Value) -> Result<Value, String> {
-        let mut map = self.inner.lock().await;
-        let cs = map
-            .get_mut(server)
-            .ok_or_else(|| format!("MCP server 未连接:{server}"))?;
-        cs.client.call_tool(tool, args).await
+        let cs = {
+            let map = self.inner.lock().await;
+            map.get(server).cloned()
+        };
+        let cs = cs.ok_or_else(|| format!("MCP server 未连接:{server}"))?;
+        let mut client = cs.client.lock().await;
+        client.call_tool(tool, args).await
     }
 }
 
 /// 模型调用 MCP 工具时,网关挂起等待用户确认的通道表(confirmId → oneshot 发送端)。
 #[derive(Default)]
-pub struct PendingConfirms(pub std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>);
+pub struct PendingConfirms(
+    pub std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>,
+);
 
 /// 前端确认结果回传:唤醒挂起的网关。approved=true 执行、false 拒绝。
 #[tauri::command]
@@ -816,6 +862,12 @@ pub async fn mcp_add(
     let command = command.unwrap_or_default().trim().to_string();
     let url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
     let is_remote = validate_transport(&command, url.as_deref())?;
+    // 红线:配了鉴权方案又用明文 http 到非本机 → 早拒(令牌会明文上网;连接处亦有兜底)。
+    if is_remote && auth.is_some() && url.as_deref().is_some_and(is_plaintext_remote) {
+        return Err(
+            "远程 MCP 用 https 才能带鉴权令牌(本机 127.0.0.1 / localhost 可用 http)".into(),
+        );
+    }
     let mut servers = load_servers(&app);
     if servers.iter().any(|s| s.name == name) {
         return Err(format!("已存在同名 server:{name}"));
@@ -953,7 +1005,10 @@ mod tests {
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].name, "read_file");
         assert!(tools[0].read_only);
-        assert_eq!(tools[0].input_schema["properties"]["path"]["type"], "string");
+        assert_eq!(
+            tools[0].input_schema["properties"]["path"]["type"],
+            "string"
+        );
         assert_eq!(tools[1].name, "write_file");
         assert!(!tools[1].read_only); // 默认非只读 → 集成层让它走 guardrail
         assert_eq!(tools[1].input_schema, json!({ "type": "object" }));
@@ -983,12 +1038,19 @@ mod tests {
         let ok = |s: &str| {
             !s.is_empty()
                 && s.len() <= 64
-                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         };
         // 合法名原样保留
-        assert_eq!(sanitize_tool_name("mcp__fs__read_file"), "mcp__fs__read_file");
+        assert_eq!(
+            sanitize_tool_name("mcp__fs__read_file"),
+            "mcp__fs__read_file"
+        );
         // 非法字符 → _
-        assert_eq!(sanitize_tool_name("mcp__fs__read file!"), "mcp__fs__read_file_");
+        assert_eq!(
+            sanitize_tool_name("mcp__fs__read file!"),
+            "mcp__fs__read_file_"
+        );
         // 中文 / 超长 / 全非法 → 仍合规、非空、保前缀
         let cn = sanitize_tool_name("mcp__本地__工具");
         assert!(ok(&cn) && cn.starts_with("mcp__"));
@@ -1066,7 +1128,7 @@ mod tests {
         let auth = servers[0].auth.as_ref().unwrap();
         assert_eq!(auth.header, "X-Api-Key");
         assert_eq!(auth.scheme, ""); // 显式空串保留(default 仅在字段缺失时生效)
-        // auth 字段缺省 → header/scheme 取默认(Authorization / Bearer)。
+                                     // auth 字段缺省 → header/scheme 取默认(Authorization / Bearer)。
         let s2: Vec<McpServerConfig> =
             serde_json::from_str(r#"[{"name":"r2","url":"https://y/mcp","auth":{}}]"#).unwrap();
         let a2 = s2[0].auth.as_ref().unwrap();
@@ -1118,6 +1180,20 @@ mod tests {
         assert!(validate_transport("", None).is_err()); // 都没填
         assert!(validate_transport("node", Some("https://x")).is_err()); // 都填
         assert!(validate_transport("  ", Some("  ")).is_err()); // 空白视作未填
+    }
+
+    #[test]
+    fn is_plaintext_remote_flags_http_to_nonloopback() {
+        // 明文 http 到非本机 → true(令牌会明文上网)。
+        assert!(is_plaintext_remote("http://example.com/mcp"));
+        assert!(is_plaintext_remote("http://10.0.0.5:3000"));
+        assert!(is_plaintext_remote("HTTP://API.EXAMPLE.COM")); // 大小写不敏感
+        assert!(is_plaintext_remote("http://user:pw@evil.com/x")); // userinfo 不影响主机判定
+                                                                   // https / 环回 → false(放行)。
+        assert!(!is_plaintext_remote("https://example.com/mcp"));
+        assert!(!is_plaintext_remote("http://localhost:8080"));
+        assert!(!is_plaintext_remote("http://127.0.0.1:3000/mcp"));
+        assert!(!is_plaintext_remote("http://[::1]:9000"));
     }
 
     #[test]
@@ -1205,7 +1281,13 @@ mod tests {
         Some((headers, String::from_utf8_lossy(&body).to_string()))
     }
 
-    fn write_response(stream: &mut std::net::TcpStream, status: &str, ctype: &str, extra: &str, body: &str) {
+    fn write_response(
+        stream: &mut std::net::TcpStream,
+        status: &str,
+        ctype: &str,
+        extra: &str,
+        body: &str,
+    ) {
         use std::io::Write;
         let resp = format!(
             "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n{body}",
@@ -1219,7 +1301,10 @@ mod tests {
 
     /// 起一个最小 Streamable-HTTP MCP mock(`sse_tools=true` 则 tools/list 回 SSE)。返回端口。
     /// 每个请求记录到 `record`(供断言);响应均 `Connection: close`(一请求一连接)。
-    fn spawn_mock_mcp(sse_tools: bool, record: std::sync::Arc<std::sync::Mutex<Vec<SeenReq>>>) -> u16 {
+    fn spawn_mock_mcp(
+        sse_tools: bool,
+        record: std::sync::Arc<std::sync::Mutex<Vec<SeenReq>>>,
+    ) -> u16 {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::thread::spawn(move || {
@@ -1229,7 +1314,11 @@ mod tests {
                     continue;
                 };
                 let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-                let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                let method = v
+                    .get("method")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let id = v.get("id").cloned().unwrap_or(Value::Null);
                 record.lock().unwrap().push((
                     method.clone(),
@@ -1239,7 +1328,13 @@ mod tests {
                 match method.as_str() {
                     "initialize" => {
                         let r = json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":PROTOCOL_VERSION,"capabilities":{},"serverInfo":{"name":"mock","version":"0"}}});
-                        write_response(&mut stream, "200 OK", "application/json", "Mcp-Session-Id: sess-1\r\n", &r.to_string());
+                        write_response(
+                            &mut stream,
+                            "200 OK",
+                            "application/json",
+                            "Mcp-Session-Id: sess-1\r\n",
+                            &r.to_string(),
+                        );
                     }
                     "notifications/initialized" => {
                         write_response(&mut stream, "202 Accepted", "text/plain", "", "");
@@ -1250,12 +1345,24 @@ mod tests {
                             let sse = format!("event: message\r\ndata: {}\r\n\r\n", r);
                             write_response(&mut stream, "200 OK", "text/event-stream", "", &sse);
                         } else {
-                            write_response(&mut stream, "200 OK", "application/json", "", &r.to_string());
+                            write_response(
+                                &mut stream,
+                                "200 OK",
+                                "application/json",
+                                "",
+                                &r.to_string(),
+                            );
                         }
                     }
                     "tools/call" => {
                         let r = json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"echoed"}]}});
-                        write_response(&mut stream, "200 OK", "application/json", "", &r.to_string());
+                        write_response(
+                            &mut stream,
+                            "200 OK",
+                            "application/json",
+                            "",
+                            &r.to_string(),
+                        );
                     }
                     _ => write_response(&mut stream, "404 Not Found", "text/plain", "", ""),
                 }
@@ -1274,18 +1381,27 @@ mod tests {
             Some(("Authorization".to_string(), "Bearer testtoken".to_string())),
         )
         .unwrap();
-        let mut client = McpClient::with_transport(Box::new(transport)).await.expect("握手");
+        let mut client = McpClient::with_transport(Box::new(transport))
+            .await
+            .expect("握手");
         let tools = client.list_tools().await.expect("list_tools");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "echo");
-        let result = client.call_tool("echo", json!({"x":1})).await.expect("call_tool");
+        let result = client
+            .call_tool("echo", json!({"x":1}))
+            .await
+            .expect("call_tool");
         assert_eq!(flatten_content(&result), "echoed");
 
         let seen = record.lock().unwrap().clone();
         assert!(seen.iter().any(|(m, _, _)| m == "initialize"));
         // 每个请求都带正确鉴权头。
         for (m, auth, _) in &seen {
-            assert_eq!(auth.as_deref(), Some("Bearer testtoken"), "method {m} 缺鉴权头");
+            assert_eq!(
+                auth.as_deref(),
+                Some("Bearer testtoken"),
+                "method {m} 缺鉴权头"
+            );
         }
         // initialize 之后的请求带回 server 下发的 session id。
         let after: Vec<_> = seen
@@ -1303,7 +1419,9 @@ mod tests {
         let record = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let port = spawn_mock_mcp(true, record.clone()); // tools/list 回 text/event-stream
         let transport = HttpTransport::new(format!("http://127.0.0.1:{port}/mcp"), None).unwrap();
-        let mut client = McpClient::with_transport(Box::new(transport)).await.expect("握手");
+        let mut client = McpClient::with_transport(Box::new(transport))
+            .await
+            .expect("握手");
         let tools = client.list_tools().await.expect("list via sse");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "echo");
@@ -1332,7 +1450,9 @@ mod tests {
         assert_eq!(tools.len(), 1);
         // 工具描述符带 mcp__<server>__ 命名空间(网关据此组装工具表 + 路由)。
         let descs = mgr.tool_descriptors().await;
-        assert!(descs.iter().any(|d| d.qualified_name.starts_with("mcp__mock__")));
+        assert!(descs
+            .iter()
+            .any(|d| d.qualified_name.starts_with("mcp__mock__")));
         // 经缓存的 live 连接路由 tools/call。
         let result = mgr.call("mock", "echo", json!({})).await.expect("call");
         assert_eq!(flatten_content(&result), "echoed");
