@@ -209,7 +209,13 @@ export function createWebRuntime() {
     web: {
       fetch: () => notImpl('rt.web.fetch', 'web'),
       // web 端:在新标签打开(浏览器原生);noopener 防被开页反向操控。
-      open: (url) => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_e) { /* 弹窗拦截 */ } return Promise.resolve(); },
+      // 镜像桌面 open_external 的 scheme 闸:仅 http/https(防他处传 javascript:/data: 等)。
+      open: (url) => {
+        const s = String(url == null ? '' : url);
+        if (!/^https?:\/\//i.test(s)) return Promise.reject(new Error('仅支持 http / https'));
+        try { window.open(s, '_blank', 'noopener,noreferrer'); } catch (_e) { /* 弹窗拦截 */ }
+        return Promise.resolve();
+      },
       // web 端无平台核出网 → 验链降级返空(domain 视作未验,照常展示)。
       verifySources: () => Promise.resolve([]),
     },

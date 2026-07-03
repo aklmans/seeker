@@ -367,8 +367,13 @@ fn open_in_browser(url: &str) -> Result<(), String> {
 }
 #[cfg(target_os = "windows")]
 fn open_in_browser(url: &str) -> Result<(), String> {
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
+    // 不经 cmd:`cmd /C start` 会二次解析 `& | < > ^` 等元字符 —— URL 里的 `&`
+    // 既能命令注入(如 `http://x/?a&calc.exe` 执行 calc.exe),又会截断多参 URL
+    // (`?utm=a&ref=b`)。改用 explorer:URL 作**单个 argv** 传入、**无 shell 解析**
+    // (元字符全当字面量),与 macOS `open` / Linux `xdg-open` 同属"argv 启动器"。
+    // URL 已过 `validate_fetch_url`(仅 http/https → 不可能是本地路径/exe/explorer 开关)。
+    std::process::Command::new("explorer")
+        .arg(url)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("打开浏览器失败:{e}"))
