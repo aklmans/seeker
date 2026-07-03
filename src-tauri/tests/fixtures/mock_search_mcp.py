@@ -3,7 +3,8 @@
 
 仅供 Seeker 的 MCP 客户端做 stdio 冒烟:实现 initialize / tools/list / tools/call。
 `web_search` 工具返回几个**真实**公司招聘页 URL(供下游 verify_sources 真连验链)。
-**不联网、零依赖、不读环境/文件**——纯本地回放,避免拉不可信的第三方搜索包。
+**不联网、零依赖、不读文件**——纯本地回放,避免拉不可信的第三方搜索包。
+(`env_echo` 工具会读 `SEEKER_TEST_ENV` 一个环境变量,专供 env 注入自测;其余不碰环境。)
 
 帧格式须与 src/mcp.rs StdioTransport 对齐:每条消息一行 JSON + 换行;通知(无 id)不回。
 """

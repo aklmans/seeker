@@ -578,6 +578,12 @@ fn is_valid_env_name(var: &str) -> bool {
         && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// server 名是否可安全嵌入钥匙串 account(`mcp.<name>.token` / `mcp.<name>.env.<VAR>`)。
+/// 拒 `.`(账户分隔符,防歧义)与控制字符;其余(含空格 / CJK 等展示字符)放行。(纯函数,可单测)
+fn is_valid_server_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains('.') && !name.chars().any(|c| c.is_control())
+}
+
 /// 解析 stdio server 声明的密钥环境变量:对 `cfg.env` 每个名从钥匙串取值。
 /// **值用完即弃、绝不记录**;取不到的跳过(由 server 端处理缺失)。
 fn resolve_env(cfg: &McpServerConfig) -> Vec<(String, String)> {
@@ -918,8 +924,9 @@ pub async fn mcp_add(
     auth: Option<McpAuth>,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err("server 名称不能为空".into());
+    if !is_valid_server_name(&name) {
+        // 名嵌入钥匙串 account(token/env);拒 `.`(分隔符)与控制字符,防 account 串歧义。
+        return Err("server 名称不能为空,且不能含 '.'(保留作钥匙串账户分隔)或控制字符".into());
     }
     let command = command.unwrap_or_default().trim().to_string();
     let url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
@@ -1631,6 +1638,17 @@ mod tests {
         assert!(!is_valid_env_name("A-B")); // 含 -
         assert!(!is_valid_env_name("A B")); // 含空格
         assert!(!is_valid_env_name("A\0B")); // 含 null
+    }
+
+    #[test]
+    fn server_name_gates_account_ambiguity() {
+        assert!(is_valid_server_name("brave"));
+        assert!(is_valid_server_name("我的搜索")); // CJK 展示名放行
+        assert!(is_valid_server_name("dev server")); // 空格放行
+        assert!(!is_valid_server_name("")); // 空
+        assert!(!is_valid_server_name("a.env.FOO")); // 含 .(账户分隔)→ 歧义
+        assert!(!is_valid_server_name("x.token")); // 含 .
+        assert!(!is_valid_server_name("a\nb")); // 控制字符
     }
 
     #[test]
