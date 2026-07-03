@@ -74,6 +74,7 @@ pub fn run() {
             mcp::mcp_list,
             mcp::mcp_add,
             mcp::mcp_set_auth,
+            mcp::mcp_set_env,
             mcp::mcp_remove,
             mcp::mcp_set_enabled,
             mcp::mcp_confirm_resolve,

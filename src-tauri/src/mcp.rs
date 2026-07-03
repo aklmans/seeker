@@ -135,9 +135,21 @@ struct StdioTransport {
 
 impl StdioTransport {
     /// `spawn command args...`(不含握手——握手由 McpClient 统一做)。
-    async fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
-        let mut child = Command::new(command)
-            .args(args)
+    async fn spawn(
+        command: &str,
+        args: &[String],
+        env: &[(String, String)],
+    ) -> Result<Self, String> {
+        let mut cmd = Command::new(command);
+        cmd.args(args);
+        // 叠加配置的密钥环境变量(名在配置、值来自钥匙串);名再校验一层防注入。
+        // 继承父进程环境(server 需 PATH 等)——仅在其上叠加。
+        for (k, v) in env {
+            if is_valid_env_name(k) {
+                cmd.env(k, v);
+            }
+        }
+        let mut child = cmd
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -376,8 +388,12 @@ pub struct McpClient {
 
 impl McpClient {
     /// 连一个 stdio server:spawn + initialize 握手。失败 → Err(不 panic)。
-    pub async fn connect(command: &str, args: &[String]) -> Result<Self, String> {
-        let transport = StdioTransport::spawn(command, args).await?;
+    pub async fn connect(
+        command: &str,
+        args: &[String],
+        env: &[(String, String)],
+    ) -> Result<Self, String> {
+        let transport = StdioTransport::spawn(command, args, env).await?;
         Self::with_transport(Box::new(transport)).await
     }
 
@@ -464,6 +480,7 @@ pub async fn mcp_probe(
             name: "probe".into(),
             command: String::new(),
             args: Vec::new(),
+            env: Vec::new(),
             url,
             auth,
             enabled: true,
@@ -473,6 +490,7 @@ pub async fn mcp_probe(
             name: "probe".into(),
             command,
             args: args.unwrap_or_default(),
+            env: Vec::new(),
             url: None,
             auth: None,
             enabled: true,
@@ -505,6 +523,10 @@ pub struct McpServerConfig {
     pub command: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
+    /// stdio server 要注入的**环境变量名**(如 `["BRAVE_API_KEY"]`);**值只在钥匙串**
+    /// (`mcp.<name>.env.<VAR>`)、**绝不入配置**。远程 server 走 header 式 `auth`,不用此字段。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<String>,
     /// 远程 server 的 HTTP 端点;`Some` = http 传输。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
@@ -540,6 +562,34 @@ fn default_auth_scheme() -> String {
 /// **令牌只进钥匙串,绝不入 mcp.json / 前端 / 日志**(红线①;套 `secret.rs` 通用模式)。
 fn mcp_token_account(name: &str) -> String {
     format!("mcp.{name}.token")
+}
+
+/// stdio server 某环境变量在钥匙串里的 account(`mcp.<name>.env.<VAR>`)。
+/// **值只进钥匙串,绝不入 mcp.json / 前端 / 日志**(红线①);配置里只留变量名。
+fn mcp_env_account(name: &str, var: &str) -> String {
+    format!("mcp.{name}.env.{var}")
+}
+
+/// 环境变量名是否合法(`^[A-Za-z_][A-Za-z0-9_]*$`)——防 `.env(k, v)` 里 k 含 `=` / null 的注入。
+/// (纯函数,可单测)
+fn is_valid_env_name(var: &str) -> bool {
+    let mut cs = var.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// 解析 stdio server 声明的密钥环境变量:对 `cfg.env` 每个名从钥匙串取值。
+/// **值用完即弃、绝不记录**;取不到的跳过(由 server 端处理缺失)。
+fn resolve_env(cfg: &McpServerConfig) -> Vec<(String, String)> {
+    cfg.env
+        .iter()
+        .filter(|v| is_valid_env_name(v))
+        .filter_map(|v| {
+            crate::secret::get_secret(&mcp_env_account(&cfg.name, v))
+                .ok()
+                .map(|val| (v.clone(), val))
+        })
+        .collect()
 }
 
 /// 拼鉴权头值:`<scheme> <token>`;scheme 空 → 裸 token。(纯函数,可单测)
@@ -596,7 +646,8 @@ async fn connect_client(
         let transport = HttpTransport::new(url.clone(), auth)?;
         McpClient::with_transport(Box::new(transport)).await
     } else {
-        McpClient::connect(&cfg.command, &cfg.args).await
+        let env = resolve_env(cfg); // 从钥匙串取声明的 env 值(用完即弃、不记录)
+        McpClient::connect(&cfg.command, &cfg.args, &env).await
     }
 }
 
@@ -818,10 +869,21 @@ pub async fn mcp_list(app: AppHandle, mgr: State<'_, McpManager>) -> Result<Valu
             && crate::secret::secret_status(mcp_token_account(&s.name))
                 .map(|st| st == "configured")
                 .unwrap_or(false);
+        // env 变量的状态:只报**变量名 + configured/empty**,永不回值(红线①)。
+        let env_configured: Vec<Value> = s
+            .env
+            .iter()
+            .map(|v| {
+                let configured = crate::secret::secret_status(mcp_env_account(&s.name, v))
+                    .map(|st| st == "configured")
+                    .unwrap_or(false);
+                json!({ "var": v, "status": if configured { "configured" } else { "empty" } })
+            })
+            .collect();
         let mut entry = json!({
             "name": s.name, "command": s.command, "args": s.args, "enabled": s.enabled,
             "transport": if s.url.is_some() { "http" } else { "stdio" },
-            "url": s.url, "authConfigured": auth_configured,
+            "url": s.url, "authConfigured": auth_configured, "envConfigured": env_configured,
             "connected": false, "toolCount": 0, "tools": [], "error": Value::Null,
         });
         if s.enabled {
@@ -877,6 +939,7 @@ pub async fn mcp_add(
             name,
             command: String::new(),
             args: Vec::new(),
+            env: Vec::new(),
             url,
             auth,
             enabled: true,
@@ -886,6 +949,7 @@ pub async fn mcp_add(
             name,
             command,
             args: args.unwrap_or_default(),
+            env: Vec::new(),
             url: None,
             auth: None,
             enabled: true,
@@ -908,6 +972,40 @@ pub fn mcp_set_auth(name: String, token: String) -> Result<(), String> {
     }
 }
 
+/// 为某 **stdio** server 设置 / 清除一个环境变量(如 `BRAVE_API_KEY`)。变量**名**入 `mcp.json`
+/// (非密钥),**值直送钥匙串**(account=`mcp.<name>.env.<VAR>`),绝不入配置 / 前端 / 日志(红线①)。
+/// 空值 = 清除(变量名一并移除)。远程 server 走 header 式 `mcp_set_auth`、此命令拒之;变量名须合法(防注入)。
+#[tauri::command]
+pub fn mcp_set_env(app: AppHandle, name: String, var: String, value: String) -> Result<(), String> {
+    let name = name.trim().to_string();
+    let var = var.trim().to_string();
+    if !is_valid_env_name(&var) {
+        return Err(format!(
+            "非法环境变量名:{var}(须匹配 ^[A-Za-z_][A-Za-z0-9_]*$)"
+        ));
+    }
+    let mut servers = load_servers(&app);
+    let idx = servers
+        .iter()
+        .position(|s| s.name == name)
+        .ok_or_else(|| format!("未找到 server:{name}"))?;
+    if servers[idx].url.is_some() {
+        return Err("远程 server 用 header 鉴权(mcp_set_auth),不支持环境变量注入".into());
+    }
+    let account = mcp_env_account(&name, &var);
+    if value.trim().is_empty() {
+        servers[idx].env.retain(|v| v != &var);
+        save_servers(&app, &servers)?;
+        crate::secret::secret_clear(account)
+    } else {
+        if !servers[idx].env.contains(&var) {
+            servers[idx].env.push(var.clone());
+        }
+        save_servers(&app, &servers)?;
+        crate::secret::secret_set(account, value)
+    }
+}
+
 /// 删除一个 MCP server(移出配置 + 断开连接)。可重新添加,UI 走 guardrail 确认。
 #[tauri::command]
 pub async fn mcp_remove(
@@ -917,14 +1015,23 @@ pub async fn mcp_remove(
 ) -> Result<(), String> {
     let mut servers = load_servers(&app);
     let before = servers.len();
+    // 删除前留存其 env 变量名,以便清对应钥匙串条目(retain 后配置里就没了)。
+    let removed_env: Vec<String> = servers
+        .iter()
+        .find(|s| s.name == name)
+        .map(|s| s.env.clone())
+        .unwrap_or_default();
     servers.retain(|s| s.name != name);
     if servers.len() == before {
         return Err(format!("未找到 server:{name}"));
     }
     save_servers(&app, &servers)?;
     mgr.disconnect(&name).await;
-    // 顺带清除该 server 的钥匙串令牌(若有)——可重新添加,不留孤儿密钥。
+    // 顺带清除该 server 的钥匙串令牌 + 所有 env 值(可重新添加,不留孤儿密钥)。
     let _ = crate::secret::secret_clear(mcp_token_account(&name));
+    for var in &removed_env {
+        let _ = crate::secret::secret_clear(mcp_env_account(&name, var));
+    }
     Ok(())
 }
 
@@ -1147,6 +1254,7 @@ mod tests {
             name: "fs".into(),
             command: "node".into(),
             args: vec!["s.js".into()],
+            env: vec![],
             url: None,
             auth: None,
             enabled: true,
@@ -1202,6 +1310,7 @@ mod tests {
             name: "r".into(),
             command: String::new(),
             args: vec![],
+            env: vec![],
             url: Some("https://x/mcp".into()),
             auth: None, // 缺省方案
             enabled: true,
@@ -1219,6 +1328,7 @@ mod tests {
             name: "r2".into(),
             command: String::new(),
             args: vec![],
+            env: vec![],
             url: Some("https://x".into()),
             auth: Some(McpAuth {
                 header: "X-Api-Key".into(),
@@ -1441,6 +1551,7 @@ mod tests {
             name: "mock".into(),
             command: String::new(),
             args: vec![],
+            env: vec![],
             url: Some(format!("http://127.0.0.1:{port}/mcp")),
             auth: None,
             enabled: true,
@@ -1470,7 +1581,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/tests/fixtures/mock_search_mcp.py"
         );
-        let mut client = McpClient::connect("python3", &[fixture.to_string()])
+        let mut client = McpClient::connect("python3", &[fixture.to_string()], &[])
             .await
             .expect("连 mock 搜索 MCP");
         let tools = client.list_tools().await.expect("list_tools");
@@ -1485,5 +1596,56 @@ mod tests {
         let text = flatten_content(&result);
         assert!(text.contains("https://"), "应返回真实 URL:{text}");
         eprintln!("stdio search mcp → {text}");
+    }
+
+    // env 注入(切核):经 McpClient 传合成 env 对 → spawn 用 .env 注入 → mock 的 env_echo 工具回显。
+    // 证注入生效,**不碰真钥匙串**(合成对绕开钥匙串读,避免测试污染登录钥匙串)。
+    // `#[ignore]`:spawn python3,CI 不跑;手动 `cargo test -- --ignored stdio_env_injection` 验。
+    #[tokio::test]
+    #[ignore]
+    async fn stdio_env_injection() {
+        let fixture = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/mock_search_mcp.py"
+        );
+        let env = vec![("SEEKER_TEST_ENV".to_string(), "injected-42".to_string())];
+        let mut client = McpClient::connect("python3", &[fixture.to_string()], &env)
+            .await
+            .expect("连 mock");
+        let result = client.call_tool("env_echo", json!({})).await.expect("call");
+        assert_eq!(
+            flatten_content(&result),
+            "injected-42",
+            "应回显注入的 env 值"
+        );
+    }
+
+    #[test]
+    fn is_valid_env_name_gates_injection() {
+        assert!(is_valid_env_name("BRAVE_API_KEY"));
+        assert!(is_valid_env_name("_x"));
+        assert!(is_valid_env_name("A1_b2"));
+        assert!(!is_valid_env_name("")); // 空
+        assert!(!is_valid_env_name("1ABC")); // 数字开头
+        assert!(!is_valid_env_name("A=B")); // 含 =(防注入)
+        assert!(!is_valid_env_name("A-B")); // 含 -
+        assert!(!is_valid_env_name("A B")); // 含空格
+        assert!(!is_valid_env_name("A\0B")); // 含 null
+    }
+
+    #[test]
+    fn config_env_roundtrip_names_only() {
+        // env 变量名 round-trip;配置里**只有名、绝无值**(值只在钥匙串)。
+        let json =
+            r#"[{"name":"brave","command":"npx","args":["-y","x"],"env":["BRAVE_API_KEY"]}]"#;
+        let servers: Vec<McpServerConfig> = serde_json::from_str(json).unwrap();
+        assert_eq!(servers[0].env, vec!["BRAVE_API_KEY".to_string()]);
+        let out = serde_json::to_string(&servers).unwrap();
+        assert!(out.contains("\"env\":[\"BRAVE_API_KEY\"]"));
+        // 无 env → 序列化省略(skip_serializing_if)。
+        let s2: Vec<McpServerConfig> =
+            serde_json::from_str(r#"[{"name":"x","command":"y"}]"#).unwrap();
+        assert!(s2[0].env.is_empty());
+        assert!(!serde_json::to_string(&s2).unwrap().contains("env"));
     }
 }

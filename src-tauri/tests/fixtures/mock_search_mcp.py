@@ -9,6 +9,7 @@
 """
 import sys
 import json
+import os
 
 # 固定回放的真实招聘页(下游 verify_sources 会真连这些 URL)。
 REAL_RESULTS = [
@@ -46,24 +47,37 @@ def main():
                 "serverInfo": {"name": "mock-search", "version": "0.1"},
             })
         elif method == "tools/list":
-            respond(mid, {"tools": [{
-                "name": "web_search",
-                "description": "搜索网页,返回公司/岗位/URL(mock:固定回放真实招聘页)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string"}},
-                    "required": ["query"],
+            respond(mid, {"tools": [
+                {
+                    "name": "web_search",
+                    "description": "搜索网页,返回公司/岗位/URL(mock:固定回放真实招聘页)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                    "annotations": {"readOnlyHint": True},
                 },
-                "annotations": {"readOnlyHint": True},
-            }]})
+                {
+                    # 供 env 注入测试:回显 SEEKER_TEST_ENV(证 Seeker 把配置的密钥变量注入了子进程环境)
+                    "name": "env_echo",
+                    "description": "回显 SEEKER_TEST_ENV 环境变量(env 注入自测用)",
+                    "inputSchema": {"type": "object"},
+                    "annotations": {"readOnlyHint": True},
+                },
+            ]})
         elif method == "tools/call":
             params = msg.get("params") or {}
+            tool = params.get("name", "")
             args = params.get("arguments") or {}
-            query = args.get("query", "")
-            out = [f"搜索「{query}」结果(mock 回放):"]
-            for r in REAL_RESULTS:
-                out.append(f"- {r['company']} · {r['role']}: {r['url']}")
-            respond(mid, {"content": [{"type": "text", "text": "\n".join(out)}]})
+            if tool == "env_echo":
+                respond(mid, {"content": [{"type": "text", "text": os.environ.get("SEEKER_TEST_ENV", "")}]})
+            else:
+                query = args.get("query", "")
+                out = [f"搜索「{query}」结果(mock 回放):"]
+                for r in REAL_RESULTS:
+                    out.append(f"- {r['company']} · {r['role']}: {r['url']}")
+                respond(mid, {"content": [{"type": "text", "text": "\n".join(out)}]})
         else:
             respond(mid, {})  # 未知方法 → 空 result(不报错)
 
