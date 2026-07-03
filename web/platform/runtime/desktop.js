@@ -191,6 +191,8 @@ export function createDesktopRuntime() {
       list: () => invoke('mcp_list'),
       add: (name, spec) => invoke('mcp_add', { name, ...(spec || {}) }),
       setAuth: (name, token) => invoke('mcp_set_auth', { name, token }),
+      // stdio server 的环境变量:名 + 值 → 命令(值直送钥匙串;参数键 `var` 对齐 Rust 形参)。
+      setEnv: (name, varName, value) => invoke('mcp_set_env', { name, var: varName, value }),
       remove: (name) => invoke('mcp_remove', { name }),
       setEnabled: (name, enabled) => invoke('mcp_set_enabled', { name, enabled }),
       probe: (spec) => invoke('mcp_probe', { ...(spec || {}) }),

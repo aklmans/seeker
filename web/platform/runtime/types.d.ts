@@ -252,6 +252,8 @@ export interface McpServerInfo {
   url: string | null;
   /** 远程鉴权令牌是否已配置(**仅状态**,前端永不见明文)。 */
   authConfigured: boolean;
+  /** stdio server 的环境变量状态:**仅变量名 + configured/empty**,前端永不见值。 */
+  envConfigured: Array<{ var: string; status: 'configured' | 'empty' }>;
   /** 是否已连接(enabled 且握手成功)。 */
   connected: boolean;
   toolCount: number;
@@ -285,6 +287,11 @@ export interface McpApi {
   add(name: string, spec: McpServerSpec): Promise<void>;
   /** 设置 / 清除某远程 server 的鉴权令牌(空 = 清除)。**令牌直送钥匙串**,前端不留、不回读。 */
   setAuth(name: string, token: string): Promise<void>;
+  /**
+   * 设置 / 清除某 **stdio** server 的一个环境变量(如 `BRAVE_API_KEY`)。变量名入 mcp.json(非密钥),
+   * **值直送钥匙串**(空 = 清除、变量名一并移除),前端不留、不回读。远程 server 不支持(走 `setAuth`)。
+   */
+  setEnv(name: string, varName: string, value: string): Promise<void>;
   remove(name: string): Promise<void>;
   setEnabled(name: string, enabled: boolean): Promise<void>;
   /** 连接测试:连一次、列工具、断开。远程可带临时 `token`(仅测试用、不持久化)。 */

@@ -2052,19 +2052,31 @@ async function openMcpManager(){
             : s.enabled ? (s.connected ? `<span style="color:var(--status-done);">${s.toolCount} ${tt('工具','tools')}</span>` : tt('连接中…','Connecting…'))
             : `<span style="color:var(--ink-3);">${tt('已停用','Disabled')}</span>`;
           const authLine = http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${s.authConfigured?('🔑 '+tt('令牌已配置','Token set')):tt('未配置令牌(无鉴权)','No token (unauthenticated)')}</div>` : '';
+          // stdio 环境变量状态:只列已配变量名(值只在钥匙串、前端不见)+ 可点 × 清除。
+          const envList=(s.envConfigured||[]).filter(e=>e&&e.status==='configured');
+          const envLine = !http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${envList.length
+            ? '🔑 '+envList.map(e=>`<span class="mono" style="font-size:10px;">${esc(e.var)}</span> <span data-mcpenvclear data-cn="${escA(s.name)}" data-cv="${escA(e.var)}" title="${tt('清除','Clear')}" style="cursor:pointer;color:var(--ink-3);padding:0 2px;">×</span>`).join('　')
+            : tt('未配置环境变量','No env vars')}</div>` : '';
           return `<div style="padding:9px 0;border-bottom:0.5px solid var(--border);"><div style="display:flex;gap:10px;align-items:center;">
             <div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${ttag} ${esc(s.name)} · ${status}</div>
               <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${where}</div>
               ${tools?`<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${tools}</div>`:''}
               ${authLine}
+              ${envLine}
               ${s.error?`<div style="font-size:11px;color:var(--ink-3);margin-top:3px;">${esc(s.error)}</div>`:''}</div>
             ${http?`<button class="btn" data-mcpauth="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('令牌','Token')}</button>`:''}
+            ${!http?`<button class="btn" data-mcpenv="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('变量','Env')}</button>`:''}
             <button class="btn" data-mcptoggle="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${s.enabled?tt('停用','Disable'):tt('启用','Enable')}</button>
             <button class="btn" data-mcpdel="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Remove')}</button>
           </div>
           ${http?`<div class="mcp-authedit" data-for="${escA(s.name)}" style="display:none;gap:6px;margin-top:8px;">
             <input class="input" type="password" autocomplete="off" placeholder="${tt('鉴权令牌(留空保存 = 清除)','Auth token (save empty = clear)')}" style="flex:1;">
             <button class="btn btn-accent" data-mcpauthsave="${escA(s.name)}" style="padding:4px 12px;font-size:11px;flex-shrink:0;">${tt('保存','Save')}</button>
+          </div>`:''}
+          ${!http?`<div class="mcp-envedit" data-for="${escA(s.name)}" style="display:none;gap:6px;margin-top:8px;">
+            <input class="input" data-envvar autocomplete="off" placeholder="${tt('变量名(如 BRAVE_API_KEY)','Var name (e.g. BRAVE_API_KEY)')}" style="flex:1;">
+            <input class="input" type="password" data-envval autocomplete="off" placeholder="${tt('值(留空 = 清除该变量)','Value (empty = clear)')}" style="flex:1;">
+            <button class="btn btn-accent" data-mcpenvsave="${escA(s.name)}" style="padding:4px 12px;font-size:11px;flex-shrink:0;">${tt('保存','Save')}</button>
           </div>`:''}
           </div>`;
         }).join('')
@@ -2087,6 +2099,26 @@ async function openMcpManager(){
       const name=b.dataset.mcpauthsave, box=findEdit(name), inp=box&&box.querySelector('input');
       const has=!!(inp&&inp.value.trim());
       try{ await rt.mcp.setAuth(name, (inp&&inp.value)||''); toast(has?tt('令牌已保存','Token saved'):tt('令牌已清除','Token cleared')); }
+      catch(e){ toast(String((e&&e.message)||e)); }
+      await render();
+    });
+    // 环境变量(stdio):展开行内「名 + 值」→ setEnv(值直送钥匙串;留空 = 清除该变量)。
+    const findEnvEdit=name=>[...m.querySelectorAll('.mcp-envedit')].find(x=>x.dataset.for===name);
+    [...m.querySelectorAll('[data-mcpenv]')].forEach(b=>b.onclick=()=>{
+      const box=findEnvEdit(b.dataset.mcpenv); if(box) box.style.display = box.style.display==='none'?'flex':'none';
+    });
+    [...m.querySelectorAll('[data-mcpenvsave]')].forEach(b=>b.onclick=async()=>{
+      const name=b.dataset.mcpenvsave, box=findEnvEdit(name);
+      const vn=box&&box.querySelector('[data-envvar]'), vv=box&&box.querySelector('[data-envval]');
+      const varName=(vn&&vn.value.trim())||''; if(!varName){ toast(tt('请填变量名','Enter a var name')); return; }
+      const hasVal=!!(vv&&vv.value.trim());
+      try{ await rt.mcp.setEnv(name, varName, (vv&&vv.value)||''); toast((hasVal?tt('已保存 ','Saved '):tt('已清除 ','Cleared '))+varName); }
+      catch(e){ toast(String((e&&e.message)||e)); }
+      await render();
+    });
+    [...m.querySelectorAll('[data-mcpenvclear]')].forEach(el=>el.onclick=async()=>{
+      const name=el.dataset.cn, varName=el.dataset.cv;
+      try{ await rt.mcp.setEnv(name, varName, ''); toast(tt('已清除 ','Cleared ')+varName); }
       catch(e){ toast(String((e&&e.message)||e)); }
       await render();
     });

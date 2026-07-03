@@ -196,6 +196,7 @@ export function createWebRuntime() {
       list: () => Promise.resolve([]),
       add: () => notImpl('rt.mcp.add', 'web'),
       setAuth: () => notImpl('rt.mcp.setAuth', 'web'),
+      setEnv: () => notImpl('rt.mcp.setEnv', 'web'),
       remove: () => Promise.resolve(),
       setEnabled: () => Promise.resolve(),
       probe: () => notImpl('rt.mcp.probe', 'web'),
