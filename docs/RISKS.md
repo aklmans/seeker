@@ -36,3 +36,10 @@
 - **遗留**:show_widget 的 iframe 严格 CSP(`default-src 'none'`)+ 沙箱三道墙随 **show_widget(#2 下一步)**
   落地;届时复查主窗口是否需为 srcdoc iframe 放行 `frame-src`(当前回落 `default-src 'self'`)。
 - macOS/WKWebView 上同一 CSP 的行为差异并入 [R1] 一并冒烟。
+
+## R3 · Windows `open_external`(explorer)修复运行时未验 〔Windows 发布前必须闭合〕
+
+- **现状**:第 3 轮审查发现 Windows 路径 `cmd /C start "" <url>` 命令注入(`http://x/?a&calc.exe` 可执行任意命令 + 含 `&` 多参 URL 截断),已改 `explorer`(commit `5a54fdb`);但开发机为 Mac,`#[cfg(target_os = "windows")]` 分支在 Mac **不编译、更未运行时验**。
+- **为什么是风险**:纯 std `Command::new("explorer").arg(url)` 与已验证的 macOS/Linux 启动器**结构同构**(仅程序名不同)→ 编译几乎必然;但"explorer 确实打开默认浏览器 + `&` 等 cmd 元字符确实当字面量(不注入)"需在**真实 Windows** 点验。
+- **闭合条件**:一次 Windows 构建 + 手动点开一个含 `&` 的多参 URL(如 `https://x/?utm=a&ref=b`),确认打开正确浏览器、无命令执行。**Windows 正式发布前必做**(与 [R1] 一并;当前 Mac 焦点,不阻塞 Mac 里程碑)。
+- **缓解**:macOS `open` / Linux `xdg-open` 路径不受影响(走 argv、无 shell);Windows 非近期发布目标。详见 [review-log.md](review-log.md) 第 3 轮。
