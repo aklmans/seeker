@@ -59,7 +59,9 @@
 - **(B) 搜索 MCP server**:复用**刚落地的远程 MCP**——把搜索/招聘数据源做成一个远程 MCP server,令牌已走钥匙串、结果已标 Untrusted、调用已过 guardrail。**零新机制**,直接吃现成红线护栏。
 > 倾向 (B):它让远程 MCP 的投入立刻有真实用途,且复用全套既有红线;(A) 更轻但要新写一套 provider 适配 + 密钥面。
 >
-> **实测后续(2026-06-13)**:已选**搜索 MCP 通道**(检索经现有 MCP 工具循环)。端到端管线已实证——可信本地 mock 搜索 MCP + `McpClient` stdio 全握手 + `verify_sources` 真连真实招聘页(commit `1392dce`,3 个 `#[ignore]` live 测试绿)。**但真实搜索 MCP 接入有 key 注入缺口**:stdio 传输**不注入 env**(`spawn` 无 `.env(s)`、`McpServerConfig` 无 env 字段)→ 靠 `API_KEY` env 的主流搜索 MCP(Brave / Exa-stdio)接不进;URL-参数式(`?tavilyApiKey=`)会把密钥落进 `mcp.json` 的 url = **违密钥红线**;仅 `Authorization` 头式可用现成钥匙串令牌(`mcp_set_auth`)。**推荐解 = 给 stdio MCP 加 per-server env、敏感值进钥匙串**(变量名留 `mcp.json`、值进 keychain、spawn 时注入)——补缺口又守红线。用户 2026-06-13 选**暂缓**,列为下一步候选。
+> **实测后续(2026-06-13)**:已选**搜索 MCP 通道**(检索经现有 MCP 工具循环)。端到端管线已实证——可信本地 mock 搜索 MCP + `McpClient` stdio 全握手 + `verify_sources` 真连真实招聘页(commit `1392dce`,3 个 `#[ignore]` live 测试绿)。**但真实搜索 MCP 接入有 key 注入缺口**:stdio 传输**不注入 env**(`spawn` 无 `.env(s)`、`McpServerConfig` 无 env 字段)→ 靠 `API_KEY` env 的主流搜索 MCP(Brave / Exa-stdio)接不进;URL-参数式(`?tavilyApiKey=`)会把密钥落进 `mcp.json` 的 url = **违密钥红线**;仅 `Authorization` 头式可用现成钥匙串令牌(`mcp_set_auth`)。**推荐解 = 给 stdio MCP 加 per-server env、敏感值进钥匙串**(变量名留 `mcp.json`、值进 keychain、spawn 时注入)——补缺口又守红线。
+>
+> **已于 2026-07-03 实现**(commit `274ae94` 平台核 + `629dda2` 契约/UI):`McpServerConfig.env` 存变量**名**(skip 空);`mcp_set_env` 名过 `^[A-Za-z_][A-Za-z0-9_]*$` 闸 → 值直送钥匙串 `mcp.<name>.env.<VAR>`;`connect_client` 取值经 `spawn.env()` 注入(用完即弃、不记录);`mcp_remove` 清孤儿;`mcp_list.envConfigured` 只报**名 + configured/empty**;设置页「变量」write-only UI。守 spec 六条红线(值不入配置/前端/日志、`mcp_list` 不回值、清孤儿、不做 URL 传 key、名校验、Untrusted/guardrail 不变)。env 注入端到端 `#[ignore]` 测试实测绿。接真实 Brave/Exa 现只需在设置页填变量名 + key。
 
 ### 3.3 抓取护栏(SSRF / 资源滥用)
 当需要抓取 JD 页面(扔回 / 验链 / 取正文)时,Rust 核 fetch **必须**:
