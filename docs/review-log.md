@@ -231,3 +231,21 @@
 - **① 序2 通过** —— 评审读全文 + **构造注入场景**,四条安全属性**代码层逐条成立(不采信冒烟)**:所有 AI 文本经 aiHTML 转义/净化**不进 DOM**、`JSON.parse`+`valid` gate(无 ReDoS/正则注入)、Untrusted 数据非指令、载序正确;ai-engine.js 45 实义行逐字节来自旧 index.html(@ts-nocheck 下无暗改);红线核心空 diff;cargo 83/tsc/node 净。**红线首刀证明红线批同样能纯剪切零回归。**
 - **② 放行序3(Copilot/Agent chrome)** —— chrome 红线较轻,评审逐刀验:① `copSend`/`agentSend` 的 `copAppend('user', text.replace(/</g,'&lt;'))` **用户输入进 DOM 前的转义逐字保留**;② `frameQuery→streamReply` 转发链不变。jobseek 专属响应(copMatch/copReply)留 apps。
 - **后续关注**:序4(数据框架·profile)/序5(设置框架·双红线)是更重红线批,届时构造场景逐刀审。
+
+## 第 12 轮 — ⏳ 待审(送审中)· 序3-a/b/c:Copilot 面板机制 + jobseek 业务择取 + appReply 契约扩展(`3202030..fdb3e1a`)
+
+> 序3(Copilot/Agent chrome)前三刀:面板机制抽壳 + jobseek 业务择取 + **appReply 契约扩展(评审必审 · chrome→apps 解耦)**。红线刀(copSend/agentSend 转义)待本批过审后做。**请评审代码层核实 appReply 契约 + 判断 web 缓存缺口只是环境。**
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 3-a `f64737b` | Copilot 面板机制 copEl/copOpen/copClose/copToggle/copScroll/copAppend + cCard/cAct/cBtn/cSuggs | platform/shell/copilot-chrome.js | 纯抽壳 |
+| 3-b `c558d6d` | jobseek Copilot 业务 aiSuggs/copMatch群/agentDeleteJob/findX/copReply(85 行,5 段非连续) | apps/jobseek/logic/copilot-actions.js | 纯择取 |
+| 3-c `fdb3e1a` | **appReply 契约扩展** | registry/types/manifest/账本/index.html | **契约扩展(必审)** |
+
+**★ 序3-c appReply 契约(评审必审 · SeekerShell.* 扩展)**:发现 copSend/agentSend 降级 mock **直调 copReply(jobseek 业务,3-b 已搬 apps)** —— chrome 抽 platform 前须契约化(平台不能直调 apps 业务,违反 platform 业务无关)。新增 `SeekerShell.appReply(text)`(**类比 frameQuery**):registry 遍历启用应用调 `a.appReply`、首个非空生效(无则空串);manifest 注册 `appReply: (t)=>copReply(t)`;copSend/agentSend 的 `copReply(text)` → `window.SeekerShell.appReply(text)`。**代码层核实**:tsc 净(契约类型 + manifest 引用 copReply 桥[账本 declare])、registry `register` 存整个 manifest(不过滤字段)、copReply 直调消失(只余注释)、SeekerShell.appReply 2 处;**契约链手动补测**(绕 web 缓存):SeekerShell.appReply 委派 jobseek copReply、delegatesToJobseek/works=true、无匹配返回空。
+
+**⚠ 诚实缺口**:web 预览 webview **强缓存旧 manifest.js**(XHR cache-bust 拉的文件含 appReply,但 SeekerShell.list()[0] 加载的 manifest 对象无 appReply、只有 frameQuery)——**纯 web 开发环境问题**,桌面 Tauri(asset 协议无 HTTP 缓存)+ 浏览器硬刷新工作;"真实加载 appReply"我在 web 预览没能亲眼跑通,靠代码层 + 手动补测(jobseek.appReply=(t)=>copReply(t) 后契约链 delegates 成功)证明。请评审代码层核实契约正确性 + 判断此缺口。
+
+**零回归(3-a/b)**:符号逐字来自旧 index.html、chrome 留存(copGo/agentChat/agentCancel/copSend)、jobseek 业务无定义、node/内联 8 块/tsc 净;冒烟——面板机制 copOpen/copClose/copAppend、copReply mock 回复工作(reload 后真实加载,非缓存)。index.html 2263→2156(3-a/b);红线核心(profile/D3/CSP)空 diff。
+
+**过审后做序3-d 红线刀**(copSend/agentSend 抽 platform,逐刀验用户输入转义 `text.replace(/</g,'&lt;')` + frameQuery→streamReply 链;initShell 壳启动/agent mode 归属届时定)。
