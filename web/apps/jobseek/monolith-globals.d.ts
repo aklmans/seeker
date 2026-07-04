@@ -17,10 +17,10 @@ declare function renderMatch(): void; // → logic/match.js
 declare function renderResumes(): void; // → logic/resumes.js
 declare function renderInterview(): void; // → logic/interview.js
 
-/* 对话:意图框定 frameQuery(已搬出→logic/frame-query.js · 阶段3-d 择取);卡注册表 SEEKER_CARDS 实现仍在单体(壳基元 · 待抽壳)。
+/* 对话:意图框定 frameQuery(已搬出→logic/frame-query.js · 3-d);卡注册表 SEEKER_CARDS + 卡实现束(已搬出→cards.js · 3-e)。
    声明留作 manifest 引用的 tsc 桥;逻辑模块化(3.y)后连声明一起清。 */
 declare function frameQuery(text: string): string; // → logic/frame-query.js
-declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').CardSpec>;
+declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').CardSpec>; // → cards.js
 
 /* 徽标 liveCount 依赖 */
 declare function tt(zh: string, en: string): string;
