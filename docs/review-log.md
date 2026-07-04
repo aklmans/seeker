@@ -208,9 +208,9 @@
 - **② 放行序2(AI 引擎),红线批从严逐刀审** —— 抽出后**逐刀验四条安全属性逐字保留**:① **streamReply 卡剥离**仍走 `window.SeekerShell.cards()` 契约、prose 经 aiHTML、**AI 原始 HTML 不进 DOM**、持久卡过滤不变;② **extractSeekerBlock** 提取 JSON 仍经 `CardSpec.valid` 校验后才渲染(不臆造/不注入);③ **Untrusted 框定**(数据非指令)不削弱;④ 抽出后挂全局 + 载序前置(streamReply 依赖 aiHTML@ai-render.js 序1 已就位)+ 类型化倾向同约束④;**补卡剥离 + aiHTML 最小冒烟**(引擎共享、@ts-nocheck 无 tsc 兜底)。
 - **后续关注**:序4(数据框架)/序5(设置框架)是更重红线批(profile 硬隔离/设置不可经对话改),届时逐刀构造场景审;3.y 类型化单列里程碑审。
 
-## 第 11 轮 — ⏳ 待审(送审中)· 抽壳序2 AI 引擎(红线首刀)(`39bc96a`)
+## 第 11 轮 — ✅ 通过 · 抽壳序2 AI 引擎(红线首刀)(`39bc96a`)
 
-> 第10轮放行序2 后,AI 引擎 `extractSeekerBlock`/`streamReply` 抽到 `platform/shell/ai-engine.js`,四条安全属性逐字保留 + 冒烟验。**请评审逐刀验四条安全属性。**
+> AI 引擎四条安全属性经评审**代码层逐条核实**(+构造注入场景,不采信冒烟)、逐字节纯剪切。**裁定:① 序2 通过;② 放行序3(chrome)。** 详见文末。
 
 **抽壳**:`extractSeekerBlock` + `streamReply`(+`aiLangHint`,48 行 2 段)→ ai-engine.js(@ts-nocheck);载序 ai-engine@866 在 ai-render@864 后(依赖 aiHTML)。消费者 copSend/agentSend(序3)运行时调。
 
@@ -226,3 +226,8 @@
 **零回归**:3 符号逐字来自旧 index.html、index.html 无定义、安全属性代码逐字保留(`SeekerShell.cards`×3 / `valid` / `aiHTML`×3 grep 核实)、node/内联 8 块/tsc 净;冒烟 0 console 错误。**index.html 2316→2271;platform/shell 9 文件。红线核心(profile/D3/CSP)空 diff。** 建议评审构造场景验(恶意 seeker 块 / XSS payload)。
 
 **过审后进序3(Copilot/Agent chrome)。**
+
+**评审裁定(第 11 轮 · 通过)**:
+- **① 序2 通过** —— 评审读全文 + **构造注入场景**,四条安全属性**代码层逐条成立(不采信冒烟)**:所有 AI 文本经 aiHTML 转义/净化**不进 DOM**、`JSON.parse`+`valid` gate(无 ReDoS/正则注入)、Untrusted 数据非指令、载序正确;ai-engine.js 45 实义行逐字节来自旧 index.html(@ts-nocheck 下无暗改);红线核心空 diff;cargo 83/tsc/node 净。**红线首刀证明红线批同样能纯剪切零回归。**
+- **② 放行序3(Copilot/Agent chrome)** —— chrome 红线较轻,评审逐刀验:① `copSend`/`agentSend` 的 `copAppend('user', text.replace(/</g,'&lt;'))` **用户输入进 DOM 前的转义逐字保留**;② `frameQuery→streamReply` 转发链不变。jobseek 专属响应(copMatch/copReply)留 apps。
+- **后续关注**:序4(数据框架·profile)/序5(设置框架·双红线)是更重红线批,届时构造场景逐刀审。
