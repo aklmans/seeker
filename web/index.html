@@ -859,6 +859,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/dom.js"></script>
 <script src="./platform/shell/icons.js"></script>
 <script src="./platform/shell/i18n.js"></script>
+<script src="./platform/shell/toast.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -1020,21 +1021,7 @@ function toggleTheme(){
 })();
 
 /* ============ TOAST ============ */
-let lastUndo=null; /* 最近一次可撤销操作(供 Mod+Z);仅 toastUndo 类操作登记 */
-function toast(msg){
-  const t=el(`<div class="toast">${msg}</div>`);
-  $('#toasts').appendChild(t);
-  setTimeout(()=>{t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);},2800);
-}
-function toastUndo(msg, restoreFn){
-  const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
-  $('#toasts').appendChild(t);
-  let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
-  const doUndo=()=>{close();restoreFn();toast('已撤销');if(lastUndo===doUndo)lastUndo=null;};
-  lastUndo=doUndo;                       /* 登记为「最近可撤销」,Mod+Z 触发 */
-  $('.toast-undo',t).onclick=doUndo;
-  setTimeout(()=>{close();if(lastUndo===doUndo)lastUndo=null;},6500);
-}
+/* toast/toastUndo/lastUndo 已抽壳 → platform/shell/toast.js(序1-d) */
 
 /* ============ MODAL ============ */
 /** 模态内可聚焦元素(可见、未禁用)。 */
