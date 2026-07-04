@@ -864,6 +864,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/ai-render.js"></script>
 <script src="./platform/shell/nav.js"></script>
 <script src="./platform/shell/ai-engine.js"></script>
+<script src="./platform/shell/copilot-chrome.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -1597,16 +1598,7 @@ function openMarketValue(){
 }
 
 /* ============ COPILOT (global AI command surface) ============ */
-function copEl(){return $('#copPanel');}
-function copOpen(){copEl().classList.add('open'); setTimeout(()=>$('#copInput').focus(),260);}
-function copClose(){copEl().classList.remove('open');}
-function copToggle(){copEl().classList.contains('open')?copClose():copOpen();}
-function copScroll(){const m=$('#copMsgs'); m.scrollTop=m.scrollHeight;}
-function copAppend(role, html){const d=el(`<div class="cop-msg ${role}">${html}</div>`); $('#copMsgs').appendChild(d); copScroll(); return d;}
-const cCard=(t,m)=>`<div class="cop-card"><div class="cct">${t}</div>${m?`<div class="ccm">${m}</div>`:''}</div>`;
-const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</div>`:'';
-const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc}">${l}</button>`;
-const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button onclick="copSend('${s}')">${s}</button>`).join('')}</div>`;
+/* Copilot 面板机制 copEl…copAppend + cCard/cAct/cBtn/cSuggs 已抽壳 → platform/shell/copilot-chrome.js(序3-a) */
 // 开场建议随数据态(评审 P0-6):零数据 → 引导上手(原"我和字节匹配吗"对新用户是死链);有数据 → 真实可用查询。EN 避撇号(cSuggs 内联 onclick)。
 function aiSuggs(){
   return JOBS.length
