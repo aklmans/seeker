@@ -861,6 +861,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/i18n.js"></script>
 <script src="./platform/shell/toast.js"></script>
 <script src="./platform/shell/modal.js"></script>
+<script src="./platform/shell/ai-render.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -1840,24 +1841,7 @@ function extractSeekerBlock(text, kind){
   return { prose, data };
 }
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
-function aiHTML(text){
-  if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
-  return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-/** 流式显示用:截断到任一 seeker 指令块起始之前(块在 onDone 解析,流式中途不外显原始 JSON)。 */
-function displayText(s){
-  s = String(s==null?'':s);
-  const i = s.indexOf('```seeker:');
-  return i>=0 ? s.slice(0, i) : s;
-}
-/** 工具循环进度文案(反焦虑:让用户知道 AI 正在读数据,而非卡住)。 */
-function toolStatusText(info){
-  const n = info && info.name;
-  if(n==='query_data') return tt('正在查询你的本地数据…','Reading your local data…');
-  if(n==='show_widget') return tt('正在生成…','Composing…');
-  if(n==='memory'||n==='remember'||n==='recall') return tt('正在检索记忆…','Searching memory…');
-  return tt('正在处理…','Working…');
-}
+/* aiHTML/displayText/toolStatusText 已抽壳 → platform/shell/ai-render.js(序1-f) */
 /** 把「思考中」气泡变成流式目标,逐 token 写入(textContent 防注入)。
    关键:保留「思考中」指示直到首 token 才切流式 —— 工具循环(query_data 等)首字可达 10s+,
    期间用状态行反馈「正在查询你的本地数据…」,否则空 who 气泡会被误当「没反应」。 */
