@@ -7,16 +7,15 @@
 
 /* 页面渲染器 —— 声明留作 manifest 引用的 tsc 桥(实现无论在单体还是 apps/*.js 都是 classic 全局);
    逻辑模块化(3.y,改真 ES module 导出)后连声明一起清。 */
-// 仍在单体 index.html:
-declare function renderMatch(): void;
-declare function renderResumes(): void;
-declare function renderInterview(): void;
-// 已搬出 apps/jobseek/pages/(阶段3-a/b · @ts-nocheck):
-declare function renderActions(): void; // → actions.js
-declare function renderOverview(): void; // → overview.js
-declare function renderJobs(): void; // → jobs.js
-declare function renderAnalysis(): void; // → analysis.js
-declare function renderSkills(): void; // → skills.js
+// 全部 8 页渲染器已搬出 apps/jobseek/(阶段3-a/b/c · @ts-nocheck);声明留作 manifest 引用的 tsc 桥。
+declare function renderActions(): void; // → pages/actions.js
+declare function renderOverview(): void; // → pages/overview.js
+declare function renderJobs(): void; // → pages/jobs.js
+declare function renderAnalysis(): void; // → pages/analysis.js
+declare function renderSkills(): void; // → pages/skills.js
+declare function renderMatch(): void; // → logic/match.js
+declare function renderResumes(): void; // → logic/resumes.js
+declare function renderInterview(): void; // → logic/interview.js
 
 /* 对话:意图框定 + 卡注册表(实现在单体,经 manifest 贡献给壳) */
 declare function frameQuery(text: string): string;
