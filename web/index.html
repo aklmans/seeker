@@ -860,6 +860,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/icons.js"></script>
 <script src="./platform/shell/i18n.js"></script>
 <script src="./platform/shell/toast.js"></script>
+<script src="./platform/shell/modal.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -1024,34 +1025,7 @@ function toggleTheme(){
 /* toast/toastUndo/lastUndo 已抽壳 → platform/shell/toast.js(序1-d) */
 
 /* ============ MODAL ============ */
-/** 模态内可聚焦元素(可见、未禁用)。 */
-function focusableIn(m){ return [...m.querySelectorAll('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled && e.offsetParent!==null); }
-let _modalPrevFocus=null, _modalTrap=null;
-function openModal(html, wide){
-  $('#modalHost').innerHTML='';
-  const m=el(`<div class="modal ${wide?'wide':''}" role="dialog" aria-modal="true">${html}</div>`);
-  $('#modalHost').appendChild(m);
-  $('#overlay').classList.add('open');
-  const xb=$('.x',m); if(xb){ xb.onclick=closeModal; xb.setAttribute('aria-label', tt('关闭','Close')); }
-  // a11y 焦点管理:记住来源焦点 → 聚焦模态首个有意义元素 → Tab 困在模态内(不逃到背景)。
-  _modalPrevFocus=document.activeElement;
-  const f=focusableIn(m); if(f.length) setTimeout(()=>{ try{ (f.find(e=>!e.classList.contains('x'))||f[0]).focus(); }catch(_e){} },0);
-  _modalTrap=(e)=>{
-    if(e.key!=='Tab') return;
-    const items=focusableIn(m); if(!items.length) return;
-    const first=items[0], last=items[items.length-1];
-    if(!m.contains(document.activeElement)){ e.preventDefault(); first.focus(); }
-    else if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
-    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
-  };
-  document.addEventListener('keydown', _modalTrap, true);
-  return m;
-}
-function closeModal(){
-  $('#overlay').classList.remove('open'); $('#modalHost').innerHTML='';
-  if(_modalTrap){ document.removeEventListener('keydown', _modalTrap, true); _modalTrap=null; }
-  if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(_e){} } _modalPrevFocus=null;
-}
+/* focusableIn/openModal/closeModal 已抽壳 → platform/shell/modal.js(序1-e;overlay 绑定留下) */
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 /* Esc 关弹窗已收编进 SeekerKeys 的 Esc 逐层链(见 initKeys) */
 
