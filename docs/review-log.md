@@ -232,9 +232,9 @@
 - **② 放行序3(Copilot/Agent chrome)** —— chrome 红线较轻,评审逐刀验:① `copSend`/`agentSend` 的 `copAppend('user', text.replace(/</g,'&lt;'))` **用户输入进 DOM 前的转义逐字保留**;② `frameQuery→streamReply` 转发链不变。jobseek 专属响应(copMatch/copReply)留 apps。
 - **后续关注**:序4(数据框架·profile)/序5(设置框架·双红线)是更重红线批,届时构造场景逐刀审。
 
-## 第 12 轮 — ⏳ 待审(送审中)· 序3-a/b/c:Copilot 面板机制 + jobseek 业务择取 + appReply 契约扩展(`3202030..fdb3e1a`)
+## 第 12 轮 — ✅ 通过 · 序3-a/b/c:Copilot 面板机制 + jobseek 业务择取 + appReply 契约扩展(`3202030..fdb3e1a`)
 
-> 序3(Copilot/Agent chrome)前三刀:面板机制抽壳 + jobseek 业务择取 + **appReply 契约扩展(评审必审 · chrome→apps 解耦)**。红线刀(copSend/agentSend 转义)待本批过审后做。**请评审代码层核实 appReply 契约 + 判断 web 缓存缺口只是环境。**
+> 三刀纯剪切/择取零回归;**appReply 契约扩展代码层核实正当**(合 §1);web 缓存缺口裁为测试环境产物、非代码缺陷。**裁定:① 序3-a/b/c 通过;② 缓存缺口接受;③ 序3-d 红线刀放行条件重申。** 详见文末。
 
 | 刀 | 内容 | 去向 | 性质 |
 |---|---|---|---|
@@ -249,3 +249,9 @@
 **零回归(3-a/b)**:符号逐字来自旧 index.html、chrome 留存(copGo/agentChat/agentCancel/copSend)、jobseek 业务无定义、node/内联 8 块/tsc 净;冒烟——面板机制 copOpen/copClose/copAppend、copReply mock 回复工作(reload 后真实加载,非缓存)。index.html 2263→2156(3-a/b);红线核心(profile/D3/CSP)空 diff。
 
 **过审后做序3-d 红线刀**(copSend/agentSend 抽 platform,逐刀验用户输入转义 `text.replace(/</g,'&lt;')` + frameQuery→streamReply 链;initShell 壳启动/agent mode 归属届时定)。
+
+**评审裁定(第 12 轮 · 通过)**:
+- **① 序3-a/b/c 通过** —— 3-a chrome 抽壳 / 3-b jobseek 择取逐字节纯剪切(copilot-chrome.js 10 行 / copilot-actions.js 112 行,0 不来自旧 index.html、copReply 0 重复);**3-c appReply 契约扩展代码层核实正当**:`registry.appReply` 遍历 enabledApps 首个非空生效(同 frameQuery、类型守卫齐)、types 契约干净、manifest 注册、账本加 copReply 桥、copSend/agentSend 经 `SeekerShell.appReply` 解耦不再直调 apps copReply(**合 §1 platform 业务无关**);用户输入转义(`copAppend('user', text.replace(/</g,'&lt;'))`)逐字未动、copReply 只嵌业务数据不回显用户输入 → 无用户输入 XSS;红线核心(runtime/D3/secret/profile/CSP/invariants)空 diff;cargo 83/clippy/fmt/tsc/node 净。
+- **② 缓存缺口裁断 = 测试环境产物、非代码缺陷,接受** —— web 预览「加载的 manifest 对象无 appReply」是 HTTP 强缓存把同 URL 旧脚本喂给 webview;契约链代码层正确(逐环核实)、文件含 appReply(cache-bust XHR 证);桌面 Tauri `asset://` 无缓存 + web 硬刷新解;appReply 仅降级 mock 回复(未配 AI 的演示回退)、缓存态空回复属 cosmetic。→ 后续:真机 / 硬刷新顺带目测 appReply 降级路径(低优先,并入 R1)。
+- **③ 序3-d 红线刀放行条件(重申)**:copSend/agentSend 抽 platform,逐刀验用户输入转义 `text.replace(/</g,'&lt;')` 逐字保留、`frameQuery→appReply→streamReply` 转发链不变、`persistMsg` 依赖处理;`initShell`/agent mode 归属(壳 vs apps)动前先判。
+- **后续关注(下一 session)**:序4(数据框架)/序5(设置框架)是**最重红线批**(profile 硬隔离 / 设置不可经对话改),抽 `persist*`/`hydrate*`/`renderSettings` 时构造场景严审——保持一基元一 commit + 契约扩展必审,别合刀图快。
