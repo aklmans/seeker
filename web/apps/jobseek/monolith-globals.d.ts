@@ -5,15 +5,17 @@
  * **这份清单就是阶段3 逐页搬迁的账本** —— 搬一项销一项,清空即适配器可删。
  */
 
-/* 页面渲染器(buildPages / rerenderPages 消费;各自向 #page-<id> 灌内容) */
+/* 页面渲染器(仍在单体;搬出的页从此清单删——见文件尾「已搬出」)。 */
 declare function renderOverview(): void;
 declare function renderMatch(): void;
 declare function renderResumes(): void;
 declare function renderJobs(): void;
 declare function renderAnalysis(): void;
 declare function renderSkills(): void;
-declare function renderActions(): void;
 declare function renderInterview(): void;
+/* renderActions 实现已搬出 → apps/jobseek/pages/actions.js(阶段3-a,@ts-nocheck);
+   此声明留作 manifest 引用的 tsc 桥,待逻辑模块化(3.y,改真 ES module 导出)后清。 */
+declare function renderActions(): void;
 
 /* 对话:意图框定 + 卡注册表(实现在单体,经 manifest 贡献给壳) */
 declare function frameQuery(text: string): string;
@@ -22,5 +24,5 @@ declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').
 /* 徽标 liveCount 依赖 */
 declare function tt(zh: string, en: string): string;
 declare const JOBS: Array<Record<string, unknown>>;
-declare const ACTIONS: Array<{ state?: string }>;
+declare const ACTIONS: Array<Record<string, any>>;
 declare const setState: { goal?: number; lang?: string };
