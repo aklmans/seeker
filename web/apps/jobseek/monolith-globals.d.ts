@@ -22,8 +22,8 @@ declare function renderInterview(): void; // → logic/interview.js
 declare function frameQuery(text: string): string; // → logic/frame-query.js
 declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').CardSpec>; // → cards.js
 
-/* 徽标 liveCount 依赖 */
+/* 徽标 liveCount 依赖(JOBS/ACTIONS 已搬出→data.js · 3-f;tt/setState 是壳基元、未搬) */
 declare function tt(zh: string, en: string): string;
-declare const JOBS: Array<Record<string, unknown>>;
-declare const ACTIONS: Array<Record<string, any>>;
+declare const JOBS: Array<Record<string, unknown>>; // → data.js
+declare const ACTIONS: Array<Record<string, any>>; // → data.js
 declare const setState: { goal?: number; lang?: string };
