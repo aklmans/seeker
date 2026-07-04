@@ -858,6 +858,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/registry.js"></script>
 <script src="./platform/shell/dom.js"></script>
 <script src="./platform/shell/icons.js"></script>
+<script src="./platform/shell/i18n.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -932,9 +933,7 @@ function dotsHTML(lvl, cls){let s='<span class="dots '+(cls||'')+'">';for(let i=
    图标随页面条目走(p.icon),原 NAV_ICONS 字典迁入 manifest。 */
 const PAGES=[];
 const GROUPS={};
-const I18N={editor:{zh:'编辑器',en:'Editor'},agentSub:{zh:'说出需求,我判断并执行 · 需要展示时右侧画布才出现',en:'Tell me what you need — I decide & act; the canvas appears on the right when needed'},collapseCanvas:{zh:'⤜ 收起画布',en:'⤜ Collapse'},cmdLabel:{zh:'技能 / 命令 · 也可输入 /',en:'Skills / commands · or type /'},agentPh:{zh:'说出需求,或输入 / 唤起命令',en:'Tell me what you need, or type / for commands'},agentGreet:{zh:'嗨,我是你的求职 Agent。直接说需求,我来判断该做什么并执行 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行,结果会显示在右侧画布。也可以点下面的技能快捷开始。',en:"Hi, I'm your job-hunt Agent. Just tell me what you need and I'll figure out what to do — match jobs, tailor your resume, run interview prep, plan training, find gaps — results show on the right canvas. Or tap a skill below."}};
-function L(p){return setState.lang==='en'?(p.en||p.label):p.label;}
-function T(k){const e=I18N[k];return e?(setState.lang==='en'?e.en:e.zh):k;}
+/* I18N/L/T 已抽壳 → platform/shell/i18n.js(抽壳序1-c) */
 let current='overview';
 
 function buildNav(){
@@ -962,7 +961,7 @@ function setLang(l){
   if(typeof syncSbToggleTitle==='function') syncSbToggleTitle();
   rerenderPages();
 }
-function tt(zh,en){return setState.lang==='en'?en:zh;}
+/* tt 已抽壳 → platform/shell/i18n.js(序1-c) */
 function rerenderPages(){PAGES.forEach(p=>{try{if(p.render)p.render();}catch(e){}});}
 function updateAgentChrome(){
   const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
