@@ -183,9 +183,9 @@
 - **贯穿约束(抽壳 = 重入平台层,非机械剪切)**:① 一基元一 commit 独立验;② 契约扩展(`SeekerShell.*`)必审;③ 红线基元(2/4/5)加倍审;④ 平台新模块尽量 @ts-check(①②直接类型化,同 registry.js);⑤ **过渡期壳基元抽到 `platform/shell/` 但仍挂 window 全局 + 保持 classic 载序**(兼容 @ts-nocheck 的 apps/index.html 按全局名引用 → 抽壳本身零回归;显式契约 import 留 3.y;载序每刀验[同第 5 轮时序法])——同 `SeekerShell`/`SeekerKeys` 先例。
 - **后续关注**:抽壳 2/4/5 刀重点审契约面 + `extractSeekerBlock`/`streamReply` 无 XSS+Untrusted + `persist`/`hydrate` profile 隔离不削弱 + 设置「不可经对话改」;建议 AI 引擎+数据框架抽出后补最小冒烟/测试(共享 + @ts-nocheck 无 tsc 兜底)。
 
-## 第 10 轮 — ⏳ 待审(送审中)· 抽壳序1 基础工具(7 刀)(`a881196..5330bf4`)
+## 第 10 轮 — ✅ 通过 · 抽壳序1 基础工具(7 刀)(`a881196..5330bf4`)
 
-> 第9轮裁定转抽壳后,按序1「基础工具 · 自底向上」抽 7 刀,均挂全局 + 载序前置 + 逐刀冒烟零回归。**请评审确认序1 + 放行序2(AI 引擎红线)。**
+> 序1 抽壳零回归经逐字节核实,抽壳模式 + 账本销账机制首次跑通。**裁定:① 序1 通过;② 放行序2(AI 引擎),红线批从严逐刀审。** 详见文末。
 
 | 刀 | 基元 | → platform/shell/ | 类型 | 看点 |
 |---|---|---|---|---|
@@ -202,3 +202,8 @@
 **逐刀零回归实证**:每刀符号逐字来自旧 index.html(逐字节 diff)、留存壳基元/绑定核实(overlay 立即绑定 grep -F、chrome 定义留)、node `--check` 每文件净、内联 8 块语法净、tsc `--noEmit` 净、载序验;冒烟——语言切换 zh↔en(setLang 调 chrome 无错)、模态焦点陷阱(openModal 聚焦/closeModal 清理/overlay)、go 切 9 页全对(current===p)、toggleTheme(documentElement data-theme light↔dark 复原)、0 console 错误。**platform/shell 从 registry 单文件 → 8 文件;index.html 2470→2316。平台层红线(profile/D3/CSP)本批未触。**
 
 **请评审确认序1 通过 + 放行序2** —— 序2 = AI 引擎 `extractSeekerBlock`/`streamReply`(红线,评审此刀起逐刀重点审无 XSS + Untrusted 框定)。
+
+**评审裁定(第 10 轮 · 通过)**:
+- **① 序1 通过** —— 7 文件逐字节纯剪切核实(0 不来自旧 index.html、0 重复、node 7/7、cargo 83/tsc 净);抽壳零回归机制(classic 全局 + 载序前置 head 858-865)+ **首次账本销账 tt**(桥删→i18n.js @ts-check 成 tsc 真相源→净)双跑通;ai-render 的 aiHTML esc 防注入逐字保留;nav.js 非连续抽取正确(chrome 延迟引用留序3);红线核心(runtime/capability D3/secret/data profile/CSP/invariants)空 diff。
+- **② 放行序2(AI 引擎),红线批从严逐刀审** —— 抽出后**逐刀验四条安全属性逐字保留**:① **streamReply 卡剥离**仍走 `window.SeekerShell.cards()` 契约、prose 经 aiHTML、**AI 原始 HTML 不进 DOM**、持久卡过滤不变;② **extractSeekerBlock** 提取 JSON 仍经 `CardSpec.valid` 校验后才渲染(不臆造/不注入);③ **Untrusted 框定**(数据非指令)不削弱;④ 抽出后挂全局 + 载序前置(streamReply 依赖 aiHTML@ai-render.js 序1 已就位)+ 类型化倾向同约束④;**补卡剥离 + aiHTML 最小冒烟**(引擎共享、@ts-nocheck 无 tsc 兜底)。
+- **后续关注**:序4(数据框架)/序5(设置框架)是更重红线批(profile 硬隔离/设置不可经对话改),届时逐刀构造场景审;3.y 类型化单列里程碑审。
