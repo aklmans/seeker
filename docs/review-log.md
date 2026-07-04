@@ -147,9 +147,9 @@
 - **抽壳 5 约束**(抽壳 = 重入前几轮审过的平台层,非机械 @ts-nocheck 剪切):① **一基元一 commit**(各自独立搬+验,不一把梭);② 零逻辑改 + **契约扩展(`SeekerShell.*`)必审**(=平台面);③ **红线基元加倍审**——`extractSeekerBlock`/`streamReply` 抽出须保住无 XSS(URL 不进 DOM href / title 不渲染 / 卡 show() 转义)、`persist`/`hydrate` 抽出**绝不削弱 profile 隔离**(persist 永不把 profile 写进通用 AI 可读集、D3/profile 边界不动)、frameQuery 保 Untrusted 框定;④ **平台新模块尽量 @ts-check**(小纯基元如 `extractSeekerBlock` 直接类型化,同 registry.js;大的如 Copilot chrome 可 @ts-nocheck 过渡但优先类型化);⑤ **先低风险择取**(卡实现/frameQuery 意图 → apps,已契约分离)**后抽壳**(高风险平台重构)。
 - **后续评审关注**:契约扩展面、`extractSeekerBlock`/`streamReply` 抽出无 XSS、`persist`/`hydrate` 抽出 profile 隔离不削弱;建议抽壳后补壳基元最小测试/冒烟(卡剥离 + 数据 persist,@ts-nocheck 下无 tsc 兜底)。
 
-## 第 9 轮 — ⏳ 待审(送审中)· 平台化阶段3-d~g 择取批(4 刀)+ 转抽壳策略确认(`bcf7743..1971ead`)
+## 第 9 轮 — ✅ 通过 · 平台化阶段3-d~g 择取批(4 刀)+ 转抽壳裁定(`bcf7743..fa6c0b5`)
 
-> 第8轮裁定 C 策略后,按「先低风险择取」连落 4 刀,均逐字节纯剪切 + 冒烟零回归。**请评审确认这批 + 裁定「择取→抽壳」转换时机(文末 ★)。**
+> 4 刀逐字节纯剪切核实零回归、C1 升级判据全守、红线基元卡系统安全属性逐字保留。**裁定:① 通过;② 现在转抽壳;③ 抽壳顺序 基础工具→AI引擎→Copilot chrome→数据框架→设置框架(自底向上+红线自轻到重)。** 详见文末。
 
 **四刀**(均 @ts-nocheck · 归属驱动零改动移动):
 
@@ -166,3 +166,19 @@
 按约束⑤「先低风险择取」已择完**干净可择取**的部分。**发现分水岭**:前三刀几乎不引用壳基元(frameQuery 纯函数 / 卡实现经 manifest 契约 / 数据纯字面量);**3-g 数据 helper 起引用 `tt`(壳 i18n · 运行时)**,而剩余 jobseek 与壳基元耦合更深——Copilot 业务响应(copMatch/copReply…)引用 `copClose`/`cAct`/`cBtn`(Copilot chrome)且**非连续**(与 chrome 交错)、设置 jobseek 段引用 `renderSettings`/`setState`/`persistProfileField`(**profile 红线**)。再硬择取会:diff 碎(非连续)+ apps 对 index.html 壳全局(tt/$/copClose)依赖增多、离终态更远。
 **执行 Agent 建议转抽壳(评审 B 方向)**:先抽壳基元(i18n+DOM `tt`/`$`/`L`/`go` · Copilot chrome · AI 渲染引擎 `extractSeekerBlock`/`streamReply`/`aiHTML` · `hydrate`/`persist` 数据框架[红线:不削弱 profile 隔离] · 设置框架)→ `platform/shell/`,jobseek 剩余引用变契约调用、再整块归位(C1 自然满足)。
 **请评审裁定**:① 择取批(3-d~g)是否通过;② 转抽壳时机(现在转 vs 再硬择取几刀);③ 抽壳顺序(建议先低风险 `tt`/`$` i18n+DOM,后 Copilot chrome / AI 引擎 / 数据框架[红线] / 设置框架)。抽壳批将**一基元一 commit + 契约扩展/红线基元必审**(遵第8轮 5 约束)。
+
+**评审裁定(第 9 轮 · 通过)**:
+- **① 择取批通过** —— 4 刀逐字节纯剪切核实(cards/data/frame-query/data-helpers 代码行全来自旧 index.html、0 重复定义、账本销账、平台层空 diff);**红线基元 cards.js 的 job-sources 卡无 XSS 逐字保住**(URL 经 `/^https?:/` 过滤 + `data-opensrc` 用索引非 URL 不进 DOM href、`rt.web.open` 走 scheme 校验、验链状态静态 innerHTML 抓回 title 不渲染、内容全 `esc`);加载序不变式满足(data.js@913 < match.js@1703,JOBS[0] 解析期可读);cargo 83/clippy/fmt/tsc/node 净;index.html −47%。
+- **② 转抽壳时机 = 现在**(择取批过审即转)。分水岭精准:干净可择取已择完,3-g 起引用 `tt`(壳),剩余 Copilot 业务↔chrome(非连续)、设置段↔profile 红线,都是真交织本就该抽壳;继续硬择取是堆 apps→壳全局(tt/copClose/renderSettings)依赖负债、离终态越远。
+- **③ 抽壳顺序 = 自底向上 + 红线自轻到重**:
+
+| 序 | 抽哪个壳基元 → `platform/shell/` | 位置理由 |
+|---|---|---|
+| 1 | **基础工具** `tt`/`$`/`$$`/`el`/`esc`/`go`/`toast`/`openModal`/`aiHTML`/`IC` | 最底层、被引用最多、**零红线**、纯函数/DOM → 风险最低;抽出后其余基元 + apps 立即能改契约 |
+| 2 | **AI 引擎** `extractSeekerBlock` + `streamReply` 卡剥离循环 | **红线**:保 Untrusted 框定 + 无 XSS;依赖①;卡遍历已走 `shell.cards()` 契约 |
+| 3 | **Copilot/Agent chrome** `copInit`/`copSend`/`copClose`/`cAct`/`agentInit` | UI plumbing;依赖①②;jobseek 专属响应留 apps |
+| 4 | **数据框架** `persistColl`/`persistMsg`/`hydrate*` 通用部分 | **红线**:profile 隔离不削弱(persist 永不把 profile 写通用 AI 可读集);单独严审;jobseek 专属集合 hydration 留 apps |
+| 5 | **设置框架** `renderSettings` 壳部分(主题/语言/密度/模型)+ `persistProfileField` | **双红线**:profile + 设置不可经对话改;最后最严;jobseek 设置段(主简历/权重)留 apps,需 `manifest.settings` 契约扩展 |
+
+- **贯穿约束(抽壳 = 重入平台层,非机械剪切)**:① 一基元一 commit 独立验;② 契约扩展(`SeekerShell.*`)必审;③ 红线基元(2/4/5)加倍审;④ 平台新模块尽量 @ts-check(①②直接类型化,同 registry.js);⑤ **过渡期壳基元抽到 `platform/shell/` 但仍挂 window 全局 + 保持 classic 载序**(兼容 @ts-nocheck 的 apps/index.html 按全局名引用 → 抽壳本身零回归;显式契约 import 留 3.y;载序每刀验[同第 5 轮时序法])——同 `SeekerShell`/`SeekerKeys` 先例。
+- **后续关注**:抽壳 2/4/5 刀重点审契约面 + `extractSeekerBlock`/`streamReply` 无 XSS+Untrusted + `persist`/`hydrate` profile 隔离不削弱 + 设置「不可经对话改」;建议 AI 引擎+数据框架抽出后补最小冒烟/测试(共享 + @ts-nocheck 无 tsc 兜底)。

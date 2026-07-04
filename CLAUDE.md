@@ -97,6 +97,8 @@ app/
 
 **阶段 3 搬迁方式(第 8 轮裁定 · 权威)**:剩余 jobseek 与壳基元交织,走 **C(混合,B 方向)**——壳基元(`SEEKER_CARDS` 引擎 / `streamReply` / `extractSeekerBlock` / Copilot chrome / `hydrate`·`persist` 框架 / 设置框架)终态归属 **`platform/shell/`**;纯 jobseek(卡实现 / frameQuery 意图 / 业务数据 / 简历主资料段)归 **`apps/jobseek/`**。**C1 升级为「归属驱动的零逻辑改动移动」**:判据 = 每段去对了家 + 移动本身零逻辑改动(非块连续;本意一直是零代码改 = 零回归),允许非连续择取、允许抽壳,零回归靠 C2(node-check + contentLen + 冒烟)验。**抽壳 = 重入平台层,5 约束**:① 一基元一 commit(独立搬+验,不一把梭);② 契约扩展(`SeekerShell.*`)必审;③ 红线基元加倍审(`extractSeekerBlock`/`streamReply` 抽出保无 XSS、`persist`/`hydrate` 抽出不削弱 profile 隔离、frameQuery 保 Untrusted 框定);④ 平台新模块尽量 @ts-check(小纯基元直接类型化);⑤ 先低风险择取(卡/frameQuery → apps)后抽壳。3.y 类型化(@ts-nocheck → 真 ES module + 账本清空 + 适配器删)单列里程碑审。
 
+**抽壳顺序(第 9 轮裁定 · 权威)· 择取批 3-d~g 过审后转抽壳,自底向上 + 红线自轻到重**:**1 基础工具**(`tt`/`$`/`$$`/`el`/`esc`/`go`/`toast`/`openModal`/`aiHTML`/`IC` —— 最底层、零红线、纯函数/DOM,风险最低)→ **2 AI 引擎**(`extractSeekerBlock`/`streamReply` —— 红线:保 Untrusted+无 XSS)→ **3 Copilot/Agent chrome**(`copInit`/`copSend`/`copClose`/`cAct`/`agentInit`;jobseek 专属响应留 apps)→ **4 数据框架**(`persistColl`/`persistMsg`/`hydrate*` 通用部分 —— 红线:persist 永不把 profile 写通用 AI 可读集;jobseek 专属集合留 apps)→ **5 设置框架**(`renderSettings` 壳部分[主题/语言/密度/模型]+`persistProfileField` —— 双红线:profile + 设置不可经对话改;jobseek 设置段[主简历/权重]留 apps,需 `manifest.settings` 契约扩展)。**关键约束⑤(抽壳零回归的钥匙)**:壳基元抽到 `platform/shell/` 但**仍挂 window 全局 + 保持 classic 载序**(在消费者前加载)——兼容 @ts-nocheck 的 apps/index.html 按全局名引用不变 → **抽壳本身零回归**;显式契约 import 留 3.y;载序每刀验。同 `SeekerShell`/`SeekerKeys` 先例。
+
 ---
 
 ## 6. 工作约定
