@@ -61,7 +61,7 @@ app/
 2. **隐私红线** ——
    - API Key 等密钥**只进系统钥匙串**,绝不入库 / 配置文件 / 前端 / 日志;前端只见 `configured/empty`。
    - 个人隐私字段(姓名/电话/邮箱…)存独立 `profile`,**AI 永不读取/修改**,从类型层面隔离(`profile` 仓库不提供"导出给 AI"的方法)。
-   - **应用数据的 AI 可读走三层闸**:应用启用 ∩ manifest 默认(`aiReadable`)∩ 用户 per-app 授权;健康类应用 **default-off**。关应用 = 其集合即刻退出 AI 可读集。**强制点在能力层 query 白名单**(`QUERYABLE` 由常量变为按三层闸动态计算的运行时函数)——**非仅提示层暗示**,与既有 profile 隔离(`table_for`/`QUERYABLE` 白名单 + 编译期不变量)的结构性强制同格;且与 profile 硬隔离**叠加**:`profile` 永不 AI 可读,不受任何应用 `aiReadable` 影响。
+   - **应用数据的 AI 可读走三层闸**:应用启用 ∩ manifest 默认(`aiReadable`)∩ 用户 per-app 授权;健康类应用 **default-off**。关应用 = 其集合即刻退出 AI 可读集。**强制点在能力层 `query_data` 的 invoke**——**非仅提示层暗示**(工具 `enum` 裁剪只是给模型的提示,模型越界发串仍被 invoke 独立硬拦)。**`QUERYABLE` 保持静态常量硬底**(`profile`/`messages`/`settings`/`secrets` 永不在内);D3 以 `静态 QUERYABLE ∩ 运行时可读集` 在其上**收紧、只窄不宽**——**永不能加入 `QUERYABLE` 之外的表**。故与既有 profile 隔离(`table_for`/`QUERYABLE` + 编译期不变量)的结构性强制**叠加、不削弱**:`profile` 永不 AI 可读,不受任何应用 `aiReadable` 影响。**⚠ 后续切勿把静态 `QUERYABLE` 重构成动态函数 —— 静态底是 profile 永不入的关键保证(第6轮审查钉死)。**
    - 设置**不能经对话修改**;Agent 只能引导去设置页。
 3. **反焦虑** —— 不用红色警告、不用倒计时施压;破坏性操作(删/清空/覆盖)一律**预览 + 确认 + 可撤销**,无论触发者是 Agent、widget 还是 UI,统一走 `platform/guardrail`。
 4. **不可信代码沙箱化** —— show_widget 等 LLM 生成 UI:`iframe sandbox="allow-scripts"` + srcDoc 内 CSP(`default-src 'none'`)+ 父窗口零信任 + MessageChannel 专属端口;外部内容(RAG/MCP/JD)标注 `Untrusted` 防注入。
@@ -88,7 +88,7 @@ app/
 |---|---|---|
 | 0 | 方案对齐 + 基线更新(本文件修订) | 完成 |
 | 1 | 壳与契约(`platform/shell/` + jobseek 适配器,**行为零回归**) | 第5轮过审 |
-| 2 | 应用管理页(开/关/排序)+ **D3 三层闸落能力层** `QUERYABLE` 运行时函数 | 完成(commit 979b5fc,待外审) |
+| 2 | 应用管理页(开/关/排序)+ **D3 三层闸落能力层**(静态 `QUERYABLE` 硬底 ∩ 运行时可读集,只窄不宽)| 第6轮过审 |
 | 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit) | ← 下一步 |
 | 4 | 第二应用「数据资产管理」(验证新增应用成本) | |
 | 5 | 记账(AI 网关 token 用量埋点)/ 项目 / 健康(隐私分级示范) | |
