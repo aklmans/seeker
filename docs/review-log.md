@@ -182,3 +182,23 @@
 
 - **贯穿约束(抽壳 = 重入平台层,非机械剪切)**:① 一基元一 commit 独立验;② 契约扩展(`SeekerShell.*`)必审;③ 红线基元(2/4/5)加倍审;④ 平台新模块尽量 @ts-check(①②直接类型化,同 registry.js);⑤ **过渡期壳基元抽到 `platform/shell/` 但仍挂 window 全局 + 保持 classic 载序**(兼容 @ts-nocheck 的 apps/index.html 按全局名引用 → 抽壳本身零回归;显式契约 import 留 3.y;载序每刀验[同第 5 轮时序法])——同 `SeekerShell`/`SeekerKeys` 先例。
 - **后续关注**:抽壳 2/4/5 刀重点审契约面 + `extractSeekerBlock`/`streamReply` 无 XSS+Untrusted + `persist`/`hydrate` profile 隔离不削弱 + 设置「不可经对话改」;建议 AI 引擎+数据框架抽出后补最小冒烟/测试(共享 + @ts-nocheck 无 tsc 兜底)。
+
+## 第 10 轮 — ⏳ 待审(送审中)· 抽壳序1 基础工具(7 刀)(`a881196..5330bf4`)
+
+> 第9轮裁定转抽壳后,按序1「基础工具 · 自底向上」抽 7 刀,均挂全局 + 载序前置 + 逐刀冒烟零回归。**请评审确认序1 + 放行序2(AI 引擎红线)。**
+
+| 刀 | 基元 | → platform/shell/ | 类型 | 看点 |
+|---|---|---|---|---|
+| 1-a `a881196` | `$`/`$$`/`el` DOM | dom.js | @ts-check | 确立抽壳模式 |
+| 1-b `b6e2638` | `IC` 图标 | icons.js | @ts-check | 零依赖 |
+| 1-c `4486543` | `I18N`/`L`/`T`/`tt` | i18n.js | @ts-check | **首次账本销账**(tt 桥删) |
+| 1-d `4bceb3e` | `toast`/`toastUndo` | toast.js | @ts-nocheck | 引用 $/el 返回值 |
+| 1-e `9695c08` | `focusableIn`/`openModal`/`closeModal` | modal.js | @ts-nocheck | overlay 立即绑定留 index.html |
+| 1-f `de1c455` | `aiHTML`/`displayText`/`toolStatusText` | ai-render.js | @ts-nocheck | aiHTML 保 SeekerMarkdown+esc 防注入 |
+| 1-g `5330bf4` | 导航装配群(buildNav/setLang/go/toggleTheme/buildPages…) | nav.js | @ts-nocheck | 3 段非连续、跳过 chrome |
+
+**抽壳模式(约束⑤落地)**:壳基元剪到 `platform/shell/xxx.js` + **挂全局(classic const/function)+ 载序前置**(在消费者之前;`setLang`/`go` 运行时调后定义的 chrome/setState/PAGES,函数延迟求值)→ apps/index.html 按全局名引用不变 → **抽壳本身零回归**。约束④:纯基元(dom/icons/i18n,不引用 DOM 返回值)直接 @ts-check+JSDoc;引用 `$`/`el` 返回值(Element|null)或复杂依赖(toast/modal/ai-render/nav)@ts-nocheck 过渡(null 处理留 3.y)。**账本销账首次示范**:`tt` 从 `monolith-globals.d.ts` 桥删(i18n.js @ts-check 实际定义,manifest 引用不断、tsc 仍净)——预演 3.y 收尾机制。
+
+**逐刀零回归实证**:每刀符号逐字来自旧 index.html(逐字节 diff)、留存壳基元/绑定核实(overlay 立即绑定 grep -F、chrome 定义留)、node `--check` 每文件净、内联 8 块语法净、tsc `--noEmit` 净、载序验;冒烟——语言切换 zh↔en(setLang 调 chrome 无错)、模态焦点陷阱(openModal 聚焦/closeModal 清理/overlay)、go 切 9 页全对(current===p)、toggleTheme(documentElement data-theme light↔dark 复原)、0 console 错误。**platform/shell 从 registry 单文件 → 8 文件;index.html 2470→2316。平台层红线(profile/D3/CSP)本批未触。**
+
+**请评审确认序1 通过 + 放行序2** —— 序2 = AI 引擎 `extractSeekerBlock`/`streamReply`(红线,评审此刀起逐刀重点审无 XSS + Untrusted 框定)。
