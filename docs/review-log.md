@@ -146,3 +146,23 @@
 - **C1 边界升级**:「整块连续平移」→「**归属驱动的零逻辑改动移动**」。判据 = 每段是否去对了家 + 移动本身零逻辑改动(非块连续;C1 本意一直是零代码改 = 零回归);允许非连续择取、允许抽壳,零回归靠 C2(node-check + contentLen + 冒烟)逐步验。
 - **抽壳 5 约束**(抽壳 = 重入前几轮审过的平台层,非机械 @ts-nocheck 剪切):① **一基元一 commit**(各自独立搬+验,不一把梭);② 零逻辑改 + **契约扩展(`SeekerShell.*`)必审**(=平台面);③ **红线基元加倍审**——`extractSeekerBlock`/`streamReply` 抽出须保住无 XSS(URL 不进 DOM href / title 不渲染 / 卡 show() 转义)、`persist`/`hydrate` 抽出**绝不削弱 profile 隔离**(persist 永不把 profile 写进通用 AI 可读集、D3/profile 边界不动)、frameQuery 保 Untrusted 框定;④ **平台新模块尽量 @ts-check**(小纯基元如 `extractSeekerBlock` 直接类型化,同 registry.js;大的如 Copilot chrome 可 @ts-nocheck 过渡但优先类型化);⑤ **先低风险择取**(卡实现/frameQuery 意图 → apps,已契约分离)**后抽壳**(高风险平台重构)。
 - **后续评审关注**:契约扩展面、`extractSeekerBlock`/`streamReply` 抽出无 XSS、`persist`/`hydrate` 抽出 profile 隔离不削弱;建议抽壳后补壳基元最小测试/冒烟(卡剥离 + 数据 persist,@ts-nocheck 下无 tsc 兜底)。
+
+## 第 9 轮 — ⏳ 待审(送审中)· 平台化阶段3-d~g 择取批(4 刀)+ 转抽壳策略确认(`bcf7743..1971ead`)
+
+> 第8轮裁定 C 策略后,按「先低风险择取」连落 4 刀,均逐字节纯剪切 + 冒烟零回归。**请评审确认这批 + 裁定「择取→抽壳」转换时机(文末 ★)。**
+
+**四刀**(均 @ts-nocheck · 归属驱动零改动移动):
+
+| 刀 | 内容 | 归属证明 | 行 |
+|---|---|---|---|
+| 3-d `8ccda82` | frameQuery 意图框定 | 从壳基元 aiErrHTML/extractSeekerBlock **间**择出 → logic/frame-query.js | 41 |
+| 3-e `c414476` | 卡实现束 + SEEKER_CARDS(30 函数) | 从 extractSeekerBlock/streamReply **间**择出 → cards.js | 404 |
+| 3-f `fbfaf75` | 业务数据 const(STATUS/JOBS/SKILLS/ACTIONS/分析) | IC 壳图标留;⚠外链置块A前(match.js 解析期读 JOBS[0]) → data.js | 198 |
+| 3-g `1971ead` | 数据派生 helper(jobsByStatus/topGapsReal…) | 从 $/$$/el(上)、PAGES(下)壳基元**间**择出 → data-helpers.js | 21 |
+
+**零回归实证(C1 升级判据 / C2 / C3 / C4)**:每刀 git diff 删除行 == 搬入内容**逐字节一致**(零逻辑改动);搬出符号在 index.html 无定义、壳基元(extractSeekerBlock/streamReply/aiHTML/`$`/tt/IC/PAGES)原地留存待抽壳;逐刀冒烟(壳框定链各意图含**改简历联系方式红线** / 卡系统 11 种经壳齐全 + renderMatchCardEl 实渲染 / 数据 JOBS12·SKILLS35·ACTIONS8 完整 + **matchState 解析期读 JOBS[0]** / 数据 helper 全工作 + analysis 页渲染 / 0 console 错);tsc `--noEmit` 净、node `--check` 每文件净、内联 8 块语法净、加载序正确(data.js 913 < pages 1120 < match.js 1723)。**index.html 4675→2470(阶段3 起点 −47%)**;apps/jobseek 现 16 .js。平台层/红线/CSP 本批空 diff。
+
+### ★ 策略确认:择取到此为界,请裁定转抽壳时机 + 顺序
+按约束⑤「先低风险择取」已择完**干净可择取**的部分。**发现分水岭**:前三刀几乎不引用壳基元(frameQuery 纯函数 / 卡实现经 manifest 契约 / 数据纯字面量);**3-g 数据 helper 起引用 `tt`(壳 i18n · 运行时)**,而剩余 jobseek 与壳基元耦合更深——Copilot 业务响应(copMatch/copReply…)引用 `copClose`/`cAct`/`cBtn`(Copilot chrome)且**非连续**(与 chrome 交错)、设置 jobseek 段引用 `renderSettings`/`setState`/`persistProfileField`(**profile 红线**)。再硬择取会:diff 碎(非连续)+ apps 对 index.html 壳全局(tt/$/copClose)依赖增多、离终态更远。
+**执行 Agent 建议转抽壳(评审 B 方向)**:先抽壳基元(i18n+DOM `tt`/`$`/`L`/`go` · Copilot chrome · AI 渲染引擎 `extractSeekerBlock`/`streamReply`/`aiHTML` · `hydrate`/`persist` 数据框架[红线:不削弱 profile 隔离] · 设置框架)→ `platform/shell/`,jobseek 剩余引用变契约调用、再整块归位(C1 自然满足)。
+**请评审裁定**:① 择取批(3-d~g)是否通过;② 转抽壳时机(现在转 vs 再硬择取几刀);③ 抽壳顺序(建议先低风险 `tt`/`$` i18n+DOM,后 Copilot chrome / AI 引擎 / 数据框架[红线] / 设置框架)。抽壳批将**一基元一 commit + 契约扩展/红线基元必审**(遵第8轮 5 约束)。
