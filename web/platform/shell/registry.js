@@ -28,6 +28,12 @@
     }
     if (apps.some((a) => a.id === m.id)) throw new Error('应用重复注册:' + m.id);
     if (!Array.isArray(m.pages)) throw new Error('AppManifest.pages 必须是数组:' + m.id);
+    // 页面分组必须由本 manifest 自声明(buildNav 按组名查表,缺组渲染期会抛)——注册期即拒,失败提早、指名道姓。
+    m.pages.forEach((p) => {
+      if (!p || !p.group || !(m.groups && m.groups[p.group])) {
+        throw new Error('页面分组未声明:' + m.id + '.' + (p && p.id) + ' → group "' + (p && p.group) + '"');
+      }
+    });
     apps.push(m);
   }
 
@@ -46,11 +52,15 @@
 
   /** @param {ShellOwn} own */
   function setShell(own) {
-    shellOwn = {
-      pages: (own.pages || []).slice(),
-      groups: own.groups || {},
-      collections: (own.collections || []).slice(),
-    };
+    const pages = (own.pages || []).slice();
+    const groups = own.groups || {};
+    pages.forEach((p) => {
+      // 壳页面同样受注册期分组校验(与 register 同一不变式)。
+      if (!p || !p.group || !groups[p.group]) {
+        throw new Error('壳页面分组未声明:' + (p && p.id) + ' → group "' + (p && p.group) + '"');
+      }
+    });
+    shellOwn = { pages, groups, collections: (own.collections || []).slice() };
   }
 
   /** @returns {ShellPage[]} */
