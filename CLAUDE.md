@@ -10,10 +10,11 @@
 
 ## 1. 项目本质
 
-Seeker 是**可复用平台基座**,不是单一应用:同一套前端跑**网页 + 桌面**,下面是**可插拔能力层**。求职业务只是第一个应用,**可能推翻重来甚至换领域**。因此:
+Seeker 是**多应用平台**(2026-07-03 拍板升级,方案 `docs/proposal-app-platform.md`,D1–D7 按推荐):同一套前端跑**网页 + 桌面**,底下是**可插拔能力层**,上面是**壳 + N 个可开关的小应用**(时光序模式)。求职只是第一个应用(`jobseek`),找完工作可关掉它——UI/AI 下架、数据保留;后续应用:数据资产管理、记账、项目、健康……因此:
 
-> **`platform/`(稳定·复用·业务无关)与 `domain/`(易变·求职专属·可整块替换)必须物理分离,只靠契约通信。**
-> 换业务 = 删 `domain/` 重写,`platform/` 原封复用。
+> **`platform/`(稳定·复用·业务无关)与 `apps/`(N 个可开关小应用)必须物理分离,只靠契约通信。**
+> 应用经壳(`platform/shell/`)以 manifest 注册:页面 / 导航 / 卡片 / frameQuery / 设置段;应用间**禁止互相 import**。
+> 新增应用 = 新目录 + manifest,平台零改动;数据集合白名单 = 各应用 manifest 声明之并集(新应用集合用 `<appId>_` 前缀,既有 5 集合由 jobseek 认领)。
 
 ---
 
@@ -42,16 +43,15 @@ app/
 │   │   ├── capability/  # 能力层 registry + Capability 契约 + 各能力插件
 │   │   ├── secret/      # 钥匙串读写
 │   │   ├── voice/       # 语音 sidecar 调度
+│   │   ├── shell/       # 应用壳:AppManifest 契约 + 注册表 + 导航/设置/Copilot chrome 装配
 │   │   └── guardrail/   # 破坏性操作护栏(预览+确认+撤销)
-│   └── domain/      # 业务层(易变)
-│       ├── ui/          # 求职的页面(复用原型)
-│       ├── model/       # 业务数据模型
-│       ├── prompts/     # 系统提示(配置化,非硬编码)
-│       └── rules/       # 业务规则、业务专属工具
+│   └── apps/        # 小应用层(每应用一目录;互不 import)
+│       └── jobseek/     # 第一个应用:求职工作台(manifest + 页面模块)
 └── src-tauri/       # Tauri/Rust 工程(在 web/ 外 → 不被嵌入 WebView 资产)
 ```
-> `web/` 独立成前端根:Tauri 的 `generate_context!` 会**递归嵌入整个 frontendDist**,若含 `src-tauri/` 会把 target 也卷进去而编译失败;故前端与 `src-tauri/` 必须分处。`platform/` 与 `domain/` 仍物理分离,只是同处 `web/` 下。
-> 写代码前先判断它属于 `platform/` 还是 `domain/`。业务规则、提示词、字段定义尽量**配置化**,别硬编码进平台层。
+> `web/` 独立成前端根:Tauri 的 `generate_context!` 会**递归嵌入整个 frontendDist**,若含 `src-tauri/` 会把 target 也卷进去而编译失败;故前端与 `src-tauri/` 必须分处。
+> **搬迁过渡态(阶段 1–3)**:求职业务逻辑仍内联在 `index.html`,经 `apps/jobseek/` 适配器 manifest 注册进壳;按 `docs/proposal-app-platform.md` 阶段 3 逐页迁入 `apps/jobseek/`。旧 `domain/` 目录(空壳)随迁移移除。
+> 写代码前先判断它属于 `platform/`(壳与能力)还是某个 `apps/<appId>/`(业务)。业务规则、提示词、字段定义尽量**配置化**,别硬编码进平台层。
 
 ---
 
@@ -61,6 +61,7 @@ app/
 2. **隐私红线** ——
    - API Key 等密钥**只进系统钥匙串**,绝不入库 / 配置文件 / 前端 / 日志;前端只见 `configured/empty`。
    - 个人隐私字段(姓名/电话/邮箱…)存独立 `profile`,**AI 永不读取/修改**,从类型层面隔离(`profile` 仓库不提供"导出给 AI"的方法)。
+   - **应用数据的 AI 可读走三层闸**:应用启用 ∩ manifest 默认(`aiReadable`)∩ 用户 per-app 授权;健康类应用 **default-off**。关应用 = 其集合即刻退出 AI 可读集。
    - 设置**不能经对话修改**;Agent 只能引导去设置页。
 3. **反焦虑** —— 不用红色警告、不用倒计时施压;破坏性操作(删/清空/覆盖)一律**预览 + 确认 + 可撤销**,无论触发者是 Agent、widget 还是 UI,统一走 `platform/guardrail`。
 4. **不可信代码沙箱化** —— show_widget 等 LLM 生成 UI:`iframe sandbox="allow-scripts"` + srcDoc 内 CSP(`default-src 'none'`)+ 父窗口零信任 + MessageChannel 专属端口;外部内容(RAG/MCP/JD)标注 `Untrusted` 防注入。
@@ -81,7 +82,18 @@ app/
 | **#2** | 能力层 registry + Capability + RAG/记忆 + show_widget | 能力层 · show_widget |
 | **#5** | 本地语音 sidecar(业务定型后) | 语音 |
 
-各阶段遵循对应文档的 G/C/D/S/V/P 分阶段清单。**每个里程碑可独立演示;完成后与我对齐再进下一阶段。**
+**当前主线 · 多应用平台化(2026-07-03 拍板,详见 `docs/proposal-app-platform.md`)**:
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 0 | 方案对齐 + 基线更新(本文件修订) | 完成 |
+| 1 | 壳与契约(`platform/shell/` + jobseek 适配器,**行为零回归**) | ← 当前 |
+| 2 | 应用管理页(开/关/排序;关掉求职壳仍好用) | |
+| 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit) | |
+| 4 | 第二应用「数据资产管理」(验证新增应用成本) | |
+| 5 | 记账(AI 网关 token 用量埋点)/ 项目 / 健康(隐私分级示范) | |
+
+各阶段遵循对应文档的 G/C/D/S/V/P 分阶段清单。**每个里程碑可独立演示;完成后与我对齐(+外审)再进下一阶段。**
 
 ---
 
