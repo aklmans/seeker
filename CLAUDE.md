@@ -89,11 +89,13 @@ app/
 | 0 | 方案对齐 + 基线更新(本文件修订) | 完成 |
 | 1 | 壳与契约(`platform/shell/` + jobseek 适配器,**行为零回归**) | 第5轮过审 |
 | 2 | 应用管理页(开/关/排序)+ **D3 三层闸落能力层**(静态 `QUERYABLE` 硬底 ∩ 运行时可读集,只窄不宽)| 第6轮过审 |
-| 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit) | ← 下一步 |
+| 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit;剩余交织按下方第8轮裁定) | **进行中**(8 页+业务逻辑已搬,index.html −33%;1–8 轮全过审) |
 | 4 | 第二应用「数据资产管理」(验证新增应用成本) | |
 | 5 | 记账(AI 网关 token 用量埋点)/ 项目 / 健康(隐私分级示范) | |
 
 各阶段遵循对应文档的 G/C/D/S/V/P 分阶段清单。**每个里程碑可独立演示;完成后与我对齐(+外审)再进下一阶段。**
+
+**阶段 3 搬迁方式(第 8 轮裁定 · 权威)**:剩余 jobseek 与壳基元交织,走 **C(混合,B 方向)**——壳基元(`SEEKER_CARDS` 引擎 / `streamReply` / `extractSeekerBlock` / Copilot chrome / `hydrate`·`persist` 框架 / 设置框架)终态归属 **`platform/shell/`**;纯 jobseek(卡实现 / frameQuery 意图 / 业务数据 / 简历主资料段)归 **`apps/jobseek/`**。**C1 升级为「归属驱动的零逻辑改动移动」**:判据 = 每段去对了家 + 移动本身零逻辑改动(非块连续;本意一直是零代码改 = 零回归),允许非连续择取、允许抽壳,零回归靠 C2(node-check + contentLen + 冒烟)验。**抽壳 = 重入平台层,5 约束**:① 一基元一 commit(独立搬+验,不一把梭);② 契约扩展(`SeekerShell.*`)必审;③ 红线基元加倍审(`extractSeekerBlock`/`streamReply` 抽出保无 XSS、`persist`/`hydrate` 抽出不削弱 profile 隔离、frameQuery 保 Untrusted 框定);④ 平台新模块尽量 @ts-check(小纯基元直接类型化);⑤ 先低风险择取(卡/frameQuery → apps)后抽壳。3.y 类型化(@ts-nocheck → 真 ES module + 账本清空 + 适配器删)单列里程碑审。
 
 ---
 
