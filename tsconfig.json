@@ -15,6 +15,8 @@
   "include": [
     "web/platform/**/*.ts",
     "web/platform/**/*.js",
+    "web/apps/**/*.ts",
+    "web/apps/**/*.js",
     "web/domain/**/*.ts",
     "web/domain/**/*.js"
   ],

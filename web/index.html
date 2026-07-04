@@ -854,6 +854,8 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 </style>
 <!-- 应用内快捷键(A 层 · 集中模块,业务无关);须先于内联 bootstrap 定义 window.SeekerKeys -->
 <script src="./platform/keys/keys.js"></script>
+<!-- 应用壳注册表(多应用平台 · 阶段1);classic:单体 INIT 在解析期同步消费,须先于内联脚本定义 window.SeekerShell -->
+<script src="./platform/shell/registry.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
@@ -1149,30 +1151,12 @@ function keywordsReal(){ const text=JOBS.map(j=>j.jd||'').join('\n');
   return SOFT_WORDS.map(w=>[w,text.split(w).length-1]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,13); }
 
 /* ============ NAV ============ */
-const PAGES=[
-  {id:'overview', label:'总览', en:'Overview', abbr:'总', eyebrow:'OVERVIEW', group:'core'},
-  {id:'match', label:'智能匹配', en:'Smart Match', abbr:'匹', eyebrow:'SMART MATCH', group:'core', ai:true},
-  {id:'resumes', label:'我的简历', en:'Resume', abbr:'历', eyebrow:'RESUMES', group:'core', ai:true},
-  {id:'jobs', label:'目标岗位', en:'Jobs', abbr:'岗', count:'12/20', group:'research'},
-  {id:'analysis', label:'岗位分析', en:'Analysis', abbr:'析', group:'research'},
-  {id:'skills', label:'职业资产', en:'Assets', abbr:'产', group:'growth'},
-  {id:'actions', label:'行动清单', en:'Actions', abbr:'动', count:'5 待办', group:'growth'},
-  {id:'interview', label:'面试陪练', en:'Interview', abbr:'练', group:'growth', ai:true},
-  {id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system'}
-];
-const GROUPS={core:{zh:'核心',en:'CORE'},research:{zh:'研究',en:'RESEARCH'},growth:{zh:'成长',en:'GROWTH'},system:{zh:'系统',en:'SYSTEM'}};
-// 侧栏收起(rail)时每个导航项的图标:沿用 IC 的细线风格(fill:none + stroke:currentColor + 1.5px + 圆角端),随 active 自动取暖橙。
-const NAV_ICONS={
-  overview:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>',
-  match:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.5V5M12 19v3.5M1.5 12H5M19 12h3.5"/></svg>',
-  resumes:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3z"/><path d="M14 3v4.5h4.5"/><path d="M9 13h6M9 16.5h4"/></svg>',
-  jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="1.5"/><path d="M8 7.5V6A2 2 0 0 1 10 4h4a2 2 0 0 1 2 2v1.5"/><path d="M3 12.5h18"/></svg>',
-  analysis:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5h17"/><path d="M7 20.5v-6.5"/><path d="M12 20.5V7"/><path d="M17 20.5v-4"/></svg>',
-  skills:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.4 7 21l5-2.7L17 21l-1.5-7.6"/></svg>',
-  actions:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M4 6l1.3 1.3L7.5 5"/><path d="M4 11.7l1.3 1.3L7.5 10.7"/><path d="M4 17.3l1.3 1.3L7.5 16.3"/></svg>',
-  interview:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M8.5 9.5h7M8.5 13h4"/></svg>',
-  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>'
-};
+/* 多应用平台(阶段1):导航项/分组由壳组合 —— apps/jobseek/manifest.js 注册业务页、
+   壳自持设置页(文件尾 SHELL BOOT 段 setShell + 填充)。PAGES/GROUPS **保名空置**,
+   让全部既有消费方(buildNav/buildPages/go/initKeys/setLang/rerenderPages)零改动;
+   图标随页面条目走(p.icon),原 NAV_ICONS 字典迁入 manifest。 */
+const PAGES=[];
+const GROUPS={};
 const I18N={editor:{zh:'编辑器',en:'Editor'},agentSub:{zh:'说出需求,我判断并执行 · 需要展示时右侧画布才出现',en:'Tell me what you need — I decide & act; the canvas appears on the right when needed'},collapseCanvas:{zh:'⤜ 收起画布',en:'⤜ Collapse'},cmdLabel:{zh:'技能 / 命令 · 也可输入 /',en:'Skills / commands · or type /'},agentPh:{zh:'说出需求,或输入 / 唤起命令',en:'Tell me what you need, or type / for commands'},agentGreet:{zh:'嗨,我是你的求职 Agent。直接说需求,我来判断该做什么并执行 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行,结果会显示在右侧画布。也可以点下面的技能快捷开始。',en:"Hi, I'm your job-hunt Agent. Just tell me what you need and I'll figure out what to do — match jobs, tailor your resume, run interview prep, plan training, find gaps — results show on the right canvas. Or tap a skill below."}};
 function L(p){return setState.lang==='en'?(p.en||p.label):p.label;}
 function T(k){const e=I18N[k];return e?(setState.lang==='en'?e.en:e.zh):k;}
@@ -1182,21 +1166,17 @@ function buildNav(){
   const nav=$('#nav'); nav.innerHTML=''; let lastGroup=null;
   PAGES.forEach(p=>{
     if(p.group&&p.group!==lastGroup){ lastGroup=p.group; const g=GROUPS[p.group]; nav.appendChild(el(`<div class="nav-group">${setState.lang==='en'?g.en:g.zh}</div>`)); }
-    // 导航徽标用真实数据(岗位数 / 未完成行动数),其余回退到静态 count。
-    const liveCount = p.id==='jobs' ? `${JOBS.length}/${setState.goal||20}`
-      : p.id==='actions' ? `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`
-      : p.count;
+    // 导航徽标:页面条目自带 liveCount 回调(app 贡献真实数据),回退静态 count。
+    const liveCount = p.liveCount ? p.liveCount() : p.count;
     const right=liveCount?`<span class="count">${liveCount}</span>`:(p.ai?`<span class="ai-tag">AI</span>`:'');
-    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="nav-ic">${NAV_ICONS[p.id]||''}</span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
+    const b=el(`<button class="nav-item ${p.id===current?'active':''}" data-id="${p.id}" title="${L(p)}"><span class="nav-ic">${p.icon||''}</span><span class="nav-abbr">${p.abbr}</span><span class="nav-label">${L(p)}</span>${right}</button>`);
     b.onclick=()=>go(p.id);
     nav.appendChild(b);
   });
 }
 // 导航徽标随真实数据刷新:buildNav 只在 init/切语言时跑,岗位/行动增删后须就地更新计数(否则陈旧、看着像写死)。
 function syncNavCounts(){
-  const set=(id,txt)=>{ const c=$(`.nav-item[data-id="${id}"] .count`); if(c) c.textContent=txt; };
-  set('jobs', `${JOBS.length}/${setState.goal||20}`);
-  set('actions', `${ACTIONS.filter(a=>a.state!=='done').length} ${tt('待办','to-do')}`);
+  PAGES.forEach(p=>{ if(!p.liveCount) return; const c=$(`.nav-item[data-id="${p.id}"] .count`); if(c) c.textContent=p.liveCount(); });
 }
 function setLang(l){
   setState.lang=l; try{localStorage.setItem('jh-lang',l);}catch(e){}
@@ -1208,7 +1188,7 @@ function setLang(l){
   rerenderPages();
 }
 function tt(zh,en){return setState.lang==='en'?en:zh;}
-function rerenderPages(){[renderOverview,renderMatch,typeof renderResumes!=='undefined'&&renderResumes,renderJobs,renderAnalysis,renderSkills,renderActions,renderInterview,renderSettings].forEach(f=>{try{if(f)f();}catch(e){}});}
+function rerenderPages(){PAGES.forEach(p=>{try{if(p.render)p.render();}catch(e){}});}
 function updateAgentChrome(){
   const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
@@ -1329,15 +1309,8 @@ function buildPages(){
     const pg=el(`<section class="page" id="page-${p.id}"></section>`);
     c.appendChild(pg);
   });
-  renderOverview();
-  renderMatch();
-  renderResumes();
-  renderJobs();
-  renderAnalysis();
-  renderSkills();
-  renderActions();
-  renderInterview();
-  renderSettings();
+  // 首渲:按注册页循环(app 贡献 render;单页失败不拖垮其他应用的页)。
+  PAGES.forEach(p=>{ try{ if(p.render) p.render(); }catch(e){ console.error('[shell] render '+p.id, e); } });
 }
 
 /* ---------- OVERVIEW ---------- */
@@ -4102,7 +4075,8 @@ async function verifyJobSources(card, data){
     }
   });
 }
-/** 卡注册表:AI 出 ```seeker:<kind> 块 → domain 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。 */
+/** 卡注册表(jobseek 的卡实现束):AI 出 ```seeker:<kind> 块 → 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。
+ *  多应用平台(阶段1):经 apps/jobseek/manifest.js 贡献给壳;消费方(streamReply/hydrateMessages)走 window.SeekerShell.cards() 组合。 */
 const SEEKER_CARDS = {
   // persist=true 的「视图卡」会随消息存指令、重启后用实时数据重渲;resume-edit 是一次性护栏提案,不持久(否则重渲会重复提议)。
   'resume-edit':    { valid: d=>Array.isArray(d.edits) && d.edits.length>0, show: showResumeProposal },
@@ -4163,14 +4137,15 @@ function streamReply(thinkBubble, text, who, scrollFn){
     onDone(){
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       let prose = acc; const pending = [];                            // 逐卡型剥离 ```seeker 指令块(注册表驱动,加卡零改)
-      for(const kind in SEEKER_CARDS){
+      const CARDS = window.SeekerShell.cards();                       // 壳组合:启用应用贡献的卡注册表
+      for(const kind in CARDS){
         const b = extractSeekerBlock(prose, kind);
-        if(b.data && SEEKER_CARDS[kind].valid(b.data)){ pending.push([kind, b.data]); prose = b.prose; }
+        if(b.data && CARDS[kind].valid(b.data)){ pending.push([kind, b.data]); prose = b.prose; }
       }
       if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
-      const persistCards = pending.filter(([k])=>SEEKER_CARDS[k].persist).map(([kind,data])=>({kind,data}));
+      const persistCards = pending.filter(([k])=>CARDS[k].persist).map(([kind,data])=>({kind,data}));
       persistMsg(who==='Agent'?'agent':'cop','ai', prose, persistCards); // 文字 + 可持久化卡指令(重启后重渲)
-      for(const [kind, data] of pending){ try{ SEEKER_CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
+      for(const [kind, data] of pending){ try{ CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
       if(scrollFn) scrollFn();
     }
   });
@@ -4323,11 +4298,12 @@ async function hydrateMessages(){
     if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
     rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
     const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const CARDS = window.SeekerShell.cards(); // 壳组合:启用应用贡献的卡注册表
     const draw = (rows, append, who) => { rows.forEach(r => {
       const bubble = append(r.role==='user'?'user':'ai',
         r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
       if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
-        for(const c of r.cards){ const def=c&&SEEKER_CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
+        for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
       }
     }); };
     const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
@@ -4390,7 +4366,7 @@ function copSend(text, aiText){
   if(!copEl().classList.contains('open')) copOpen();
   copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
+  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
   else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
 }
@@ -4454,7 +4430,7 @@ function agentSend(text, aiText){
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || frameQuery(text); // domain 框定:显示短文案、发给 AI 框定版
+  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
 }
@@ -4583,7 +4559,24 @@ function initKeys(){
   K.attach();
 }
 
-/* ---------- INIT ---------- */
+</script>
+<!-- 小应用注册(阶段1 适配器:实现仍内联在上方脚本,manifest 引用其全局;阶段3 逐页迁入 apps/jobseek/) -->
+<script src="./apps/jobseek/manifest.js"></script>
+<script>
+/* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)============ */
+// 壳自持:设置页(全局配置框架;求职专属设置段阶段3 起由 manifest 贡献)+ 对话历史集合。
+window.SeekerShell.setShell({
+  pages: [{ id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system',
+    icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>',
+    render: () => renderSettings() }],
+  groups: { system: { zh:'系统', en:'SYSTEM' } },
+  collections: ['messages'], // 对话历史归对话 chrome(壳);清空数据的 CLEARABLE_COLLS 阶段3 与此对齐
+});
+// 组合填充:PAGES/GROUPS 保名(buildNav/buildPages/go/initKeys/setLang/rerenderPages 等消费方零改动)。
+PAGES.push(...window.SeekerShell.pages());
+Object.assign(GROUPS, window.SeekerShell.groups());
+
+/* ---------- INIT(原单体启动序列,原序照抄)---------- */
 
 buildNav();
 buildPages();
