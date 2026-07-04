@@ -70,6 +70,8 @@ export interface AppManifest {
   cards?: Record<string, CardSpec>;
   /** 意图框定器:命中返回框定后的 AI 输入,未命中返回原文(与单体 frameQuery 同约)。 */
   frameQuery?: (text: string) => string;
+  /** 降级 mock 回复器:AI 不可用时的本地应答(命中返回 HTML 串,未命中空串;与单体 copReply 同约)。 */
+  appReply?: (text: string) => string;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
@@ -113,6 +115,8 @@ export interface SeekerShellApi {
   cards(): Record<string, CardSpec>;
   /** 框定链:依注册序问各启用应用的 framer,首个改写生效;都未命中返回原文。 */
   frameQuery(text: string): string;
+  /** 降级 mock 回复链:AI 不可用时问各启用应用的本地应答器,首个非空生效;都未命中返回空串。 */
+  appReply(text: string): string;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */
   collections(): string[];
 }

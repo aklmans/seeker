@@ -1849,7 +1849,7 @@ function copSend(text, aiText){
   const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
-  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+copReply(text)); }, 680+Math.random()*460);
+  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+window.SeekerShell.appReply(text)); }, 680+Math.random()*460);
 }
 function copInit(){
   $('#copLaunch').onclick=copToggle;
@@ -1913,7 +1913,7 @@ function agentSend(text, aiText){
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
-  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+copReply(text));}, 680+Math.random()*420);
+  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
 function agentGreet(){
   agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));

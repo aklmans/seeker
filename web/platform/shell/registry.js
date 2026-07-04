@@ -199,6 +199,17 @@
     return text;
   }
 
+  /** 降级 mock 回复链:AI 不可用时首个应用的本地应答生效(无则空串)。仅问启用应用。 @param {string} text */
+  function appReply(text) {
+    for (const a of enabledApps()) {
+      if (typeof a.appReply === 'function') {
+        const r = a.appReply(text);
+        if (typeof r === 'string' && r) return r;
+      }
+    }
+    return '';
+  }
+
   /** @returns {string[]} 启用应用 + 壳声明的集合并集(数据归属不随开关变;此为存在性,非 AI 可读——后者见 aiReadableCollections) */
   function collections() {
     const out = new Set(shellOwn.collections || []);
@@ -223,6 +234,7 @@
     groups,
     cards,
     frameQuery,
+    appReply,
     collections,
   };
   /** @type {any} */ (window).SeekerShell = api;
