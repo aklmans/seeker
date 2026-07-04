@@ -194,6 +194,12 @@ export interface CapabilityApi {
   list(): Promise<CapabilityInfo[]>;
   available(id: string): Promise<boolean>;
   invoke(id: string, input: unknown): Promise<unknown>;
+  /**
+   * 设置 AI 可读的业务集合(D3 三层闸的**能力层强制点**)。前端 shell 据「启用应用 ∩ manifest
+   * `aiReadable` ∩ 用户 per-app 授权」算出集合名数组推入;后端只接受 `QUERYABLE` 子集
+   * (隐私表推了无效——与 profile 硬隔离叠加)。应用开关 / 授权变化时 + rt 就绪后各调一次。
+   */
+  setAiReadable(collections: string[]): Promise<void>;
 }
 
 /** 长期记忆条目(查看用 · **不含 embedding**)。 */

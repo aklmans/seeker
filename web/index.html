@@ -874,7 +874,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <div class="brand-row"><span class="brand">JOBHUNT</span><button class="sb-collapse" id="sbCollapse" title="收起侧栏">«</button></div>
+    <div class="brand-row"><button class="iconbtn" id="appMgrBtn" title="应用管理" aria-label="应用管理" style="margin-right:6px;"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button><span class="brand">JOBHUNT</span><button class="sb-collapse" id="sbCollapse" title="收起侧栏">«</button></div>
     <div class="mode-switch" id="modeSwitch"></div>
     <nav class="nav" id="nav"></nav>
     <div class="sidebar-foot">
@@ -4576,6 +4576,81 @@ window.SeekerShell.setShell({
 PAGES.push(...window.SeekerShell.pages());
 Object.assign(GROUPS, window.SeekerShell.groups());
 
+/* ---------- 壳装配 + 应用管理(阶段2)---------- */
+// D3 三层闸能力层强制点:把当前「AI 可读集合」(启用应用 ∩ manifest ∩ 授权)推给后端 set_ai_readable。
+function shellPushAiReadable(){
+  const rt=window.SeekerRT, S=window.SeekerShell;
+  if(rt&&rt.capability&&rt.capability.setAiReadable){
+    rt.capability.setAiReadable(S.aiReadableCollections()).catch(e=>console.error('[shell] setAiReadable', e));
+  }
+}
+// 页 DOM 对账:移除已下架应用的页、为新上架的建骨架+首渲(已存在的不动,保留状态)。
+function shellReconcilePages(){
+  const c=$('#content'); const want=PAGES.map(p=>p.id);
+  [...c.querySelectorAll('.page')].forEach(pg=>{ if(!want.includes(pg.id.replace('page-',''))) pg.remove(); });
+  PAGES.forEach(p=>{ if(!document.getElementById('page-'+p.id)){ const pg=el(`<section class="page" id="page-${p.id}"></section>`); c.appendChild(pg); try{ if(p.render) p.render(); }catch(e){ console.error('[shell] render '+p.id, e); } } });
+}
+// 开关/授权/排序变化后重装配:重算 PAGES/GROUPS → 对账页 → 重建导航 → 当前页若被下架则跳走 → 推可读集。
+function shellReassemble(){
+  const S=window.SeekerShell;
+  PAGES.length=0; PAGES.push(...S.pages());
+  for(const k in GROUPS) delete GROUPS[k]; Object.assign(GROUPS, S.groups());
+  shellReconcilePages();
+  buildNav();
+  if(!PAGES.some(p=>p.id===current)) go((PAGES[0]&&PAGES[0].id)||'settings'); else go(current);
+  shellPushAiReadable();
+}
+// 清某应用数据(按 manifest.collections 逐集合;清前自动备份;清后 reload 让内存从空 DB 重新水合)。
+async function clearAppData(app){
+  const rt=window.SeekerRT; if(!rt||!rt.db) return;
+  try{ if(rt.db.backup) await rt.db.backup(); }catch(_e){}
+  for(const coll of (app.collections||[])){
+    try{ const rows=await rt.db.list(coll); for(const r of (rows||[])){ if(r&&r.id!=null) await rt.db.remove(coll, r.id); } }catch(_e){}
+  }
+}
+function renderAppMgr(m){
+  const S=window.SeekerShell;
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const apps=S.ordered();
+  const body=m.querySelector('#appMgrList'); if(!body) return;
+  body.innerHTML = apps.map((a,i)=>{
+    const on=S.enabled(a.id), ai=S.isAiReadable(a.id);
+    return `<div style="display:flex;gap:9px;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);opacity:${on?'1':'0.55'};">
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <button class="btn" data-appup="${esc(a.id)}" ${i===0?'disabled':''} style="padding:0 6px;font-size:10px;line-height:1.4;">↑</button>
+        <button class="btn" data-appdn="${esc(a.id)}" ${i===apps.length-1?'disabled':''} style="padding:0 6px;font-size:10px;line-height:1.4;">↓</button>
+      </div>
+      <div style="width:28px;height:28px;color:var(--ink-2);flex-shrink:0;">${a.icon||''}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;color:var(--ink);font-weight:500;">${esc(tt(a.name.zh,a.name.en))}</div>
+        <div style="font-size:11.5px;color:var(--ink-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(tt(a.blurb.zh,a.blurb.en))}</div>
+      </div>
+      <button class="btn" data-appai="${esc(a.id)}" title="${tt('AI 是否可读该应用数据(隐私字段永不可读)','Whether AI can read this app data (private fields never readable)')}" style="padding:4px 9px;font-size:11px;flex-shrink:0;${ai?'color:var(--accent);border-color:var(--accent);':'color:var(--ink-3);'}">${tt('AI 读','AI')} ${ai?'✓':'✕'}</button>
+      <button class="btn" data-appen="${esc(a.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${on?tt('已开','On'):tt('已关','Off')}</button>
+      <button class="btn" data-appclr="${esc(a.id)}" title="${tt('清除该应用数据','Clear this app data')}" style="padding:4px 9px;font-size:11px;flex-shrink:0;color:var(--ink-3);">${tt('清','Clear')}</button>
+    </div>`;
+  }).join('') || `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('还没有已注册的应用','No apps registered')}</p>`;
+  const move=(id,dir)=>{ const ids=S.ordered().map(a=>a.id); const j=ids.indexOf(id)+dir; if(j<0||j>=ids.length)return; const i=ids.indexOf(id); [ids[i],ids[j]]=[ids[j],ids[i]]; S.setOrder(ids); renderAppMgr(m); };
+  [...body.querySelectorAll('[data-appup]')].forEach(b=>b.onclick=()=>move(b.dataset.appup,-1));
+  [...body.querySelectorAll('[data-appdn]')].forEach(b=>b.onclick=()=>move(b.dataset.appdn,1));
+  [...body.querySelectorAll('[data-appen]')].forEach(b=>b.onclick=()=>{ S.setEnabled(b.dataset.appen, !S.enabled(b.dataset.appen)); renderAppMgr(m); });
+  [...body.querySelectorAll('[data-appai]')].forEach(b=>b.onclick=()=>{ S.setAiGrant(b.dataset.appai, !S.isAiReadable(b.dataset.appai)); renderAppMgr(m); });
+  [...body.querySelectorAll('[data-appclr]')].forEach(b=>b.onclick=()=>{
+    const a=S.list().find(x=>x.id===b.dataset.appclr); if(!a) return;
+    const G=window.SeekerGuardrail; if(!G||!G.confirmDestructive){ toast(tt('该端暂不支持','Not supported here')); return; }
+    G.confirmDestructive({ title:tt('清除应用数据?','Clear app data?'),
+      detail:tt('将清除「','Will clear "')+tt(a.name.zh,a.name.en)+tt('」的全部数据(已自动备份,可从设置导入恢复)','" — all its data (auto-backed up; restore via Settings import)'),
+      confirmLabel:tt('清除','Clear'),
+      onConfirm:async()=>{ await clearAppData(a); toast(tt('已清除,即将刷新','Cleared, reloading')); setTimeout(()=>location.reload(), 600); } });
+  });
+}
+function openAppManager(){
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— APPS</p><h2 style="margin-top:5px;">${tt('应用管理','Apps')}</h2></div><button class="x">${IC.x}</button></div>
+    <div class="lock-note" style="margin:2px 0 14px;"><span class="li">▦</span><span>${tt('开启 / 关闭小应用并排序。<b>关 = 下架界面与 AI 工具,数据保留</b>,再开即恢复。「AI 读」控制该应用数据能否被 Agent 读取 —— 个人隐私字段永不可读。','Toggle and reorder apps. <b>Off removes the UI and AI tools; data is kept</b>, on restores it. "AI" controls whether the Agent can read this app data — private fields are never readable.')}</span></div>
+    <div id="appMgrList"></div>`);
+  renderAppMgr(m);
+}
+
 /* ---------- INIT(原单体启动序列,原序照抄)---------- */
 
 buildNav();
@@ -4590,6 +4665,11 @@ initKeys();
 go('overview');
 syncDemoBanner();
 appReady=true;
+
+/* ---------- 壳装配接线(阶段2:开关变化重装配 + rt 就绪推可读集 + 应用管理入口)---------- */
+window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable
+window.addEventListener('seeker-rt-ready', shellPushAiReadable); // rt 就绪后推一次初始可读集(前端为真相源)
+{ const amb=$('#appMgrBtn'); if(amb) amb.onclick=openAppManager; }
 </script>
 </body>
 </html>

@@ -165,6 +165,8 @@ export function createDesktopRuntime() {
       list: () => invoke('cap_list'),
       available: (id) => invoke('cap_available', { id }),
       invoke: (id, input) => invoke('cap_invoke', { id, input: input ?? null }),
+      // D3 三层闸能力层强制点:推入当前 AI 可读集(启用应用∩manifest∩授权),后端 sanitize 为 QUERYABLE 子集。
+      setAiReadable: (collections) => invoke('set_ai_readable', { collections }),
     },
 
     memory: {

@@ -171,6 +171,8 @@ export function createWebRuntime() {
       list: () => notImpl('rt.capability.list', 'web'),
       available: () => notImpl('rt.capability.available', 'web'),
       invoke: () => notImpl('rt.capability.invoke', 'web'),
+      // web 端无能力层 / AI 工具循环 → D3 强制点无对象;noop(非 notImpl:开关变化会常态调用)。
+      setAiReadable: () => Promise.resolve(),
     },
 
     // 网页端暂无本地长期记忆(BYO 嵌入 + SQLite 为桌面能力)→ 优雅降级:空列表、清除无操作。

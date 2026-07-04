@@ -19,6 +19,7 @@ pub fn run() {
         .manage(ai::Sessions::default())
         .manage(ai::History::default())
         .manage(capability::Registry::new())
+        .manage(capability::AiReadable::default())
         .manage(data::MemTrash::default())
         .manage(data::DocTrash::default())
         .manage(mcp::McpManager::default())
@@ -81,6 +82,7 @@ pub fn run() {
             capability::cap_list,
             capability::cap_available,
             capability::cap_invoke,
+            capability::set_ai_readable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

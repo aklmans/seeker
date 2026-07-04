@@ -88,8 +88,22 @@ export interface SeekerShellApi {
   register(manifest: AppManifest): void;
   /** 全部已注册应用(注册序)。 */
   list(): AppManifest[];
-  /** 应用是否启用(阶段1 恒 true;阶段2 接 settings KV)。 */
+  /** 应用是否启用(持久化于 localStorage;缺省启用)。 */
   enabled(appId: string): boolean;
+  /** 开 / 关一个应用(持久化 + 通知订阅者;关 = 下架 UI+AI,数据保留)。 */
+  setEnabled(appId: string, on: boolean): void;
+  /** 全部应用按用户排序(未排序的按注册序垫后)。 */
+  ordered(): AppManifest[];
+  /** 设置应用显示顺序(持久化 + 通知)。 */
+  setOrder(appIds: string[]): void;
+  /** D3:某应用当前是否 AI 可读 = 启用 ∩ (用户授权 ?? manifest `aiReadable` 默认)。 */
+  isAiReadable(appId: string): boolean;
+  /** 设置某应用的 per-app AI 授权(覆盖 manifest 默认;持久化 + 通知)。 */
+  setAiGrant(appId: string, on: boolean): void;
+  /** D3 三层闸结果:全体「AI 可读」应用的集合并集 —— 推给后端 `set_ai_readable`(能力层强制点)。 */
+  aiReadableCollections(): string[];
+  /** 订阅开关 / 授权 / 排序变化(装配重跑 + 推 set_ai_readable)。 */
+  subscribe(fn: () => void): void;
   setShell(own: ShellOwn): void;
   /** 组合:启用应用的页面 + 壳页面(导航 / 页骨架 / 快捷键消费)。 */
   pages(): ShellPage[];

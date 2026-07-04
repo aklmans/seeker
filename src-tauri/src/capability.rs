@@ -17,8 +17,10 @@
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::{AppHandle, State};
+use std::sync::Mutex;
+use tauri::{AppHandle, Manager, State};
 
 /// 能力种类。Tool=LLM 可主动调用;Context=供提示组装(C2);Sink=纯副作用(C2)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -195,12 +197,25 @@ impl Registry {
             .filter(|c| c.kind() == Kind::Tool && c.available(cx).is_ready())
             .filter_map(|c| c.schema())
             .map(|s| {
+                let mut parameters = s.parameters;
+                // D3:query_data 的 collection.enum 运行时裁剪为当前 AI 可读集(available 已保证非空)。
+                if s.name == "query_data" {
+                    let readable = readable_set(cx);
+                    let allowed: Vec<&str> = QUERYABLE
+                        .iter()
+                        .copied()
+                        .filter(|c| readable.contains(*c))
+                        .collect();
+                    if let Some(e) = parameters.pointer_mut("/properties/collection/enum") {
+                        *e = json!(allowed);
+                    }
+                }
                 json!({
                     "type": "function",
                     "function": {
                         "name": s.name,
                         "description": s.description,
-                        "parameters": s.parameters,
+                        "parameters": parameters,
                     }
                 })
             })
@@ -318,6 +333,53 @@ fn is_queryable(collection: &str) -> bool {
     QUERYABLE.contains(&collection)
 }
 
+// ── D3 三层闸 · AI 可读集运行时白名单(多应用平台 · 能力层强制点)──────────
+//
+// 多应用平台:AI 可读 = 启用应用 ∩ manifest `aiReadable` ∩ 用户 per-app 授权。三层在**前端**算,
+// 结果经 `set_ai_readable` 推入本状态;**强制点在此**(query_data 的 invoke / available / enum),
+// **非提示层暗示**。硬不变式:强制取**静态** `QUERYABLE` 交集,`profile`/`messages`/`settings`/`secrets`
+// 永不在内 → 无论前端推什么,交集永不含隐私表。故 D3 与 profile 硬隔离**叠加、不削弱**。
+// state 进程内,重启回默认;前端在 rt 就绪后推一次当前值(前端为真相源)。
+
+fn default_readable() -> HashSet<String> {
+    QUERYABLE.iter().map(|s| s.to_string()).collect()
+}
+
+/// 把前端推来的集合名**滤成 `QUERYABLE` 子集**——不信前端:profile / 未知 / 平台私有集一律剔除。(纯函数,可单测)
+fn sanitize_readable(collections: Vec<String>) -> HashSet<String> {
+    collections
+        .into_iter()
+        .filter(|c| QUERYABLE.contains(&c.as_str()))
+        .collect()
+}
+
+/// AI 可读集运行时白名单(前端 shell 据三层闸推入)。默认 = 全 `QUERYABLE`(back-compat:未推时=现行为)。
+pub struct AiReadable(pub Mutex<HashSet<String>>);
+impl Default for AiReadable {
+    fn default() -> Self {
+        Self(Mutex::new(default_readable()))
+    }
+}
+
+/// 读当前可读集(state 缺失,如单测无 app → 回默认全 `QUERYABLE`)。
+fn readable_set(cx: &CallCx<'_>) -> HashSet<String> {
+    cx.app
+        .try_state::<AiReadable>()
+        .map(|s| s.0.lock().unwrap().clone())
+        .unwrap_or_else(default_readable)
+}
+
+/// 设置 AI 可读集(D3 三层闸结果;前端应用管理页操作触发,**非对话可改**——模型无法调本命令)。
+/// 只接受 `QUERYABLE` 子集(越界项静默剔除);profile 等隐私表因不在 `QUERYABLE`,推了也无效。
+#[tauri::command]
+pub fn set_ai_readable(
+    state: State<'_, AiReadable>,
+    collections: Vec<String>,
+) -> Result<(), String> {
+    *state.0.lock().unwrap() = sanitize_readable(collections);
+    Ok(())
+}
+
 /// 规整可选 id:空 / 全空白 / 非字符串 → None(列全部);否则 Some(去空白)。
 /// **真模型常把可选参数传成空串**,必须当"未指定"而非"按 id 取一条"(否则查不到、误返回空)。
 fn norm_id(input: &Value) -> Option<&str> {
@@ -339,6 +401,15 @@ impl Capability for DataQuery {
     }
     fn permissions(&self) -> &[Permission] {
         &[Permission::Db]
+    }
+    fn available(&self, cx: &CallCx) -> Availability {
+        // D3:当前 AI 可读集(静态 QUERYABLE ∩ 运行时白名单)为空 → 工具下架(无可读集合就不给模型 query_data)。
+        let readable = readable_set(cx);
+        if QUERYABLE.iter().any(|c| readable.contains(*c)) {
+            Availability::Ready
+        } else {
+            Availability::Unavailable("无 AI 可读的应用集合(应用未启用或未授权)".into())
+        }
     }
     fn schema(&self) -> Option<ToolSchema> {
         Some(ToolSchema {
@@ -370,6 +441,12 @@ impl Capability for DataQuery {
         // 双保险:工具枚举 + 数据层 table_for 白名单都排除 profile。
         if !is_queryable(collection) {
             return Err(format!("不可查询的集合: {collection}"));
+        }
+        // D3 三层闸(能力层强制点):即使在静态白名单内,也须在当前 AI 可读集里(启用应用 ∩ manifest ∩ 授权)。
+        if !readable_set(cx).contains(collection) {
+            return Err(format!(
+                "集合当前不对 AI 可读(应用未启用或未授权): {collection}"
+            ));
         }
         let result = crate::data::with_db(cx.app, |conn| {
             // 空白 id 当作"未指定"(列全部)—— 真模型常把可选 id 传成 ""(空串),
@@ -533,6 +610,28 @@ mod tests {
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();
         assert!(!en.contains("profile"), "工具枚举不应含 profile");
         assert!(en.contains("jobs"));
+    }
+
+    #[test]
+    fn d3_readable_gate_sanitizes_and_defaults() {
+        // D3 三层闸能力层强制:前端推来的可读集只保留 QUERYABLE 子集,隐私/未知/他应用一律剔除。
+        let clean = sanitize_readable(vec![
+            "jobs".into(),
+            "profile".into(), // 隐私表:不在 QUERYABLE → 剔除(即便前端被诱导推它也无效 —— 与 profile 隔离叠加)
+            "messages".into(), // 可持久化但不可读 → 剔除
+            "health_x".into(), // 未知 / 他应用 → 剔除
+            "resumes".into(),
+        ]);
+        assert_eq!(
+            clean,
+            HashSet::from(["jobs".to_string(), "resumes".to_string()])
+        );
+        assert!(!clean.contains("profile"), "profile 永不可能进入 AI 可读集");
+        // 默认 = 全 QUERYABLE(back-compat:前端未推时 = 现行为)。
+        assert_eq!(default_readable().len(), QUERYABLE.len());
+        assert!(default_readable().contains("jobs"));
+        // 空推 → 空集(所有应用关 AI 可读时,DataQuery.available 据此下架 query_data)。
+        assert!(sanitize_readable(vec![]).is_empty());
     }
 
     #[test]
