@@ -207,3 +207,22 @@
 - **① 序1 通过** —— 7 文件逐字节纯剪切核实(0 不来自旧 index.html、0 重复、node 7/7、cargo 83/tsc 净);抽壳零回归机制(classic 全局 + 载序前置 head 858-865)+ **首次账本销账 tt**(桥删→i18n.js @ts-check 成 tsc 真相源→净)双跑通;ai-render 的 aiHTML esc 防注入逐字保留;nav.js 非连续抽取正确(chrome 延迟引用留序3);红线核心(runtime/capability D3/secret/data profile/CSP/invariants)空 diff。
 - **② 放行序2(AI 引擎),红线批从严逐刀审** —— 抽出后**逐刀验四条安全属性逐字保留**:① **streamReply 卡剥离**仍走 `window.SeekerShell.cards()` 契约、prose 经 aiHTML、**AI 原始 HTML 不进 DOM**、持久卡过滤不变;② **extractSeekerBlock** 提取 JSON 仍经 `CardSpec.valid` 校验后才渲染(不臆造/不注入);③ **Untrusted 框定**(数据非指令)不削弱;④ 抽出后挂全局 + 载序前置(streamReply 依赖 aiHTML@ai-render.js 序1 已就位)+ 类型化倾向同约束④;**补卡剥离 + aiHTML 最小冒烟**(引擎共享、@ts-nocheck 无 tsc 兜底)。
 - **后续关注**:序4(数据框架)/序5(设置框架)是更重红线批(profile 硬隔离/设置不可经对话改),届时逐刀构造场景审;3.y 类型化单列里程碑审。
+
+## 第 11 轮 — ⏳ 待审(送审中)· 抽壳序2 AI 引擎(红线首刀)(`39bc96a`)
+
+> 第10轮放行序2 后,AI 引擎 `extractSeekerBlock`/`streamReply` 抽到 `platform/shell/ai-engine.js`,四条安全属性逐字保留 + 冒烟验。**请评审逐刀验四条安全属性。**
+
+**抽壳**:`extractSeekerBlock` + `streamReply`(+`aiLangHint`,48 行 2 段)→ ai-engine.js(@ts-nocheck);载序 ai-engine@866 在 ai-render@864 后(依赖 aiHTML)。消费者 copSend/agentSend(序3)运行时调。
+
+**四条安全属性(评审第10轮点名 · 逐字保留 + 运行时冒烟)**:
+
+| # | 属性 | 代码(逐字保留) | 冒烟实证 |
+|---|---|---|---|
+| ① | 卡剥离走契约 + **AI HTML 不进 DOM** | onDone:`CARDS=window.SeekerShell.cards()`→`extractSeekerBlock`→`CARDS[kind].valid`→`aiHTML(prose)`;流式 `aiHTML(displayText(acc))` | `aiHTML('<img onerror><script>')` → `<p>&lt;img…&quot;`(转义);probe **无 script 元素/无 img[onerror]** |
+| ② | extractSeekerBlock 经 **valid 校验** | `if(b.data && CARDS[kind].valid(b.data))` 才 push/show | `valid({jobId:1})=true` / `valid({})=false`(拒无效) |
+| ③ | **Untrusted 框定** | AI 输出经解析 + valid、当数据非指令 | 解析 `{jobId:1}` + prose 剥离(`前言文字`) |
+| ④ | 挂全局 + 载序前置 | ai-engine@866 在 ai-render@864 后 | extractSeekerBlock/streamReply/aiLangHint 全局可用 |
+
+**零回归**:3 符号逐字来自旧 index.html、index.html 无定义、安全属性代码逐字保留(`SeekerShell.cards`×3 / `valid` / `aiHTML`×3 grep 核实)、node/内联 8 块/tsc 净;冒烟 0 console 错误。**index.html 2316→2271;platform/shell 9 文件。红线核心(profile/D3/CSP)空 diff。** 建议评审构造场景验(恶意 seeker 块 / XSS payload)。
+
+**过审后进序3(Copilot/Agent chrome)。**
