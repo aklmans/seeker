@@ -549,3 +549,24 @@
 - **① 序5-c 通过** —— **第 7 契约 `appSettings` 设计正当**:registry 汇总型聚合(遍历应用收 `AppSettingsSpec` 并集,同 cards())、`{tabs?, extend?}` 类型清晰、**组合逻辑在消费者 settings.js(平台)而 registry 只聚合 = 分离正当**;契约体系自然延伸(汇总型第 5 个)。**§1 干净**:settings.js 零直调 jobseek 函数、jobseek 设置只经 `SeekerShell.appSettings()`;**披露④(data-tc `renderSkills()`→`rerenderPages()`)= 消除拆分后唯一的平台→apps 直调**,行为等价(rerenderPages 级联 skills 页,spy 已证)。**profile/resumes 红线保留**:data-pf → `persistProfileField`(隔离 rt.profile 通道)+ 值引号转义;master 编辑 → persistMaster → resumes 专业层无联系方式。4 条偏离逐条核实(1–3 内容逐字节未变仅间接层变;4 代码层 + spy 双证)。红线核心空 diff(capability/data profile/invariants/CSP);0 重复定义;cargo83/clippy/fmt/tsc/node 净;index.html −530 行。
 - **② 过渡债评估(执行 Agent 主动披露的两条 · 认可方向)**:(1)`setState`/`saveSettings`/`hydrateSettings`/`WEIGHTS` 混合归属 = 老问题、**本刀未扩大**,随后续 settingsPersistOn 归属刀处理,可接受;(2)`clearAllDataFlow` 混 jobseek `setDemoMode` + 硬编码集合名 = **认可方向:后续改用既有 `SeekerShell.collections()` 契约**取集合列表(不新增第 8 契约)+ 解 setDemoMode 归属,记入归属待清账。**注**:settings.js line 48 硬编码 `'messages'` 是**壳自持集合**、非 jobseek 耦合,那处 OK。
 - **③ 待清账(更新)**:已清 = renderAgentCmds(17)/PROFILE→平台(20)/**renderSettings 拆(本轮,第 7 契约)**;仍开 = settingsPersistOn/saveSettings/WEIGHTS 混合归属、**clearAllDataFlow 分解**(→ SeekerShell.collections() + setDemoMode 归属)、initShell、INIT 分解、文案归属(3.y)。
+
+## 第 22 轮 — ⏳ 待审(送审中) · 序5 收官:5-d initShell(shell-boot)+ 5-e INIT 分解(第 8 契约 `manifest.init`)(`edcef78..d9fee71`)
+
+> **序5 最后两刀 = 抽壳搬迁(序1–5)收官**:initShell 落第17轮裁定的独立 shell-boot 刀;INIT 分解清第18轮归属债(第 8 个契约)。5-e 含两条**披露的行为语义变化**(时点 + enabled-gating),请评审逐条裁。
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 5-d `3b2bc91` | 壳启动 initShell(23 行) | platform/shell/**shell-boot.js**(新) | 纯抽壳(第17轮裁定落地) |
+| 5-e `d9fee71` | **第 8 契约 `initApps`(manifest.init 钩子)+ INIT 重写** | types/registry/manifest/账本/index.html INIT | **契约扩展(必审)**;清第18轮债 |
+
+**5-d initShell**:拖放守卫/侧栏+Agent栏宽度恢复/语言恢复/hydrateSettings/侧栏接线/setLang,逐字节纯剪切 → 新独立模块 shell-boot.js(**第17轮裁定精确落地**:壳启动非 chrome、独立 shell-boot 刀,不并入 chrome/settings)。依赖 `$`/`setLang`(平台)+ `setState`/`hydrateSettings`/`toggleSidebar`(index.html 过渡全局,第21轮已挂账)。
+
+**★ 5-e 第 8 契约 `initApps`(评审必审)**:`AppManifest.init?: () => void` + `SeekerShellApi.initApps(): void`;registry **汇总型副作用**(遍历启用应用全调 `a.init()`、无返回,同 renderAppChips);manifest 注册 `init: () => { captureSeed(); syncDemoBanner(); }`;INIT 删两处 jobseek 直调 → `go('overview')` 后一处 `window.SeekerShell.initApps()`。**★第18轮 INIT 分解债已清**:INIT 代码零 captureSeed/syncDemoBanner 直调(grep 仅 breadcrumb 注释)——INIT 只调平台函数 + 契约。
+
+**⚠ 5-e 两条披露的行为语义(请评审裁)**:
+1. **captureSeed 时点**:从 copInit 前 → go('overview') 后(与 syncDemoBanner 合一钩子)。安全论证:期间(copInit/agentInit/initShell/initKeys/go)全是 chrome 接线 + 渲染、**零数据数组变异**;hydration 在 rt-ready(deferred module,全部 classic INIT 之后)→"趁 mock 字面量抓种子"性质保持(冒烟 `SEED=12 jobs` 证);syncDemoBanner 位置精确保持(原本就在 go 后)。
+2. **enabled-gating**:init 只对**启用**应用调(同全部 7 个既有契约)。旧 INIT 直调 = jobseek 禁用时 captureSeed/syncDemoBanner **仍会跑**(禁用态还可能挂出 jobseek 的示例提示条——原行为更像 bug);新行为 = **D2 语义对齐**(关 = 下架 UI+AI)。**构造场景验**:禁用 jobseek → initApps 跳过其 init(called=0);重新启用 → 调(called=1)。
+
+**零回归实证**:5-d 23 行逐字节(git diff 删除==搬入)、initShell 全局唯一;5-e registry.initApps 纯委派(零 jobseek 符号);node/内联 8 块/tsc(34 外链)净;**红线核心空 diff**;冒烟(no-cache server):initShell 从新家生效(侧栏接线/langBtn)、SEED 于 INIT 抓取(12 jobs)、demoMode off 无 banner、seedDemoData 端到端 banner 仍出、0 console 错。**index.html 1354→1330(阶段3 起 −72%)**。
+
+**🏁 序5 / 抽壳搬迁收官盘点**:序1(基础工具)→2(AI 引擎)→3(chrome)→4(数据框架)→5(设置框架:profile 通道/PROFILE/renderSettings 拆/initShell/INIT 分解)全部完成;**8 个 `SeekerShell.*` 契约**(frameQuery/appReply/appSuggs/appCommands/collId/renderAppChips/appSettings/**initApps**;选择型首个非空 · 汇总型并集/副作用);platform/shell 15 模块。**仍开归属债(不阻塞收官,后续刀)**:settingsPersistOn/saveSettings/hydrateSettings/WEIGHTS/setState 混合归属、clearAllDataFlow 分解(→SeekerShell.collections() 替硬编码 + setDemoMode 归属)、toggleSidebar/syncSbToggleTitle 等壳杂项、开场白/i18n 文案归属(3.y)、3.y 类型化(单列里程碑)。
