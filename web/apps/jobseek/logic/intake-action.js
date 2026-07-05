@@ -123,8 +123,7 @@ const IV_STYLE={
 };
 function styleFor(co){return IV_STYLE[co]||{tags:['简历 + JD','项目深挖'], note:'以你的简历与 JD 为主,围绕真实经历提问。'};}
 let RESUME_TAILORED={};
-/* 个人隐私信息 — 仅本地、来自「数据设置」,AI 不读取 / 不修改 */
-const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
+/* PROFILE(个人隐私信息)已抽壳 → platform/shell/profile.js(序5-b · 第19轮裁定:壳级用户身份归平台;仍 AI 不读取/不修改) */
 const MOD_ICON={basic:'👤',summary:'✦',skills:'◆',work:'▣',projects:'▤',edu:'▦',strengths:'✸',certs:'❖',languages:'⊞',honors:'✪',portfolio:'▥',research:'◈',other:'▢'};
 // 主简历资料(专业层,AI 可读):教育/工作/项目/特长/证书/语言/荣誉的单一真实来源 —— 「数据设置·个人信息」填一次,
 // 生成任意针对性简历自动带入,且**填了才显示**。红线:绝不含联系方式(姓名/电话/邮箱在 PROFILE 隐私层、AI 不读);
