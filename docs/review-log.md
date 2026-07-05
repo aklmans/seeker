@@ -380,3 +380,30 @@
 - **② ★ renderAgentCmds 守卫 = 认可守卫作本刀处理,附强制待契约化出口** —— 依据(均已核实):(1)**§1 结构底线满足**:守卫使 jobseek 缺失/禁用时不调不抛(旧 agentInit 是**直调 `renderAgentCmds()`**,jobseek 禁用会 ReferenceError)→ 守卫是**必要的 §1 适配、比旧直调更安全、非退步**;(2)**一致性**:`updateAgentChrome`(index.html:949)**既有 typeof 守卫**(pre-existing 单体既有,非第10轮——第10轮审 nav.js;既有事实成立、一致性论点站得住),单独契约化 agentInit 却放任 updateAgentChrome=半迁移;(3)未过度设计。**★ 强制约束(非可选 · 本轮通过前提)**:序3-d chrome 收尾抽 `updateAgentChrome`/`updateCopChrome` 时**必须**把 `renderAgentCmds` **两触点一并契约化**(`SeekerShell.renderAppChips` / chrome 扩展点契约),**不留永久符号耦合**;记入**待契约化账**。→ **本轮已落显式出口**:copilot-chrome.js agentInit + index.html updateAgentChrome 两处 inline 注释标出强制 renderAppChips 待契约化账。
 - **③ 契约体系观察(正面)**:5 个 `SeekerShell.*`(frameQuery/appReply/appSuggs/collId/appCommands)语义分类成熟一致 —— **选择型首个非空、汇总型并集**;壳/应用解耦良性收敛。
 - **④ 后续关注**:**待契约化账** = `renderAgentCmds`(2 触点,chrome 收尾以 renderAppChips 清)+ 开场白/i18n 文案归属(3.y 以 manifest.greeting + i18n 命名空间清);`aiErrHTML`(红线,第15轮送审中)、`initShell`(壳启动非 chrome,归属先判)仍在序3-d 剩余清单。
+
+## 第 17 轮 — ⏳ 待审(送审中) · 序3-d 收官:renderAppChips 强制契约(第 6 个)+ updateChrome + hydrateMessages(`b316eb5..d345586`)
+
+> 序3-d chrome 收官三刀:**第 16 轮强制待契约化账兑现** —— 第 6 个契约 `SeekerShell.renderAppChips` 清 `renderAgentCmds` 符号耦合;`updateAgentChrome`/`updateCopChrome` + `hydrateMessages` 抽壳。**契约扩展必审**;`initShell` 归属裁定见文末。**序3-d chrome 至此收官。**
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 3-d-11 `a7ef879` | **renderAppChips 契约(第 6 个)· 兑现第16轮强制账** | registry/types/manifest/账本/index.html/copilot-chrome.js | **契约扩展(必审)** · §1 符号解耦 |
+| 3-d-12 `92d8e3e` | updateAgentChrome/updateCopChrome(语言重渲 chrome) | platform/shell/copilot-chrome.js | 纯抽壳 |
+| 3-d-13 `d345586` | 对话历史恢复 hydrateMessages(messages 壳自持) | platform/shell/copilot-chrome.js | 纯抽壳(红线 esc) |
+
+**★ 3-d-11 renderAppChips 契约(必审 · 第 6 个 SeekerShell.* · 兑现第16轮强制账)**:第16轮裁定 `renderAgentCmds` 两触点(agentInit + updateAgentChrome)typeof-守卫直调 = 活符号耦合,**强制(非可选)契约化**。`SeekerShell.renderAppChips()`:
+- registry 遍历 enabledApps 全调 `a.renderAppChips`、**汇总型副作用**(无返回,同 cards() 合并类;chrome 扩展点);
+- types `AppManifest.renderAppChips?` + `SeekerShellApi.renderAppChips()`;manifest `renderAppChips:()=>renderAgentCmds()`;账本 `declare function renderAgentCmds` 桥;
+- 两触点 `if(typeof renderAgentCmds==='function')renderAgentCmds()` → `window.SeekerShell.renderAppChips()`。
+**★强制账已清 · 代码层核实**:平台**代码**零 `renderAgentCmds` 引用(grep platform/ + index.html:仅注释解释解耦,代码全 `renderAppChips()`);符号耦合断,jobseek 经 manifest 暴露渲染器。§1 纯净(registry 零 jobseek 符号)。**契约链冒烟(fresh server,无缓存缺口 · loadedManifest.hasRenderAppChips=true)**:`SeekerShell.renderAppChips()` → jobseek renderAgentCmds 渲 7 chips 进 #agentCmds;lang 切 en → updateCopChrome copLaunch='Ask AI · ⌘K' + updateAgentChrome agentSub=EN + chips 重渲、zh 复原。
+
+**3-d-12 updateChrome / 3-d-13 hydrateMessages 纯剪切**:updateAgentChrome/updateCopChrome(11 行)语言重渲、nav.js setLang 运行时调;hydrateMessages(20 行)messages 壳自持集合历史恢复,**★红线:持久用户文本 `esc(r.text)` 转义逐字保留**、AI 文本 aiHTML、持久卡 CARDS[kind].persist&show;纯平台依赖、无 jobseek 耦合(web collPersistOn=false 早退,桌面路径 esc 代码层验)。
+
+**★ initShell 归属裁定(评审后续关注② · 我的决策请评审确认)**:initShell(壳启动:拖放守卫/侧栏宽度·语言恢复/hydrateSettings/侧栏·语言·resize 接线/setLang)**非 chrome**。**决策:不并入本 chrome 批(遵评审"别混入 chrome 刀"),归 序5(设置框架)或独立 shell-boot 刀** —— 理由:initShell 调 `hydrateSettings`(@990,restores goals/weights/appearance = 序5 设置 territory)+ toggleSidebar(侧栏 chrome,未抽);核心耦合是设置 hydration,与序5 同批最连贯。留 index.html,序5 一并处理。
+
+**零回归实证**:
+- 各基元全局唯一定义;逐字节:3-d-12 removed⊂platform(11 行)、3-d-13 removed⊂platform(20 行含 esc);3-d-11 两触点改写(typeof 守卫→契约)+ registry/types/manifest 契约;
+- node/内联 8 块/tsc 净;**红线核心空 diff**(capability/secret/data profile/CSP/invariants/runtime);
+- 冒烟 0 console 错、截图 7 chips 经契约渲染 + lang 双向;**index.html 2006→1974(阶段3 起 −58%)**。
+
+**序3-d chrome 收官** —— Copilot/Agent chrome 全抽 platform/shell/copilot-chrome.js(面板机制 / 发送核心 / copInit / 辅助群 / mode 群 / 命令面板 / agentInit / updateChrome / hydrateMessages)+ ai-render(aiErrHTML)+ **6 契约**(frameQuery / appReply / appSuggs / appCommands / collId / renderAppChips)。**剩余非 chrome**:`initShell`(序5)+ 序4-d jobseek 数据大择取 + 序5 profile 设置框架[双红线,最严]。
