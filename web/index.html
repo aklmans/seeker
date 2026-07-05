@@ -1313,13 +1313,12 @@ buildNav();
 buildPages();
 $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
 $('#themeBtn2').onclick=toggleTheme;
-captureSeed();   // 趁内存还是 mock 字面量,抓一份演示种子(供落地页"先逛示例"显式播种)。★待清账(第18轮·INIT 分解):本处 + 下方 syncDemoBanner 是 jobseek 专属 INIT 调用(过渡 bootstrap 胶水),INIT/shell-boot 分解时(随序5)移入 jobseek manifest.init 钩子、shell-boot 只调平台 + manifest.init 契约
 copInit();
 agentInit();
 initShell();
 initKeys();
 go('overview');
-syncDemoBanner();
+window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约,清第18轮 INIT 分解债):jobseek init=captureSeed+syncDemoBanner 移 manifest.init;INIT 只调平台 + 契约
 appReady=true;
 
 /* ---------- 壳装配接线(阶段2:开关变化重装配 + rt 就绪推可读集 + 应用管理入口)---------- */

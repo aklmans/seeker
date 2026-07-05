@@ -35,6 +35,10 @@ declare function masterSectionHTML(): string; // → logic/intake-action.js(既�
 declare function wireMasterSection(): void; // → logic/settings-jobseek.js
 declare function dataResumeRowHTML(): string; // → logic/settings-jobseek.js
 
+/* 应用启动钩子(序5-e initApps 契约;manifest init 引用桥) */
+declare function captureSeed(): void; // → logic/demo-seed.js(序4-d-3)
+declare function syncDemoBanner(): void; // → logic/demo-seed.js(序4-d-3)
+
 /* 徽标 liveCount 依赖(JOBS/ACTIONS→data.js · 3-f;tt 已抽壳→platform/shell/i18n.js 实际定义、tsc 桥删 · 序1-c;setState 壳全局未抽) */
 declare const JOBS: Array<Record<string, unknown>>; // → data.js
 declare const ACTIONS: Array<Record<string, any>>; // → data.js

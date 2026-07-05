@@ -75,5 +75,7 @@
       },
     }),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
+    // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
+    init: () => { captureSeed(); syncDemoBanner(); },
   });
 })();

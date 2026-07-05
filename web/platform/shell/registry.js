@@ -244,6 +244,13 @@
     });
   }
 
+  /** 应用启动钩子:壳 INIT 末尾依次调各启用应用的 init(应用自己的 boot 副作用)。汇总型副作用——全调、无返回(同 renderAppChips)。 */
+  function initApps() {
+    enabledApps().forEach((a) => {
+      if (typeof a.init === 'function') a.init();
+    });
+  }
+
   /** 各启用应用的设置贡献(新增 tab + 追加进壳既有 tab)。汇总型:并集(同 cards())。 @returns {AppSettingsSpec[]} */
   function appSettings() {
     /** @type {AppSettingsSpec[]} */
@@ -297,6 +304,7 @@
     appCommands,
     renderAppChips,
     appSettings,
+    initApps,
     collId,
     collections,
   };
