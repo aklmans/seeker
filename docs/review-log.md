@@ -422,7 +422,7 @@
 - **④ 待契约化账(更新)**:`renderAgentCmds` ✅ **已清**(本轮 renderAppChips);仍开 = 开场白 + i18n 表 jobseek 文案归属(3.y 以 manifest.greeting + i18n 命名空间清)。
 - **⑤ 后续**:序4-d(jobseek 数据大择取,非红线)→ **序5(profile 通道 persistProfileField/hydrateProfile + initShell,全程最硬刀)**,届时逐行 + 构造场景严审。
 
-## 第 18 轮 — ⏳ 待审(送审中) · 序4-d 数据大择取:持久化条件/onboarding → 平台 + jobseek 数据层 → apps(`83986fe..3f6996e`)
+## 第 18 轮 — ✅ 通过 · 序4-d 数据大择取:持久化条件/onboarding → 平台 + jobseek 数据层 → apps(`83986fe..3f6996e`)
 
 > 序4-d(数据框架剩余,非红线):1 平台归位(持久化条件 + 壳 onboarding)+ 2 jobseek 数据择取(持久化/水合 + 演示/种子)。**归属裁定(onboarding → 平台)+ rt-ready 时序不变式**请评审。
 
@@ -446,3 +446,10 @@
 - 冒烟(fresh server):16 符号全定义、SEED 抓取、nextJobId=13、seedDemoData 端到端(种子+示例条)、0 console 错、总览渲染正常;index.html 1974→1876(阶段3 起 **−60%**)。
 
 **序4-d 剩余判断**:jobseek 数据大择取本批完成(jobs/resumes/种子/编排 + 持久化条件/onboarding 归位)。**hydrateBizColls 已随 4-d-2**(原挂"随序3-d 或后续"→已落)。→ 转 **序5(profile 通道 + initShell + renderSettings 壳部分,全程最硬双红线刀)**。
+
+**评审裁定(第 18 轮 · 通过 · 无阻断/应改)**:
+- **① 序4-d-1/2/3 通过** —— 三刀纯剪切(persistence.js/demo-seed.js 100% 逐字节、data-store.js 仅归属注释、各符号 0 重复定义);平台核心空 diff;cargo83/clippy/fmt/tsc/node 净;index.html 1974→1876(阶段3 起 **−60%**)。
+- **② ★ onboarding → 平台 = 认可** —— **依赖方向是决定性判据**:`hydrateColl`(平台通用引擎)调 `markOnboarded` → 若 markOnboarded 在 apps 则平台→apps 反向依赖(违 §1),归平台使调用为**平台→平台**;onboarding 状态("有数据→已上手"、jh-onboarded/jh-seeded-jobs 通用键)是**壳级 UX 概念**(决定首启落地 vs 已用)非 jobseek 业务;消费者 overview.js 读 `onboarded()`=apps→平台(允许);对比 `demoMode/SEED/captureSeed`(演示态、仅 jobseek)→ apps 正确。合"归属驱动"纪律。
+- **③ resumes profile 红线 + rt-ready 时序守法(逐字保留 · 代码层验)**:persistResume 只存 `{id,jobId,template,modules}`——联系方式绝不入 resumes → `query_data('resumes')` 天然无联系方式;persistence.js@classic `<script src>` 解析期注册监听器 → 先于 deferred module dispatch@881(相对序不变,同第5轮时序模型)。
+- **④ ⚠ 前瞻归属债(INIT 分解 · 非阻塞 · 记后续)**:index.html 的 INIT(原单体启动序列,原序照抄)仍**直调 apps `captureSeed()`/`syncDemoBanner()`**。判定 = **过渡态非违规**:INIT 是 index.html 的过渡 bootstrap 胶水(**非平台模块**),混调平台(buildNav/copInit)+ apps(captureSeed/syncDemoBanner)是尚未分解的单体 bootstrap;§1 约束的是**平台模块不依赖 apps**,index.html 不是平台模块;逐字节原序照抄、非本刀新增。**出口**:INIT/bootstrap 分解时(随序5 shell-boot/initShell 归属,或专门 INIT 分解刀),jobseek 专属 INIT 调用移入 jobseek 自己的 init(`manifest.init()` 钩子 / rt-ready 绑定),使 shell-boot 只调平台函数 + manifest.init 契约。→ 已挂 index.html INIT inline 出口注释。
+- **⑤ 归属/待契约化账(更新)**:`renderAgentCmds` ✅ 已清(第17轮);仍开 = **① INIT 分解**(captureSeed/syncDemoBanner INIT 调用 + initShell 归属 → `manifest.init` 钩子 / shell-boot,随序5)+ **② 开场白/i18n/agentGreet 文案归属**(3.y 以 manifest.greeting + i18n 命名空间清)。

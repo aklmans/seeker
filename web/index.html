@@ -1858,7 +1858,7 @@ buildNav();
 buildPages();
 $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
 $('#themeBtn2').onclick=toggleTheme;
-captureSeed();   // 趁内存还是 mock 字面量,抓一份演示种子(供落地页"先逛示例"显式播种)
+captureSeed();   // 趁内存还是 mock 字面量,抓一份演示种子(供落地页"先逛示例"显式播种)。★待清账(第18轮·INIT 分解):本处 + 下方 syncDemoBanner 是 jobseek 专属 INIT 调用(过渡 bootstrap 胶水),INIT/shell-boot 分解时(随序5)移入 jobseek manifest.init 钩子、shell-boot 只调平台 + manifest.init 契约
 copInit();
 agentInit();
 initShell();
