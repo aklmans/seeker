@@ -318,7 +318,7 @@
 - **② ★ 开场白文案过渡债 = 认可按过渡债处理,不要求现在契约化** —— 依据:硬红线(跨层 call)已正确契约化(appSuggs);开场白是**文案(内容)非跨层 call**——jobseek 味串留平台 copInit **不导致结构耦合**(删 jobseek 平台后 copInit 仍能跑、只显示一句孤儿问候,不像跨层 call 会调未定义函数断裂)→ 属**内容洁净度软债、非 §1 结构违规**;既有先例(第10轮已过审)i18n.js I18N 表已含 jobseek 文案(agentGreet=「求职 Agent / 匹配岗位 / 改简历」),单独要求 copInit 契约化却放任 agentGreet 不一致;未过度设计(没把开场白硬塞进 appSuggs 污染"建议数组"契约语义,好判断);有出口(inline 注释 + 披露留痕)。**附约束**:开场白 + i18n 表 jobseek 串**统一记入「文案归属待清账」**,3.y / 一个专门刀以 `manifest.greeting` 契约 + i18n 命名空间拆分(平台 i18n 只留平台串、jobseek 串随 manifest)一并清,别无限期滞留。→ **本轮已落显式出口**:`platform/shell/i18n.js` 头部 + `copilot-chrome.js` copInit inline 注释标出待清账。
 - **③ 后续关注(序3-d 剩余,过审后续做)**:① **aiErrHTML(红线 err 转义)** 抽时逐刀验其对 err 的转义保留(第11轮已挂号——provider 错误体经它进 DOM,须保转义);② **initShell 是壳启动非 chrome**,动前判归属(壳 vs apps)、别顺手混入 chrome 刀;③ agentInit 内嵌 command-palette(cmd 归属先厘清)、mode 群、hydrateMessages(依赖 chrome agentAppend)按归属分刀。
 
-## 第 15 轮 — ⏳ 待审(送审中) · 序3-d 剩余 chrome:辅助群 + aiErrHTML 红线 + mode 群(`a267eac..80a5489`)
+## 第 15 轮 — ✅ 通过(补审) · 序3-d 剩余 chrome:辅助群 + aiErrHTML 红线 + mode 群(`a267eac..80a5489`)
 
 > 序3-d chrome 批续三刀(无契约扩展):辅助 chrome 群 + 红线 aiErrHTML(err 转义)+ Agent mode 群,逐字节纯剪切归位平台。**红线刀 aiErrHTML 逐刀验 err 转义**(第11/14轮挂号);命令面板 / agentInit / initShell 按归属留待下一子批(见文末)。
 
@@ -344,6 +344,13 @@
 **⚠ 诚实缺口(同第12轮裁定)**:webview 强缓存旧 ai-render.js(3-d-5 前无 aiErrHTML)——`served_hasAiErrHTML=true`(cache-bust fetch 证磁盘最新含 aiErrHTML)、但初次加载页面 `window.aiErrHTML=undefined`;copilot-chrome.js 反而新鲜加载(copGo/setAppMode 全在)。**测试环境 HTTP 强缓存产物、非代码缺陷**(桌面 Tauri asset:// 无缓存);红线冒烟靠「手动补最新 ai-render.js」证真实代码工作。
 
 **序3-d 剩余(下一子批 · 需第 5 个契约,请评审预裁方向)**:命令面板 = **通用机制**(cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)+ **jobseek 命令数据**(AGENT_CMDS 的 /match…/settings、renderAgentCmds 的技能 chips)——**cmd 归属**:机制→platform、数据→apps;机制 cmdFilterList 引用 AGENT_CMDS = 反向依赖须契约化(拟 **`SeekerShell.appCommands()`**,类比 appSuggs 首个非空委派);agentInit 随命令面板;updateAgentChrome(调 renderAgentCmds)随之(或经契约);updateCopChrome 可独立抽;**initShell**(壳启动)归属决策(拟壳侧 init 模块、非 chrome);hydrateMessages(依赖 agentAppend)。
+
+**评审裁定(第 15 轮 · 补审 · 通过 · 无阻断/应改)**:
+- **补审闭合审查链缺口** —— 15 轮(含红线刀 aiErrHTML)序列先于 16/17 由另一 flow 送审、评审未审;现补送 = **红线刀不跳外审**(第14轮定的原则);16/17 建其上、15 过审**回溯验证 16/17 基线**,**14→15→16→17 审查链无缺口**。
+- **① ★ 3-d-5 aiErrHTML 红线(第11/14轮挂号)= 成立**:**err 转义** `String((err&&err.message)||err).replace(/</g,'&lt;')` → provider 错误体 `<`→`&lt;` 再进 `<span>`;构造 `{message:'<img onerror><script>'}` → 无 `<` 字面 → **无法形成元素**(转义 `<` 足矣,同代码库既有防注入模式);**onclick 仅 `copClose()+go('settings')`——仅导航打开设置、不改设置**(合 §4.2 设置不可经对话改),onclick 串静态、`m` 不入 onclick → 无二次注入;归 ai-render.js(与 aiHTML esc 安全家族同处)得当。
+- **② 3-d-4 辅助群 / 3-d-6 mode 群纯剪切**:逐字节来自旧 index.html、非纯剪切仅模块注释、0 重复;`agentGreet` 的 `T('agentGreet')` = **第14轮已裁「文案归属待清账」**(同 copInit,3.y manifest.greeting + i18n 命名空间清)——一致、无新裁定。平台核心空 diff;cargo83/clippy/fmt/tsc/node 净;index.html 2091→2064。
+- **③ 缓存缺口 = 复用第12轮裁断:接受** —— webview 强缓存旧 ai-render.js 是**测试环境 HTTP 强缓存产物、非代码缺陷**(`served_hasAiErrHTML=true` 证磁盘正确;桌面 asset:// 无缓存 + 硬刷新);红线冒烟靠手动补最新文件证真实代码 → **后续关注**:真机顺带目测一次错误卡(低优先,并入 R1)。
+- **④ 命令面板方向(15轮末问)= 已第16轮落地并过审**:第 5 契约 `SeekerShell.appCommands()` 用**并集语义**(汇总型,同 cards())——方向正确、已闭环。
 
 ## 第 16 轮 — ✅ 通过 · 序3-d 命令面板 + agentInit:appCommands 契约(第 5 个)(`a142306..28e392f`)
 
