@@ -21,6 +21,7 @@ declare function renderInterview(): void; // → logic/interview.js
    声明留作 manifest 引用的 tsc 桥;逻辑模块化(3.y)后连声明一起清。 */
 declare function frameQuery(text: string): string; // → logic/frame-query.js
 declare function copReply(text: string): string; // → logic/copilot-actions.js(序3-b;manifest appReply 引用桥)
+declare function aiSuggs(): string[]; // → logic/copilot-actions.js(序3-b;manifest appSuggs 引用桥)
 declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').CardSpec>; // → cards.js
 
 /* 徽标 liveCount 依赖(JOBS/ACTIONS→data.js · 3-f;tt 已抽壳→platform/shell/i18n.js 实际定义、tsc 桥删 · 序1-c;setState 壳全局未抽) */

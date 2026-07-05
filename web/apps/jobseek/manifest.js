@@ -61,6 +61,7 @@
     cards: SEEKER_CARDS,
     frameQuery: (t) => frameQuery(t),
     appReply: (t) => copReply(t),
+    appSuggs: () => aiSuggs(),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
   });
 })();

@@ -210,6 +210,17 @@
     return '';
   }
 
+  /** 开场建议链:AI 面板开场白的建议 chips —— 首个非空数组生效(无则空数组,cSuggs 安全)。仅问启用应用。 @returns {string[]} */
+  function appSuggs() {
+    for (const a of enabledApps()) {
+      if (typeof a.appSuggs === 'function') {
+        const r = a.appSuggs();
+        if (Array.isArray(r) && r.length) return r;
+      }
+    }
+    return [];
+  }
+
   /** 集合 id 键规则:问启用应用(应用自持集合 schema);首个非空生效,否则 undefined(调用方用默认生成)。 @param {string} name @param {any} r */
   function collId(name, r) {
     for (const a of enabledApps()) {
@@ -246,6 +257,7 @@
     cards,
     frameQuery,
     appReply,
+    appSuggs,
     collId,
     collections,
   };

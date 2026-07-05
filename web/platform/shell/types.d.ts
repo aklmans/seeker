@@ -72,6 +72,8 @@ export interface AppManifest {
   frameQuery?: (text: string) => string;
   /** 降级 mock 回复器:AI 不可用时的本地应答(命中返回 HTML 串,未命中空串;与单体 copReply 同约)。 */
   appReply?: (text: string) => string;
+  /** 开场建议器:AI 面板开场白的建议 chips(命中返回非空字符串数组,未命中空数组;与单体 aiSuggs 同约)。 */
+  appSuggs?: () => string[];
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
 }
@@ -119,6 +121,8 @@ export interface SeekerShellApi {
   frameQuery(text: string): string;
   /** 降级 mock 回复链:AI 不可用时问各启用应用的本地应答器,首个非空生效;都未命中返回空串。 */
   appReply(text: string): string;
+  /** 开场建议链:问各启用应用的建议器,首个非空数组生效;都未命中返回空数组。 */
+  appSuggs(): string[];
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */
