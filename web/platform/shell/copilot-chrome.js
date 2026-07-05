@@ -97,8 +97,9 @@ function cmdClose(){const p=$('#cmdPop');if(p)p.classList.remove('open');}
 function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').value='';$('#agentInput').style.height='auto';cmdClose();c.run();}
 
 /* ---- 抽壳序3-d-10:Agent 输入 + 命令面板接线 agentInit —— 依赖 $/IC(序1)+ 本文件 agentSend/cmd*(序3-d-1/9)/agentCollapse/setAppMode(序3-d-6);
-   ★唯一 jobseek 触点 renderAgentCmds(技能 chips,序3-d-8 在 apps)经 typeof 守卫触发(同 updateAgentChrome 既有守卫,§1 平台不硬依赖 app 渲染器;
-   若评审要 renderAppChips 契约,建议与 updateAgentChrome 一并迁);INIT@agentInit() 运行时调。 ---- */
+   ★唯一 jobseek 触点 renderAgentCmds(技能 chips,序3-d-8 在 apps)经 typeof 守卫触发(同 updateAgentChrome 既有守卫,§1 平台不硬依赖 app 渲染器)。
+   ★★待契约化账(第16轮裁定 · 强制非可选):chrome 收尾抽 updateAgentChrome 时,把 renderAgentCmds 两触点(本处 + index.html updateAgentChrome)
+   一并契约化为 SeekerShell.renderAppChips(chrome 扩展点),不留永久符号耦合。INIT@agentInit() 运行时调。 ---- */
 function agentInit(){
   $('#agentSend').innerHTML=IC.arrow; $('#agentSend').onclick=()=>agentSend();
   const inp=$('#agentInput');

@@ -946,7 +946,7 @@ function updateAgentChrome(){
   const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
   const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
-  if(typeof renderAgentCmds==='function') renderAgentCmds();   // 命令 chips 双语,随语言重渲(含 ac-label)
+  if(typeof renderAgentCmds==='function') renderAgentCmds();   // 命令 chips 双语,随语言重渲(含 ac-label)。★待契约化账(第16轮强制):此触点 + agentInit(copilot-chrome.js)的 renderAgentCmds,chrome 收尾抽本函数时一并契约化 SeekerShell.renderAppChips,不留符号耦合
 }
 // Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
 function updateCopChrome(){
