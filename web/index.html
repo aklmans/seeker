@@ -864,6 +864,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/ai-render.js"></script>
 <script src="./platform/shell/nav.js"></script>
 <script src="./platform/shell/ai-engine.js"></script>
+<script src="./platform/shell/data-store.js"></script>
 <script src="./platform/shell/copilot-chrome.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
@@ -1659,30 +1660,7 @@ window.addEventListener('seeker-rt-ready', hydrateJobs);
 
 /* ===== 业务数据落地:其余集合接仓库(skills/actions/iv_records;jobs 见上,resumes 紧随) =====
    通用「整集合 upsert + 水合(首启种子)」。记录少,整集合写简单稳妥;隐私表不在此(走 profile)。 */
-function collPersistOn(){ return jobsPersistOn(); } // 同条件:桌面 + SeekerRT
-// 种子守卫:首启把内存 mock 作种子写一次;之后(含"清空所有数据"后)不再播种,演示数据不复活。
-function seededColl(name){ try{ return localStorage.getItem('jh-seeded-'+name)==='1'; }catch(_e){ return false; } }
-function markSeededColl(name){ try{ localStorage.setItem('jh-seeded-'+name,'1'); }catch(_e){} }
-/** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。 */
-function withCollId(name, r){
-  if(r && r.id!=null) return r;
-  const id = window.SeekerShell.collId(name, r);           // 集合 id 键规则经契约问应用(如 skills→name);平台无 jobseek knowledge
-  return Object.assign({ id: id!=null ? id : ('r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)) }, r);
-}
-/** 整集合 upsert(变更后调用)。 @param {string} name @param {any[]} arr */
-function persistColl(name, arr){
-  if(!collPersistOn()) return;
-  for(const r of arr){ window.SeekerRT.db.upsert(name, withCollId(name, r)).catch(e=>console.error('[data] upsert '+name, e)); }
-}
-/** 水合:载仓库;首启把内存 mock 作种子写入;再用仓库内容替换内存数组(就地)。 */
-async function hydrateColl(name, arr){
-  if(!collPersistOn()) return;
-  try{
-    const rows = await window.SeekerRT.db.list(name);
-    arr.length=0;                                    // 不再静默播种:首启 DB 空 → 内存也空 → 各视图空态/落地页
-    if(rows.length){ markOnboarded(); arr.push(...rows); } // 有数据 = 已上手,水合
-  }catch(e){ console.error('[data] hydrate '+name, e); }
-}
+/* 通用集合数据引擎 collPersistOn…hydrateColl 已抽壳 → platform/shell/data-store.js(序4-b · 红线:profile 走 rt.profile 不经此) */
 /** 显式播种演示数据(用户在落地页选「先用示例逛一圈」时)。用 INIT 抓的 SEED 快照持久化 + 标记演示模式。 */
 function seedDemoData(){
   captureSeed();
