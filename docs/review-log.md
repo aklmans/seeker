@@ -454,7 +454,7 @@
 - **④ ⚠ 前瞻归属债(INIT 分解 · 非阻塞 · 记后续)**:index.html 的 INIT(原单体启动序列,原序照抄)仍**直调 apps `captureSeed()`/`syncDemoBanner()`**。判定 = **过渡态非违规**:INIT 是 index.html 的过渡 bootstrap 胶水(**非平台模块**),混调平台(buildNav/copInit)+ apps(captureSeed/syncDemoBanner)是尚未分解的单体 bootstrap;§1 约束的是**平台模块不依赖 apps**,index.html 不是平台模块;逐字节原序照抄、非本刀新增。**出口**:INIT/bootstrap 分解时(随序5 shell-boot/initShell 归属,或专门 INIT 分解刀),jobseek 专属 INIT 调用移入 jobseek 自己的 init(`manifest.init()` 钩子 / rt-ready 绑定),使 shell-boot 只调平台函数 + manifest.init 契约。→ 已挂 index.html INIT inline 出口注释。
 - **⑤ 归属/待契约化账(更新)**:`renderAgentCmds` ✅ 已清(第17轮);仍开 = **① INIT 分解**(captureSeed/syncDemoBanner INIT 调用 + initShell 归属 → `manifest.init` 钩子 / shell-boot,随序5)+ **② 开场白/i18n/agentGreet 文案归属**(3.y 以 manifest.greeting + i18n 命名空间清)。
 
-## 第 19 轮 — ⏳ 待审(送审中) · 序5-a(★★双红线)profile 通道 → platform/shell/profile.js(`d79f4db..6377889`)
+## 第 19 轮 — ✅ 通过(双红线核心达标 · 带 1 项序5-完成前必清) · 序5-a profile 通道 → platform/shell/profile.js(`d79f4db..6377889`)
 
 > 序5(设置框架 · 全程最硬刀)首刀:profile 通道 persistProfileField/hydrateProfile → **新独立模块 profile.js(模块边界即红线边界)**。**双红线代码层 + 构造场景双验**,请评审逐行严审。序5 剩余(settings 框架 / renderSettings 拆 + manifest.settings 契约 / initShell / INIT 分解)本批续做。
 
@@ -473,3 +473,8 @@
 **零回归**:persistProfileField/hydrateProfile 各全局唯一定义、8 行逐字节;rt-ready 时序守法(profile.js classic head、解析期注册 hydrateProfile → 先于 deferred dispatch@881,相对序不变);node/内联 8 块/tsc(31 外链)净;**后端红线核心(capability QUERYABLE / data.rs profile / invariants / CSP)空 diff**;冒烟 0 console 错。
 
 **序5 剩余(本批续做)**:5-b `settingsPersistOn`/`saveSettings`/`hydrateSettings`(混合平台外观 + jobseek goals/weights)归属定;5-c **renderSettings 拆壳部分(theme/lang/density/model → platform)+ jobseek 段(goals/weights/主简历 → apps)· 第 7 契约 `manifest.settings`**(用户裁定本批拆);5-d `initShell` → platform;5-e INIT 分解(captureSeed/syncDemoBanner → jobseek `manifest.init`,第18轮债)。
+
+**评审裁定(第 19 轮 · 通过 · 双红线核心达标 · 带 1 项序5-完成前必清)**:
+- **① 序5-a 通过** —— **红线① profile 硬隔离 · 代码层 + 后端双证**:profile.js 代码**零 rt.db**(2 处 rt.db 命中全在注释=红线文档,代码只 `rt.profile.set`/`rt.profile.getAll`)+ 后端 `capability`(QUERYABLE 不含 profile)/`data.rs`(table_for)/`invariants`/CSP **空 diff**(即便前端异常,后端 AI 仍读不到/写不到 profile);**模块边界=红线边界**(profile.js 与 data-store.js rt.db 引擎物理分离=好设计);构造场景(rt.db Proxy 计数)与代码结论一致。**红线② 设置不可经对话改**:profile 只经设置页 data-pf 改;AI 非 QUERYABLE 读不到 + `profile_set` 是 Tauri 命令非 capability、模型工具循环写不到。8 行 100% 逐字节纯剪切、0 重复、载序守法(@868 classic 先于 module dispatch@881);cargo83/clippy/fmt/tsc/node 净。
+- **② ★ PROFILE 数据对象归属 = 应移平台(序5-完成前必清 · 非本刀阻断 · 对安全无损)** —— PROFILE 定义在 jobseek(`intake-action.js:127`),profile.js(**正经平台模块**)line 12 `PROFILE[k]=p[k]` 具名引用它 = **真平台→apps §1 债**(异于第18轮 captureSeed——那调用者是 index.html 过渡胶水非平台模块;此处 jobseek 删则 hydrateProfile 抛)。**澄清**:评审记录**无**"PROFILE 留 jobseek"裁定(那是主循环 AskUserQuestion 时用户选的"过渡"项、非评审裁定);据分析 PROFILE(name/phone/email=用户身份,对应 `rt.profile` **单一共享仓库**、非 per-app)本质是**壳级身份、应归平台** → profile.js 引用变平台→平台。**对安全无损**(PROFILE 只是内存镜像、隔离在 rt.profile + 后端,本刀双红线仍成立);纯 §1 架构洁净度债。对比 data-store.js 泛型(`persistColl(name,arr)` 不具名引用 JOBS)故 app-agnostic;profile.js 具名引用 PROFILE→app 耦合,移 PROFILE→平台消此不对称。→ **并入 5-b/c 归属批**(5-a 过渡留 jobseek 与"完成前必清"兼容)。
+- **③ 序5 剩余(认可方向)**:**PROFILE→平台(新增必清)** + settingsPersistOn 归属 + renderSettings 拆(第 7 契约 manifest.settings)+ initShell + INIT 分解。
