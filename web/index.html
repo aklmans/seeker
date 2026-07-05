@@ -984,6 +984,9 @@ function hydrateSettings(){
 /* persistProfileField/hydrateProfile(+rt-ready)已抽壳 → platform/shell/profile.js(序5-a · ★★双红线:rt.profile 隔离、绝不串 rt.db;profile 只经设置页改) */
 /* _mgrEsc/_mgrTime/openHistoryManager/openMemoryManager/openDocsManager/openMcpManager 已抽壳 → platform/shell/settings.js(序5-c-3;隐私/RAG/MCP 管理,零 jobseek 依赖) */
 // 清空所有业务数据(#业务打磨):清前自动备份;种子守卫保证清后不再播种演示数据。
+// ★★待清账(第22轮[建议] · 有时限:阶段4「第二应用」之前或同刀,勿延后):CLEARABLE_COLLS 硬编码集合名 → 改用
+// SeekerShell.collections()(契约已就位)∪ 壳自持 messages;否则第二应用一落,「清空全部数据」会静默漏掉其集合
+// → 破坏「破坏性操作完整可撤销」红线(§4-3 反焦虑)。同刀解 clearAllDataFlow 内 setDemoMode(jobseek)归属。
 const CLEARABLE_COLLS=['jobs','skills','actions','resumes','iv_records','messages'];
 async function clearAllCollections(){ // 抽出便于安全测试 + 不依赖 reload
   const rt=window.SeekerRT; if(!rt) return;

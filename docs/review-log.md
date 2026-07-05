@@ -550,7 +550,7 @@
 - **② 过渡债评估(执行 Agent 主动披露的两条 · 认可方向)**:(1)`setState`/`saveSettings`/`hydrateSettings`/`WEIGHTS` 混合归属 = 老问题、**本刀未扩大**,随后续 settingsPersistOn 归属刀处理,可接受;(2)`clearAllDataFlow` 混 jobseek `setDemoMode` + 硬编码集合名 = **认可方向:后续改用既有 `SeekerShell.collections()` 契约**取集合列表(不新增第 8 契约)+ 解 setDemoMode 归属,记入归属待清账。**注**:settings.js line 48 硬编码 `'messages'` 是**壳自持集合**、非 jobseek 耦合,那处 OK。
 - **③ 待清账(更新)**:已清 = renderAgentCmds(17)/PROFILE→平台(20)/**renderSettings 拆(本轮,第 7 契约)**;仍开 = settingsPersistOn/saveSettings/WEIGHTS 混合归属、**clearAllDataFlow 分解**(→ SeekerShell.collections() + setDemoMode 归属)、initShell、INIT 分解、文案归属(3.y)。
 
-## 第 22 轮 — ⏳ 待审(送审中) · 序5 收官:5-d initShell(shell-boot)+ 5-e INIT 分解(第 8 契约 `manifest.init`)(`edcef78..d9fee71`)
+## 第 22 轮 — ✅ 通过 · 序5 收官:5-d initShell(shell-boot)+ 5-e INIT 分解(第 8 契约 `manifest.init`)· 🏁抽壳搬迁收官(`edcef78..d9fee71`)
 
 > **序5 最后两刀 = 抽壳搬迁(序1–5)收官**:initShell 落第17轮裁定的独立 shell-boot 刀;INIT 分解清第18轮归属债(第 8 个契约)。5-e 含两条**披露的行为语义变化**(时点 + enabled-gating),请评审逐条裁。
 
@@ -570,3 +570,9 @@
 **零回归实证**:5-d 23 行逐字节(git diff 删除==搬入)、initShell 全局唯一;5-e registry.initApps 纯委派(零 jobseek 符号);node/内联 8 块/tsc(34 外链)净;**红线核心空 diff**;冒烟(no-cache server):initShell 从新家生效(侧栏接线/langBtn)、SEED 于 INIT 抓取(12 jobs)、demoMode off 无 banner、seedDemoData 端到端 banner 仍出、0 console 错。**index.html 1354→1330(阶段3 起 −72%)**。
 
 **🏁 序5 / 抽壳搬迁收官盘点**:序1(基础工具)→2(AI 引擎)→3(chrome)→4(数据框架)→5(设置框架:profile 通道/PROFILE/renderSettings 拆/initShell/INIT 分解)全部完成;**8 个 `SeekerShell.*` 契约**(frameQuery/appReply/appSuggs/appCommands/collId/renderAppChips/appSettings/**initApps**;选择型首个非空 · 汇总型并集/副作用);platform/shell 15 模块。**仍开归属债(不阻塞收官,后续刀)**:settingsPersistOn/saveSettings/hydrateSettings/WEIGHTS/setState 混合归属、clearAllDataFlow 分解(→SeekerShell.collections() 替硬编码 + setDemoMode 归属)、toggleSidebar/syncSbToggleTitle 等壳杂项、开场白/i18n 文案归属(3.y)、3.y 类型化(单列里程碑)。
+
+**评审裁定(第 22 轮 · 通过 · 无阻断/无应改 · 🏁抽壳搬迁 arc 收官成立)**:
+- **① 验收全过**:5-d 逐字节纯剪切(旧 vs shell-boot.js diff 空、全仓唯一);5-e **第8契约 §1 干净**(registry `enabledApps().forEach(a=>typeof a.init==='function'&&a.init())` 纯委派零 jobseek 符号);**第18轮 INIT 分解债清**(INIT 只调平台函数 + `SeekerShell.initApps()`,captureSeed/syncDemoBanner 全仓仅注释零直调);载序正确(registry@858 → shell-boot@870 → INIT,依赖 $/setLang 已在前);红线核心全 0 行;**契约体系 8 就位 = 4 选择型 + 4 汇总型**;类型/账本齐(C4);cargo83/clippy/fmt/tsc/node 净。
+- **② ★两条披露语义 = 均认可**:(1)**captureSeed 时点(→go 后)= 行为等价,三证**——快照源四数组在新旧位置间零变异(chrome 接线 + renderOverview 只读)、仍先于 hydration(rt-ready 在 INIT 同步块后)、**无消费者被饿死**(SEED 全仓唯一读者 = seedDemoData 且自带 captureSeed 兜底,`if(SEED)return` 幂等再兜一层);(2)**enabled-gating = D2 对齐 + 零回归**——`enabledApps()` 与全部 7 契约同闸,jobseek 默认启用与旧逐调等价;旧无条件直调在禁用时**给已下架应用注示例条(.main UI 泄漏)**,新行为跳过更正确;SEED 是 jobseek 私有、平台不读,禁用不抓无副作用。
+- **③ 🏁 arc 收官盘点**:序1→5 全落;**index.html 4602→1330(−71%)**;platform/shell **14 个运行时 .js**(+types.d.ts 契约定义;送审"15 模块"含 types 口径、非缺陷);8 契约成熟。
+- **④ ★[建议](前瞻 · 非本刀 · 有时限)**:**clearAllDataFlow → SeekerShell.collections() 宜排在阶段4「第二应用」之前或同刀,勿无限延后** —— 现债是硬编码集合名,jobseek 独存时仅口径问题;但**阶段4 第二应用一落,「清空全部数据」会静默漏掉第二应用的集合 → 破坏「破坏性操作完整可撤销」红线(§4-3 反焦虑)**。契约 collections() 已就位、替换成本低。其余归属债(settingsPersistOn 系/setState/文案)可随 3.y 收。→ **已落显式出口**:clearAllDataFlow inline 注释 + CLAUDE.md §5 阶段4 行前置条件标注。
