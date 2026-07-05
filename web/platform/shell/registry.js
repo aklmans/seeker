@@ -17,6 +17,7 @@
   /** @typedef {import('./types').LString} LString */
   /** @typedef {import('./types').CardSpec} CardSpec */
   /** @typedef {import('./types').CommandSpec} CommandSpec */
+  /** @typedef {import('./types').AppSettingsSpec} AppSettingsSpec */
 
   const LS_KEY = 'seeker-apps';
   /** @type {AppManifest[]} 注册序 */
@@ -243,6 +244,19 @@
     });
   }
 
+  /** 各启用应用的设置贡献(新增 tab + 追加进壳既有 tab)。汇总型:并集(同 cards())。 @returns {AppSettingsSpec[]} */
+  function appSettings() {
+    /** @type {AppSettingsSpec[]} */
+    const out = [];
+    enabledApps().forEach((a) => {
+      if (typeof a.settings === 'function') {
+        const s = a.settings();
+        if (s) out.push(s);
+      }
+    });
+    return out;
+  }
+
   /** 集合 id 键规则:问启用应用(应用自持集合 schema);首个非空生效,否则 undefined(调用方用默认生成)。 @param {string} name @param {any} r */
   function collId(name, r) {
     for (const a of enabledApps()) {
@@ -282,6 +296,7 @@
     appSuggs,
     appCommands,
     renderAppChips,
+    appSettings,
     collId,
     collections,
   };

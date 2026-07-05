@@ -49,6 +49,25 @@ export interface CardSpec {
   persist?: boolean;
 }
 
+/** 应用贡献的完整设置 tab(插入壳设置页 tab 栏)。 */
+export interface SettingsTab {
+  /** tab id(不可与壳 tab 重名:basic/profile/model/data/about)。 */
+  id: string;
+  label: LString;
+  /** 渲染本 tab 内容,返回 HTML 字符串。 */
+  render: () => string;
+  /** 渲染后事件接线(每次 renderSettings 完成 DOM 替换后调用;元素不在当前 tab 时选择器为空、no-op)。 */
+  wire?: () => void;
+}
+
+/** 应用的设置贡献:新增 tab + 追加进壳既有 tab 尾部的内容(不新增 tab 按钮)。 */
+export interface AppSettingsSpec {
+  /** 新增 tab(并集顺序插入壳 tab 之间)。 */
+  tabs?: SettingsTab[];
+  /** tab id → 追加内容(如壳 profile tab 尾部追加主简历资料、data tab 尾部追加"我的简历"行)。 */
+  extend?: Record<string, { render: () => string; wire?: () => void }>;
+}
+
 /** Agent /命令面板项 —— 与单体 AGENT_CMDS 条目同构。 */
 export interface CommandSpec {
   /** /斜杠命令(如 '/match');cmdFilterList 按此 + label + desc 模糊过滤。 */
@@ -90,6 +109,8 @@ export interface AppManifest {
   appCommands?: () => CommandSpec[];
   /** 重渲本应用的 Agent chrome 贡献(技能 chips → #agentCmds;随语言/初始化触发)。副作用、无返回。 */
   renderAppChips?: () => void;
+  /** 设置页贡献:新增 tab(goals/weights 等)+ 追加进壳既有 tab(profile 尾部主简历资料、data 尾部简历行等)。 */
+  settings?: () => AppSettingsSpec;
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
 }
@@ -143,6 +164,8 @@ export interface SeekerShellApi {
   appCommands(): CommandSpec[];
   /** 通知各启用应用重渲其 Agent chrome 贡献(技能 chips);汇总型副作用,全调无返回。 */
   renderAppChips(): void;
+  /** 各启用应用的设置贡献(tabs 插入 + extend 追加)。汇总型:并集(同 cards())。 */
+  appSettings(): AppSettingsSpec[];
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */
