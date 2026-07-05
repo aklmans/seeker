@@ -317,3 +317,30 @@
 - **① 序3-d-1/2/3 通过** —— **3-d-1 红线**(第11轮点名逐刀验):用户输入进 DOM 前转义逐字保留(copilot-chrome.js:23/34 `Append('user', text.replace(/</g,'&lt;'))`)、构造 `<img onerror>`→`&lt;img&gt;`(DOM 无 img)、逐字节纯剪切、copSend/agentSend 0 重复;**3-d-2 appSuggs 契约正当 + §1 纯净**:`registry.appSuggs`(遍历应用、首个非空数组生效、否则 `[]`、Array 守卫,同 frameQuery/appReply/collId 模式)+ types 干净 + manifest `appSuggs:()=>aiSuggs()` + 账本 aiSuggs 桥;调用点 `cSuggs(aiSuggs())→cSuggs(SeekerShell.appSuggs())` → 平台 copInit **零 aiSuggs 直调(=0)**、经契约委派、jobseek 建议器(aiSuggs)留 apps、语义等价(单应用退化为 aiSuggs 结果);**3-d-3 copInit** 31 新增行中 30 逐字节纯剪切、1 行 appSuggs 改写(已验)。平台核心空 diff(capability D3/secret/data profile/CSP/invariants/runtime 未触);cargo83/clippy/fmt/tsc/node 净;index.html 2121→2091。
 - **② ★ 开场白文案过渡债 = 认可按过渡债处理,不要求现在契约化** —— 依据:硬红线(跨层 call)已正确契约化(appSuggs);开场白是**文案(内容)非跨层 call**——jobseek 味串留平台 copInit **不导致结构耦合**(删 jobseek 平台后 copInit 仍能跑、只显示一句孤儿问候,不像跨层 call 会调未定义函数断裂)→ 属**内容洁净度软债、非 §1 结构违规**;既有先例(第10轮已过审)i18n.js I18N 表已含 jobseek 文案(agentGreet=「求职 Agent / 匹配岗位 / 改简历」),单独要求 copInit 契约化却放任 agentGreet 不一致;未过度设计(没把开场白硬塞进 appSuggs 污染"建议数组"契约语义,好判断);有出口(inline 注释 + 披露留痕)。**附约束**:开场白 + i18n 表 jobseek 串**统一记入「文案归属待清账」**,3.y / 一个专门刀以 `manifest.greeting` 契约 + i18n 命名空间拆分(平台 i18n 只留平台串、jobseek 串随 manifest)一并清,别无限期滞留。→ **本轮已落显式出口**:`platform/shell/i18n.js` 头部 + `copilot-chrome.js` copInit inline 注释标出待清账。
 - **③ 后续关注(序3-d 剩余,过审后续做)**:① **aiErrHTML(红线 err 转义)** 抽时逐刀验其对 err 的转义保留(第11轮已挂号——provider 错误体经它进 DOM,须保转义);② **initShell 是壳启动非 chrome**,动前判归属(壳 vs apps)、别顺手混入 chrome 刀;③ agentInit 内嵌 command-palette(cmd 归属先厘清)、mode 群、hydrateMessages(依赖 chrome agentAppend)按归属分刀。
+
+## 第 15 轮 — ⏳ 待审(送审中) · 序3-d 剩余 chrome:辅助群 + aiErrHTML 红线 + mode 群(`a267eac..80a5489`)
+
+> 序3-d chrome 批续三刀(无契约扩展):辅助 chrome 群 + 红线 aiErrHTML(err 转义)+ Agent mode 群,逐字节纯剪切归位平台。**红线刀 aiErrHTML 逐刀验 err 转义**(第11/14轮挂号);命令面板 / agentInit / initShell 按归属留待下一子批(见文末)。
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 3-d-4 `02bfb70` | 辅助 chrome copGo/agentChat/agentCancel/aiChatAvailable/agentScroll(5 单行) | platform/shell/copilot-chrome.js | 纯抽壳 |
+| 3-d-5 `9977231` | **红线** AI 错误渲染 aiErrHTML | platform/shell/ai-render.js | **红线抽壳(err 转义)** |
+| 3-d-6 `80a5489` | Agent mode 群 appMode/appReady/renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet | platform/shell/copilot-chrome.js | 纯抽壳(2 段非连续绕 initShell) |
+
+**★ 序3-d-5 aiErrHTML(红线 · 第11/14轮挂号 · 评审逐刀验 err 转义)**:provider 错误体经 streamReply onError → DOM。转义逐字保留:`const m=String((err&&err.message)||err).replace(/</g,'&lt;')`;onclick 只 `copClose()+go('settings')`(**设置不可经对话改**、仅导航打开,不改配置/密钥)。归 `ai-render.js`(与 aiHTML esc 安全家族同处)。**构造场景冒烟**(手动补最新 ai-render.js 绕 webview 缓存):`aiErrHTML({message:'<img src=x onerror=alert(1)><script>bad()</script>'})` → probe **无 img 元素 / 无 script 元素** + `&lt;img` 转义字面在 + 设置按钮在 → provider 错误注入防住。
+
+**序3-d-4 辅助 chrome**:copGo(关面板+导航)/agentChat(追加到活动面板)/agentCancel(取消回执)/aiChatAvailable(流式能力判定)/agentScroll,5 个单行 chrome,无红线、无 jobseek 代码耦合(jobseek 经 onclick 字符串运行时调 copGo/agentCancel = 过渡态,同 copReply 先例)。
+
+**序3-d-6 mode 群**:appMode/appReady(classic 全局词法绑定,与消费者 copSend/agentChat 同文件)+ renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet。2 段非连续(绕开 initShell)。⚠ agentGreet 的 `T('agentGreet')` = 平台 i18n jobseek 味开场白 = **文案归属待清账**(同 copInit,第14轮已裁认可、i18n.js 头部出口已挂)。⚠ **initShell 是壳启动非 chrome**,留 index.html、归属另判(评审后续关注③),未混入本刀。
+
+**零回归实证**:
+- 12 基元各全局唯一定义(grep `function X`/`let X` = 1);函数体/代码行 **git diff 删除 == 搬入 逐字节一致**(3-d-4:5 行;3-d-5:5 行含转义;3-d-6:20 代码行,唯我加的 3 行块注释非代码);
+- node `--check` 每文件净、内联 8 块语法净、tsc `--noEmit` 净;
+- 冒烟(fresh server;mode 群/辅助 chrome 真加载,aiErrHTML 手动补最新绕缓存):红线 aiErrHTML 转义防注入、setAppMode('agent')→body[data-appmode]=agent + agentGreet 渲染 + renderModeSwitch [agent:on,editor:off] + agentChat 追加、reset editor、0 console 错;
+- **红线核心空 diff**:src-tauri(capability D3/secret/data profile/CSP)+ invariants + runtime 本批未触;
+- index.html 2091→2064;copilot-chrome.js 追加辅助群+mode 群,ai-render.js 追加 aiErrHTML。
+
+**⚠ 诚实缺口(同第12轮裁定)**:webview 强缓存旧 ai-render.js(3-d-5 前无 aiErrHTML)——`served_hasAiErrHTML=true`(cache-bust fetch 证磁盘最新含 aiErrHTML)、但初次加载页面 `window.aiErrHTML=undefined`;copilot-chrome.js 反而新鲜加载(copGo/setAppMode 全在)。**测试环境 HTTP 强缓存产物、非代码缺陷**(桌面 Tauri asset:// 无缓存);红线冒烟靠「手动补最新 ai-render.js」证真实代码工作。
+
+**序3-d 剩余(下一子批 · 需第 5 个契约,请评审预裁方向)**:命令面板 = **通用机制**(cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)+ **jobseek 命令数据**(AGENT_CMDS 的 /match…/settings、renderAgentCmds 的技能 chips)——**cmd 归属**:机制→platform、数据→apps;机制 cmdFilterList 引用 AGENT_CMDS = 反向依赖须契约化(拟 **`SeekerShell.appCommands()`**,类比 appSuggs 首个非空委派);agentInit 随命令面板;updateAgentChrome(调 renderAgentCmds)随之(或经契约);updateCopChrome 可独立抽;**initShell**(壳启动)归属决策(拟壳侧 init 模块、非 chrome);hydrateMessages(依赖 agentAppend)。
