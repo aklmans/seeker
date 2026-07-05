@@ -453,3 +453,23 @@
 - **③ resumes profile 红线 + rt-ready 时序守法(逐字保留 · 代码层验)**:persistResume 只存 `{id,jobId,template,modules}`——联系方式绝不入 resumes → `query_data('resumes')` 天然无联系方式;persistence.js@classic `<script src>` 解析期注册监听器 → 先于 deferred module dispatch@881(相对序不变,同第5轮时序模型)。
 - **④ ⚠ 前瞻归属债(INIT 分解 · 非阻塞 · 记后续)**:index.html 的 INIT(原单体启动序列,原序照抄)仍**直调 apps `captureSeed()`/`syncDemoBanner()`**。判定 = **过渡态非违规**:INIT 是 index.html 的过渡 bootstrap 胶水(**非平台模块**),混调平台(buildNav/copInit)+ apps(captureSeed/syncDemoBanner)是尚未分解的单体 bootstrap;§1 约束的是**平台模块不依赖 apps**,index.html 不是平台模块;逐字节原序照抄、非本刀新增。**出口**:INIT/bootstrap 分解时(随序5 shell-boot/initShell 归属,或专门 INIT 分解刀),jobseek 专属 INIT 调用移入 jobseek 自己的 init(`manifest.init()` 钩子 / rt-ready 绑定),使 shell-boot 只调平台函数 + manifest.init 契约。→ 已挂 index.html INIT inline 出口注释。
 - **⑤ 归属/待契约化账(更新)**:`renderAgentCmds` ✅ 已清(第17轮);仍开 = **① INIT 分解**(captureSeed/syncDemoBanner INIT 调用 + initShell 归属 → `manifest.init` 钩子 / shell-boot,随序5)+ **② 开场白/i18n/agentGreet 文案归属**(3.y 以 manifest.greeting + i18n 命名空间清)。
+
+## 第 19 轮 — ⏳ 待审(送审中) · 序5-a(★★双红线)profile 通道 → platform/shell/profile.js(`d79f4db..6377889`)
+
+> 序5(设置框架 · 全程最硬刀)首刀:profile 通道 persistProfileField/hydrateProfile → **新独立模块 profile.js(模块边界即红线边界)**。**双红线代码层 + 构造场景双验**,请评审逐行严审。序5 剩余(settings 框架 / renderSettings 拆 + manifest.settings 契约 / initShell / INIT 分解)本批续做。
+
+| 刀 | 内容 | 去向 | 红线 |
+|---|---|---|---|
+| 5-a `6377889` | profile 通道 persistProfileField/hydrateProfile(+rt-ready) | platform/shell/**profile.js**(新) | ★★双红线 |
+
+**★★ 红线①(profile 硬隔离)· 代码层 + 构造场景双验**:
+- **代码层**:profile.js 代码零 `SeekerRT.db`(grep=0);仅 `persistProfileField`→`rt.profile.set(k,String(v))`、`hydrateProfile`→`rt.profile.getAll()`。2 处 `rt.db` 命中全在注释(解释隔离)。
+- **构造场景(runtime 实证)**:rt.db 挂 Proxy 捕获任意访问 + 强制 settingsPersistOn=true,调 `persistProfileField('phone','13800000000')` → **rt.profile.set 命中 1 次、rt.db Proxy 命中 0 次**(`RL_never_touched_rt_db=true`)——profile 绝不串 rt.db。
+- **模块边界即红线边界**:profile.js(rt.profile)与 data-store.js(rt.db 通用集合引擎)**物理分离**;后端 capability.rs QUERYABLE 不含 profile(结构性隔离,本批空 diff)。
+**★★ 红线②(设置不可经对话改)**:profile 只经设置页 data-pf 输入改(renderSettings,序5-c 待拆)、Agent 只引导去设置页(copReply 拦截,未改)。
+
+**归属(用户裁定)**:PROFILE 数据对象留 jobseek(intake-action.js · 过渡,hydrateProfile 运行时引用);settingsPersistOn 留 index.html(过渡)。
+
+**零回归**:persistProfileField/hydrateProfile 各全局唯一定义、8 行逐字节;rt-ready 时序守法(profile.js classic head、解析期注册 hydrateProfile → 先于 deferred dispatch@881,相对序不变);node/内联 8 块/tsc(31 外链)净;**后端红线核心(capability QUERYABLE / data.rs profile / invariants / CSP)空 diff**;冒烟 0 console 错。
+
+**序5 剩余(本批续做)**:5-b `settingsPersistOn`/`saveSettings`/`hydrateSettings`(混合平台外观 + jobseek goals/weights)归属定;5-c **renderSettings 拆壳部分(theme/lang/density/model → platform)+ jobseek 段(goals/weights/主简历 → apps)· 第 7 契约 `manifest.settings`**(用户裁定本批拆);5-d `initShell` → platform;5-e INIT 分解(captureSeed/syncDemoBanner → jobseek `manifest.init`,第18轮债)。
