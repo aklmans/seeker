@@ -256,9 +256,9 @@
 - **③ 序3-d 红线刀放行条件(重申)**:copSend/agentSend 抽 platform,逐刀验用户输入转义 `text.replace(/</g,'&lt;')` 逐字保留、`frameQuery→appReply→streamReply` 转发链不变、`persistMsg` 依赖处理;`initShell`/agent mode 归属(壳 vs apps)动前先判。
 - **后续关注(下一 session)**:序4(数据框架)/序5(设置框架)是**最重红线批**(profile 硬隔离 / 设置不可经对话改),抽 `persist*`/`hydrate*`/`renderSettings` 时构造场景严审——保持一基元一 commit + 契约扩展必审,别合刀图快。
 
-## 第 13 轮 — ⏳ 待审(送审中)· 序4-a/b/c:数据框架(collId 契约 + 通用引擎 + messages · profile 红线)(`5529d77..e73aadf`)
+## 第 13 轮 — ✅ 通过 · 序4-a/b/c:数据框架(collId 契约 + 通用引擎 + messages · profile 红线)(`5529d77..e73aadf`)
 
-> 序4(数据框架 · 最重红线批)前三刀:collId 契约扩展 + 通用集合引擎 + messages 持久化,profile 硬隔离逐字保持。**请评审代码层核实 collId 契约 + profile 隔离不削弱 + messages QUERYABLE 隔离。**
+> profile 硬隔离**代码层 + 构造场景验证逐字保持(双重保护)**;messages 不可 AI query;collId 契约语义等价、§1 纯净。**裁定:① 序4-a/b/c 通过;② 序4 剩余放行(新 session)。** 详见文末。
 
 | 刀 | 内容 | 去向 | 红线/契约 |
 |---|---|---|---|
@@ -273,3 +273,8 @@
 **零回归**:各刀符号逐字来自旧 index.html、搬出符号 index.html 无定义、node/内联 8 块/tsc 净;冒烟——collId 契约链(skills→name)、data-store 全局(persistColl/hydrateColl/withCollId)、collPersistOn web=false、0 错误。index.html 2156→2121;platform/shell 11 模块。红线核心(runtime/D3/secret/profile 文件/CSP/invariants)空 diff。
 
 **序4 剩余(过审后新 session)**:4-d jobseek 专属数据大择取(jobs/resumes/种子/编排→apps,5 段 + rt-ready 绑定)+ jobsPersistOn/onboarding/demoMode 归属 + hydrateMessages(chrome 依赖)+ **profile 序5(persistProfileField/hydrateProfile · 双红线,构造场景严审)**。
+
+**评审裁定(第 13 轮 · 通过)**:
+- **① 序4-a/b/c 通过** —— **profile 硬隔离双重保护逐字保持(代码层 + 构造场景验)**:① 引擎零 `rt.profile`(data-store persistColl/hydrateColl/persistMsg 只走 `rt.db.upsert/list`,rt.profile 唯一命中是红线注释、无调用 → profile 仓库经此引擎碰不到)② 后端 `table_for` 兜底(data.rs/capability.rs/invariants/CSP 本批空 diff,即便前端 `persistColl('profile',…)` 后端 table_for 白名单**拒 'profile' 集合**);**构造场景** `persistColl('jobs',[{…,phone}])` → 字段进 jobs 业务集合 data_json、**非 profile 仓库**(rt.profile 独立通道)。**messages 不可 AI query**(QUERYABLE=jobs/skills/actions/resumes/iv_records 本批未改、不含 messages)。**4-a collId 契约语义等价 + §1 纯净**:withCollId has-id 分支不变、`collId('skills',r)=r.name` 精确等价旧特判、jobseek schema 移入 manifest、平台引擎零 schema knowledge。data-store 33 行 31 逐字节纯剪切 + 2 行 collId 改写(验等价);cargo83/clippy/fmt/tsc/node 净;红线核心空 diff。**证明「最重红线也能纯剪切 + 契约化零回归」。**
+- **② 序4 剩余放行条件(新 session)**:4-d jobseek 专属数据大择取(**验搬出符号不重复 + rt-ready 绑定时序**;jobsPersistOn/onboarding/demoMode 归属动前判 壳 vs apps);序5 profile 设置框架(persistProfileField/hydrateProfile + renderSettings 壳部分 —— **抽 rt.profile 通道本身,逐行 + 构造场景严审**:profile 写仍只经 rt.profile 不串 rt.db、AI 仍拿不到 profile、设置不可经对话改)。
+- **后续关注(备查)**:① 序4-d **rt-ready 立即执行绑定**(hydrateColl 在 seeker-rt-ready 触发)搬 apps 须保**监听器注册在 dispatch 前的不变式**(同第5轮时序法);② collId 生成格式与旧略异(不透明 id、边缘路径),**非回归**,记一笔。
