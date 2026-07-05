@@ -479,7 +479,7 @@
 - **② ★ PROFILE 数据对象归属 = 应移平台(序5-完成前必清 · 非本刀阻断 · 对安全无损)** —— PROFILE 定义在 jobseek(`intake-action.js:127`),profile.js(**正经平台模块**)line 12 `PROFILE[k]=p[k]` 具名引用它 = **真平台→apps §1 债**(异于第18轮 captureSeed——那调用者是 index.html 过渡胶水非平台模块;此处 jobseek 删则 hydrateProfile 抛)。**澄清**:评审记录**无**"PROFILE 留 jobseek"裁定(那是主循环 AskUserQuestion 时用户选的"过渡"项、非评审裁定);据分析 PROFILE(name/phone/email=用户身份,对应 `rt.profile` **单一共享仓库**、非 per-app)本质是**壳级身份、应归平台** → profile.js 引用变平台→平台。**对安全无损**(PROFILE 只是内存镜像、隔离在 rt.profile + 后端,本刀双红线仍成立);纯 §1 架构洁净度债。对比 data-store.js 泛型(`persistColl(name,arr)` 不具名引用 JOBS)故 app-agnostic;profile.js 具名引用 PROFILE→app 耦合,移 PROFILE→平台消此不对称。→ **并入 5-b/c 归属批**(5-a 过渡留 jobseek 与"完成前必清"兼容)。
 - **③ 序5 剩余(认可方向)**:**PROFILE→平台(新增必清)** + settingsPersistOn 归属 + renderSettings 拆(第 7 契约 manifest.settings)+ initShell + INIT 分解。
 
-## 第 20 轮 — ⏳ 待审(送审中) · 序5-b PROFILE→平台(落地第19轮 §1 必清项)(`0547ffd..af80e1d`)
+## 第 20 轮 — ✅ 通过 · 序5-b PROFILE→平台(落地第19轮 §1 必清项)(`0547ffd..af80e1d`)
 
 > 落地第19轮裁定的序5-完成前必清项:PROFILE 数据对象 jobseek→platform,清 profile.js 的平台→apps §1 债。与 5-a 的 PROFILE 归属一并送审。
 
@@ -493,3 +493,10 @@
 **冒烟**:PROFILE 从 profile.js **live**(`city=北京`/`name=(在数据设置填写)`)、persistProfileField/hydrateProfile 在。**⚠ cache 缺口(测试环境 · 同序3-d-5 / 第12轮裁断)**:webview 强缓存旧 intake-action.js(含 `const PROFILE`)与新 profile.js `const PROFILE` 撞 → 缓存态该文件加载失败(console redeclaration);**磁盘正确**(`served_intake_hasPROFILE=false` / `served_profile_hasPROFILE=true` = PROFILE 全局唯一),桌面 asset:// / 清缓存无冲突、非代码缺陷。
 
 **序5 剩余(过审后续做)**:5-c renderSettings 拆(壳部分 theme/lang/density/model → platform + jobseek 段 goals/weights/主简历 → apps · **第 7 契约 manifest.settings**)+ 5-d initShell + 5-e INIT 分解 + settingsPersistOn/saveSettings/hydrateSettings 归属。
+
+**评审裁定(第 20 轮 · 通过 · 无阻断/应改)**:
+- **① ★★ §1 债已清(第19轮裁定精确落地)** —— PROFILE 定义从 jobseek `intake-action.js:127` 逐字节纯剪切 → `profile.js:10`;profile.js 现自持 PROFILE(定义 + `PROFILE[k]=p[k]` 引用本模块)= **平台→平台**;jobseek 消费者(resumes.js / renderSettings)读 = apps→平台(允许)。**平台模块→apps 债消除**。
+- **② const PROFILE 全仓唯一定义**:grep 全仓仅 profile.js:10 一处(旧 intake-action.js const PROFILE 删净、126/129 只剩注释)→ 磁盘无重复声明/无 redeclaration;载序/TDZ 安全(profile.js@868 head 先于消费者@1550/1563,消费皆运行时函数内)。
+- **③ 对安全无损**:profile 隔离仍在 rt.profile 通道 + 后端(capability/data.rs profile/invariants/CSP 空 diff);PROFILE 只是内存镜像,搬家不影响隔离。cargo83/clippy/fmt/tsc/node 净。
+- **④ cache 缺口 = 复用第12/19轮裁断:接受(附开发提示)** —— redeclaration 仅发生在浏览器同供旧缓存 intake + 新 profile 时;磁盘 const PROFILE 全仓唯一(grep=1);桌面 asset:// / 硬刷新无冲突、非代码缺陷。⚠ **开发提示(非代码问题)**:const 跨文件搬迁的缓存缺口比"单函数 undefined"更绊人(redeclaration = SyntaxError → 整个 profile.js 失败);**搬迁刀开发时硬刷新/禁缓存**避免误判回归。**纯剪切用 const(而非 window.X)是零回归正确选择,不为缓存扭曲代码**。
+- **⑤ flag→clear 闭环(再次有效)**:第19轮裁定 PROFILE→平台、第20轮精确兑现并复验。**待清账更新**:已清 = renderAgentCmds(17)/PROFILE→平台(20);仍开(序5 剩余)= settingsPersistOn 归属 / renderSettings 拆(第7契约 manifest.settings)/ initShell / INIT 分解 / 文案归属(3.y)。
