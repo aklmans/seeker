@@ -1804,17 +1804,7 @@ async function wgtAction(widgetId, action, payload){
 }
 window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window.SeekerWidgets.onAction=wgtAction; });
 
-/* copSend 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 · 红线转义) */
-function copInit(){
-  $('#copLaunch').onclick=copToggle;
-  $('#copClose').innerHTML=IC.x; $('#copClose').onclick=copClose;
-  $('#copSend').innerHTML=IC.arrow; $('#copSend').onclick=()=>copSend();
-  const inp=$('#copInput');
-  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
-  inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
-  /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
-  copAppend('ai','<span class="who">Copilot</span>'+tt('嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:','Hi, I\'m your job-hunt Copilot. Command the whole workbench in one line — match jobs, tune resumes, generate interview questions, plan training, find gaps. Try:')+cSuggs(window.SeekerShell.appSuggs()));
-}
+/* copSend/copInit 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 发送核心 / 序3-d-3 面板初始化) */
 
 /* ============ AGENT MODE ============ */
 let appMode='editor';

@@ -37,3 +37,15 @@ function agentSend(text, aiText){
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
+
+/* ---- 抽壳序3-d-3:Copilot 面板初始化 copInit —— 依赖 $/IC(序1)+ 本文件 copToggle/copClose/copSend/copAppend/cSuggs;开场建议经 SeekerShell.appSuggs 契约(序3-d-2),不再直调 jobseek aiSuggs。⚠开场白文案仍 jobseek 味 = 过渡债(同 agentGreet 的 T('agentGreet')/i18n 表),待后续契约化清 ---- */
+function copInit(){
+  $('#copLaunch').onclick=copToggle;
+  $('#copClose').innerHTML=IC.x; $('#copClose').onclick=copClose;
+  $('#copSend').innerHTML=IC.arrow; $('#copSend').onclick=()=>copSend();
+  const inp=$('#copInput');
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
+  inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
+  /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
+  copAppend('ai','<span class="who">Copilot</span>'+tt('嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:','Hi, I\'m your job-hunt Copilot. Command the whole workbench in one line — match jobs, tune resumes, generate interview questions, plan training, find gaps. Try:')+cSuggs(window.SeekerShell.appSuggs()));
+}
