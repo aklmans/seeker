@@ -117,3 +117,18 @@ function agentInit(){
   let m='editor'; try{m=localStorage.getItem('jh-mode')||'editor';}catch(e){}
   setAppMode(m);
 }
+
+/* ---- 抽壳序3-d-12:Copilot/Agent chrome 语言切换重渲 updateAgentChrome/updateCopChrome —— nav.js setLang 运行时调;
+   依赖 $/T/tt(序1)+ SeekerShell.renderAppChips 契约(序3-d-11);纯平台。 ---- */
+function updateAgentChrome(){
+  const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
+  const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
+  const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
+  window.SeekerShell.renderAppChips();   // 命令 chips 双语,随语言重渲(含 ac-label)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds)
+}
+// Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
+function updateCopChrome(){
+  const cl=$('#copLaunch'); if(cl) cl.innerHTML='<span class="ld"></span>'+tt('问问 AI · ⌘K','Ask AI · ⌘K');
+  const hs=$('#copPanel .hs'); if(hs) hs.textContent=tt('· 用一句话指挥整个工作台','· Command the whole workbench in one line');
+  const ci=$('#copInput'); if(ci) ci.placeholder=tt('试试:我现在最该做什么?','Try: what should I do next?');
+}
