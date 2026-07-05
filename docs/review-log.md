@@ -421,3 +421,28 @@
 - **③ 🏁 序3-d chrome 收官**:Copilot/Agent chrome 全落 copilot-chrome.js + ai-render(aiErrHTML)+ **6 契约** —— **选择型首个非空**(frameQuery/appReply/appSuggs/collId)、**汇总型并集/副作用**(cards/collections/groups/appCommands/renderAppChips);契约面成熟一致。**评审 flag→clear 闭环有效**(第16轮开强制账、第17轮精确兑现并代码层复验)。
 - **④ 待契约化账(更新)**:`renderAgentCmds` ✅ **已清**(本轮 renderAppChips);仍开 = 开场白 + i18n 表 jobseek 文案归属(3.y 以 manifest.greeting + i18n 命名空间清)。
 - **⑤ 后续**:序4-d(jobseek 数据大择取,非红线)→ **序5(profile 通道 persistProfileField/hydrateProfile + initShell,全程最硬刀)**,届时逐行 + 构造场景严审。
+
+## 第 18 轮 — ⏳ 待审(送审中) · 序4-d 数据大择取:持久化条件/onboarding → 平台 + jobseek 数据层 → apps(`83986fe..3f6996e`)
+
+> 序4-d(数据框架剩余,非红线):1 平台归位(持久化条件 + 壳 onboarding)+ 2 jobseek 数据择取(持久化/水合 + 演示/种子)。**归属裁定(onboarding → 平台)+ rt-ready 时序不变式**请评审。
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 4-d-1 `96cc0db` | jobsPersistOn + onboarded + markOnboarded | platform/shell/data-store.js | 平台归位(归属裁定) |
+| 4-d-2 `c0240a0` | jobseek 数据持久化/水合(jobs/resumes + hydrateBizColls,含 2 rt-ready) | apps/jobseek/logic/**persistence.js**(新) | 纯择取(★rt-ready 时序 + resumes red-line) |
+| 4-d-3 `3f6996e` | jobseek 演示/种子(SEED/captureSeed/demoMode/setDemoMode/seedDemoData/syncDemoBanner) | apps/jobseek/logic/**demo-seed.js**(新) | 纯择取 |
+
+**★ 4-d-1 归属裁定(请评审确认):onboarding(markOnboarded/onboarded)→ 平台(data-store.js)**。理据:data-store.js 的**通用集合引擎 `hydrateColl`**(line 27)按"有数据→已上手"调 `markOnboarded()` —— 即 **shell 级 onboarding**(任意集合有数据即算上手),非 jobseek 专属;留平台使"平台 hydrateColl 调 markOnboarded"为**平台→平台**(否则平台→apps 反向依赖)。`jobsPersistOn`(桌面+SeekerRT,通用持久化条件)同理归平台,解 序4-b 遗留过渡依赖。**对比**:`demoMode/setDemoMode/SEED/captureSeed`(演示态,仅 jobseek 用)→ apps。`'jh-seeded-jobs'` 旧迁移键逐字保留。
+
+**★ 4-d-2 rt-ready 时序不变式(评审后续关注项,须验)**:persistence.js 含 2 处 `window.addEventListener('seeker-rt-ready', hydrateJobs|hydrateBizColls)`。**不变式守法**:persistence.js 是 **classic `<script src>`(解析期同步执行)**,而 dispatch 在 `<script type="module">`(deferred,line 881)—— 故监听器在解析期注册、**先于** deferred module 的 dispatch(同第5轮时序法);相对序不变(hydrateProfile@991 仍首、hydrateJobs 先于 hydrateBizColls、widgets/shellPushAiReadable 仍后)。**冒烟证**:captureSeed 于 INIT 抓 SEED(12 jobs)、hydrateJobs/hydrateBizColls 触发无错(web jobsPersistOn=false → 优雅 no-op)、0 console 错。
+
+**★ 4-d-2 resumes red-line(profile 隔离)逐字保留**:persistResume 只 upsert `{id,jobId,template,modules}`——**联系方式绝不入 resumes 集合**(走独立 profile)→ `query_data('resumes')` 天然不含联系方式;hydrateResumes 主简历哨兵 → MASTER(专业模块,无 profile 内容)。红线注释随迁 persistence.js。
+
+**零回归实证**:
+- 各符号全局唯一定义(4-d-1:jobsPersistOn/onboarded/markOnboarded=1;4-d-2:8 fn=1;4-d-3:SEED/demoMode/setDemoMode/captureSeed/seedDemoData/syncDemoBanner=1);
+- 逐字节:4-d-1 3 fn 体一致、4-d-2 removed 62 行⊂persistence.js、4-d-3 removed 35 行⊂demo-seed.js(全 verbatim,非纯剪切仅模块头/breadcrumb);
+- node/内联 8 块/tsc(+persistence.js/+demo-seed.js,现 30 外链)净;
+- **红线核心空 diff**(capability D3/secret/data.rs profile/CSP/invariants/runtime 本批未触);
+- 冒烟(fresh server):16 符号全定义、SEED 抓取、nextJobId=13、seedDemoData 端到端(种子+示例条)、0 console 错、总览渲染正常;index.html 1974→1876(阶段3 起 **−60%**)。
+
+**序4-d 剩余判断**:jobseek 数据大择取本批完成(jobs/resumes/种子/编排 + 持久化条件/onboarding 归位)。**hydrateBizColls 已随 4-d-2**(原挂"随序3-d 或后续"→已落)。→ 转 **序5(profile 通道 + initShell + renderSettings 壳部分,全程最硬双红线刀)**。
