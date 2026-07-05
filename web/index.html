@@ -1826,25 +1826,7 @@ function initShell(){
   setLang(setState.lang);
 }
 /* setAppMode/agentShowCanvas/agentCollapse/agentGreet 已抽壳 → platform/shell/copilot-chrome.js(序3-d-6;agentAppend/agentSend 同文件序3-d-1) */
-function agentInit(){
-  $('#agentSend').innerHTML=IC.arrow; $('#agentSend').onclick=()=>agentSend();
-  const inp=$('#agentInput');
-  inp.addEventListener('keydown',e=>{
-    if(cmdIsOpen()){
-      if(e.key==='ArrowDown'){e.preventDefault();cmdActive=(cmdActive+1)%cmdFiltered.length;cmdRender();return;}
-      if(e.key==='ArrowUp'){e.preventDefault();cmdActive=(cmdActive-1+cmdFiltered.length)%cmdFiltered.length;cmdRender();return;}
-      if(e.key==='Enter'){e.preventDefault();cmdRun(cmdActive);return;}
-      /* Esc 关命令浮层 → SeekerKeys Esc 逐层链 */
-    }
-    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();agentSend();}
-  });
-  inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(120,inp.scrollHeight)+'px';const v=inp.value;if(v.charAt(0)==='/')cmdOpen(v.slice(1));else cmdClose();});
-  inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
-  renderAgentCmds();   // 命令 chips(双语,随语言重渲;见 renderAgentCmds + updateAgentChrome)
-  const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
-  let m='editor'; try{m=localStorage.getItem('jh-mode')||'editor';}catch(e){}
-  setAppMode(m);
-}
+/* agentInit 已抽壳 → platform/shell/copilot-chrome.js(序3-d-10;renderAgentCmds 触发改 typeof 守卫,§1) */
 /* renderAgentCmds + AGENT_CMDS 已择取 → apps/jobseek/logic/copilot-actions.js(序3-d-8;命令数据经 SeekerShell.appCommands 契约[序3-d-7]供平台命令面板) */
 /* Agent /命令面板机制(cmdActive/cmdFiltered/cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)已抽壳 → platform/shell/copilot-chrome.js(序3-d-9;命令数据经 SeekerShell.appCommands 契约) */
 
