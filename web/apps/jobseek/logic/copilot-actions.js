@@ -119,3 +119,39 @@ function copReply(t){
   // 17. fallback
   return '我可以帮你匹配岗位、改简历、出面试题、排训练计划、查缺口和市场价值。试试这些:'+cSuggs(['我和字节那个岗位匹配吗?','我最大的能力缺口是什么?','帮我加一个岗位','我现在最该做什么?']);
 }
+
+/* ---- 抽壳序3-d-8 择取:jobseek Agent 命令数据(第9轮裁定序3:chrome 批中 jobseek 专属部分择取到 apps)。
+   AGENT_CMDS = /命令面板项(经 manifest.appCommands 契约=序3-d-7 供平台 cmdFilterList 汇总);
+   renderAgentCmds = 技能 chips(平台 agentInit/updateAgentChrome 经全局触发,渲染进 #agentCmds)。
+   依赖 tt/$/$$(平台序1)+ agentSend/copGo/copNewJob(chrome/jobseek 运行时全局);逻辑零改动。 ---- */
+// Agent 命令 chips(双语;随语言重渲 —— 见 updateAgentChrome 调用)。查询也双语,配合 frameQuery 的中英关键词框定。
+function renderAgentCmds(){
+  const host=$('#agentCmds'); if(!host) return;
+  const cmds=[
+    [tt('智能匹配','Smart match'), tt('我最该投哪个岗位?','Which job should I apply to?')],
+    [tt('改简历','Tune resume'), tt('帮我改简历,贴合我的目标岗位','Help me tailor my resume to my target job')],
+    [tt('出面试题','Interview Q'), tt('用目标岗位的 JD 陪我练面试','Practice interview questions from my target job JD')],
+    [tt('排训练计划','Training plan'), tt('给我排一个训练计划补齐缺口','Make me a training plan to close my gaps')],
+    [tt('查能力缺口','Skill gaps'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?')],
+    [tt('市场价值','Market value'), tt('我的市场价值值多少?','What is my market value?')],
+    [tt('下一步','Next step'), tt('我现在最该做什么?','What should I do next?')]
+  ];
+  host.innerHTML=`<span class="ac-label">${tt('技能 / 命令 · 也可输入 /','Skills / commands · or type /')}</span>`+cmds.map(c=>`<button class="ac-chip" data-cmd="${c[1].replace(/"/g,'&quot;')}">${c[0]}</button>`).join('');
+  $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
+}
+/* ---- /command palette ---- */
+const AGENT_CMDS=[
+  {cmd:'/match', label:['智能匹配','Smart match'], desc:['最该投哪个','Best fit'], run:()=>agentSend(tt('我最该投哪个岗位?','Which job should I apply to?'))},
+  {cmd:'/resume', label:['改简历','Tune resume'], desc:['打开简历','Open resume'], run:()=>copGo('resumes')},
+  {cmd:'/interview', label:['面试陪练','Interview'], desc:['出题练习','Practice'], run:()=>copGo('interview')},
+  {cmd:'/plan', label:['排训练计划','Training plan'], desc:['补齐缺口','Close gaps'], run:()=>agentSend(tt('给我排一个训练计划补齐缺口','Make me a training plan to close my gaps'))},
+  {cmd:'/gaps', label:['查能力缺口','Skill gaps'], desc:['Top 缺口','Top gaps'], run:()=>agentSend(tt('我最大的能力缺口是什么?','What is my biggest skill gap?'))},
+  {cmd:'/value', label:['市场价值','Market value'], desc:['估算身价','Estimate worth'], run:()=>agentSend(tt('我的市场价值值多少?','What is my market value?'))},
+  {cmd:'/trend', label:['技能趋势','Skill trends'], desc:['什么在涨','What is rising'], run:()=>agentSend(tt('什么技能在涨?','What skills are trending?'))},
+  {cmd:'/next', label:['下一步','Next step'], desc:['现在该做','Do now'], run:()=>agentSend(tt('我现在最该做什么?','What should I do next?'))},
+  {cmd:'/jobs', label:['目标岗位','Target jobs'], desc:['打开列表','Open list'], run:()=>copGo('jobs')},
+  {cmd:'/skills', label:['职业资产','Career assets'], desc:['能力档案','Asset profile'], run:()=>copGo('skills')},
+  {cmd:'/add', label:['录入岗位','Add job'], desc:['新增岗位','New job'], run:()=>copNewJob()},
+  {cmd:'/market', label:['市场情报','Market intel'], desc:['趋势/薪资','Trends/pay'], run:()=>copGo('analysis')},
+  {cmd:'/settings', label:['数据设置','Settings'], desc:['仅打开 · 不可改','Open only · read-only'], run:()=>copGo('settings')}
+];
