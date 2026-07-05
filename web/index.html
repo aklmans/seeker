@@ -1736,20 +1736,7 @@ async function hydrateResumes(){
     try{ if(current==='settings') renderSettings(); }catch(_e){}   // 水合后若在设置页,重渲让主简历资料显示
   }catch(e){ console.error('[data] hydrate resumes', e); }
 }
-/* ===== messages 对话历史持久化(domain)。只存「可见对话」纯文本(user / AI 流式结果),
-   不存招呼语 / 建议 chip / 富卡片 / widget(皆为临时 UI;widget 会话内重渲)。surface=cop|agent。
-   隐私:messages 已移出后端 QUERYABLE → AI 不可 query_data('messages') 挖掘历史(经 History 拿上下文)。 */
-let __msgSeq=0;
-function persistMsg(surface, role, text, cards){
-  if(!collPersistOn()) return;
-  text = String(text==null?'':text);
-  const hasCards = Array.isArray(cards) && cards.length>0;
-  if(!text.trim() && !hasCards) return;                 // 纯空且无卡才跳过(纯卡片回复仍持久)
-  const ts = Date.now();
-  const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:text, ts:ts };
-  if(hasCards) rec.cards = cards;                        // 可持久化卡指令 [{kind,data}](view 卡;不含 resume-edit 提案)
-  window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
-}
+/* messages 持久化 persistMsg/__msgSeq 已抽壳 → platform/shell/data-store.js(序4-c · 红线:messages 移出 QUERYABLE、AI 不可 query) */
 async function hydrateMessages(){
   if(!collPersistOn()) return;
   try{
