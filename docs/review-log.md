@@ -381,7 +381,7 @@
 - **③ 契约体系观察(正面)**:5 个 `SeekerShell.*`(frameQuery/appReply/appSuggs/collId/appCommands)语义分类成熟一致 —— **选择型首个非空、汇总型并集**;壳/应用解耦良性收敛。
 - **④ 后续关注**:**待契约化账** = `renderAgentCmds`(2 触点,chrome 收尾以 renderAppChips 清)+ 开场白/i18n 文案归属(3.y 以 manifest.greeting + i18n 命名空间清);`aiErrHTML`(红线,第15轮送审中)、`initShell`(壳启动非 chrome,归属先判)仍在序3-d 剩余清单。
 
-## 第 17 轮 — ⏳ 待审(送审中) · 序3-d 收官:renderAppChips 强制契约(第 6 个)+ updateChrome + hydrateMessages(`b316eb5..d345586`)
+## 第 17 轮 — ✅ 通过 · 序3-d 收官:renderAppChips 强制契约(第 6 个)+ updateChrome + hydrateMessages(`b316eb5..d345586`)
 
 > 序3-d chrome 收官三刀:**第 16 轮强制待契约化账兑现** —— 第 6 个契约 `SeekerShell.renderAppChips` 清 `renderAgentCmds` 符号耦合;`updateAgentChrome`/`updateCopChrome` + `hydrateMessages` 抽壳。**契约扩展必审**;`initShell` 归属裁定见文末。**序3-d chrome 至此收官。**
 
@@ -407,3 +407,10 @@
 - 冒烟 0 console 错、截图 7 chips 经契约渲染 + lang 双向;**index.html 2006→1974(阶段3 起 −58%)**。
 
 **序3-d chrome 收官** —— Copilot/Agent chrome 全抽 platform/shell/copilot-chrome.js(面板机制 / 发送核心 / copInit / 辅助群 / mode 群 / 命令面板 / agentInit / updateChrome / hydrateMessages)+ ai-render(aiErrHTML)+ **6 契约**(frameQuery / appReply / appSuggs / appCommands / collId / renderAppChips)。**剩余非 chrome**:`initShell`(序5)+ 序4-d jobseek 数据大择取 + 序5 profile 设置框架[双红线,最严]。
+
+**评审裁定(第 17 轮 · 通过 · 无阻断/应改 · 🏁 chrome 收官)**:
+- **① 序3-d-11/12/13 通过** —— **★★ 第16轮强制账已清(硬验收 grep 实证,不采信"已清"声明)**:`registry.renderAppChips` 是**汇总型副作用**(`enabledApps().forEach(a=>a.renderAppChips?.())`,全调无 return,同 cards()、chrome 扩展点)、两触点(agentInit@115 / updateAgentChrome@127)均改 `SeekerShell.renderAppChips()`、**平台代码零 `renderAgentCmds` 引用**(grep 命中全在注释解释解耦、无一处代码调用/typeof 守卫)→ **活符号耦合断、第16轮强制条件精确兑现**;第 6 契约。**3-d-13 hydrateMessages 红线** `r.role==='user' ? esc(r.text) : aiHTML(r.text)` 用户文本转义 + AI aiHTML 逐字保留;3-d-12/13 体纯剪切、0 重复。平台核心空 diff;cargo83/clippy/fmt/tsc/node 净;index.html 2006→1974(阶段3 −58%)。
+- **② ★ initShell 归属 = 认可(不并入 chrome、归序5/独立 shell-boot 刀)** —— 依据:initShell 是壳启动 bootstrap **非 chrome**(并入 chrome 破"归属驱动分刀"纪律,第8/9轮判据);调 `hydrateSettings`(序5 设置/profile territory 双红线,过早抽会在 chrome 批碰序5红线面);留 index.html 不阻塞不变。不必提前独立抽,随序5 最自然(序5 过大则届时拆独立 shell-boot 刀)。
+- **③ 🏁 序3-d chrome 收官**:Copilot/Agent chrome 全落 copilot-chrome.js + ai-render(aiErrHTML)+ **6 契约** —— **选择型首个非空**(frameQuery/appReply/appSuggs/collId)、**汇总型并集/副作用**(cards/collections/groups/appCommands/renderAppChips);契约面成熟一致。**评审 flag→clear 闭环有效**(第16轮开强制账、第17轮精确兑现并代码层复验)。
+- **④ 待契约化账(更新)**:`renderAgentCmds` ✅ **已清**(本轮 renderAppChips);仍开 = 开场白 + i18n 表 jobseek 文案归属(3.y 以 manifest.greeting + i18n 命名空间清)。
+- **⑤ 后续**:序4-d(jobseek 数据大择取,非红线)→ **序5(profile 通道 persistProfileField/hydrateProfile + initShell,全程最硬刀)**,届时逐行 + 构造场景严审。
