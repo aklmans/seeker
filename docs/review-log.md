@@ -344,3 +344,33 @@
 **⚠ 诚实缺口(同第12轮裁定)**:webview 强缓存旧 ai-render.js(3-d-5 前无 aiErrHTML)——`served_hasAiErrHTML=true`(cache-bust fetch 证磁盘最新含 aiErrHTML)、但初次加载页面 `window.aiErrHTML=undefined`;copilot-chrome.js 反而新鲜加载(copGo/setAppMode 全在)。**测试环境 HTTP 强缓存产物、非代码缺陷**(桌面 Tauri asset:// 无缓存);红线冒烟靠「手动补最新 ai-render.js」证真实代码工作。
 
 **序3-d 剩余(下一子批 · 需第 5 个契约,请评审预裁方向)**:命令面板 = **通用机制**(cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)+ **jobseek 命令数据**(AGENT_CMDS 的 /match…/settings、renderAgentCmds 的技能 chips)——**cmd 归属**:机制→platform、数据→apps;机制 cmdFilterList 引用 AGENT_CMDS = 反向依赖须契约化(拟 **`SeekerShell.appCommands()`**,类比 appSuggs 首个非空委派);agentInit 随命令面板;updateAgentChrome(调 renderAgentCmds)随之(或经契约);updateCopChrome 可独立抽;**initShell**(壳启动)归属决策(拟壳侧 init 模块、非 chrome);hydrateMessages(依赖 agentAppend)。
+
+## 第 16 轮 — ⏳ 待审(送审中) · 序3-d 命令面板 + agentInit:appCommands 契约(第 5 个)(`a142306..28e392f`)
+
+> 序3-d chrome 第三子批(命令面板归属):第 5 个契约 `SeekerShell.appCommands` 解耦命令数据 → jobseek 命令数据择取 apps → 命令面板机制抽壳 → agentInit 抽壳。**契约扩展必审**;附 renderAgentCmds 触发用 typeof 守卫 vs 契约 的判断,请评审预裁。(注:本轮基于第15轮之上,第15轮尚待审。)
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 3-d-7 `7e97391` | **appCommands 契约扩展**(命令面板数据解耦) | registry/types/manifest/账本/index.html | **契约扩展(必审)** · §1 纯净 |
+| 3-d-8 `3a8de1f` | jobseek Agent 命令数据 AGENT_CMDS + renderAgentCmds | apps/jobseek/logic/copilot-actions.js | 纯择取 |
+| 3-d-9 `f3b0e28` | Agent /命令面板机制 cmd*(8 基元) | platform/shell/copilot-chrome.js | 纯抽壳 |
+| 3-d-10 `28e392f` | Agent 输入+命令面板接线 agentInit | platform/shell/copilot-chrome.js | 抽壳(1 行 renderAgentCmds 加守卫) |
+
+**★ 3-d-7 appCommands 契约(评审必审 · 第 5 个 SeekerShell.* 扩展)**:命令面板机制 `cmdFilterList` 硬引用 `AGENT_CMDS`(jobseek 命令数据)= 反向依赖,抽机制前须契约化。`SeekerShell.appCommands()`:
+- registry 遍历 enabledApps 调 `a.appCommands`、**并集 push**(★不同于 framer/appReply/appSuggs 的"首个非空"——命令面板汇总多应用命令,同 `cards()`/`pages()` 合并语义);
+- types 增 `CommandSpec` 接口(cmd/label/desc/run,与单体 AGENT_CMDS 同构)+ `AppManifest.appCommands?` + `SeekerShellApi.appCommands()`;
+- manifest `appCommands:()=>AGENT_CMDS`;账本 `declare const AGENT_CMDS: CommandSpec[]` tsc 桥;
+- `cmdFilterList`:`AGENT_CMDS` → `const A=window.SeekerShell.appCommands()`(缓存一次,行为等价)。
+**§1 纯净**:registry.appCommands 纯遍历委派、**零 jobseek 命令 knowledge**(grep AGENT_CMDS/jobseek/aiSuggs = 0);命令数据 + chips renderer 留 apps。**契约链冒烟(fresh server,无缓存缺口 · loadedManifest.hasAppCommands=true)**:`SeekerShell.appCommands()` 返 13 命令 ≡ AGENT_CMDS;cmdFilterList('match')=[/match]、('简历')=[/resume];live 面板 cmdOpen 渲 13 行、filter('interview')=[/interview]、cmdClose 收。
+
+**★ 3-d-10 agentInit 的 renderAgentCmds 触发(请评审预裁 typeof 守卫 vs 契约)**:agentInit 唯一 jobseek 触点是 `renderAgentCmds()`(技能 chips,3-d-8 在 apps)。抽平台后改 `if(typeof renderAgentCmds==='function') renderAgentCmds()`——**同 updateAgentChrome 的既有守卫**(第10轮已过审的 index.html 代码),jobseek 启用时行为等价、禁用时 no-op 不抛;§1:平台不硬依赖 app 渲染器。**判断**:renderAgentCmds 是 render 触发(非数据/非跨层 mock),既有 updateAgentChrome 已 typeof 守卫先例,故用守卫(而非再加第 6 契约)保持一致、不半迁移。**若评审偏好 `renderAppChips` 契约**替代守卫,建议与 updateAgentChrome 一并迁(下一批,两处同改)——本刀先守卫、留出口。
+
+**3-d-8/9 纯剪切/择取**:AGENT_CMDS(13 条)+ renderAgentCmds(7 chips 渲染器)→ apps(29 行逐字节);cmd* 机制 8 基元(11 行)→ platform 逐字节。
+
+**零回归实证**:
+- 各基元全局唯一定义(agentInit/cmd*/renderAgentCmds = 1;AGENT_CMDS = 1 真定义 + 1 账本 ambient declare 桥,同 aiSuggs);
+- 逐字节:3-d-8 removed⊂apps(29 行)、3-d-9 removed⊂platform(11 行)、3-d-10 agentInit 17 非守卫行 verbatim + 1 行 renderAgentCmds 加守卫(已隔离展示);
+- node/内联 8 块/tsc 净;**红线核心空 diff**(capability/secret/data profile/CSP/invariants/runtime);
+- 冒烟 0 console 错、截图命令面板 13 命令 + 7 chips;index.html 2064→2006(阶段3 起 −57%)。
+
+**序3-d 剩余(收尾)**:updateAgentChrome/updateCopChrome(updateAgentChrome 调 renderAgentCmds——与本刀 agentInit 守卫呼应,一并定 typeof vs renderAppChips 契约)+ **initShell**(壳启动非 chrome,归属决策:拟壳侧 init 模块)+ hydrateMessages(依赖 agentAppend)。之后序3-d 收官,转序4-d / 序5。
