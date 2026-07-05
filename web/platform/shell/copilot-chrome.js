@@ -132,3 +132,29 @@ function updateCopChrome(){
   const hs=$('#copPanel .hs'); if(hs) hs.textContent=tt('· 用一句话指挥整个工作台','· Command the whole workbench in one line');
   const ci=$('#copInput'); if(ci) ci.placeholder=tt('试试:我现在最该做什么?','Try: what should I do next?');
 }
+
+/* ---- 抽壳序3-d-13:对话历史恢复 hydrateMessages —— messages 是壳自持集合(D1),纯平台依赖:
+   collPersistOn(序4-b)/rt.db/SeekerShell.cards() 契约/aiHTML(序1-f)/copAppend·agentAppend(序3-a/3-d-1)。
+   ★红线保留:持久用户文本经 esc 转义再进 DOM、AI 文本经 aiHTML、持久卡经 CARDS[kind].persist&show 重渲(用实时数据)。
+   jobseek hydrateBizColls(index.html)经 seeker-rt-ready 运行时调本函数。 ---- */
+async function hydrateMessages(){
+  if(!collPersistOn()) return;
+  try{
+    const rows = await window.SeekerRT.db.list('messages');
+    if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
+    rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const CARDS = window.SeekerShell.cards(); // 壳组合:启用应用贡献的卡注册表
+    const draw = (rows, append, who) => { rows.forEach(r => {
+      const bubble = append(r.role==='user'?'user':'ai',
+        r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
+      if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
+        for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
+      }
+    }); };
+    const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
+    // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
+    if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
+    if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
+  }catch(e){ console.error('[data] hydrate messages', e); }
+}

@@ -1717,27 +1717,7 @@ async function hydrateResumes(){
   }catch(e){ console.error('[data] hydrate resumes', e); }
 }
 /* messages 持久化 persistMsg/__msgSeq 已抽壳 → platform/shell/data-store.js(序4-c · 红线:messages 移出 QUERYABLE、AI 不可 query) */
-async function hydrateMessages(){
-  if(!collPersistOn()) return;
-  try{
-    const rows = await window.SeekerRT.db.list('messages');
-    if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
-    rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
-    const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const CARDS = window.SeekerShell.cards(); // 壳组合:启用应用贡献的卡注册表
-    const draw = (rows, append, who) => { rows.forEach(r => {
-      const bubble = append(r.role==='user'?'user':'ai',
-        r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
-      if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
-        for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
-      }
-    }); };
-    const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
-    // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
-    if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
-    if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
-  }catch(e){ console.error('[data] hydrate messages', e); }
-}
+/* hydrateMessages 已抽壳 → platform/shell/copilot-chrome.js(序3-d-13;messages 壳自持集合,★红线用户文本 esc 逐字保留) */
 async function hydrateBizColls(){
   await hydrateColl('skills', SKILLS);
   await hydrateColl('actions', ACTIONS);
