@@ -500,3 +500,47 @@
 - **③ 对安全无损**:profile 隔离仍在 rt.profile 通道 + 后端(capability/data.rs profile/invariants/CSP 空 diff);PROFILE 只是内存镜像,搬家不影响隔离。cargo83/clippy/fmt/tsc/node 净。
 - **④ cache 缺口 = 复用第12/19轮裁断:接受(附开发提示)** —— redeclaration 仅发生在浏览器同供旧缓存 intake + 新 profile 时;磁盘 const PROFILE 全仓唯一(grep=1);桌面 asset:// / 硬刷新无冲突、非代码缺陷。⚠ **开发提示(非代码问题)**:const 跨文件搬迁的缓存缺口比"单函数 undefined"更绊人(redeclaration = SyntaxError → 整个 profile.js 失败);**搬迁刀开发时硬刷新/禁缓存**避免误判回归。**纯剪切用 const(而非 window.X)是零回归正确选择,不为缓存扭曲代码**。
 - **⑤ flag→clear 闭环(再次有效)**:第19轮裁定 PROFILE→平台、第20轮精确兑现并复验。**待清账更新**:已清 = renderAgentCmds(17)/PROFILE→平台(20);仍开(序5 剩余)= settingsPersistOn 归属 / renderSettings 拆(第7契约 manifest.settings)/ initShell / INIT 分解 / 文案归属(3.y)。
+
+## 第 21 轮 — ⏳ 待审(送审中) · 序5-c renderSettings 拆分:第 7 契约 `SeekerShell.appSettings`(`ce3b215..40b734e`)
+
+> **本刀是序5、也是整个平台化搬迁里最大、最不"纯剪切"的一刀**——不是逐字节搬运,而是把一个混着 平台/jobseek/profile红线 三类内容的 ~140 行 `renderSettings` 函数**拆分 + 加第 7 契约**。零回归靠**逐条偏离披露 + 穷尽功能冒烟**,不是机械 diff。请评审逐行 + 构造场景严审(用户在此刀前已就"renderSettings 拆分方式 + PROFILE 归属"两处征询我并拍板,详见文末决策记录)。
+
+### 三刀
+
+| 刀 | 内容 | 性质 |
+|---|---|---|
+| 5-c-1 `da37a79` | `SeekerShell.appSettings()` 契约脚手架(types+registry) | 契约扩展,**尚无消费者**,inert |
+| 5-c-2 `741b0cd` | jobseek 设置贡献 → **新文件** `apps/jobseek/logic/settings-jobseek.js` + manifest 注册 | 纯附加(additive-only,与 index.html 原内联并存不冲突) |
+| 5-c-3 `40b734e` | `renderSettings` 拆分 → **新文件** `platform/shell/settings.js`,消费契约,index.html 原内联删除 | **非纯剪切**(拆分+契约消费,"flip" 提交) |
+
+### ★ 归属判断(用户已拍板,请评审复核)
+- **`SeekerShell.appSettings()` 语义 = 汇总型(同 `cards()`/`appCommands()`)**:`tabs`(新增 tab,并集)+ `extend`(追加进壳既有 tab 尾部,如 profile tab 追加主简历资料、data tab 追加简历行)。**非选择型**(不是首个非空)。
+- **平台 5 tab**:basic(外观)/profile(个人信息核心字段,红线)/model(AI 接入)/data(备份+隐私+MCP)/about。
+- **jobseek 2 tab(经 appSettings().tabs)**:goals(求职目标)/weights(评分权重)。
+- **jobseek extend(经 appSettings().extend)**:`profile` tab 尾部 = 主简历资料(`masterSectionHTML()`,已在 intake-action.js,未新写);`data` tab 尾部 = "我的简历"行(含 `RESUME.filename`)。
+- **判据**(用户在两处 AskUserQuestion 拍板):① profile 通道(persistProfileField/hydrateProfile)进独立 `profile.js`、PROFILE 数据对象暂留 jobseek 过渡(后经第19轮裁定+序5-b 移平台,已过审);② renderSettings **本批一并拆**(不留到后续)。
+
+### ⚠ 逐条披露(非纯剪切偏离,请逐条核实)
+1. **`sections.profile`/`data` 的 jobseek 内容改经 extend 拼接** —— 原 `${masterSectionHTML()}`/`${RESUME.filename}` 内联调用 → `${extendHTML('profile')}`/`${extendHTML('data')}`(`extendHTML = tabId => appSpecs.flatMap(s=>s.extend?.[tabId]?[s.extend[tabId].render()]:[]).join('')`)。**内容逐字节未变**(浏览器验证 `master_hasContent`/`resumeRow_hasFilename` 均 true),只是间接层从直调变契约委派。
+2. **`sections.goals`/`weights` 改经 `appTabs.forEach(t=>sections[t.id]=t.render())`** —— 内容来自 `settings-jobseek.js` 的 `goalsSectionHTML()`/`weightsSectionHTML()`,与旧 `sections.goals=`/`sections.weights=` 内联体**逐字节一致**(5-c-2 已 diff 核实)。
+3. **`SET_TABS` 裁剪为平台 5 项 + app tabs 契约插入同一视觉位置** —— `tabDefs = [basic,profile,model].concat(appTabs).concat([data,about])`,非同一数组字面量,但**浏览器验证最终 7 tab 顺序逐字节等于原序**(`tab_order` = `[basic,profile,model,goals,weights,data,about]`)。
+4. **★ `data-tc`(训练计入能力成长)wiring 的 `renderSkills()` 直调 → `rerenderPages()`** —— 唯一的行为性改动。原代码 `renderSkills()` 是 platform→apps 具名符号引用(若 jobseek 禁用会抛);`rerenderPages()` 是**已有平台通用机制**(`PAGES.forEach(p=>p.render&&p.render())`,nav.js,序1 起就有),行为等价(重渲所有已挂载页面,含 skills)但更广(重渲全部页非仅 skills)。**浏览器构造场景验证**:spy `window.renderSkills`,点击 trainCounts 开关,确认 `rerenderPages()` 确实级联到 `renderSkills` 被调用(`rerenderPages_reachedRenderSkills=true`)——behaviorally 等价证实,非仅理论推断。
+
+### §1 核实
+- `settings.js` 代码 **零** `JOBS`/`SKILLS`/`ACTIONS`/`MASTER`/`RESUME`/`WEIGHTS`/`masterSectionHTML`/`openResumeModal`/`renderSkills`/`setDemoMode` 具名引用(grep 命中仅头注释披露 + `rerenderPages` 替换行本身)。
+- ★双红线延续:profile 字段部分(`persistProfileField`/`PROFILE`)仍走独立 `platform/shell/profile.js`(序5-a/b 已过审),`settings.js` 只拼版式、不碰 `rt.profile`;设置不可经对话改(`settings.js` 是唯一改设置入口)。
+
+### ⚠ 明确未纳入本刀(过渡态,同 `setState`/`current` 先例,请评审确认是否可接受留待后续)
+- `setState`/`settingsPersistOn`/`saveSettings`/`hydrateSettings`/`WEIGHTS` 仍在 index.html——**混合平台(fontsize/density/motion)+ jobseek(goal/period/salary/weights)字段于一体**,归属定另刀(与序4-d 挂过的"settingsPersistOn 归属"同一项)。
+- `clearAllDataFlow`/`clearAllCollections`/`CLEARABLE_COLLS` 仍在 index.html——内部**混 jobseek `setDemoMode()` 调用 + 硬编码集合名数组**(`['jobs','skills','actions','resumes','iv_records','messages']`),归属定另刀;**执行 Agent 建议**:届时改用既有 `SeekerShell.collections()` 契约替代硬编码列表(消除维护负担 + 自动跟随新应用注册,而非新增第 8 个契约)。
+
+### 零回归验证(非机械可验、逐项披露 + 穷尽功能冒烟)
+- node --check(settings.js 526 行 + 33 外链)/内联 8 块/tsc 净;**0 重复定义**(15 个移动符号逐一 grep=1);**红线核心空 diff**(capability/secret/data.rs profile/CSP/invariants)。
+- **浏览器冒烟穷尽 7 tab**(no-cache server,规避此前反复出现的 webview 缓存缺口):tab 顺序逐字节复现;各 tab 元素齐全(profile pfInputs=10 + master 段、model mdProto/mdModelList、goals goalRange/setPeriod、weights 4 滑杆+wReset、data resume 行/dataExport/clearAllData、about 版本号)。
+- **交互验证**(非仅渲染,含状态变更往返):weights 滑杆拖动→WEIGHTS 数组更新+总计重算(115%)→reset 复原默认([40,30,20,10]);profile 姓名字段编辑→`persistProfileField`确实调 `rt.profile.set('name','Test Name')`(构造 spy 验);master 资料自由文本编辑(data-mx)→`MASTER` 对象确实更新;model mode byo↔managed 双向切换正确;**trainCounts→rerenderPages 级联验证**(见披露④)。全程 **0 console 错误**,截图确认视觉与原设计一致。
+
+### 请评审重点核实
+1. `appSettings()` 契约的 tabs/extend 双模式设计是否合理(vs 其余 6 契约的既有分类:选择型首个非空 / 汇总型并集)。
+2. 披露④(`renderSkills()→rerenderPages()`)的行为等价论证是否站得住——是本刀唯一真正的"逻辑改变"(其余都是纯位置/间接层变化)。
+3. 两项明确排除在外的过渡债(`setState` 系 + `clearAllDataFlow` 系)是否可接受留待后续,不阻塞本刀。
+4. profile 红线(persistProfileField/PROFILE)在 `settings.js` 拼版式过程中是否有任何削弱(核实点:`settings.js` 是否有任何路径绕过 `profile.js` 直接碰 `rt.profile`/`rt.db`)。
