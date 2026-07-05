@@ -20,3 +20,12 @@ function toolStatusText(info){
   if(n==='memory'||n==='remember'||n==='recall') return tt('正在检索记忆…','Searching memory…');
   return tt('正在处理…','Working…');
 }
+
+/* ---- 抽壳序3-d-5(红线):AI 错误渲染 aiErrHTML —— provider 错误体经 streamReply onError 进 DOM,
+   ★err 转义逐字保留:String(err.message||err).replace(/</g,'&lt;')(第11轮挂号,防 provider 错误注入);
+   onclick 只 copClose + go('settings')(设置不可经对话改,仅导航打开)。依赖 tt/copClose/go(运行时全局);ai-engine.js onError 运行时调。 ---- */
+function aiErrHTML(err){
+  const m=String((err&&err.message)||err).replace(/</g,'&lt;');
+  /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
+  return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
+}

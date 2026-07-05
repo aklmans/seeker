@@ -1612,11 +1612,7 @@ function openMarketValue(){
 
 /* ===== G2:自由对话接真实流式(桌面 + SeekerRT 就绪);否则降级 mock copReply ===== */
 /* aiChatAvailable 已抽壳 → platform/shell/copilot-chrome.js(序3-d-4) */
-function aiErrHTML(err){
-  const m=String((err&&err.message)||err).replace(/</g,'&lt;');
-  /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
-  return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
-}
+/* aiErrHTML 已抽壳 → platform/shell/ai-render.js(序3-d-5 · 红线 err 转义) */
 
 /* ===== 结构化简历回写(domain):AI 在回答末尾附 ```seeker:resume-edit 代码块 → 解析 →
    经 platform/guardrail 预览(前→后)+ 确认 + 撤销后,直接改写简历**专业模块**并落库。
