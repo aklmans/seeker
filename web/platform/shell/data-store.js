@@ -1,8 +1,14 @@
-// @ts-nocheck —— 抽壳序4-b 过渡:通用集合数据引擎,引用 rt.db + SeekerShell.collId 契约 + jobsPersistOn/markOnboarded(过渡留 index.html);类型化留 3.y;逻辑零改动。
+// @ts-nocheck —— 抽壳序4-b/4-d-1 过渡:通用集合数据引擎 + 持久化条件/壳 onboarding 状态,引用 rt.db + SeekerShell.collId 契约 + isDesktop(index.html);类型化留 3.y;逻辑零改动。
 /** 平台 · 通用集合数据引擎 collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl。
  *  ★红线:只处理通用集合(rt.db.upsert/list),隐私表(profile)走独立 rt.profile、永不经此
  *  —— persist 永不把 profile 写通用 AI 可读集(合 D3 / profile 硬隔离)。集合 id 键经 SeekerShell.collId 契约问应用(§1 纯净、无 jobseek knowledge)。
- *  过渡依赖:jobsPersistOn(持久化条件)/markOnboarded(onboarding 状态)留 index.html、运行时调,归属后续刀定。挂全局+载序前置零回归(约束⑤)。 */
+ *  依赖 isDesktop(index.html,运行时全局)。挂全局+载序前置零回归(约束⑤)。 */
+/* ---- 抽壳序4-d-1:持久化条件 + 壳 onboarding 状态(归属裁定 → 平台):jobsPersistOn(桌面+SeekerRT)+ onboarded/markOnboarded。
+   ★归平台理据:hydrateColl(本引擎,通用集合)按"有数据→已上手"调 markOnboarded = **shell 级 onboarding**(非 jobseek 专属),
+   留平台避免平台→apps 反向依赖('jh-seeded-jobs' 是旧版迁移键、逐字保留)。demo 态(demoMode/setDemoMode/SEED/captureSeed)= jobseek,留 apps(序4-d-2)。 ---- */
+function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
+function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
 function collPersistOn(){ return jobsPersistOn(); } // 同条件:桌面 + SeekerRT
 // 种子守卫:首启把内存 mock 作种子写一次;之后(含"清空所有数据"后)不再播种,演示数据不复活。
 function seededColl(name){ try{ return localStorage.getItem('jh-seeded-'+name)==='1'; }catch(_e){ return false; } }

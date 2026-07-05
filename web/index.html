@@ -1617,14 +1617,13 @@ function openMarketValue(){
 /* ===== 首次上手状态(评审落地:首启不静默灌演示数据,改岔路让用户选)=====
    onboarded:已做首启选择(开始我的 / 逛示例)。迁移:旧版已被种子过的用户(jh-seeded-jobs)视为已上手,不弹落地页。 */
 let SEED=null; // 演示种子快照(INIT 时趁内存还是 mock 字面量抓一份,供"先逛示例"显式播种)
-function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
-function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
+/* onboarded/markOnboarded 已抽壳 → platform/shell/data-store.js(序4-d-1;壳级 onboarding 状态,通用引擎 hydrateColl 调) */
 function demoMode(){ try{ return localStorage.getItem('jh-demo')==='1'; }catch(_e){ return false; } }
 function setDemoMode(on){ try{ on?localStorage.setItem('jh-demo','1'):localStorage.removeItem('jh-demo'); }catch(_e){} }
 function captureSeed(){ if(SEED) return; try{ SEED={ jobs:JOBS.slice(), skills:SKILLS.slice(), actions:ACTIONS.slice(), ivRecords:IV_RECORDS.slice() }; }catch(_e){ SEED={jobs:[],skills:[],actions:[],ivRecords:[]}; } }
 
 /* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
-function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+/* jobsPersistOn 已抽壳 → platform/shell/data-store.js(序4-d-1;通用持久化条件) */
 function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
 function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] upsert job', e)); }
 async function hydrateJobs(){
