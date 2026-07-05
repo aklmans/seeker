@@ -478,3 +478,18 @@
 - **① 序5-a 通过** —— **红线① profile 硬隔离 · 代码层 + 后端双证**:profile.js 代码**零 rt.db**(2 处 rt.db 命中全在注释=红线文档,代码只 `rt.profile.set`/`rt.profile.getAll`)+ 后端 `capability`(QUERYABLE 不含 profile)/`data.rs`(table_for)/`invariants`/CSP **空 diff**(即便前端异常,后端 AI 仍读不到/写不到 profile);**模块边界=红线边界**(profile.js 与 data-store.js rt.db 引擎物理分离=好设计);构造场景(rt.db Proxy 计数)与代码结论一致。**红线② 设置不可经对话改**:profile 只经设置页 data-pf 改;AI 非 QUERYABLE 读不到 + `profile_set` 是 Tauri 命令非 capability、模型工具循环写不到。8 行 100% 逐字节纯剪切、0 重复、载序守法(@868 classic 先于 module dispatch@881);cargo83/clippy/fmt/tsc/node 净。
 - **② ★ PROFILE 数据对象归属 = 应移平台(序5-完成前必清 · 非本刀阻断 · 对安全无损)** —— PROFILE 定义在 jobseek(`intake-action.js:127`),profile.js(**正经平台模块**)line 12 `PROFILE[k]=p[k]` 具名引用它 = **真平台→apps §1 债**(异于第18轮 captureSeed——那调用者是 index.html 过渡胶水非平台模块;此处 jobseek 删则 hydrateProfile 抛)。**澄清**:评审记录**无**"PROFILE 留 jobseek"裁定(那是主循环 AskUserQuestion 时用户选的"过渡"项、非评审裁定);据分析 PROFILE(name/phone/email=用户身份,对应 `rt.profile` **单一共享仓库**、非 per-app)本质是**壳级身份、应归平台** → profile.js 引用变平台→平台。**对安全无损**(PROFILE 只是内存镜像、隔离在 rt.profile + 后端,本刀双红线仍成立);纯 §1 架构洁净度债。对比 data-store.js 泛型(`persistColl(name,arr)` 不具名引用 JOBS)故 app-agnostic;profile.js 具名引用 PROFILE→app 耦合,移 PROFILE→平台消此不对称。→ **并入 5-b/c 归属批**(5-a 过渡留 jobseek 与"完成前必清"兼容)。
 - **③ 序5 剩余(认可方向)**:**PROFILE→平台(新增必清)** + settingsPersistOn 归属 + renderSettings 拆(第 7 契约 manifest.settings)+ initShell + INIT 分解。
+
+## 第 20 轮 — ⏳ 待审(送审中) · 序5-b PROFILE→平台(落地第19轮 §1 必清项)(`0547ffd..af80e1d`)
+
+> 落地第19轮裁定的序5-完成前必清项:PROFILE 数据对象 jobseek→platform,清 profile.js 的平台→apps §1 债。与 5-a 的 PROFILE 归属一并送审。
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 5-b `af80e1d` | PROFILE 数据对象(个人信息=壳级用户身份) | jobseek intake-action.js → platform/shell/profile.js | 归属归位(清第19轮 §1 债) |
+
+**★ §1 债已清(第19轮裁定落地)**:PROFILE(name/phone/email/city/intent/exp)从 jobseek `intake-action.js:127` **逐字节纯剪切** → profile.js。**profile.js 现自持 PROFILE、不再具名引用 jobseek 全局**(之前 hydrateProfile 的 `PROFILE[k]=p[k]` = 平台模块→apps §1 债 → 现平台→平台);jobseek 消费者(resumes.js×8 读联系方式渲简历 / index.html renderSettings data-pf)读 PROFILE = **apps→平台(允许)**。**对安全无损**:profile 隔离仍在 rt.profile + 后端(未变),PROFILE 只是内存镜像。
+
+**零回归**:PROFILE 全局唯一定义(profile.js:10,grep 核实);PROFILE 定义逐字节一致;载序 profile.js@868(head classic)先于消费者 intake-action@1550/resumes@1563(const 全局词法绑定、classic 间共享);node/内联 8 块/tsc(31 外链)净;**红线核心(capability/secret/data.rs profile/CSP/invariants)空 diff**。
+**冒烟**:PROFILE 从 profile.js **live**(`city=北京`/`name=(在数据设置填写)`)、persistProfileField/hydrateProfile 在。**⚠ cache 缺口(测试环境 · 同序3-d-5 / 第12轮裁断)**:webview 强缓存旧 intake-action.js(含 `const PROFILE`)与新 profile.js `const PROFILE` 撞 → 缓存态该文件加载失败(console redeclaration);**磁盘正确**(`served_intake_hasPROFILE=false` / `served_profile_hasPROFILE=true` = PROFILE 全局唯一),桌面 asset:// / 清缓存无冲突、非代码缺陷。
+
+**序5 剩余(过审后续做)**:5-c renderSettings 拆(壳部分 theme/lang/density/model → platform + jobseek 段 goals/weights/主简历 → apps · **第 7 契约 manifest.settings**)+ 5-d initShell + 5-e INIT 分解 + settingsPersistOn/saveSettings/hydrateSettings 归属。
