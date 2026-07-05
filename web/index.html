@@ -1804,18 +1804,7 @@ async function wgtAction(widgetId, action, payload){
 }
 window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window.SeekerWidgets.onAction=wgtAction; });
 
-function copSend(text, aiText){
-  const inp=$('#copInput');
-  text=(text||inp.value||'').trim(); if(!text)return;
-  if(appMode==='agent'){ copClose(); agentSend(text, aiText); return; } // agent 模式:关浮窗,回复进 agent 视图(否则面板看着没反应)
-  inp.value=''; inp.style.height='auto';
-  if(!copEl().classList.contains('open')) copOpen();
-  copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
-  const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
-  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+window.SeekerShell.appReply(text)); }, 680+Math.random()*460);
-}
+/* copSend 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 · 红线转义) */
 function copInit(){
   $('#copLaunch').onclick=copToggle;
   $('#copClose').innerHTML=IC.x; $('#copClose').onclick=copClose;
@@ -1870,16 +1859,7 @@ function setAppMode(m){
 }
 function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
 function agentCollapse(){ document.body.dataset.agent='centered'; }
-function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
-function agentSend(text, aiText){
-  const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
-  inp.value=''; inp.style.height='auto';
-  agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
-  const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
-  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
-}
+/* agentAppend/agentSend 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 · 红线转义) */
 function agentGreet(){
   agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));
 }

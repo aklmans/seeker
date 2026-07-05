@@ -12,3 +12,28 @@ const cCard=(t,m)=>`<div class="cop-card"><div class="cct">${t}</div>${m?`<div c
 const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</div>`:'';
 const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc}">${l}</button>`;
 const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button onclick="copSend('${s}')">${s}</button>`).join('')}</div>`;
+
+/* ---- 抽壳序3-d-1:Copilot/Agent 发送核心(红线:用户输入进 DOM 前 text.replace(/</g,&lt;) 转义逐字保留;frameQuery→streamReply|appReply 链) ---- */
+function copSend(text, aiText){
+  const inp=$('#copInput');
+  text=(text||inp.value||'').trim(); if(!text)return;
+  if(appMode==='agent'){ copClose(); agentSend(text, aiText); return; } // agent 模式:关浮窗,回复进 agent 视图(否则面板看着没反应)
+  inp.value=''; inp.style.height='auto';
+  if(!copEl().classList.contains('open')) copOpen();
+  copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
+  const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
+  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
+  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+window.SeekerShell.appReply(text)); }, 680+Math.random()*460);
+}
+
+function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
+function agentSend(text, aiText){
+  const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
+  inp.value=''; inp.style.height='auto';
+  agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
+  const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
+  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
+  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
+}
