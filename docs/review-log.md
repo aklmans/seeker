@@ -278,3 +278,37 @@
 - **① 序4-a/b/c 通过** —— **profile 硬隔离双重保护逐字保持(代码层 + 构造场景验)**:① 引擎零 `rt.profile`(data-store persistColl/hydrateColl/persistMsg 只走 `rt.db.upsert/list`,rt.profile 唯一命中是红线注释、无调用 → profile 仓库经此引擎碰不到)② 后端 `table_for` 兜底(data.rs/capability.rs/invariants/CSP 本批空 diff,即便前端 `persistColl('profile',…)` 后端 table_for 白名单**拒 'profile' 集合**);**构造场景** `persistColl('jobs',[{…,phone}])` → 字段进 jobs 业务集合 data_json、**非 profile 仓库**(rt.profile 独立通道)。**messages 不可 AI query**(QUERYABLE=jobs/skills/actions/resumes/iv_records 本批未改、不含 messages)。**4-a collId 契约语义等价 + §1 纯净**:withCollId has-id 分支不变、`collId('skills',r)=r.name` 精确等价旧特判、jobseek schema 移入 manifest、平台引擎零 schema knowledge。data-store 33 行 31 逐字节纯剪切 + 2 行 collId 改写(验等价);cargo83/clippy/fmt/tsc/node 净;红线核心空 diff。**证明「最重红线也能纯剪切 + 契约化零回归」。**
 - **② 序4 剩余放行条件(新 session)**:4-d jobseek 专属数据大择取(**验搬出符号不重复 + rt-ready 绑定时序**;jobsPersistOn/onboarding/demoMode 归属动前判 壳 vs apps);序5 profile 设置框架(persistProfileField/hydrateProfile + renderSettings 壳部分 —— **抽 rt.profile 通道本身,逐行 + 构造场景严审**:profile 写仍只经 rt.profile 不串 rt.db、AI 仍拿不到 profile、设置不可经对话改)。
 - **后续关注(备查)**:① 序4-d **rt-ready 立即执行绑定**(hydrateColl 在 seeker-rt-ready 触发)搬 apps 须保**监听器注册在 dispatch 前的不变式**(同第5轮时序法);② collId 生成格式与旧略异(不透明 id、边缘路径),**非回归**,记一笔。
+
+## 第 14 轮 — ⏳ 待审(送审中) · 序3-d Copilot/Agent chrome 前三刀:发送核心 + appSuggs 契约 + copInit(`e78fc55..e55562d`,第13轮后全部未审)
+
+> 序3-d chrome 批前三刀送审(自第13轮 `e73aadf` 后无外审):3-d-1 发送核心(**红线转义**,已 commit 未外审)+ 3-d-2 第 4 个契约 `SeekerShell.appSuggs` 解耦 copInit 的 `aiSuggs` 反向依赖(合 §1)+ 3-d-3 copInit 逐字节纯剪切归位平台。**契约扩展必审 + 3-d-1 红线转义逐刀验**;附一条 ⚠ 开场白文案过渡债披露,请评审裁定。
+> ⚠ 范围说明:3-d-1 于第13轮过审后单独 commit、无对应审查轮,本轮并入送审(红线刀不应跳过外审);若已另行审过,评审可略去该行。
+
+| 刀 | 内容 | 去向 | 性质 |
+|---|---|---|---|
+| 3-d-1 `e78fc55` | Copilot/Agent 发送核心 copSend/agentAppend/agentSend(22 行,2 段) | platform/shell/copilot-chrome.js | **红线抽壳**:用户输入进 DOM 前转义逐字保留 |
+| 3-d-2 `8fa62bb` | **appSuggs 契约扩展**(开场建议解耦) | registry/types/manifest/账本/index.html | **契约扩展(必审)** · platform 零 jobseek knowledge、合 §1 |
+| 3-d-3 `e55562d` | Copilot 面板初始化 copInit(10 行) | platform/shell/copilot-chrome.js | 纯抽壳(挂全局 + 载序前置) |
+
+**★ 序3-d-1 发送核心(红线 · 评审第11轮点名逐刀验)**:copSend/agentAppend/agentSend(22 行 2 段)→ copilot-chrome.js。**用户输入进 DOM 前转义逐字保留**:`copAppend('user', text.replace(/</g,'&lt;'))` / `agentAppend('user', text.replace(/</g,'&lt;'))`;`frameQuery→(streamReply | appReply)` 转发链不变(appReply 契约序3-c 已就位)。零回归:3 符号逐字来自旧 index.html、copSend 无定义、node/内联/tsc 净;冒烟构造 `<img onerror=alert>` → copSend 转义为 `&lt;img&gt;`(DOM 无 img 元素)。index.html 2121→2101。
+
+**★ 序3-d-2 appSuggs 契约(评审必审 · SeekerShell.* 第 4 个扩展 · 类比 appReply/frameQuery)**:copInit 开场白末尾 `cSuggs(aiSuggs())` —— `aiSuggs` 是 jobseek 业务(序3-b 已搬 apps/jobseek/logic/copilot-actions.js),copInit 抽 platform 前须契约化(平台不能直调 apps 业务,违反 §1)。新增 `SeekerShell.appSuggs()`:
+- registry 遍历 `enabledApps` 调 `a.appSuggs()`、**首个非空数组生效**(无则空数组 → `cSuggs` 的 `.map` 安全),严格类比 appReply 的"首个非空生效";
+- types 声明 `AppManifest.appSuggs?: () => string[]` + `SeekerShellApi.appSuggs(): string[]`;
+- manifest 注册 `appSuggs: () => aiSuggs()`;账本(monolith-globals.d.ts)加 `aiSuggs` tsc 桥(同 copReply 桥);
+- copInit 调用点 `cSuggs(aiSuggs())` → `cSuggs(window.SeekerShell.appSuggs())`。
+
+**§1 纯净核实**:平台 `registry.appSuggs` 纯遍历委派、**零 jobseek schema/knowledge**;jobseek 建议器(零数据引导 vs 有数据真实查询的分支)全留 apps。**契约链冒烟(fresh static server,无 web 缓存缺口)**:`SeekerShell.appSuggs()` 委派 jobseek `aiSuggs()`、返回值与 `aiSuggs()` 直调**逐字一致**(4 建议);`loadedManifest.hasAppSuggs=true`——本轮无第12轮那种缓存缺口。
+
+**★ 序3-d-3 copInit 抽壳**:`aiSuggs` 反向依赖经 appSuggs 契约解耦后,copInit 依赖全落平台(`$`/`IC`/`tt` 序1 + 本文件 copToggle/copClose/copSend/copAppend/cSuggs)→ 逐字节纯剪切归 copilot-chrome.js(接 copSend/agentSend 后)。挂全局 + 载序前置(copilot-chrome.js@868;copInit 于 INIT@copInit() 运行时调)→ 抽壳零回归。
+
+**⚠ 诚实披露 · 开场白文案过渡债(请评审裁定)**:copInit 开场白 `tt('嗨,我是你的求职 Copilot…匹配岗位、改简历…')` 是 **jobseek 味业务文案**,随 copInit 逐字搬入平台。判断:appSuggs 契约解耦的是**跨层 call**(aiSuggs 反向依赖,硬红线);**文案**是更软的一类,且与**已过审的既有状态一致**——`agentGreet` 用 `T('agentGreet')`(平台 i18n)、序1-c 整张 i18n 表(含全部 jobseek 串)已在平台(第10轮过审)。故按**过渡债**处理(3.y 或后续 i18n 命名空间 / `manifest.greeting` 类契约清),**非本刀新增违规**,inline 注释 + 本披露留痕。若评审要求现在契约化开场白,即追加一刀;未擅自扩张 appSuggs 契约形态。
+
+**零回归实证**:
+- copInit 全局唯一定义(`grep -rn "function copInit" web/` = 1);copInit 函数体 **git diff 删除块 == copilot-chrome.js 搬入块 逐字节一致**(`diff -q` 空);
+- 契约扩展 5 文件 +19/-1、copInit 刀 2 文件;node `--check` 每文件净、内联 8 块语法净、tsc `--noEmit` 净;
+- 载序不变式:registry@858 定义 appSuggs、manifest@1990 注册、copilot-chrome@868 定义 copInit,INIT@copInit() 运行时消费,全在位;
+- **红线核心空 diff**:src-tauri(capability.rs D3 / secret.rs / data.rs profile / tauri.conf CSP)+ types.invariants + runtime 本批未触(git status 核实);
+- **index.html**:2121→2101(3-d-1)→2091(3-d-2/3);platform/shell 仍 11 模块(copilot-chrome.js 追加 copSend/agentSend + copInit)。
+
+**序3-d 剩余(过审后续做)**:agentInit(内嵌 command-palette,cmd 归属先厘清)+ mode(renderModeSwitch/setAppMode/appMode/agentShowCanvas/agentCollapse/agentGreet)+ 辅助(copGo/agentChat/agentCancel/aiChatAvailable/**aiErrHTML[红线 err 转义]**/agentScroll)+ updateAgentChrome/updateCopChrome;⚠ **initShell 是壳启动非 chrome**,归属动前判。
