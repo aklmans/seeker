@@ -235,6 +235,14 @@
     return out;
   }
 
+  /** 应用 chrome 渲染触发:通知各启用应用重渲其 Agent chrome 贡献(如技能 chips → #agentCmds)。
+   *  汇总型副作用——全调、无返回(chrome 扩展点;平台不硬编码 app 渲染器符号名,替代 typeof 守卫直调)。 */
+  function renderAppChips() {
+    enabledApps().forEach((a) => {
+      if (typeof a.renderAppChips === 'function') a.renderAppChips();
+    });
+  }
+
   /** 集合 id 键规则:问启用应用(应用自持集合 schema);首个非空生效,否则 undefined(调用方用默认生成)。 @param {string} name @param {any} r */
   function collId(name, r) {
     for (const a of enabledApps()) {
@@ -273,6 +281,7 @@
     appReply,
     appSuggs,
     appCommands,
+    renderAppChips,
     collId,
     collections,
   };

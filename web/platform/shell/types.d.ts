@@ -88,6 +88,8 @@ export interface AppManifest {
   appSuggs?: () => string[];
   /** /命令面板项:本应用贡献的 Agent 斜杠命令(与单体 AGENT_CMDS 同构);各应用命令在面板里并集同现。 */
   appCommands?: () => CommandSpec[];
+  /** 重渲本应用的 Agent chrome 贡献(技能 chips → #agentCmds;随语言/初始化触发)。副作用、无返回。 */
+  renderAppChips?: () => void;
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
 }
@@ -139,6 +141,8 @@ export interface SeekerShellApi {
   appSuggs(): string[];
   /** /命令面板项:全部启用应用命令的并集(不同于 framer 首个非空;类比 cards()——命令面板汇总多应用)。 */
   appCommands(): CommandSpec[];
+  /** 通知各启用应用重渲其 Agent chrome 贡献(技能 chips);汇总型副作用,全调无返回。 */
+  renderAppChips(): void;
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */

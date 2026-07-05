@@ -63,6 +63,7 @@
     appReply: (t) => copReply(t),
     appSuggs: () => aiSuggs(),
     appCommands: () => AGENT_CMDS,
+    renderAppChips: () => renderAgentCmds(),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
   });
 })();
