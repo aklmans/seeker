@@ -1878,7 +1878,7 @@ const AGENT_CMDS=[
 ];
 let cmdActive=0, cmdFiltered=[];
 function cmdIsOpen(){const p=$('#cmdPop');return p&&p.classList.contains('open');}
-function cmdFilterList(q){q=(q||'').toLowerCase().trim();if(!q)return AGENT_CMDS.slice();return AGENT_CMDS.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
+function cmdFilterList(q){q=(q||'').toLowerCase().trim();const A=window.SeekerShell.appCommands();if(!q)return A.slice();return A.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
 function cmdRender(){
   const pop=$('#cmdPop');
   pop.innerHTML=`<div class="cmd-hint">${tt('命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭','Commands · ↑↓ select · Enter run · Esc close')}</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${c.cmd}</span><span class="cl">${tt(c.label[0],c.label[1])}</span><span class="cd">${tt(c.desc[0],c.desc[1])}</span></div>`).join('');

@@ -16,6 +16,7 @@
   /** @typedef {import('./types').ShellOwn} ShellOwn */
   /** @typedef {import('./types').LString} LString */
   /** @typedef {import('./types').CardSpec} CardSpec */
+  /** @typedef {import('./types').CommandSpec} CommandSpec */
 
   const LS_KEY = 'seeker-apps';
   /** @type {AppManifest[]} 注册序 */
@@ -221,6 +222,19 @@
     return [];
   }
 
+  /** /命令面板项:全部启用应用命令的**并集**(不同于 framer 的首个非空;类比 cards()——多应用命令同现一个面板)。 @returns {CommandSpec[]} */
+  function appCommands() {
+    /** @type {CommandSpec[]} */
+    const out = [];
+    enabledApps().forEach((a) => {
+      if (typeof a.appCommands === 'function') {
+        const cs = a.appCommands();
+        if (Array.isArray(cs)) out.push(...cs);
+      }
+    });
+    return out;
+  }
+
   /** 集合 id 键规则:问启用应用(应用自持集合 schema);首个非空生效,否则 undefined(调用方用默认生成)。 @param {string} name @param {any} r */
   function collId(name, r) {
     for (const a of enabledApps()) {
@@ -258,6 +272,7 @@
     frameQuery,
     appReply,
     appSuggs,
+    appCommands,
     collId,
     collections,
   };

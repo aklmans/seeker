@@ -62,6 +62,7 @@
     frameQuery: (t) => frameQuery(t),
     appReply: (t) => copReply(t),
     appSuggs: () => aiSuggs(),
+    appCommands: () => AGENT_CMDS,
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
   });
 })();

@@ -49,6 +49,18 @@ export interface CardSpec {
   persist?: boolean;
 }
 
+/** Agent /命令面板项 —— 与单体 AGENT_CMDS 条目同构。 */
+export interface CommandSpec {
+  /** /斜杠命令(如 '/match');cmdFilterList 按此 + label + desc 模糊过滤。 */
+  cmd: string;
+  /** [中,英] 名。 */
+  label: [string, string];
+  /** [中,英] 说明。 */
+  desc: [string, string];
+  /** 执行(agentSend 查询 / 导航 / 打开;由应用自持,平台只透传调用)。 */
+  run: () => void;
+}
+
 /** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI、数据保留)。 */
 export interface AppManifest {
   /** ^[a-z][a-z0-9]*$(嵌入集合前缀 / 设置键 / 钥匙串不经它)。 */
@@ -74,6 +86,8 @@ export interface AppManifest {
   appReply?: (text: string) => string;
   /** 开场建议器:AI 面板开场白的建议 chips(命中返回非空字符串数组,未命中空数组;与单体 aiSuggs 同约)。 */
   appSuggs?: () => string[];
+  /** /命令面板项:本应用贡献的 Agent 斜杠命令(与单体 AGENT_CMDS 同构);各应用命令在面板里并集同现。 */
+  appCommands?: () => CommandSpec[];
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
 }
@@ -123,6 +137,8 @@ export interface SeekerShellApi {
   appReply(text: string): string;
   /** 开场建议链:问各启用应用的建议器,首个非空数组生效;都未命中返回空数组。 */
   appSuggs(): string[];
+  /** /命令面板项:全部启用应用命令的并集(不同于 framer 首个非空;类比 cards()——命令面板汇总多应用)。 */
+  appCommands(): CommandSpec[];
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */
