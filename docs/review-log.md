@@ -255,3 +255,21 @@
 - **② 缓存缺口裁断 = 测试环境产物、非代码缺陷,接受** —— web 预览「加载的 manifest 对象无 appReply」是 HTTP 强缓存把同 URL 旧脚本喂给 webview;契约链代码层正确(逐环核实)、文件含 appReply(cache-bust XHR 证);桌面 Tauri `asset://` 无缓存 + web 硬刷新解;appReply 仅降级 mock 回复(未配 AI 的演示回退)、缓存态空回复属 cosmetic。→ 后续:真机 / 硬刷新顺带目测 appReply 降级路径(低优先,并入 R1)。
 - **③ 序3-d 红线刀放行条件(重申)**:copSend/agentSend 抽 platform,逐刀验用户输入转义 `text.replace(/</g,'&lt;')` 逐字保留、`frameQuery→appReply→streamReply` 转发链不变、`persistMsg` 依赖处理;`initShell`/agent mode 归属(壳 vs apps)动前先判。
 - **后续关注(下一 session)**:序4(数据框架)/序5(设置框架)是**最重红线批**(profile 硬隔离 / 设置不可经对话改),抽 `persist*`/`hydrate*`/`renderSettings` 时构造场景严审——保持一基元一 commit + 契约扩展必审,别合刀图快。
+
+## 第 13 轮 — ⏳ 待审(送审中)· 序4-a/b/c:数据框架(collId 契约 + 通用引擎 + messages · profile 红线)(`5529d77..e73aadf`)
+
+> 序4(数据框架 · 最重红线批)前三刀:collId 契约扩展 + 通用集合引擎 + messages 持久化,profile 硬隔离逐字保持。**请评审代码层核实 collId 契约 + profile 隔离不削弱 + messages QUERYABLE 隔离。**
+
+| 刀 | 内容 | 去向 | 红线/契约 |
+|---|---|---|---|
+| 4-a `06a6d81` | `SeekerShell.collId` 契约扩展(集合 id 键规则解耦) | registry/types/manifest/index.html | **契约扩展(必审)** · platform 零 jobseek knowledge、合 §1 |
+| 4-b `0ee9cde` | 通用集合引擎 collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl | platform/shell/data-store.js | **profile 红线**:引擎零 rt.profile、只碰通用集合 rt.db |
+| 4-c `e73aadf` | messages 持久化 __msgSeq/persistMsg | data-store.js(追加) | **红线**:messages 移出 QUERYABLE、AI 不可 query |
+
+**★ 4-a collId 契约(评审必审 · 类比 appReply/frameQuery)**:通用引擎 withCollId 原含 skills 特判(`name==='skills'`→用 name 作键)=jobseek 集合 schema——抽 platform 前须契约化。`SeekerShell.collId(name,r)`:registry 遍历启用应用调 `a.collId`、首个非空生效(无则 undefined,调用方默认生成 r_id);manifest 注册 `collId:(name,r)=>name==='skills'?r.name:undefined`;withCollId 改用 `SeekerShell.collId`(平台无 jobseek knowledge)。代码层核实:tsc 净、skills 特判从 index.html 消失、契约链手动补测(绕 web 缓存)skills→name / 默认生成 / 有 id 原样 / 无规则→undefined 全对。
+
+**★ profile 硬隔离(4-b/c 红线)**:persist 走 `rt.db`(通用集合)、profile 走独立 `rt.profile`——两条物理分离的 rt 通道(注释 1661「隐私表不在此(走 profile)」+ 1741「messages 移出 QUERYABLE」明证);data-store.js **零 rt.profile**(grep 核实);抽壳零逻辑改动,隔离逐字保持。**评审可构造场景验**:往 persistColl/persistMsg 塞 profile 字段也进不了 profile 仓库(不同 rt API)、AI 不可 query_data('messages')。
+
+**零回归**:各刀符号逐字来自旧 index.html、搬出符号 index.html 无定义、node/内联 8 块/tsc 净;冒烟——collId 契约链(skills→name)、data-store 全局(persistColl/hydrateColl/withCollId)、collPersistOn web=false、0 错误。index.html 2156→2121;platform/shell 11 模块。红线核心(runtime/D3/secret/profile 文件/CSP/invariants)空 diff。
+
+**序4 剩余(过审后新 session)**:4-d jobseek 专属数据大择取(jobs/resumes/种子/编排→apps,5 段 + rt-ready 绑定)+ jobsPersistOn/onboarding/demoMode 归属 + hydrateMessages(chrome 依赖)+ **profile 序5(persistProfileField/hydrateProfile · 双红线,构造场景严审)**。
