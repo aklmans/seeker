@@ -81,3 +81,17 @@ function agentCollapse(){ document.body.dataset.agent='centered'; }
 function agentGreet(){
   agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));
 }
+
+/* ---- 抽壳序3-d-9:Agent /命令面板机制(通用) —— cmdActive/cmdFiltered 状态 + cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun。
+   命令数据经 SeekerShell.appCommands()(序3-d-7 契约,平台零 jobseek 命令 knowledge);依赖 $/$$/tt(序1)+ #cmdPop/#agentInput;agentInit(序3-d-10)运行时接线。 ---- */
+let cmdActive=0, cmdFiltered=[];
+function cmdIsOpen(){const p=$('#cmdPop');return p&&p.classList.contains('open');}
+function cmdFilterList(q){q=(q||'').toLowerCase().trim();const A=window.SeekerShell.appCommands();if(!q)return A.slice();return A.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
+function cmdRender(){
+  const pop=$('#cmdPop');
+  pop.innerHTML=`<div class="cmd-hint">${tt('命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭','Commands · ↑↓ select · Enter run · Esc close')}</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${c.cmd}</span><span class="cl">${tt(c.label[0],c.label[1])}</span><span class="cd">${tt(c.desc[0],c.desc[1])}</span></div>`).join('');
+  $$('#cmdPop [data-ci]').forEach(r=>r.onmousedown=(e)=>{e.preventDefault();cmdRun(+r.dataset.ci);});
+}
+function cmdOpen(q){cmdFiltered=cmdFilterList(q);cmdActive=0;if(cmdFiltered.length){cmdRender();$('#cmdPop').classList.add('open');}else cmdClose();}
+function cmdClose(){const p=$('#cmdPop');if(p)p.classList.remove('open');}
+function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').value='';$('#agentInput').style.height='auto';cmdClose();c.run();}
