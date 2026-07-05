@@ -1604,18 +1604,14 @@ function openMarketValue(){
 /* aiSuggs 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
 
 /* operations the copilot can perform (also callable from buttons) */
-function copGo(id){copClose();go(id);}
-/* copMatch..copDoneAct 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
-function agentChat(html){ (appMode==='agent'?agentAppend:copAppend)('ai','<span class="who">Agent</span>'+html); }
-/* agentDeleteJob 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
-function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
+/* copGo/agentChat/agentCancel 已抽壳 → platform/shell/copilot-chrome.js(序3-d-4);copMatch..copDoneAct/agentDeleteJob 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
 
 /* findJob/findSkill/findAction 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
 
 /* copReply 已择取 → apps/jobseek/logic/copilot-actions.js(序3-b) */
 
 /* ===== G2:自由对话接真实流式(桌面 + SeekerRT 就绪);否则降级 mock copReply ===== */
-function aiChatAvailable(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+/* aiChatAvailable 已抽壳 → platform/shell/copilot-chrome.js(序3-d-4) */
 function aiErrHTML(err){
   const m=String((err&&err.message)||err).replace(/</g,'&lt;');
   /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
@@ -1632,7 +1628,7 @@ function aiErrHTML(err){
 /** 安全渲染 AI 文本(Markdown → 受限 HTML;渲染器缺失则降级为转义纯文本,始终防注入)。 */
 /* aiHTML/displayText/toolStatusText 已抽壳 → platform/shell/ai-render.js(序1-f) */
 /* streamReply(+aiLangHint) 已抽壳 → platform/shell/ai-engine.js(序2 · 红线) */
-function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
+/* agentScroll 已抽壳 → platform/shell/copilot-chrome.js(序3-d-4) */
 
 /* ===== 首次上手状态(评审落地:首启不静默灌演示数据,改岔路让用户选)=====
    onboarded:已做首启选择(开始我的 / 逛示例)。迁移:旧版已被种子过的用户(jh-seeded-jobs)视为已上手,不弹落地页。 */
