@@ -501,7 +501,7 @@
 - **④ cache 缺口 = 复用第12/19轮裁断:接受(附开发提示)** —— redeclaration 仅发生在浏览器同供旧缓存 intake + 新 profile 时;磁盘 const PROFILE 全仓唯一(grep=1);桌面 asset:// / 硬刷新无冲突、非代码缺陷。⚠ **开发提示(非代码问题)**:const 跨文件搬迁的缓存缺口比"单函数 undefined"更绊人(redeclaration = SyntaxError → 整个 profile.js 失败);**搬迁刀开发时硬刷新/禁缓存**避免误判回归。**纯剪切用 const(而非 window.X)是零回归正确选择,不为缓存扭曲代码**。
 - **⑤ flag→clear 闭环(再次有效)**:第19轮裁定 PROFILE→平台、第20轮精确兑现并复验。**待清账更新**:已清 = renderAgentCmds(17)/PROFILE→平台(20);仍开(序5 剩余)= settingsPersistOn 归属 / renderSettings 拆(第7契约 manifest.settings)/ initShell / INIT 分解 / 文案归属(3.y)。
 
-## 第 21 轮 — ⏳ 待审(送审中) · 序5-c renderSettings 拆分:第 7 契约 `SeekerShell.appSettings`(`ce3b215..40b734e`)
+## 第 21 轮 — ✅ 通过 · 序5-c renderSettings 拆分:第 7 契约 `SeekerShell.appSettings`(`ce3b215..40b734e`)
 
 > **本刀是序5、也是整个平台化搬迁里最大、最不"纯剪切"的一刀**——不是逐字节搬运,而是把一个混着 平台/jobseek/profile红线 三类内容的 ~140 行 `renderSettings` 函数**拆分 + 加第 7 契约**。零回归靠**逐条偏离披露 + 穷尽功能冒烟**,不是机械 diff。请评审逐行 + 构造场景严审(用户在此刀前已就"renderSettings 拆分方式 + PROFILE 归属"两处征询我并拍板,详见文末决策记录)。
 
@@ -544,3 +544,8 @@
 2. 披露④(`renderSkills()→rerenderPages()`)的行为等价论证是否站得住——是本刀唯一真正的"逻辑改变"(其余都是纯位置/间接层变化)。
 3. 两项明确排除在外的过渡债(`setState` 系 + `clearAllDataFlow` 系)是否可接受留待后续,不阻塞本刀。
 4. profile 红线(persistProfileField/PROFILE)在 `settings.js` 拼版式过程中是否有任何削弱(核实点:`settings.js` 是否有任何路径绕过 `profile.js` 直接碰 `rt.profile`/`rt.db`)。
+
+**评审裁定(第 21 轮 · 通过 · 无阻断/应改)**:
+- **① 序5-c 通过** —— **第 7 契约 `appSettings` 设计正当**:registry 汇总型聚合(遍历应用收 `AppSettingsSpec` 并集,同 cards())、`{tabs?, extend?}` 类型清晰、**组合逻辑在消费者 settings.js(平台)而 registry 只聚合 = 分离正当**;契约体系自然延伸(汇总型第 5 个)。**§1 干净**:settings.js 零直调 jobseek 函数、jobseek 设置只经 `SeekerShell.appSettings()`;**披露④(data-tc `renderSkills()`→`rerenderPages()`)= 消除拆分后唯一的平台→apps 直调**,行为等价(rerenderPages 级联 skills 页,spy 已证)。**profile/resumes 红线保留**:data-pf → `persistProfileField`(隔离 rt.profile 通道)+ 值引号转义;master 编辑 → persistMaster → resumes 专业层无联系方式。4 条偏离逐条核实(1–3 内容逐字节未变仅间接层变;4 代码层 + spy 双证)。红线核心空 diff(capability/data profile/invariants/CSP);0 重复定义;cargo83/clippy/fmt/tsc/node 净;index.html −530 行。
+- **② 过渡债评估(执行 Agent 主动披露的两条 · 认可方向)**:(1)`setState`/`saveSettings`/`hydrateSettings`/`WEIGHTS` 混合归属 = 老问题、**本刀未扩大**,随后续 settingsPersistOn 归属刀处理,可接受;(2)`clearAllDataFlow` 混 jobseek `setDemoMode` + 硬编码集合名 = **认可方向:后续改用既有 `SeekerShell.collections()` 契约**取集合列表(不新增第 8 契约)+ 解 setDemoMode 归属,记入归属待清账。**注**:settings.js line 48 硬编码 `'messages'` 是**壳自持集合**、非 jobseek 耦合,那处 OK。
+- **③ 待清账(更新)**:已清 = renderAgentCmds(17)/PROFILE→平台(20)/**renderSettings 拆(本轮,第 7 契约)**;仍开 = settingsPersistOn/saveSettings/WEIGHTS 混合归属、**clearAllDataFlow 分解**(→ SeekerShell.collections() + setDemoMode 归属)、initShell、INIT 分解、文案归属(3.y)。
