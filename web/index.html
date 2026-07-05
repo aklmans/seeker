@@ -1798,14 +1798,8 @@ window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window
 
 /* copSend/copInit 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 发送核心 / 序3-d-3 面板初始化) */
 
-/* ============ AGENT MODE ============ */
-let appMode='editor';
-let appReady=false;
-function renderModeSwitch(){
-  const ms=$('#modeSwitch'); if(!ms)return;
-  ms.innerHTML=`<button class="${appMode==='agent'?'on':''}" data-am="agent">Agent</button><button class="${appMode==='editor'?'on':''}" data-am="editor">${T('editor')}</button>`;
-  $$('#modeSwitch button').forEach(b=>b.onclick=()=>setAppMode(b.dataset.am));
-}
+/* ============ AGENT MODE(已抽壳 → platform/shell/copilot-chrome.js · 序3-d-6)============ */
+/* appMode/appReady/renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet 全组 → copilot-chrome.js;initShell(壳启动非 chrome)留此、归属另判 */
 function initShell(){
   // 拖放守卫:tauri.conf dragDropEnabled:false 后 webview 自己处理拖放;文件拖到拖放区之外时,默认会让 webview 导航去打开文件 → 全局拦掉(仅文件)。AI 录入区 #aiDrop 自己的 drop 仍照常摄入。
   ['dragover','drop'].forEach(evn=>document.addEventListener(evn, e=>{ if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files')) e.preventDefault(); }));
@@ -1831,20 +1825,7 @@ function initShell(){
   };
   setLang(setState.lang);
 }
-function setAppMode(m){
-  const prev=appMode; appMode=m; document.body.dataset.appmode=m;
-  if(m==='agent'){ try{ copClose(); }catch(_e){} } // 进 agent 模式关掉浮窗(launcher 已隐藏,统一为 agent 视图唯一 AI 面)
-  if(m==='agent'&&prev!=='agent') document.body.dataset.agent='centered';
-  renderModeSwitch();
-  try{localStorage.setItem('jh-mode',m);}catch(e){}
-  if(m==='agent' && !$('#agentMsgs').children.length) agentGreet();
-}
-function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
-function agentCollapse(){ document.body.dataset.agent='centered'; }
-/* agentAppend/agentSend 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 · 红线转义) */
-function agentGreet(){
-  agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));
-}
+/* setAppMode/agentShowCanvas/agentCollapse/agentGreet 已抽壳 → platform/shell/copilot-chrome.js(序3-d-6;agentAppend/agentSend 同文件序3-d-1) */
 function agentInit(){
   $('#agentSend').innerHTML=IC.arrow; $('#agentSend').onclick=()=>agentSend();
   const inp=$('#agentInput');

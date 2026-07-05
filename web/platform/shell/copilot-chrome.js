@@ -56,3 +56,28 @@ function agentChat(html){ (appMode==='agent'?agentAppend:copAppend)('ai','<span 
 function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
 function aiChatAvailable(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
 function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
+
+/* ---- 抽壳序3-d-6:Agent 模式群 —— appMode/appReady 状态 + renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet。
+   依赖 $/$$/T(序1)+ 本文件 copClose/agentAppend(序3-a/3-d-1)+ document.body/localStorage(运行时);appMode 与其消费者 copSend/agentChat 同文件。
+   ⚠ agentGreet 用 T('agentGreet')=平台 i18n 的 jobseek 味开场白(文案归属待清账,同 copInit,3.y manifest.greeting 清)。
+   initShell(壳启动非 chrome)留 index.html——归属另判(评审后续关注)。 ---- */
+let appMode='editor';
+let appReady=false;
+function renderModeSwitch(){
+  const ms=$('#modeSwitch'); if(!ms)return;
+  ms.innerHTML=`<button class="${appMode==='agent'?'on':''}" data-am="agent">Agent</button><button class="${appMode==='editor'?'on':''}" data-am="editor">${T('editor')}</button>`;
+  $$('#modeSwitch button').forEach(b=>b.onclick=()=>setAppMode(b.dataset.am));
+}
+function setAppMode(m){
+  const prev=appMode; appMode=m; document.body.dataset.appmode=m;
+  if(m==='agent'){ try{ copClose(); }catch(_e){} } // 进 agent 模式关掉浮窗(launcher 已隐藏,统一为 agent 视图唯一 AI 面)
+  if(m==='agent'&&prev!=='agent') document.body.dataset.agent='centered';
+  renderModeSwitch();
+  try{localStorage.setItem('jh-mode',m);}catch(e){}
+  if(m==='agent' && !$('#agentMsgs').children.length) agentGreet();
+}
+function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
+function agentCollapse(){ document.body.dataset.agent='centered'; }
+function agentGreet(){
+  agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));
+}
