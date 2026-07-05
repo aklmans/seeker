@@ -64,6 +64,16 @@
     appSuggs: () => aiSuggs(),
     appCommands: () => AGENT_CMDS,
     renderAppChips: () => renderAgentCmds(),
+    settings: () => ({
+      tabs: [
+        { id: 'goals', label: { zh: '目标设置', en: 'Goals' }, render: goalsSectionHTML, wire: wireGoalsSection },
+        { id: 'weights', label: { zh: '评分权重', en: 'Weights' }, render: weightsSectionHTML, wire: wireWeightsSection },
+      ],
+      extend: {
+        profile: { render: masterSectionHTML, wire: wireMasterSection },
+        data: { render: dataResumeRowHTML },
+      },
+    }),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
   });
 })();

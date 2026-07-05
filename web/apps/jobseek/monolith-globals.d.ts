@@ -26,6 +26,15 @@ declare const AGENT_CMDS: import('../../platform/shell/types').CommandSpec[]; //
 declare function renderAgentCmds(): void; // → logic/copilot-actions.js(序3-d-8;manifest renderAppChips 引用桥,序3-d-11)
 declare const SEEKER_CARDS: Record<string, import('../../platform/shell/types').CardSpec>; // → cards.js
 
+/* 设置页贡献(序5-c-1 appSettings 契约;manifest settings 引用桥) */
+declare function goalsSectionHTML(): string; // → logic/settings-jobseek.js
+declare function wireGoalsSection(): void; // → logic/settings-jobseek.js
+declare function weightsSectionHTML(): string; // → logic/settings-jobseek.js
+declare function wireWeightsSection(): void; // → logic/settings-jobseek.js
+declare function masterSectionHTML(): string; // → logic/intake-action.js(既有,序5-c-1 首次桥接)
+declare function wireMasterSection(): void; // → logic/settings-jobseek.js
+declare function dataResumeRowHTML(): string; // → logic/settings-jobseek.js
+
 /* 徽标 liveCount 依赖(JOBS/ACTIONS→data.js · 3-f;tt 已抽壳→platform/shell/i18n.js 实际定义、tsc 桥删 · 序1-c;setState 壳全局未抽) */
 declare const JOBS: Array<Record<string, unknown>>; // → data.js
 declare const ACTIONS: Array<Record<string, any>>; // → data.js
