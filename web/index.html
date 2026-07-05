@@ -1666,8 +1666,8 @@ function markSeededColl(name){ try{ localStorage.setItem('jh-seeded-'+name,'1');
 /** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。 */
 function withCollId(name, r){
   if(r && r.id!=null) return r;
-  if(name==='skills') return Object.assign({ id:r.name }, r);
-  return Object.assign({ id:'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6) }, r);
+  const id = window.SeekerShell.collId(name, r);           // 集合 id 键规则经契约问应用(如 skills→name);平台无 jobseek knowledge
+  return Object.assign({ id: id!=null ? id : ('r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)) }, r);
 }
 /** 整集合 upsert(变更后调用)。 @param {string} name @param {any[]} arr */
 function persistColl(name, arr){
