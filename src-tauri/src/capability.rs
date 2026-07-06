@@ -327,7 +327,17 @@ pub async fn cap_invoke(
 /// 工具可见的业务集合 —— `data::table_for`(可持久化)的**子集**,刻意排除会话日志。
 /// **profile / secrets / settings 永不可读**(隐私红线);**messages 可持久化但不可读**:
 /// 对话历史可能含用户主动写出的 PII,AI 经多轮 History 拿上下文即可,不应数据挖掘全量会话日志(最小权限)。
-const QUERYABLE: &[&str] = &["jobs", "skills", "actions", "resumes", "iv_records"];
+/// 阶段4:assets_*(数据资产管理 · 第二应用)为业务集合、AI 可读候选;仍是**静态常量硬底**(⚠第6轮钉死:勿改动态),
+/// 实际可读 = 本静态底 ∩ D3 运行时可读集(应用启用 ∩ manifest 默认 ∩ 用户授权)。
+const QUERYABLE: &[&str] = &[
+    "jobs",
+    "skills",
+    "actions",
+    "resumes",
+    "iv_records",
+    "assets_prompts",
+    "assets_notes",
+];
 
 fn is_queryable(collection: &str) -> bool {
     QUERYABLE.contains(&collection)

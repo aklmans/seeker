@@ -34,6 +34,9 @@ fn table_for(collection: &str) -> Result<&'static str, String> {
         "resumes" => Ok("resumes"),
         "iv_records" => Ok("iv_records"),
         "messages" => Ok("messages"),
+        // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀;隐私表(profile/secrets/meta/settings)仍不在此。
+        "assets_prompts" => Ok("assets_prompts"),
+        "assets_notes" => Ok("assets_notes"),
         other => Err(format!("未知或受保护的集合: {other}")),
     }
 }
@@ -87,6 +90,12 @@ const MIGRATIONS: &[(i64, &str)] = &[
         4,
         "CREATE TABLE IF NOT EXISTS doc_chunks (id TEXT PRIMARY KEY, doc_id TEXT NOT NULL, doc_name TEXT NOT NULL, text TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0);
          CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc ON doc_chunks(doc_id);",
+    ),
+    // 阶段4 第二应用「数据资产管理」(assets):D1 新应用集合以 <appId>_ 前缀声明;骨架列 + data_json 弹性 schema 同既有业务集合。
+    (
+        5,
+        "CREATE TABLE IF NOT EXISTS assets_prompts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS assets_notes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
