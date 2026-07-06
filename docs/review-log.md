@@ -847,3 +847,6 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **验(web fresh · 均含★完整 INIT)**:完整 INIT 完成、9 页 render、themeBtn IC.sun + 模态 IC.x 图标渲染、tt/lang 工作、App Manager 模态开(用 $/el)、D3/profile 隔离不变、node/tsc0/0 err。逐字节。
 - **@ts-check base 工具转换模式确立**:export + `(any)`-cast window 桥 + shell-globals.d.ts **类型化** ambient(异于 @ts-nocheck 刀的无类型 declare)。
 **下一步 = 步3 中层**(nav/registry/keys/shell-boot/copilot-chrome + 水合注册 profile/persistence)—— **含有状态 + 红线**:registry 启用态、copilot `appMode`/`appReady`、**`setState`(★转前先查重赋值性)**、**`PROFILE`(红线,import-first 不上桥)**、`SEED`(demo-seed `let SEED=null`→重赋值=封装)。按有状态 litmus 逐刀,红线双审。
+
+### ★ setState 重赋值性调查(评审最高危前提)= **mutated-property,dual-publish 安全**
+grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`(无 hydrate 后整体重赋);其余全是 **`setState.X=` 属性 mutate**(`.lang=`×11、`.theme/fontsize/goal/density/motion/salary/period/autobackup/trainCounts=` 各1)。**litmus 判定:引用稳定、从不整体重赋 → `window.setState=setState` 同引用 dual-publish 安全**(消费者读 `setState.lang` 与被 mutate 的是同一对象、无分裂)、**无需封装/访问器**。⚠ setState 是 index.html 内联壳全局(非 shell/ 文件),其"转 module"是后续独立子刀;中层文件现读/mutate 它经 classic 全局(i18n module 已读 setState.lang 正常)。**结论:setState 转换时按 mutated-property 处理(异于 SEED/lastUndo 的 reassigned=封装)。**
