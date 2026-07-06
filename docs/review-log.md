@@ -576,3 +576,40 @@
 - **② ★两条披露语义 = 均认可**:(1)**captureSeed 时点(→go 后)= 行为等价,三证**——快照源四数组在新旧位置间零变异(chrome 接线 + renderOverview 只读)、仍先于 hydration(rt-ready 在 INIT 同步块后)、**无消费者被饿死**(SEED 全仓唯一读者 = seedDemoData 且自带 captureSeed 兜底,`if(SEED)return` 幂等再兜一层);(2)**enabled-gating = D2 对齐 + 零回归**——`enabledApps()` 与全部 7 契约同闸,jobseek 默认启用与旧逐调等价;旧无条件直调在禁用时**给已下架应用注示例条(.main UI 泄漏)**,新行为跳过更正确;SEED 是 jobseek 私有、平台不读,禁用不抓无副作用。
 - **③ 🏁 arc 收官盘点**:序1→5 全落;**index.html 4602→1330(−71%)**;platform/shell **14 个运行时 .js**(+types.d.ts 契约定义;送审"15 模块"含 types 口径、非缺陷);8 契约成熟。
 - **④ ★[建议](前瞻 · 非本刀 · 有时限)**:**clearAllDataFlow → SeekerShell.collections() 宜排在阶段4「第二应用」之前或同刀,勿无限延后** —— 现债是硬编码集合名,jobseek 独存时仅口径问题;但**阶段4 第二应用一落,「清空全部数据」会静默漏掉第二应用的集合 → 破坏「破坏性操作完整可撤销」红线(§4-3 反焦虑)**。契约 collections() 已就位、替换成本低。其余归属债(settingsPersistOn 系/setState/文案)可随 3.y 收。→ **已落显式出口**:clearAllDataFlow inline 注释 + CLAUDE.md §5 阶段4 行前置条件标注。
+
+## 第 23 轮 — ⏳ 待审(送审中) · 阶段4「第二应用 · 数据资产管理」:前置账 + 白名单红线刀 + assets 应用(`86c422e..02eb388`)
+
+> **阶段4 = 平台化前提的最终验证**(D6:新增应用成本≈manifest+页面)。三刀:阶段4-0 前置账(第22轮[建议]落地,含 **collections() 语义修 + 第9契约 onDataCleared**,必审)→ 阶段4-1 **红线刀**(后端集合白名单三处追加,本迁移首次**有意**触碰红线文件,必严审)→ 阶段4-2 assets 应用(全新代码 @ts-check)。**文末附成本盘点 = 阶段4 验收结论**。
+
+| 刀 | commit | 内容 | 性质 |
+|---|---|---|---|
+| 阶段4-0 | `55a3823` | clearAllDataFlow 契约化:collections() 存在性修 + **第9契约 onDataCleared** + 硬编码集合/setDemoMode 直调删除 | 前置账(契约扩展必审) |
+| 阶段4-1 | `f7ee9c0` | assets_* 三端白名单:data.rs(迁移 v5 + table_for×2)/ capability.rs(QUERYABLE+2)/ web.js(COLLECTIONS+2、DB v2) | **★红线刀(白名单追加)** |
+| 阶段4-2 | `02eb388` | apps/assets/(manifest + prompts/notes 两页,@ts-check strict 净)+ index.html 3 script 标签 | 新应用(新代码 C5 必检) |
+
+**★ 阶段4-0(必审 · 两个语义点)**:
+1. **collections() 语义修**:`enabledApps()` → `apps`(全部已注册,含禁用)。理据:其自身文档写"数据归属不随开关变(存在性)"而实现却按启用过滤 = 文档与实现矛盾(彼时无消费者,第5轮曾记"collections() 无消费方");首个真实消费者是「清空全部数据」这种**必须完整枚举**的破坏性操作 —— 禁用应用的数据也须被"清空所有"覆盖(否则用户以为清了、实际残留 = 隐私相邻的惊吓;D2 的数据保留由应用管理页 per-app 清数据独立承担)。AI 可读集另走 aiReadableCollections(启用∩授权)**未动**。
+2. **第9契约 `onDataCleared`/`notifyDataCleared`**(汇总型副作用):清空确认后通知**全部已注册应用**(含禁用 —— 数据被清是事实,app-local 状态须一致)复位本地状态;jobseek 注册 `onDataCleared:()=>setDemoMode(false)` → **平台代码零 setDemoMode 直调**(解第21轮归属债)。**关于第21轮"不新增第8契约"**:该语句限定的是**集合清单的获取机制**(用既有 collections(),已照办);setDemoMode 评审只要求"解归属"未定机制 —— 本项目先例(第16轮强制把 typeof 守卫契约化为 renderAppChips)一贯偏好显式契约而非推断式自愈,故以第9契约落。**构造场景验**:禁用 jobseek 后 collections() 仍含 jobs、notifyDataCleared 在禁用态仍清 jh-demo、clearAllCollections spy 枚举 == 旧 CLEARABLE_COLLS 六集合(**今日零回归**)、profile 永不在枚举面。对话框 detail 文案同刀改通用(动态集合数,原文案硬编码 jobseek 名词、二应用后失真)。
+3. 附带:旧「★★待清账」inline 标记删除(债清)。
+
+**★ 阶段4-1 红线刀(必严审 · 本迁移首次有意触碰红线文件,全部为白名单追加、零逻辑改)**:
+- `data.rs`:迁移 **v5**(CREATE TABLE assets_prompts/assets_notes,骨架列+data_json 同既有;迁移前自动快照机制既有)+ `table_for` 两 arm。**profile/secrets/meta/settings 仍不在白名单**(隔离结构不变)。
+- `capability.rs`:`QUERYABLE` 静态常量 += 两集合 —— **仍是静态常量硬底**(⚠第6轮钉死勿改动态,本刀只加条目不改形态);**profile/messages/settings/secrets 仍永不在内**;实际可读仍 = 静态底 ∩ D3 运行时集。d3 门单测为相对断言(`default_readable().len()==QUERYABLE.len()`)自然覆盖新条目;**cargo test 83/0**。
+- `web.js`:COLLECTIONS += 两集合、DB_VERSION 1→2(onupgradeneeded 增量建 store,既有数据不动);与桌面 table_for 一致。
+- **此三处 ≈10 行追加 = D3「静态硬底」安全设计下新增应用的固有平台成本**(参见成本盘点)。CSP/secret.rs/invariants/guardrail 未触。
+
+**阶段4-2 assets 应用(全新代码)**:manifest(id assets、集合 D1 前缀、**aiReadable 'default-on'**[Prompt/笔记=用户主动沉淀给 AI 的语料,D3 per-app 授权仍可关 —— 请评审确认此默认档]、资产组+2页)+ prompts/notes 页(@ts-check strict 净):空启动(无静默演示数据)、CRUD 走平台通用引擎(persistColl/hydrateColl/rt.db.remove)、rt-ready 水合(classic 解析期注册,时序法)、**★红线:用户输入进 DOM 前一律转义(构造 `<b>`/`<script>` 注入:无元素落地、innerHTML=&lt;b&gt; 字面显示,截图存证)**、删除 toastUndo 可撤销(§4-3)、设计语言复用既有 token。
+
+**冒烟(fresh reload · no-cache server)**:2 应用 11 页、资产组入 nav;**collections() 含 assets_*(= 前置账 payoff:清空全部数据自动覆盖新应用)**;D3 三层闸全链(default-on 入可读集/撤权退出/关应用退出且存在性保留);应用管理页自动列出 assets(开关/授权/per-app 清数据走既有 clearAppData=按 manifest.collections);关 assets→9 页壳好用/开→恢复;i18n EN;**jobseek 全页零回归**;0 console 错。
+**⚠ 披露**:① web 持久化=内存 mock(pre-existing:collPersistOn 需桌面;桌面真持久化经迁移 v5 + cargo 验,R1 真机顺带目测);② Mod+9 从设置页移到 prompts 页(快捷键随 PAGES 注册序 = 既有设计,设置仍有 Mod+,)。
+
+### 🏁 成本盘点(阶段4 验收:D6「新增应用成本≈manifest+页面」)
+| 触碰面 | 量 | 性质 |
+|---|---|---|
+| `apps/assets/`(新目录) | 3 文件(manifest+2页) | **应用本体** |
+| index.html | +3 `<script>` 标签 | 装载 |
+| 后端白名单(data.rs/capability.rs/web.js) | ≈10 行追加 | **D3 静态硬底的固有代价**(安全设计使然,非架构缺陷) |
+| platform/shell/*.js | **0 改动** | ✅ 契约体系工作:nav/卡/D3/应用管理/清空数据全自动纳入 |
+| 新契约 | **0**(阶段4-2 本身) | 全走既有 9 契约 + 通用引擎 |
+
+**验收结论(请评审确认)**:平台化成立 —— 新增应用 = manifest + 页面 + 白名单三处;proposal「平台零改动」的理想形态被 D3 静态硬底(第6轮安全裁定)修正为「平台零**逻辑**改动 + 白名单登记」,是有意的安全代价。
