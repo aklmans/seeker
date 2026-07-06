@@ -859,7 +859,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/dom.js"></script>
 <script src="./platform/shell/icons.js"></script>
 <script src="./platform/shell/i18n.js"></script>
-<script src="./platform/shell/toast.js"></script>
+<script type="module" src="./platform/shell/toast.js"></script>
 <script type="module" src="./platform/shell/modal.js"></script>
 <script type="module" src="./platform/shell/ai-render.js"></script>
 <script src="./platform/shell/nav.js"></script>
@@ -1199,7 +1199,7 @@ function initKeys(){
   K.registerAll([
     {id:'new', combo:'Mod+N', when:isDesktop, group:G.ctx, label:{zh:'新建(随当前页)',en:'New (current page)'}, run:contextNew}, /* 仅桌面:网页让位浏览器 Ctrl/⌘+N(满足设计文档 §三"不抢 Mod+N") */
     {id:'find', combo:'Mod+F', group:G.ctx, when:()=>!!pageSearchInput(current), label:{zh:'聚焦搜索 / 筛选',en:'Focus search / filter'}, run:()=>{const i=pageSearchInput(current);if(i){i.focus();if(i.select)i.select();}}},
-    {id:'undo', combo:'Mod+Z', group:G.ctx, label:{zh:'撤销(可逆操作)',en:'Undo'}, run:()=>{ if(lastUndo)lastUndo(); else toast(tt('没有可撤销的操作','Nothing to undo')); }}
+    {id:'undo', combo:'Mod+Z', group:G.ctx, label:{zh:'撤销(可逆操作)',en:'Undo'}, run:()=>{ if(!runLastUndo()) toast(tt('没有可撤销的操作','Nothing to undo')); }} /* 3.y:lastUndo 有状态→经 toast.js 的 runLastUndo() 访问器(不外露 mutable 值),同刀原子翻转 */
   ]);
   /* 信息行:仅进帮助浮层、不分发(输入内已有行为 + M5 语音占位) */
   K.registerAll([
