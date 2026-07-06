@@ -613,3 +613,11 @@
 | 新契约 | **0**(阶段4-2 本身) | 全走既有 9 契约 + 通用引擎 |
 
 **验收结论(请评审确认)**:平台化成立 —— 新增应用 = manifest + 页面 + 白名单三处;proposal「平台零改动」的理想形态被 D3 静态硬底(第6轮安全裁定)修正为「平台零**逻辑**改动 + 白名单登记」,是有意的安全代价。
+
+### 第23轮评审回执 —— 通过 + 1 [应改] + 2 [建议](均已修复,复审待过 · commit `5b5041a`)
+**评审结论**:平台化前提验证**成立(通过)**;A(QUERYABLE 静态硬底守住)/B(collections() 不泄漏 D3)/C(第9契约 §1 干净)/D(成本盘点=D6 答案)/E(assets 基本达标)五焦点核实。**1 [应改] + 2 [建议] 已修复**:
+- **★[应改] toastUndo 消息未转义 → 潜在 XSS(已修 3 处)**:`toastUndo(msg)`→`el(innerHTML)`,CSP `unsafe-inline` 不拦内联事件处理器 → 转义是唯一防线。① **prompts.js:45**(本刀新实例)`snap.title`→`apEsc`;② **copilot-actions.js:28**(pre-existing 同根)`job.co`→`jesc`;③ **★copilot-actions.js:27**(复审补冒烟坐实的**第二 sink**)——`agentChat` 亦经 `el/innerHTML`,同函数 `job.co`/`job.role` 未转义,只堵 toast(28)漏相邻 agentChat(27)是空修 → 一并 jesc。**构造场景复验**:`<img onerror>`/`<b onclick>` 三路 payload(prompt title / job.co-agentChat / job.co-toast)均字面显示、无元素落地、`__pwned` 不置位。
+- **[建议]① types.d.ts collections() 注释校正**:删过时"阶段2 AI 三层闸消费"(会误导接进 D3)→"全部注册/非 AI 可读/D3 见 aiReadableCollections"。
+- **[建议]② assets `default-off`(采纳)**:notes 自由文本兜底可能承载敏感信息 + D3 授权 per-app 单档 → **整应用 default-off**(隐私·反焦虑;blurb 本写"授权后";应用管理页一键授权即开)。复验:未授权 AI 可读集无 assets_*、授权后入。
+- **⚠ 诚实披露(更广 §4-4 面 · 复审须裁范围)**:本刀完整复验发现 `job.co`(JD 抽取=§4-4 Untrusted)另经 **copReply 约 7 处 cCard/cBtn 模板未转义**(部分注入 onclick JS 串,须引号/属性级转义,非仅 `<`)。此为**第12轮"copReply 嵌业务数据非用户输入 XSS"裁定接受的 pre-existing 面**、非本刀新增、超本[应改]范围 → **未在本刀静默扩改**(7 模板 + onclick 串处理有回归面,值当独立审)。**建议专门 copReply/agentChat §4-4 转义审计刀**;请评审裁此范围(现修 or 排后续)。
+cargo83/tsc/node/内联净;红线核心空 diff。**复审过后转正「通过」+ 记裁定 + 同步 memory。**
