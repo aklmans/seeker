@@ -827,3 +827,10 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **修**:`renderTopActions` handler 一律**惰性闭包** `fn:()=>X()`(点击时解析、与 module 载序解耦):openResumeModal(已中招)+ openNewJob/openMarketValue/openNewAction(尚 classic、将中招)四处一并 lazy 化=防复发。**此修 retroactively 修好 cut2**,当前 HEAD 正确。
 - **验(修后 · fresh)**:★完整 INIT 完成(appMgrBtn 接线=末行跑到)、9 页全 render+正确 top-action 数、match 顶栏点击→openResumeModal 惰性开模态、appMgr 开、D3/profile 隔离不变、tsc0。
 - **★流程纠偏(纳入后续每刀)**:冒烟必查**完整 INIT 完成**(appMgrBtn.onclick 已接 或 __INIT done 哨兵),非仅 appBooted。**建议评审复核:第26轮四刀在此修后是否需补一次"完整 INIT"回归确认**(我判断 cut3/4 逻辑本身无暗改、仅冒烟盲区,此修已覆盖;但请评审定夺)。
+
+### 步2(commit `c2a7af9`)· dispatch 拆分迁末位(评审第27轮必修落地)· 待审
+- **必修 grep 落实**:全仓 4 桥(SeekerRT/Guardrail/Widgets/Markdown)访问**全在函数内**(persist/hydrate/render/handlers/streamReply/aiHTML=runtime 或 rt-ready handler)、**无 dispatch 前同步桥访问** → 整块迁本亦安全;但按评审首选走**拆分**(更保险 + 解耦),留痕此判断。
+- **拆分**:873 module 保留桥建立(`window.SeekerRT=rt`+Guardrail/Widgets/Markdown+initMcpConfirm)于 head 早位;**仅 `dispatchEvent('seeker-rt-ready')` 一行**迁至 body 末位新 module。
+- **发现另一 rt-ready 监听**:index.html:1169(classic 解析期)`SeekerWidgets.onAction=wgtAction` —— 亦早于末位 dispatch,冒烟用它作 rt-ready 已 fire 的证据。
+- **验(web fresh)**:完整 INIT、★**rt-ready 已 fire**(SeekerWidgets.onAction=wgtAction 置位=1169 监听跑了)、手动 re-dispatch 探针捕获、桥早建、D3/profile 隔离不变、0 err。**桌面 WKWebView 真机复冒烟(真实 SQLite 数据水合路径,web 是内存 mock)随附**。
+- **效果**:水合注册文件(profile/persistence/notes/prompts)转 module 的"注册须早于 dispatch"约束已解除 → 步3 base+中层解锁。
