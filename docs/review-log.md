@@ -621,3 +621,39 @@
 - **[建议]② assets `default-off`(采纳)**:notes 自由文本兜底可能承载敏感信息 + D3 授权 per-app 单档 → **整应用 default-off**(隐私·反焦虑;blurb 本写"授权后";应用管理页一键授权即开)。复验:未授权 AI 可读集无 assets_*、授权后入。
 - **⚠ 诚实披露(更广 §4-4 面 · 复审须裁范围)**:本刀完整复验发现 `job.co`(JD 抽取=§4-4 Untrusted)另经 **copReply 约 7 处 cCard/cBtn 模板未转义**(部分注入 onclick JS 串,须引号/属性级转义,非仅 `<`)。此为**第12轮"copReply 嵌业务数据非用户输入 XSS"裁定接受的 pre-existing 面**、非本刀新增、超本[应改]范围 → **未在本刀静默扩改**(7 模板 + onclick 串处理有回归面,值当独立审)。**建议专门 copReply/agentChat §4-4 转义审计刀**;请评审裁此范围(现修 or 排后续)。
 cargo83/tsc/node/内联净;红线核心空 diff。**复审过后转正「通过」+ 记裁定 + 同步 memory。**
+
+---
+
+## 待审区 · P1 §4-4 转义审计刀(第23轮复审分出)—— 待第24轮
+
+### P1 · copReply/cCard/cBtn §4-4 XSS 收口(commit `5142ee1`)
+**由来**:第23轮复审「诚实披露」分出的专门刀。`job.co`/`job.role`/`sk.name`/`gaps` 等 = AI 对 JD 的抽取 = **§4-4 Untrusted**;经 `copReply` 的 `cCard`/`cBtn` 未转义进 DOM(`el(innerHTML)` 渲染)= XSS 面。**推翻第12轮**「copReply 嵌业务数据非用户输入、XSS 接受」裁定 —— 其前提(业务数据非外部)已证伪:`job.co` 是 JD 抽取的外部内容。CSP `script-src 'self' 'unsafe-inline'`(tauri.conf.json:27)**不拦内联事件处理器** → 转义/结构化是唯一防线。
+
+**两类 sink,两种修法**:
+1. **HTML 文本 sink**(`<b>${j.co}</b>`、`cCard` body、gap/skill/action 名):进 DOM 前过 **`cEsc`**(新增于 copilot-chrome.js;转义 `& < > "` 四字符,文本+属性上下文通用)。
+2. **★onclick JS 串 sink(更严重·任意 JS 执行)**:旧 `cBtn(label, oc)` 把 `oc` 直插 `onclick="${oc}"`,而 `copReply` 把外部数据拼进 `oc` 的 JS 字符串字面量 —— `copPlan('...','+j.co+')`(:64 `j.co` 外部!)、`copPlan('+sk.name+')`(:76)。含单引号即 breakout → 任意 JS。**修法=结构性(优于逃逸)**:新增 **`cAB(label, fn, args, acc)`** —— `fn`=window 上函数名(静态、开发者控制),`args`=参数数组(可含外部数据)→ `JSON.stringify` 存 `data-cargs`(属性经 `cEsc`),**文档级事件委派** `[data-cact]→window[fn](...JSON.parse(cargs))` **按值传参**调用。外部数据**永不拼进 JS/HTML 串** → **从根消除 onclick 注入类**,而非脆弱引号转义。
+
+**改动清单(2 文件,+29/−13)**:
+- `platform/shell/copilot-chrome.js`:+`cEsc`/+`cAB`/`cSuggs` 改 `data-csugg`+委派(消除 `copSend('${s}')` 内联注入 + 撇号规避 footgun,`aiSuggs` EN 避撇号注释可后续清)/+文档级 click 委派([data-cact]/[data-csugg])/`cBtn` 保留但加"仅静态 oc、外部数据用 cAB"警示注释。
+- `apps/jobseek/logic/copilot-actions.js`:`copReply` 全部外部/用户文本 sink 过 `cEsc`(j.co/j.role/sk.name/gaps/a.title/a.goal/g.name/best.co/p.res);带外部数据的 `cBtn` 迁 `cAB`(agentDeleteJob/copResume/copMatch/copPlan/copInterview/copDoneAct);**静态 `cBtn`(copGo/copMarket/copNewJob/navMap id 等)不动**(oc 零外部数据)。**`copPlan` toast 补 `cEsc(skill)`** —— cAB 把外部数据作**值**传入 copPlan,若 toast 不转义则注入点只是从 onclick 移到此 toast(否则 cAB 是空修)。
+- **`agentDeleteJob` 的 `jesc`(第23轮 `5b5041a` 已修、`<`-only、文本上下文足够)保留不动** —— 已过审、正确;不为消一个 helper 名而重编已审红线码(两 helper 并存已注,`cEsc`⊇`jesc`)。
+
+**冒烟(fresh reload · no-cache server · force-revalidate 38 脚本)**:
+| 测 | payload | 结果 |
+|---|---|---|
+| 文本 sink(case0 删除) | `<img src=x onerror=…>` | imgLanded **false** · 文本字面显示 true · 删除按钮=cAB |
+| ★onclick JS 串(case3 copPlan arg) | `');window.__xssJs=…//` | cargs=JSON 值 `"[\"K8s\",\"');…//\"]"`(非 JS 串)· imgLanded false · 委派**已触发** · copPlan 收 args=`["K8s","');…//"]`(**值**)· 点击后 `__xssJs`=**0** |
+| copPlan toast(skill 位 payload) | `<img onerror=…>` | toast imgLanded false · 字面显示 · `__xssToast`=0 · actions 无污染 |
+| cSuggs 委派 | 正常建议 | 4 chip 无 onclick · 点击→`copSend(值)` 正常 |
+| 汇总 | | `__xssImg`/`__xssJs`/`__xssToast` 全 0 · 0 console 错 |
+证:①旧 `copPlan('...','+j.co+')` 遇 `'`-breakout 会执行、新 cAB 作值传→不执行(结构性消除坐实);②按钮仍工作(委派派发正确函数+正确 args,无功能回归)。
+
+**红线/契约**:`§1` 契约(SeekerShell.*)未触、未新增契约;`profile`/`D3`/`QUERYABLE` 未触;`cEsc`/`cAB` 为平台 chrome 内基元(非跨层 call)。`data-cact`/`data-csugg` 全仓仅本刀用(grep 证,无既有委派属性冲突)。index.html 零改。node/tsc(exit0)/cargo(exit0)净。
+
+**⚠ 诚实披露(sweep 发现的同类 sink · 本刀命名范围外)**:全量 grep `toast(`/`agentChat(`/`append(` 后,发现**同 §4-4/用户输入类** DOM sink 在本刀"只治 copReply/agentChat/cCard/cBtn"命名范围之外:
+- `pages/jobs.js:104` `toast('…补齐 '+gapSkill)` 与 `:115` `toast('已生成「'+gapSkill+'」…')` —— `gapSkill` JD 派生(§4-4),**与本刀已修的 copPlan toast 同模式**,但属岗位页弹窗流(非 copReply 下游)。
+- `logic/resumes.js:149` `toast('已添加模块「'+name+'」')` —— `name` = 用户输入(`#nmName`)。
+- 多处 `toast(String((e&&e.message)||e))`(resumes/intake-job/cards)—— 错误消息文本(可能服务端/网络控制)。
+**未静默扩改**(遵"范围克制:只治 copReply/agentChat/cCard/cBtn");`copPlan` toast 之所以修=它是 copReply cAB 的**直接下游 sink**(否则本刀空修)。**建议 P2「toast/错误消息 §4-4 转义刀」**统一收口(可复用 `cEsc`);请评审裁范围(现折入 or 排后续)。
+
+**请评审确认**:①cAB 结构性修法(data-* + 委派 vs 引号转义)取向;②copPlan toast 折入本刀的边界判断;③P2 toast 面范围裁定。**过审后转正 + 记裁定 + 同步 memory。**
