@@ -1,5 +1,7 @@
-// @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
-/** jobseek · 简历弹窗(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
+// @ts-nocheck —— 3.y 类型化:本文件转 ES module、改 import 消费 modal.js(证 import 方向)。
+//   其余依赖($/el/tt/IC/cEsc/RESUME/aiRun/go)过渡仍 classic 全局,故暂留 @ts-nocheck;待其转 module 后接 import + @ts-check。
+/** jobseek · 简历弹窗。openModal 经 import(3.y 首个消费者迁移);closeModal 只出现在内联 onclick 串→仍走 window 兼容桥。 */
+import { openModal } from '../../../platform/shell/modal.js'; // ← 3.y:modal.js 已 ESM 化,首个消费者改 import(证 import 方向、纯函数 dual-publish 安全)
 /* ---------- RESUME modals ---------- */
 function openResumeModal(){
   const html=`<div class="modal-head"><div><p class="eyebrow">— RESUME</p><h2 style="margin-top:5px;">${tt('我的简历','My resume')}</h2></div><button class="x">${IC.x}</button></div>
@@ -43,3 +45,5 @@ function openResumeUpload(){
     dz.addEventListener('drop', e=>{ if(!hasFiles(e)) return; e.preventDefault(); dz.classList.remove('dz-over'); startParse(); });
   }
 }
+/* 过渡 window 兼容桥(约束⑤延续):inline onclick(copilot-actions cBtn)/页按钮按全局名调 openResumeModal/openResumeUpload → 零回归;逐个改 import 后摘。纯函数、零模块态 → dual-publish 安全。 */
+window.openResumeModal=openResumeModal; window.openResumeUpload=openResumeUpload;
