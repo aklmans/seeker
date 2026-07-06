@@ -1,10 +1,10 @@
-// @ts-nocheck —— 抽壳序1-e 过渡:引用 $/el 结果(Element|null)+ document 事件,类型化留 3.y;逻辑零改动。
-/** 平台 · 模态 focusableIn/openModal/closeModal(+焦点陷阱状态 _modalPrevFocus/_modalTrap)。
- *  依赖 $/el/tt;overlay click 绑定(立即执行)留 index.html。挂全局 + 载序前置零回归(约束⑤)。 */
-/** 模态内可聚焦元素(可见、未禁用)。 */
-function focusableIn(m){ return [...m.querySelectorAll('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled && e.offsetParent!==null); }
+// @ts-nocheck —— 3.y 类型化首刀(spike):classic 全局 → 真 ES module(export)+ 过渡 window 桥。
+//   仍 @ts-nocheck:依赖 $/el/tt 尚是 classic 全局(经共享的全局词法环境,module 内 bare 引用可解析);
+//   待 $/el/tt 也转 module 后本文件改 `import {$,el,tt}` + @ts-check、并从下方桥摘除(monolith-globals 账本逐条销)。
+/** 平台 · 模态 focusableIn/openModal/closeModal(+焦点陷阱状态)。依赖 $/el/tt(过渡态全局);overlay click 绑定留 index.html。 */
+export function focusableIn(m){ return [...m.querySelectorAll('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled && e.offsetParent!==null); }
 let _modalPrevFocus=null, _modalTrap=null;
-function openModal(html, wide){
+export function openModal(html, wide){
   $('#modalHost').innerHTML='';
   const m=el(`<div class="modal ${wide?'wide':''}" role="dialog" aria-modal="true">${html}</div>`);
   $('#modalHost').appendChild(m);
@@ -24,8 +24,10 @@ function openModal(html, wide){
   document.addEventListener('keydown', _modalTrap, true);
   return m;
 }
-function closeModal(){
+export function closeModal(){
   $('#overlay').classList.remove('open'); $('#modalHost').innerHTML='';
   if(_modalTrap){ document.removeEventListener('keydown', _modalTrap, true); _modalTrap=null; }
   if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(_e){} } _modalPrevFocus=null;
 }
+/* 过渡 window 桥(抽壳约束⑤延续):classic 消费者(index.html INIT + jobseek 11 文件)按全局名调不变 → 零回归;逐个转 import 后摘桥。 */
+window.openModal=openModal; window.closeModal=closeModal; window.focusableIn=focusableIn;
