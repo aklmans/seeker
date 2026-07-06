@@ -27,10 +27,10 @@ function renderActions(){
     const pri=PRI[a.pri];
     const meta=[];
     meta.push(a.state==='done'?tt('已完成','Done'):(a.state==='doing'?tt('进行中','In progress'):tt('待开始','Not started')));
-    if(a.cap) meta.push(`${tt('练','Train')} <b style="color:var(--ink-2);font-weight:500;">${a.cap}</b>`);
+    if(a.cap) meta.push(`${tt('练','Train')} <b style="color:var(--ink-2);font-weight:500;">${cEsc(a.cap)}</b>`);
     if(a.fromJobs) meta.push(tt('来自 '+a.fromJobs+' 个岗位','from '+a.fromJobs+' jobs'));
-    if(a.due) meta.push(tt('截止 '+a.due,'due '+a.due));
-    if(a.est&&a.state!=='done') meta.push(tt('预估 '+a.est,'est. '+a.est));
+    if(a.due) meta.push(tt('截止 '+cEsc(a.due),'due '+cEsc(a.due)));
+    if(a.est&&a.state!=='done') meta.push(tt('预估 '+cEsc(a.est),'est. '+cEsc(a.est)));
     const next=(a.milestones||[]).find(m=>!m.done);
     const doneMs=(a.milestones||[]).filter(m=>m.done).length, totMs=(a.milestones||[]).length;
     const mins=sessMins(a), sessN=(a.sessions||[]).length;
@@ -38,7 +38,7 @@ function renderActions(){
       <span class="cbox lg ${cbox}" data-toggle="${a.id}">${IC.check}</span>
       <div class="act-body">
         <div class="act-top">
-          <div><div class="act-title">${a.title}</div>${a.note?`<div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;">${a.note}</div>`:''}</div>
+          <div><div class="act-title">${cEsc(a.title)}</div>${a.note?`<div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;">${cEsc(a.note)}</div>`:''}</div>
           <span class="pl ${pri.cls}" style="font-family:var(--font-mono);font-size:11px;white-space:nowrap;">${tt('优先级 '+pri.label,'Priority '+pri.label)}</span>
         </div>
         <div class="act-meta">${meta.join('<span style="color:var(--ink-mute);">·</span>')}</div>
@@ -48,7 +48,7 @@ function renderActions(){
           <span class="act-stat"><b>${sessN}</b>${tt('次记录','logs')}</span>
           <span class="act-stat"><b>${doneMs}/${totMs}</b>${tt('里程碑','milestones')}</span>
         </div>
-        ${next?`<div class="act-next">${tt('下一步','Next')} · <b>${next.t}</b></div>`:(a.state==='done'?`<div class="act-next" style="color:var(--status-done);">${tt('全部里程碑已完成','All milestones done')}</div>`:'')}
+        ${next?`<div class="act-next">${tt('下一步','Next')} · <b>${cEsc(next.t)}</b></div>`:(a.state==='done'?`<div class="act-next" style="color:var(--status-done);">${tt('全部里程碑已完成','All milestones done')}</div>`:'')}
         <button class="btn act-open" data-detail="${a.id}">${tt('打开训练详情','Open training detail')}</button>
       </div>
     </div>`;
@@ -80,14 +80,14 @@ function openActionDetail(id){
   const a=ACTIONS.find(x=>x.id===id);
   const stLabel=a.state==='done'?'已完成':(a.state==='doing'?'进行中':'待开始');
   const totalMins=sessMins(a);
-  const ms=(a.milestones||[]).map((m,i)=>`<div class="ms-row ${m.done?'done':''}" data-ms="${i}"><span class="cbox ${m.done?'done':''}">${IC.check}</span><span class="t">${m.t}</span></div>`).join('');
-  const sessions=(a.sessions&&a.sessions.length)?`<div class="slog">${a.sessions.slice().reverse().map(s=>`<div class="sitem"><div class="sh"><span class="sd">${s.date}</span><span class="sm">${s.mins} 分钟</span></div><div class="sn">${s.note}</div></div>`).join('')}</div>`:`<p style="color:var(--ink-3);font-size:13px;padding:8px 0;">还没有训练记录 — 完成第一次练习后点「记录一次训练」。</p>`;
+  const ms=(a.milestones||[]).map((m,i)=>`<div class="ms-row ${m.done?'done':''}" data-ms="${i}"><span class="cbox ${m.done?'done':''}">${IC.check}</span><span class="t">${cEsc(m.t)}</span></div>`).join('');
+  const sessions=(a.sessions&&a.sessions.length)?`<div class="slog">${a.sessions.slice().reverse().map(s=>`<div class="sitem"><div class="sh"><span class="sd">${cEsc(s.date)}</span><span class="sm">${s.mins} 分钟</span></div><div class="sn">${cEsc(s.note)}</div></div>`).join('')}</div>`:`<p style="color:var(--ink-3);font-size:13px;padding:8px 0;">还没有训练记录 — 完成第一次练习后点「记录一次训练」。</p>`;
   const html=`
-    <div class="modal-head"><div><p class="eyebrow">— ACTION</p><h2 style="margin-top:5px;">${a.title}</h2>
-      <div class="sub"><span>${stLabel}</span><span>·</span><span class="pl ${PRI[a.pri].cls}">优先级 ${PRI[a.pri].label}</span>${a.cap?`<span>·</span><span>练 ${a.cap}</span>`:''}${a.due?`<span>·</span><span>截止 ${a.due}</span>`:''}</div></div>
+    <div class="modal-head"><div><p class="eyebrow">— ACTION</p><h2 style="margin-top:5px;">${cEsc(a.title)}</h2>
+      <div class="sub"><span>${stLabel}</span><span>·</span><span class="pl ${PRI[a.pri].cls}">优先级 ${PRI[a.pri].label}</span>${a.cap?`<span>·</span><span>练 ${cEsc(a.cap)}</span>`:''}${a.due?`<span>·</span><span>截止 ${cEsc(a.due)}</span>`:''}</div></div>
       <button class="x">${IC.x}</button></div>
     <div class="modal-body">
-      <div class="msec"><p class="seclabel">— GOAL</p><h3 class="sectitle" style="font-size:16px;margin-bottom:8px;">训练目标<span class="dot">.</span></h3><p style="font-size:14px;color:var(--ink-2);line-height:1.75;margin:0;">${a.goal||'—'}</p></div>
+      <div class="msec"><p class="seclabel">— GOAL</p><h3 class="sectitle" style="font-size:16px;margin-bottom:8px;">训练目标<span class="dot">.</span></h3><p style="font-size:14px;color:var(--ink-2);line-height:1.75;margin:0;">${cEsc(a.goal||'—')}</p></div>
       <div class="msec"><p class="seclabel">— PROGRESS</p><h3 class="sectitle" style="font-size:16px;margin-bottom:12px;">进度与里程碑<span class="dot">.</span></h3>
         <div class="act-prog" style="margin:0 0 14px;"><div class="bar" style="max-width:none;"><i style="width:${a.progress||0}%"></i></div><span class="pv">${a.progress||0}%</span></div>
         ${ms||'<p style="color:var(--ink-3);font-size:13px;">暂无里程碑</p>'}<p style="font-size:11.5px;color:var(--ink-mute);margin:10px 0 0;">勾选里程碑会自动更新进度</p></div>
@@ -95,7 +95,7 @@ function openActionDetail(id){
         ${sessions}
         <button class="btn btn-accent" id="addSess" style="margin-top:14px;">+ 记录一次训练</button><div id="sessFormHost"></div></div>
       <div class="msec" style="border-bottom:none;"><p class="seclabel">— REFLECTION</p><h3 class="sectitle" style="font-size:16px;margin-bottom:10px;">复盘<span class="dot">.</span></h3>
-        <textarea class="textarea" style="min-height:88px;font-family:var(--font-sans);font-size:13.5px;line-height:1.7;" placeholder="这次练习最大的收获是什么?下一步聚焦哪里?">${a.reflection||''}</textarea></div>
+        <textarea class="textarea" style="min-height:88px;font-family:var(--font-sans);font-size:13.5px;line-height:1.7;" placeholder="这次练习最大的收获是什么?下一步聚焦哪里?">${cEsc(a.reflection||'')}</textarea></div>
     </div>`;
   const m=openModal(html, true);
   $$('[data-ms]',m).forEach(r=>r.onclick=()=>{

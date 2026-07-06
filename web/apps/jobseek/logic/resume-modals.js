@@ -5,10 +5,10 @@ function openResumeModal(){
   const html=`<div class="modal-head"><div><p class="eyebrow">— RESUME</p><h2 style="margin-top:5px;">${tt('我的简历','My resume')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="resume-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
-        <div><div style="font-size:15px;font-weight:600;color:var(--ink);">${RESUME.filename}</div>
+        <div><div style="font-size:15px;font-weight:600;color:var(--ink);">${cEsc(RESUME.filename)}</div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:5px;">${tt('上传于 '+RESUME.uploaded+' · 已解析','Uploaded '+RESUME.uploaded+' · parsed')}</div></div>
         <span class="acbadge ac-compound">${tt('已建档','Built')}</span></div>
-        <p style="font-size:13px;color:var(--ink-2);margin:14px 0 0;line-height:1.7;">${RESUME.summary}</p>
+        <p style="font-size:13px;color:var(--ink-2);margin:14px 0 0;line-height:1.7;">${cEsc(RESUME.summary)}</p>
         <div style="display:flex;gap:28px;margin-top:16px;">${[[tt('识别能力','Skills'),RESUME.derivedSkills],[tt('项目证据','Evidence'),RESUME.derivedEvidence],[tt('工作年限','Years'),RESUME.years]].map(x=>`<div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:0;">${x[0]}</p><p style="font-family:var(--font-serif);font-size:22px;color:var(--ink);margin:4px 0 0;font-weight:500;">${x[1]}</p></div>`).join('')}</div>
       </div>
       <p style="font-size:12.5px;color:var(--ink-3);margin:16px 0 0;line-height:1.7;">${tt('简历是整个产品的输入源 —— 上传一次,AI 自动建好你的能力档案、匹配所有岗位、生成改写与计划。你不用手填 23 项技能。','The resume is the product\'s input source — upload once and AI builds your assets, matches every job, and generates rewrites & plans. No manually entering 23 skills.')}</p>

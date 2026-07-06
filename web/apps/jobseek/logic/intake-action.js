@@ -7,7 +7,7 @@ function openNewAction(){
     <div class="modal-body">
       <div class="field"><label>${tt('标题','Title')}</label><input class="input" id="naTitle" placeholder="${tt('如 · 完成 Rust 实战项目','e.g. Finish a Rust project')}"></div>
       <div class="field-row"><div class="field"><label>${tt('优先级','Priority')}</label><select class="select" id="naPri"><option value="high">${tt('高','High')}</option><option value="mid" selected>${tt('中','Mid')}</option><option value="low">${tt('低','Low')}</option></select></div><div class="field"><label>${tt('截止日期','Due')}</label><input class="input" id="naDue" placeholder="2026.06.30"></div></div>
-      <div class="field-row"><div class="field"><label>${tt('关联技能','Skill')}</label><select class="select" id="naSkill"><option value="">${tt('不关联','None')}</option>${SKILLS.map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class="field"><label>${tt('关联岗位','Job')}</label><select class="select" id="naJob"><option value="">${tt('不关联','None')}</option>${JOBS.map(j=>`<option>${j.co} · ${j.role}</option>`).join('')}</select></div></div>
+      <div class="field-row"><div class="field"><label>${tt('关联技能','Skill')}</label><select class="select" id="naSkill"><option value="">${tt('不关联','None')}</option>${SKILLS.map(s=>`<option>${cEsc(s.name)}</option>`).join('')}</select></div><div class="field"><label>${tt('关联岗位','Job')}</label><select class="select" id="naJob"><option value="">${tt('不关联','None')}</option>${JOBS.map(j=>`<option>${cEsc(j.co)} · ${cEsc(j.role)}</option>`).join('')}</select></div></div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="naAdd">${tt('添加','Add')}</button></div>`;
   const m=openModal(html);

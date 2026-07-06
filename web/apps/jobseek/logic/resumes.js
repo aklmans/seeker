@@ -10,27 +10,27 @@ function blockHTML(m){
       [['site',tt('主页','Website')],['github','GitHub'],['portfolio',tt('作品集','Portfolio')],['linkedin','LinkedIn']].filter(l=>PROFILE[l[0]]&&String(PROFILE[l[0]]).trim()).map(l=>[l[1],PROFILE[l[0]]]));  // 链接填了才显示
     body=`${fields.map(f=>`<div class="lockfield"><span class="lk">${f[0]}</span><span class="lv">${f[1]}</span></div>`).join('')}<div class="lock-note"><span class="li">🔒</span><span>${tt('这些隐私信息从「数据设置 · 个人信息」自动加载,AI 不读取、不修改。要改请去数据设置。','Loaded from Settings · Personal info; AI never reads or edits it. Change it in Settings.')}</span></div>`;
   }else if(m.type==='skills'){
-    body=`<input class="rb-skill-in" data-mskills="${m.key}" value="${(m.content||[]).join(', ')}"><p style="font-size:11px;color:var(--ink-mute);margin:8px 0 0;">${tt('逗号分隔 · 已对齐目标 JD','Comma-separated · aligned to target JD')}</p>`;
+    body=`<input class="rb-skill-in" data-mskills="${m.key}" value="${cEsc((m.content||[]).join(', '))}"><p style="font-size:11px;color:var(--ink-mute);margin:8px 0 0;">${tt('逗号分隔 · 已对齐目标 JD','Comma-separated · aligned to target JD')}</p>`;
   }else if(m.type==='entries'){
     body=`<div>${(m.items||[]).map((it,i)=>`<div class="rb-entry">
       <div class="rb-erow"><input class="rb-in" data-ef="${m.key}|${i}|org" placeholder="${tt('公司 / 机构','Company / org')}" value="${(it.org||'').replace(/"/g,'&quot;')}"><input class="rb-in" data-ef="${m.key}|${i}|date" placeholder="${tt('时间 · 如 2020 — 2024','Dates · e.g. 2020 — 2024')}" value="${(it.date||'').replace(/"/g,'&quot;')}"></div>
       <div class="rb-erow"><input class="rb-in" data-ef="${m.key}|${i}|title" placeholder="${tt('头衔 / 专业方向','Title / field')}" value="${(it.title||'').replace(/"/g,'&quot;')}"><input class="rb-in" data-ef="${m.key}|${i}|loc" placeholder="${tt('城市(可选)','City (optional)')}" value="${(it.loc||'').replace(/"/g,'&quot;')}"></div>
-      <textarea class="rb-ta" data-ebul="${m.key}|${i}" rows="3" placeholder="${tt('要点 · 每行一条…','Bullets · one per line…')}">${(it.bullets||[]).join('\n')}</textarea>
+      <textarea class="rb-ta" data-ebul="${m.key}|${i}" rows="3" placeholder="${tt('要点 · 每行一条…','Bullets · one per line…')}">${cEsc((it.bullets||[]).join('\n'))}</textarea>
       <button class="btn-text" data-edel="${m.key}|${i}" style="color:var(--ink-mute);margin-top:4px;">${tt('删除该条','Delete')}</button></div>`).join('')}</div><button class="btn-text" data-eadd="${m.key}" style="margin-top:4px;">${tt('+ 添加一条','+ Add entry')}</button>`;
   }else if(m.type==='projects'){
     body=`<div>${(m.items||[]).map((p,i)=>`<div class="rb-entry ${p.star?'star':''}">
       <div class="rb-erow"><input class="rb-in" data-pf="${m.key}|${i}|name" placeholder="${tt('项目名称','Project name')}" value="${(p.name||'').replace(/"/g,'&quot;')}"><input class="rb-in" data-pf="${m.key}|${i}|date" placeholder="${tt('时间','Date')}" value="${(p.date||'').replace(/"/g,'&quot;')}"></div>
-      <textarea class="rb-ta" data-pbul="${m.key}|${i}" rows="2" placeholder="${tt('项目要点 · 每行一条…','Project bullets · one per line…')}">${(p.bullets||[]).join('\n')}</textarea>
+      <textarea class="rb-ta" data-pbul="${m.key}|${i}" rows="2" placeholder="${tt('项目要点 · 每行一条…','Project bullets · one per line…')}">${cEsc((p.bullets||[]).join('\n'))}</textarea>
       <div style="display:flex;gap:12px;align-items:center;margin-top:7px;"><button class="rb-ic ${p.star?'on':''}" data-mpstar="${m.key}|${i}" title="${tt('标记擅长 · 面试重点追问','Mark strength · probed in interview')}">★</button><span style="font-size:11px;color:var(--ink-mute);">${tt('标 ★ 面试会重点追问','★ = probed in interview')}</span><button class="btn-text" data-edel="${m.key}|${i}" style="color:var(--ink-mute);margin-left:auto;">${tt('删除','Delete')}</button></div></div>`).join('')}</div><button class="btn-text" data-eadd="${m.key}" style="margin-top:4px;">${tt('+ 添加项目','+ Add project')}</button>`;
   }else{
-    body=`<textarea class="rb-ta" data-mtext="${m.key}" rows="3" placeholder="${tt('填写'+modLabel(m)+'…','Write '+modLabel(m)+'…')}">${m.content||''}</textarea>`;
+    body=`<textarea class="rb-ta" data-mtext="${m.key}" rows="3" placeholder="${tt('填写'+cEsc(modLabel(m))+'…','Write '+cEsc(modLabel(m))+'…')}">${cEsc(m.content||'')}</textarea>`;
   }
   const tag=m.type==='locked'?`<span class="blk-tag lock">${tt('数据设置 · 锁定','Settings · locked')}</span>`:(m.custom?`<button class="blk-del" data-mremove="${m.key}" title="${tt('移除模块','Remove module')}">×</button>`:'');
-  return `<div class="blk open" data-blk="${m.key}"><div class="blk-head"><span class="chev">${IC.arrow}</span><span class="blk-title">${modLabel(m)}</span>${tag}</div><div class="blk-body">${body}</div></div>`;
+  return `<div class="blk open" data-blk="${m.key}"><div class="blk-head"><span class="chev">${IC.arrow}</span><span class="blk-title">${cEsc(modLabel(m))}</span>${tag}</div><div class="blk-body">${body}</div></div>`;
 }
 function resumeEditorBody(j){
   const r=RESUME_TAILORED[j.id];
-  const picks=r.modules.map(m=>`<div class="mod-row ${m.on?'':'off'}"><span class="mlabel"><span style="color:var(--ink-3);">${MOD_ICON[m.key]||'•'}</span> ${modLabel(m)}${m.type==='locked'?`<span class="mlock">${tt('隐私','private')}</span>`:''}</span><span class="tgl ${m.on?'on':''}" data-mtgl="${m.key}"></span></div>`).join('');
+  const picks=r.modules.map(m=>`<div class="mod-row ${m.on?'':'off'}"><span class="mlabel"><span style="color:var(--ink-3);">${MOD_ICON[m.key]||'•'}</span> ${cEsc(modLabel(m))}${m.type==='locked'?`<span class="mlock">${tt('隐私','private')}</span>`:''}</span><span class="tgl ${m.on?'on':''}" data-mtgl="${m.key}"></span></div>`).join('');
   const blocks=r.modules.filter(m=>m.on).map(blockHTML).join('')||`<p style="color:var(--ink-3);padding:24px 0;text-align:center;">${tt('已隐藏所有模块 —— 在左侧打开几个吧。','All modules hidden — turn some on at left.')}</p>`;
   return `<div class="res-layout">
       <div class="mod-pick"><div class="mp-head">${tt('模块选择','Modules')}</div>${picks}<button class="mp-add" id="rbAddMod">${tt('+ 添加模块','+ Add module')}</button></div>
@@ -39,7 +39,7 @@ function resumeEditorBody(j){
     <p style="font-size:12px;color:var(--ink-mute);margin:14px 0 0;line-height:1.6;">${tt('编辑自动保存。「基本信息」从数据设置自动加载、AI 不读取也不修改;其余模块可自由开关、编辑与新增。切到「预览 · 排版」可换 4 套版式。','Auto-saves. Basic info loads from Settings (AI never reads/edits it); other modules toggle, edit, and add freely. Switch to Preview to try 4 layouts.')}</p>`;
 }
 function resumeWorkspaceHTML(j){
-  const header=`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;"><span class="acbadge ac-compound">${tt('针对 '+j.co+' · '+j.role.split('·')[0].trim(),'For '+j.co)}</span><div style="display:flex;gap:14px;flex-wrap:wrap;"><button class="btn-text" id="rbRegen">${tt('重新生成','Regenerate')}</button><button class="btn-text" id="rbExport">${tt('导出 MD','Export MD')}</button><button class="btn-text" id="rbDel" style="color:var(--ink-mute);">${tt('删除','Delete')}</button></div></div>`;
+  const header=`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;"><span class="acbadge ac-compound">${tt('针对 '+cEsc(j.co)+' · '+cEsc(j.role.split('·')[0].trim()),'For '+cEsc(j.co))}</span><div style="display:flex;gap:14px;flex-wrap:wrap;"><button class="btn-text" id="rbRegen">${tt('重新生成','Regenerate')}</button><button class="btn-text" id="rbExport">${tt('导出 MD','Export MD')}</button><button class="btn-text" id="rbDel" style="color:var(--ink-mute);">${tt('删除','Delete')}</button></div></div>`;
   const tabs=`<div class="tabs" style="margin-bottom:18px;"><button class="tab ${resumeState.mode==='edit'?'on':''}" data-rmode="edit">${tt('编辑内容','Edit content')}</button><button class="tab ${resumeState.mode==='preview'?'on':''}" data-rmode="preview">${tt('预览 · 排版','Preview · Layout')}</button></div>`;
   return header+tabs+(resumeState.mode==='preview'?resumePreviewWrap(j):resumeEditorBody(j));
 }
@@ -90,12 +90,12 @@ function renderResumes(){
   const tailored=JOBS.filter(j=>RESUME_TAILORED[j.id]);
   const base=`<div class="sec"><p class="seclabel">— SOURCE</p><h2 class="sectitle">${tt('主简历','Master resume')}<span class="dot">.</span></h2>
     <div class="rb-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:240px;"><div style="font-size:15px;font-weight:600;color:var(--ink);">${RESUME.filename}</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:5px;">${tt('上传于 '+RESUME.uploaded+' · 已解析为职业资产','Uploaded '+RESUME.uploaded+' · parsed into career assets')}</div><p style="font-size:13px;color:var(--ink-2);margin:12px 0 0;line-height:1.7;">${RESUME.summary}</p></div>
+      <div style="flex:1;min-width:240px;"><div style="font-size:15px;font-weight:600;color:var(--ink);">${cEsc(RESUME.filename)}</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:5px;">${tt('上传于 '+cEsc(RESUME.uploaded)+' · 已解析为职业资产','Uploaded '+cEsc(RESUME.uploaded)+' · parsed into career assets')}</div><p style="font-size:13px;color:var(--ink-2);margin:12px 0 0;line-height:1.7;">${cEsc(RESUME.summary)}</p></div>
       <button class="btn" onclick="openResumeModal()">${tt('管理主简历','Manage master')}</button></div>
     <p style="font-size:12px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('主简历是「源」。针对每个目标岗位,可从它派生一份「针对性简历」—— 对齐该 JD 的高频词、突出最契合的经历。','The master resume is the source. For each target job you can derive a tailored version — aligned to that JD\'s keywords, surfacing your most relevant experience.')}</p></div>`;
-  const pills=JOBS.map(j=>`<button class="pill ${j.id===resumeState.jobId?'on':''}" data-rj="${j.id}">${RESUME_TAILORED[j.id]?'● ':''}${j.co} · ${j.role.split('·')[0].trim()}</button>`).join('');
+  const pills=JOBS.map(j=>`<button class="pill ${j.id===resumeState.jobId?'on':''}" data-rj="${j.id}">${RESUME_TAILORED[j.id]?'● ':''}${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</button>`).join('');
   const j=JOBS.find(x=>x.id===resumeState.jobId);
-  const body=RESUME_TAILORED[j.id]?resumeWorkspaceHTML(j):`<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;"><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+j.co+' 的简历','No resume for '+j.co+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('基于 JD + 你的职业资产,几秒生成一份对口简历 —— 可编辑、标擅长、导出。','From the JD + your assets, generate a matching resume in seconds — editable, mark strengths, export.')}</div></div><button class="btn btn-accent" id="rbGen">${tt('AI 生成针对性简历','AI-generate tailored resume')} →</button></div></div>`;
+  const body=RESUME_TAILORED[j.id]?resumeWorkspaceHTML(j):`<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;"><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+cEsc(j.co)+' 的简历','No resume for '+cEsc(j.co)+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('基于 JD + 你的职业资产,几秒生成一份对口简历 —— 可编辑、标擅长、导出。','From the JD + your assets, generate a matching resume in seconds — editable, mark strengths, export.')}</div></div><button class="btn btn-accent" id="rbGen">${tt('AI 生成针对性简历','AI-generate tailored resume')} →</button></div></div>`;
   const tail=`<div class="sec" style="border-bottom:none;"><p class="seclabel">— TAILORED</p>
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;"><h2 class="sectitle" style="margin:0;">${tt('针对性简历','Tailored resumes')} <span style="font-family:var(--font-mono);font-style:normal;font-size:12px;color:var(--ink-3);">${tt(tailored.length+' 份',''+tailored.length)}</span><span class="dot">.</span></h2>${tailored.length>0?`<button class="btn-text" id="rbClearAll" style="color:var(--ink-mute);">${tt('清空全部','Clear all')}</button>`:''}</div>
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 0;">${tt('选一个岗位查看或生成它的针对性简历(● = 已生成)。','Pick a job to view or generate its tailored resume (● = generated).')}</p>
@@ -146,15 +146,15 @@ function resumeAddModule(id){
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— MODULE</p><h2 style="margin-top:5px;">${tt('添加模块','Add module')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body"><div class="field"><label>${tt('模块名称','Module name')}</label><input class="input" id="nmName" placeholder="${tt('如 · 开源贡献 / 证书 / 志愿经历','e.g. Open source / Certs / Volunteering')}"></div><p style="font-size:12px;color:var(--ink-3);margin:4px 0 0;">${tt('添加后出现在右侧,可填写内容、随时开关。','Appears on the right; fill content and toggle anytime.')}</p></div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nmSave">${tt('添加','Add')}</button></div>`);
-  $('#nmSave',m).onclick=()=>{const name=$('#nmName',m).value.trim();if(!name){toast('请填写模块名称');return;}resumeSync(id);r.modules.push({key:'cus_'+Date.now(), label:name, on:true, type:'text', content:'', custom:true});closeModal();renderResumes();toast('已添加模块「'+name+'」');};
+  $('#nmSave',m).onclick=()=>{const name=$('#nmName',m).value.trim();if(!name){toast('请填写模块名称');return;}resumeSync(id);r.modules.push({key:'cus_'+Date.now(), label:name, on:true, type:'text', content:'', custom:true});closeModal();renderResumes();toast('已添加模块「'+cEsc(name)+'」');};
 }
 function resumeGenerate(id, after){
   const j=JOBS.find(x=>x.id===id); const fresh=!!RESUME_TAILORED[id]; resumeState.jobId=id;
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI RESUME</p><h2 style="margin-top:5px;">${fresh?tt('重新生成','Regenerate'):tt('生成','Generate')}${tt('针对性简历',' tailored resume')}</h2><div class="sub"><span>${j.co} · ${j.role.split('·')[0].trim()}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="grHost"></div></div>`);
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI RESUME</p><h2 style="margin-top:5px;">${fresh?tt('重新生成','Regenerate'):tt('生成','Generate')}${tt('针对性简历',' tailored resume')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="grHost"></div></div>`);
   aiRun($('#grHost',m),[tt('读取 JD 的硬性 + 软性要求','Reading JD hard + soft requirements'),tt('匹配你的职业资产与项目证据','Matching your assets & evidence'),tt('按岗位重写概要、技能与项目亮点','Rewriting summary, skills & highlights')],
     ()=>{RESUME_TAILORED[id]=genTailoredResume(j); persistResume(id); setTimeout(()=>{(after||renderResumes)();renderInterview();},30); const r=RESUME_TAILORED[id];
-      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成针对 <b>'+j.co+'</b> 的简历 ✓ 在「简历」模块可按模块开关、编辑、标擅长、导出。','Generated a resume for <b>'+j.co+'</b> ✓ Toggle modules, edit, mark strengths, and export in the Resume module.')}</p>
-        <div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);"><p style="font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 10px;">${resSummary(r)}</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${resSkills(r).map(s=>`<span class="chip">${s}</span>`).join('')}</div></div>
+      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成针对 <b>'+cEsc(j.co)+'</b> 的简历 ✓ 在「简历」模块可按模块开关、编辑、标擅长、导出。','Generated a resume for <b>'+cEsc(j.co)+'</b> ✓ Toggle modules, edit, mark strengths, and export in the Resume module.')}</p>
+        <div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);"><p style="font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 10px;">${cEsc(resSummary(r))}</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${resSkills(r).map(s=>`<span class="chip">${cEsc(s)}</span>`).join('')}</div></div>
         <button class="btn btn-accent" style="margin-top:14px;" onclick="closeModal();go('resumes')">${tt('去编辑','Go edit')} →</button>`;
     },{label:tt('AI 生成简历中…','Generating resume…')});
 }
@@ -270,9 +270,9 @@ function resumeExport(id){
 }
 function ivBankHTML(){
   const cats=['全部',...IV_CATS.map(c=>c[1])];
-  const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-ic="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivSearch" placeholder="${tt('搜索题目…','Search questions…')}" value="${ivState.search}"></div>`;
+  const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-ic="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivSearch" placeholder="${tt('搜索题目…','Search questions…')}" value="${cEsc(ivState.search)}"></div>`;
   const list=IV_BANK.filter(q=>(ivState.cat==='全部'||IV_CATLABEL[q.cat]===ivState.cat));
-  const rows=list.map(q=>`<div class="q-row" data-q="${q.id}"><span class="q-cat ${q.src==='AI'?'ai':''}">${IV_CATLABEL[q.cat]}</span><div><div class="q-text">${q.text}</div><div class="q-tags">${q.tags.join(' · ')}${q.src!=='内置'?' · '+q.src:''}</div></div><span class="q-go">${tt('开始练','Practice')} →</span></div>`).join('');
+  const rows=list.map(q=>`<div class="q-row" data-q="${q.id}"><span class="q-cat ${q.src==='AI'?'ai':''}">${IV_CATLABEL[q.cat]}</span><div><div class="q-text">${cEsc(q.text)}</div><div class="q-tags">${cEsc(q.tags.join(' · '))}${q.src!=='内置'?' · '+cEsc(q.src):''}</div></div><span class="q-go">${tt('开始练','Practice')} →</span></div>`).join('');
   return toolbar+(rows||`<p style="color:var(--ink-3);padding:24px 0;text-align:center;">${tt('没有匹配的题目','No matching questions')}</p>`);
 }
 function ivBindBank(){
@@ -283,9 +283,9 @@ function ivBindBank(){
 function ivPractice(){
   const q=ivState.q; const j=JOBS.find(x=>x.id===ivState.jobId); const stage=$('#ivStage');
   stage.innerHTML=`<button class="btn-text" id="ivBack" style="margin-bottom:14px;">← ${tt('返回题库','Back to bank')}</button>
-    <div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>${tt('AI 面试官','AI interviewer')}</b>${ivState.round?` · ${tt('整轮 · 第 '+(ivState.round.idx+1)+' / '+ivState.round.qs.length+' 题','Round · '+(ivState.round.idx+1)+' / '+ivState.round.qs.length)}`:''} · ${IV_CATLABEL[q.cat]}${q.src==='AI'?' · '+tt('针对 '+j.co,'for '+j.co):''}</span></div>
+    <div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>${tt('AI 面试官','AI interviewer')}</b>${ivState.round?` · ${tt('整轮 · 第 '+(ivState.round.idx+1)+' / '+ivState.round.qs.length+' 题','Round · '+(ivState.round.idx+1)+' / '+ivState.round.qs.length)}`:''} · ${IV_CATLABEL[q.cat]}${q.src==='AI'?' · '+tt('针对 '+cEsc(j.co),'for '+cEsc(j.co)):''}</span></div>
     <div style="padding:20px 22px 22px;">
-      <div class="iv-q"><span class="who">${tt('面试官','Interviewer')}</span><div class="qt">${q.text}</div></div>
+      <div class="iv-q"><span class="who">${tt('面试官','Interviewer')}</span><div class="qt">${cEsc(q.text)}</div></div>
       <div class="field" style="margin-top:16px;"><label>${tt('你的回答','Your answer')}</label><textarea class="textarea" id="ivAns" style="font-family:var(--font-sans);min-height:130px;" placeholder="${tt('说出你的思路即可,不必完美。可以点「语音作答」直接说…','Just say your approach — no need to be perfect. Or tap Voice answer to speak…')}"></textarea></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;"><button class="mic-btn" id="ivMic"><span class="mdot"></span><span id="micTxt">${tt('语音作答','Voice answer')}</span></button><button class="btn btn-accent" id="ivSubmit">${tt('提交回答,获取反馈','Submit for feedback')}</button><button class="btn" id="ivSkip">${tt('看参考思路','Reference')}</button></div>
       <div id="ivFb"></div>
@@ -305,8 +305,8 @@ function ivSubmit(){
       const dims=[[tt('结构','Structure'),f.scores.structure],[tt('深度','Depth'),f.scores.depth],[tt('量化','Quant'),f.scores.quant]];
       const fbBody=`<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;"><span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.18em;color:var(--ink-3);">${tt('综合','Overall')}</span><span style="font-family:var(--font-serif);font-size:28px;color:var(--accent);font-weight:500;">${f.scores.overall.toFixed(1)}</span><span style="font-size:13px;color:var(--ink-3);">/10</span></div>
         ${dims.map(d=>`<div class="dimrow"><span class="dl">${d[0]}</span><div class="dt"><i style="width:${d[1]*10}%"></i></div><span class="dv">${d[1].toFixed(1)}</span></div>`).join('')}
-        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--status-done);margin:16px 0 4px;">✓ ${tt('做得好','Did well')}</p><ul style="margin:0;padding-left:18px;">${f.good.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;line-height:1.6;">${g}</li>`).join('')}</ul>
-        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${f.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;line-height:1.6;">${g}</li>`).join('')}</ul>`;
+        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--status-done);margin:16px 0 4px;">✓ ${tt('做得好','Did well')}</p><ul style="margin:0;padding-left:18px;">${f.good.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;line-height:1.6;">${cEsc(g)}</li>`).join('')}</ul>
+        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${f.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;line-height:1.6;">${cEsc(g)}</li>`).join('')}</ul>`;
       if(ivState.round){
         ivState.round.recs.push({qText:q.text, cat:q.cat, tags:q.tags, scores:f.scores, good:f.good, improve:f.improve});
         const last=ivState.round.idx>=ivState.round.qs.length-1;
@@ -350,13 +350,13 @@ function ivRenderSummary(){
   const dims=[[tt('结构','Structure'),sc.structure],[tt('深度','Depth'),sc.depth],[tt('量化','Quant'),sc.quant]];
   const verdict=sc.overall>=8?tt('表现稳定,可以投了','Solid — you\'re ready to apply'):(sc.overall>=7?tt('基础扎实,补强短板就更稳','Good base — shore up weak spots'):tt('多练几轮,重点打磨结构与量化','Practice more — focus on structure & quant'));
   stage.innerHTML=`<button class="btn-text" id="sBack" style="margin-bottom:14px;">← ${tt('返回题库','Back to bank')}</button>
-    <div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>${tt('整轮总评','Round summary')}</b> · ${s.rec.job} · ${tt(s.recs.length+' 题',s.recs.length+' Q')}</span></div>
+    <div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>${tt('整轮总评','Round summary')}</b> · ${cEsc(s.rec.job)} · ${tt(s.recs.length+' 题',s.recs.length+' Q')}</span></div>
     <div style="padding:22px 22px 24px;">
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;"><span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.18em;color:var(--ink-3);">${tt('整轮综合','Round overall')}</span><span style="font-family:var(--font-serif);font-size:40px;color:var(--accent);font-weight:500;line-height:1;">${sc.overall.toFixed(1)}</span><span style="font-size:14px;color:var(--ink-3);">/10</span></div>
       <p style="font-size:13px;color:var(--ink-2);margin:0 0 16px;">${verdict} · ${tt('强项「'+s.strongest+'」,可优先补强「'+s.weakest+'」。','Strength: '+s.strongest+'; shore up '+s.weakest+' first.')}</p>
       ${dims.map(d=>`<div class="dimrow"><span class="dl">${d[0]}</span><div class="dt"><i style="width:${d[1]*10}%"></i></div><span class="dv">${d[1].toFixed(1)}</span></div>`).join('')}
       <div class="msec" style="border-bottom:none;margin-top:8px;"><p class="seclabel">— PER QUESTION</p>
-      ${s.recs.map((x,i)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><span style="flex:1;font-size:13px;color:var(--ink-2);line-height:1.5;">${x.qText}</span><span class="mono" style="font-size:13px;color:var(--accent);">${x.scores.overall.toFixed(1)}</span></div>`).join('')}</div>
+      ${s.recs.map((x,i)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><span style="flex:1;font-size:13px;color:var(--ink-2);line-height:1.5;">${cEsc(x.qText)}</span><span class="mono" style="font-size:13px;color:var(--accent);">${x.scores.overall.toFixed(1)}</span></div>`).join('')}</div>
       <p style="font-size:12px;color:var(--ink-mute);margin:14px 0 0;">${tt('整轮记录已存入练习记录,并计入成长曲线 ✓','Round saved to records and counted in your growth curve ✓')}</p>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;"><button class="btn btn-accent" id="sAgain">${tt('再来一轮','Another round')} →</button><button class="btn" id="sRecords">${tt('查看成长曲线','View growth curve')} →</button></div>
     </div></div>`;
@@ -384,13 +384,13 @@ function growthChartHTML(){
 }
 function ivRecordsHTML(){
   const cats=['全部',...IV_CATS.map(c=>c[1])];
-  const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-rc="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivRSearch" placeholder="${tt('搜索题目 / 公司…','Search questions / company…')}" value="${ivState.search}"></div>`;
+  const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-rc="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivRSearch" placeholder="${tt('搜索题目 / 公司…','Search questions / company…')}" value="${cEsc(ivState.search)}"></div>`;
   const growth=growthChartHTML();
   const list=IV_RECORDS.filter(r=>(ivState.cat==='全部'||IV_CATLABEL[r.cat]===ivState.cat));
   if(!list.length) return growth+toolbar+`<p style="color:var(--ink-3);padding:24px 0;text-align:center;">${tt('还没有匹配的练习记录。','No matching practice records yet.')}</p>`;
   const rows=list.map(r=>{
     const badge=r.type==='round'?`<span class="q-cat ai">${tt('整轮 '+r.qCount+' 题','Round '+r.qCount+'Q')}</span>`:`<span class="q-cat">${IV_CATLABEL[r.cat]}</span>`;
-    return `<div class="rec-row" data-rec="${r.id}"><div class="rec-top"><span class="rec-q">${r.qText}</span><span class="rec-meta">${r.date}${r.job?' · '+r.job:''}</span></div><div class="rec-sc"><span><b>${r.scores.overall.toFixed(1)}</b>${tt('综合','overall')}</span><span><b style="font-size:13px;">${r.scores.structure.toFixed(1)}</b>${tt('结构','struct')}</span><span><b style="font-size:13px;">${r.scores.depth.toFixed(1)}</b>${tt('深度','depth')}</span><span><b style="font-size:13px;">${r.scores.quant.toFixed(1)}</b>${tt('量化','quant')}</span><span style="margin-left:auto;">${badge}</span></div></div>`;
+    return `<div class="rec-row" data-rec="${r.id}"><div class="rec-top"><span class="rec-q">${cEsc(r.qText)}</span><span class="rec-meta">${r.date}${r.job?' · '+cEsc(r.job):''}</span></div><div class="rec-sc"><span><b>${r.scores.overall.toFixed(1)}</b>${tt('综合','overall')}</span><span><b style="font-size:13px;">${r.scores.structure.toFixed(1)}</b>${tt('结构','struct')}</span><span><b style="font-size:13px;">${r.scores.depth.toFixed(1)}</b>${tt('深度','depth')}</span><span><b style="font-size:13px;">${r.scores.quant.toFixed(1)}</b>${tt('量化','quant')}</span><span style="margin-left:auto;">${badge}</span></div></div>`;
   }).join('');
   return growth+toolbar+rows;
 }
@@ -402,24 +402,24 @@ function ivBindRecords(){
 function ivRecordDetail(id){
   const r=IV_RECORDS.find(x=>x.id===id); const dims=[[tt('结构','Structure'),r.scores.structure],[tt('深度','Depth'),r.scores.depth],[tt('量化','Quant'),r.scores.quant]];
   const mid = r.type==='round'
-    ? `<div class="msec"><p class="seclabel">— PER QUESTION</p><h3 class="sectitle" style="font-size:15px;margin-bottom:6px;">${tt('逐题表现','Per question')}<span class="dot">.</span></h3>${(r.items||[]).map((x,i)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><span style="flex:1;font-size:13px;color:var(--ink-2);line-height:1.5;">${x.qText}</span><span class="mono" style="font-size:13px;color:var(--accent);">${x.scores.overall.toFixed(1)}</span></div>`).join('')}</div>`
-    : `<div class="msec"><p class="seclabel">— QUESTION</p><p style="font-size:15px;color:var(--ink);line-height:1.6;margin:8px 0 0;">${r.qText}</p></div>
-       <div class="msec"><p class="seclabel">— YOUR ANSWER</p><p style="font-size:13.5px;color:var(--ink-2);line-height:1.75;margin:8px 0 0;">${r.answer}</p></div>`;
-  openModal(`<div class="modal-head"><div><p class="eyebrow">— ${r.type==='round'?'ROUND':'RECORD'}</p><h2 style="margin-top:5px;">${r.type==='round'?tt('整轮总评','Round summary'):tt('练习记录','Practice record')}</h2><div class="sub"><span>${r.date}</span>${r.job?`<span>·</span><span>${r.job}</span>`:''}${r.type==='round'?`<span>·</span><span>${tt(r.qCount+' 题',r.qCount+' Q')}</span>`:`<span>·</span><span>${IV_CATLABEL[r.cat]}</span>`}</div></div><button class="x">${IC.x}</button></div>
+    ? `<div class="msec"><p class="seclabel">— PER QUESTION</p><h3 class="sectitle" style="font-size:15px;margin-bottom:6px;">${tt('逐题表现','Per question')}<span class="dot">.</span></h3>${(r.items||[]).map((x,i)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><span style="flex:1;font-size:13px;color:var(--ink-2);line-height:1.5;">${cEsc(x.qText)}</span><span class="mono" style="font-size:13px;color:var(--accent);">${x.scores.overall.toFixed(1)}</span></div>`).join('')}</div>`
+    : `<div class="msec"><p class="seclabel">— QUESTION</p><p style="font-size:15px;color:var(--ink);line-height:1.6;margin:8px 0 0;">${cEsc(r.qText)}</p></div>
+       <div class="msec"><p class="seclabel">— YOUR ANSWER</p><p style="font-size:13.5px;color:var(--ink-2);line-height:1.75;margin:8px 0 0;">${cEsc(r.answer)}</p></div>`;
+  openModal(`<div class="modal-head"><div><p class="eyebrow">— ${r.type==='round'?'ROUND':'RECORD'}</p><h2 style="margin-top:5px;">${r.type==='round'?tt('整轮总评','Round summary'):tt('练习记录','Practice record')}</h2><div class="sub"><span>${r.date}</span>${r.job?`<span>·</span><span>${cEsc(r.job)}</span>`:''}${r.type==='round'?`<span>·</span><span>${tt(r.qCount+' 题',r.qCount+' Q')}</span>`:`<span>·</span><span>${IV_CATLABEL[r.cat]}</span>`}</div></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="msec"><p class="seclabel">— SCORES</p><div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 12px;"><span style="font-family:var(--font-serif);font-size:26px;color:var(--accent);font-weight:500;">${r.scores.overall.toFixed(1)}</span><span style="font-size:13px;color:var(--ink-3);">/10 ${tt('综合','overall')}</span></div>${dims.map(d=>`<div class="dimrow"><span class="dl">${d[0]}</span><div class="dt"><i style="width:${d[1]*10}%"></i></div><span class="dv">${d[1].toFixed(1)}</span></div>`).join('')}</div>
       ${mid}
       <div class="msec" style="border-bottom:none;"><p class="seclabel">— FEEDBACK</p>
-        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--status-done);margin:8px 0 4px;">✓ ${tt('做得好','Did well')}</p><ul style="margin:0;padding-left:18px;">${r.good.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${g}</li>`).join('')}</ul>
-        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${r.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${g}</li>`).join('')}</ul></div>
+        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--status-done);margin:8px 0 4px;">✓ ${tt('做得好','Did well')}</p><ul style="margin:0;padding-left:18px;">${r.good.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${cEsc(g)}</li>`).join('')}</ul>
+        <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${r.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${cEsc(g)}</li>`).join('')}</ul></div>
     </div>`);
 }
 function ivGenerate(){
   const j=JOBS.find(x=>x.id===ivState.jobId);
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI</p><h2 style="margin-top:5px;">${tt('生成针对性面试题','Generate tailored questions')}</h2><div class="sub"><span>${j.co} · ${j.role.split('·')[0].trim()}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="genHost"></div></div>`);
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI</p><h2 style="margin-top:5px;">${tt('生成针对性面试题','Generate tailored questions')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="genHost"></div></div>`);
   aiRun($('#genHost',m),[tt('解析该岗位 JD 与你的针对性简历','Reading the JD & your tailored resume'),tt('定位简历里最可能被深挖的点','Finding the most probe-worthy points'),tt('生成 3 道针对性新题','Generating 3 tailored questions')],
     ()=>{const qs=genQuestionsFor(j,3); qs.forEach(q=>IV_BANK.unshift(q)); ivState.tab='bank'; setTimeout(renderInterview,30);
-      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+j.co+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+j.co+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${q.text}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" onclick="closeModal()">${tt('去题库练','Practice in bank')} →</button>`;
+      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" onclick="closeModal()">${tt('去题库练','Practice in bank')} →</button>`;
     },{label:tt('AI 出题中…','Generating questions…')});
 }
 function ivAddQuestion(){

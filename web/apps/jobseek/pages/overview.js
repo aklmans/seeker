@@ -18,13 +18,13 @@ function renderOverview(){
     </div></div>`;
   const gaps=topGapsReal(3).map(g=>`
     <div class="gap-item">
-      <div class="gap-head"><span class="gi">${g.rank}</span><span class="gn">${g.name}</span></div>
+      <div class="gap-head"><span class="gi">${g.rank}</span><span class="gn">${cEsc(g.name)}</span></div>
       <div class="gap-meta">${tt(g.jobs+' 个岗位需要 · 当前 '+g.have, g.jobs+' jobs need it · now '+g.have)}</div>
       <div class="gap-bar"><div class="bar"><i style="width:${g.pct}%"></i></div><span class="pl">${tt('优先级 '+g.pri,'Priority '+g.pri)}</span></div>
     </div>`).join('');
   const recent=ACTIONS.filter(a=>a.state!=='done').slice(0,5).map(a=>{
     const cls=a.state==='doing'?'half':'';
-    return `<div class="mini-todo"><span class="cbox ${cls}">${IC.check}</span><span>${a.title}</span></div>`;
+    return `<div class="mini-todo"><span class="cbox ${cls}">${IC.check}</span><span>${cEsc(a.title)}</span></div>`;
   }).join('');
   const two=`<div class="sec"><div class="cols2">
     <div>
@@ -49,8 +49,8 @@ function renderOverview(){
   const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="next-hero"><div class="nh-in">
     <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0 0 9px;">— ${tt('AI 建议 · 下一步最该做的一件事','AI · the one thing to do next')}</p>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;">
-      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${ns.title}</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${ns.desc}</p></div>
+      <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${cEsc(ns.title)}</h3>
+        <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${cEsc(ns.desc)}</p></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${ns.ctaGo}')">${ns.ctaLabel} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
     </div></div></div></div>`;
   const dg=calmDigest();

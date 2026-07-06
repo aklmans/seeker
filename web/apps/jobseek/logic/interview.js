@@ -11,10 +11,10 @@ function renderInterview(){
       `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位后开始针对性练习','Add a target job to start tailored practice')}</h3><p style="max-width:600px;">${tt('面试陪练围绕你的目标岗位 + 简历展开,各公司风格不同。先添加一个岗位(放弃 / 拒绝的不计),再来这里针对性练。','Interview prep revolves around your target jobs + resume; each company differs. Add a job (skipped / rejected ones excluded), then come back for tailored practice.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
     return;
   }
-  const jobPills=activeJobs.map(x=>`<button class="pill ${x.id===ivState.jobId?'on':''}" data-ij="${x.id}">${x.co} · ${x.role.split('·')[0].trim()}</button>`).join('');
+  const jobPills=activeJobs.map(x=>`<button class="pill ${x.id===ivState.jobId?'on':''}" data-ij="${x.id}">${cEsc(x.co)} · ${cEsc(x.role.split('·')[0].trim())}</button>`).join('');
   let jb=activeJobs.find(x=>x.id===ivState.jobId); if(!jb){ jb=activeJobs[0]; ivState.jobId=jb.id; } // null-safe:默认首个活跃岗位
   const st=styleFor(jb.co);
-  const styleLine=`<div class="style-line"><span class="sl-co">${tt(jb.co+' 面试风格',jb.co+' style')}</span>${st.tags.map(t=>`<span class="chip">${t}</span>`).join('')}<span class="sl-note">${st.note}</span></div>`;
+  const styleLine=`<div class="style-line"><span class="sl-co">${tt(cEsc(jb.co)+' 面试风格',cEsc(jb.co)+' style')}</span>${st.tags.map(t=>`<span class="chip">${t}</span>`).join('')}<span class="sl-note">${st.note}</span></div>`;
   const setup=`<div class="sec">
     <p class="seclabel">— SETUP</p><h2 class="sectitle">${tt('选岗位 · 先备一份针对性简历','Pick a job · prep a tailored resume')}<span class="dot">.</span></h2>
     <p style="font-size:13px;color:var(--ink-3);margin:6px 0 0;max-width:700px;line-height:1.7;">${tt('真实面试大多是面试官拿着你的<b>简历 + JD</b>提问,各公司风格也不同。先让 AI 按目标岗位和你的职业资产生成一份针对性简历(可编辑、可标记擅长),面试就会围绕它来问。','Real interviews mostly run off your <b>resume + JD</b>, and each company differs. Let AI build a tailored resume from the target job and your assets (editable, mark your strengths) — the interview will revolve around it.')}</p>
@@ -47,13 +47,13 @@ function ivResumeRef(j){
     const projs=resProjects(r); const skills=resSkills(r); const starN=projs.filter(p=>p.star).length;
     const onCount=r.modules.filter(m=>m.on).length;
     return `<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:220px;"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="acbadge ac-compound">${tt('已绑定简历','Resume bound')}</span><span style="font-size:13px;color:var(--ink-2);">${tt('针对 '+j.co,'for '+j.co)}</span></div>
-        <p style="font-size:13px;color:var(--ink-2);margin:10px 0 0;line-height:1.65;">${shorten(resSummary(r),76)}</p>
+      <div style="flex:1;min-width:220px;"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="acbadge ac-compound">${tt('已绑定简历','Resume bound')}</span><span style="font-size:13px;color:var(--ink-2);">${tt('针对 '+cEsc(j.co),'for '+cEsc(j.co))}</span></div>
+        <p style="font-size:13px;color:var(--ink-2);margin:10px 0 0;line-height:1.65;">${cEsc(shorten(resSummary(r),76))}</p>
         <p style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin:8px 0 0;">${tt(onCount+' 个模块 · '+skills.length+' 项技能 · '+starN+' 个 ★ 擅长',onCount+' modules · '+skills.length+' skills · '+starN+' ★ strengths')}</p></div>
       <button class="btn" onclick="resumeState.jobId=${j.id};go('resumes')">${tt('编辑简历','Edit resume')} →</button></div>
       <p style="font-size:12px;color:var(--ink-mute);margin:12px 0 0;line-height:1.6;">${tt('面试将围绕这份简历与 JD 提问 —— ★ 擅长会被重点深挖。简历在「简历」模块统一管理。','The interview revolves around this resume + JD — ★ strengths get probed. Manage resumes in the Resume module.')}</p></div>`;
   }
   return `<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
-    <div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+j.co+' 的简历','No resume for '+j.co+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('带简历面试更贴合(面试官会拿着它问)—— 没有简历也能直接训练。','Interviewing with a resume fits better (the interviewer uses it) — but you can train without one.')}</div></div>
+    <div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+cEsc(j.co)+' 的简历','No resume for '+cEsc(j.co)+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('带简历面试更贴合(面试官会拿着它问)—— 没有简历也能直接训练。','Interviewing with a resume fits better (the interviewer uses it) — but you can train without one.')}</div></div>
     <button class="btn btn-accent" onclick="resumeState.jobId=${j.id};go('resumes')">${tt('去生成简历','Generate resume')} →</button></div></div>`;
 }

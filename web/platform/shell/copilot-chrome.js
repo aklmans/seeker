@@ -20,11 +20,16 @@ const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc
 // 点击时经委派**按值传参**调用,外部数据**永不拼进 JS/HTML 串** → 从根消除 onclick 注入类(优于脆弱引号转义)。label 经 cEsc。
 const cAB=(l,fn,args,acc)=>`<button class="btn ${acc?'btn-accent':''}" data-cact="${cEsc(fn)}" data-cargs="${cEsc(JSON.stringify(args||[]))}">${cEsc(l)}</button>`;
 const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csugg="${cEsc(s)}">${cEsc(s)}</button>`).join('')}</div>`;
-// 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 静态、args/值按值传 → onclick/copSend 注入类从根消除。
+// 委派白名单(P2 · 关放大器):data-cact 只允许派发**已登记的 cAB 处理器名**。委派 window[name](...) 本身是 gadget ——
+// 任一未修 HTML 注入面若能落 <button data-cact="…">,不设防时可派发任意 window 函数,把 HTML 注入升级为 JS 执行 / 二次 innerHTML
+// (★注意 copAppend/agentAppend 本身即 innerHTML sink、eval/Function 等更甚 → 前缀判定不够,必须精确白名单)。此表堵住升级面。
+// ⚠ 新增 cAB 处理器时须在此登记(与 copReply 的 cAB('…',fn,…) 一一对应)。
+const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume']);
+// 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 过白名单、args/值按值传 → onclick/copSend 注入类从根消除。
 document.addEventListener('click', (e)=>{
   const t=e.target; if(!t || !t.closest) return;
   const ab=t.closest('[data-cact]');
-  if(ab){ const fn=window[ab.getAttribute('data-cact')]; let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} if(typeof fn==='function') fn(...args); return; }
+  if(ab){ const name=ab.getAttribute('data-cact'); if(CACT_ALLOWED.has(name)){ let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} const fn=window[name]; if(typeof fn==='function') fn(...args); } return; }
   const sg=t.closest('[data-csugg]');
   if(sg) copSend(sg.getAttribute('data-csugg'));
 });

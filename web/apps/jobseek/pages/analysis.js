@@ -12,7 +12,7 @@ function renderAnalysis(){
     const occ=s.demand+Math.round(s.demand*0.6);
     return `<tr style="cursor:default;">
       <td class="idx">${String(i+1).padStart(2,'0')}</td>
-      <td><span class="co" style="font-weight:500;">${s.name}</span></td>
+      <td><span class="co" style="font-weight:500;">${cEsc(s.name)}</span></td>
       <td class="mono" style="font-size:12px;color:var(--ink-2);">${occ} 次</td>
       <td class="mono" style="font-size:12px;color:var(--ink-3);">${s.demand}/${JOBS.length}</td>
       <td>${dotsHTML(s.lvl,'lvl')}</td>
@@ -26,7 +26,7 @@ function renderAnalysis(){
 
   const matCompanies=JOBS.slice(0,8);
   const matSkills=['Go','MySQL','Redis','K8s','Rust','分布式系统','微服务','高并发','系统设计'];
-  const matHead=`<tr><th>技能 \\ 岗位</th>${matCompanies.map(j=>`<th>${j.co.slice(0,2)}</th>`).join('')}</tr>`;
+  const matHead=`<tr><th>技能 \\ 岗位</th>${matCompanies.map(j=>`<th>${cEsc(j.co.slice(0,2))}</th>`).join('')}</tr>`;
   const matBody=matSkills.map(sk=>{
     const s=skillByName(sk); const isGap=!s||s.lvl<2;
     const cells=matCompanies.map(j=>{
@@ -46,9 +46,9 @@ function renderAnalysis(){
   const dist=`<div class="sec"><p class="seclabel">— DISTRIBUTION</p><h2 class="sectitle">${tt('分布','Distribution')}<span class="dot">.</span></h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:18px;max-width:760px;">
     <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">${tt('按城市','By city')}</p>
-      ${CITY.map(c=>`<div class="barrow" style="grid-template-columns:48px 1fr 30px;"><span class="blab">${c[0]}</span><div class="btrack"><i style="width:${c[1]/maxC*100}%;background:var(--status-info);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
+      ${CITY.map(c=>`<div class="barrow" style="grid-template-columns:48px 1fr 30px;"><span class="blab">${cEsc(c[0])}</span><div class="btrack"><i style="width:${c[1]/maxC*100}%;background:var(--status-info);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
     <div><p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;font-family:var(--font-mono);letter-spacing:0.12em;">${tt('按公司类型','By type')}</p>
-      ${KIND.map(c=>`<div class="barrow" style="grid-template-columns:96px 1fr 30px;"><span class="blab" style="font-size:12.5px;">${c[0]}</span><div class="btrack"><i style="width:${maxK?c[1]/maxK*100:0}%;background:var(--ink-mute);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
+      ${KIND.map(c=>`<div class="barrow" style="grid-template-columns:96px 1fr 30px;"><span class="blab" style="font-size:12.5px;">${cEsc(c[0])}</span><div class="btrack"><i style="width:${maxK?c[1]/maxK*100:0}%;background:var(--ink-mute);"></i></div><span class="bval">${c[1]}</span></div>`).join('')}</div>
     </div></div>`;
 
   const KW=keywordsReal();

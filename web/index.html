@@ -1119,7 +1119,7 @@ async function wgtAction(widgetId, action, payload){
   const destructive = /^(delete|clear|remove|reset|wipe)/i.test(String(action));
   if(!destructive){
     /* 安全动作:当「用户意图」致意(接 Agent 为后续 domain 决策)。 */
-    try{ if(typeof toast==='function') toast((tt('组件请求:','Widget: '))+action); }catch(_e){}
+    try{ if(typeof toast==='function') toast((tt('组件请求:','Widget: '))+String(action).replace(/</g,'&lt;')); }catch(_e){} /* action 来自不可信 iframe(§4 Untrusted);toast 经 el(innerHTML)→ 进 DOM 前 <-转义 */
     return;
   }
   const G=window.SeekerGuardrail; if(!G) return;
