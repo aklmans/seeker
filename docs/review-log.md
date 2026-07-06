@@ -818,3 +818,12 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **★精化·PROFILE 红线最小暴露**:虽引用安全,但隐私红线符号→消费者**直接 import、不给 `window.PROFILE` 桥**(纵深防御、少一全局面;红线符号 import-first 非 window-bridge)。
 - **澄清**:实为**四步**(步4 尾"可选 main.js 单入口"若单列则步5,不单列即四步——按四步推进);**冒烟补两条**:步1/2 后 ①profile 双红线仍隔离(module 化不漏 PROFILE 进 AI 路径、rt.profile 通道不变)②D3/CACT_ALLOWED 边界仍生效(boot 序变不影响 set_ai_readable 推送时点)。
 **推进**:每步 commit+C2,步1/2 时序刀 + 步3 有状态刀逐刀送审。**下一步:开步1(INIT 块→module)。**
+
+### 步1(commit `9d7103e`)· INIT 执行序→module + ★发现并修复 cut2 潜伏回归(待审)
+**步1 本体**:parse-time INIT 块(1316-1333)→ 新 `<script type=module>`,置 873 rt-setup module **之前**。函数定义留 classic 块、仅执行序迁出。INIT 本就 pre-rt(parse-time 早于 deferred 873)→ 迁 module 后仍早于 873、行为等价;appReady 写 copilot-chrome global-lexical `let`(strict 正常);引用经全局词法/window(同 modal 刀验)。**效果**:INIT 不再 parse-time → dom/icons/i18n/nav/registry/keys/shell-boot/copilot-chrome 解除 parse-time 钉死。
+**★诚实披露 · cut2 潜伏回归(影响第26轮 pass 前提,步1 完整 INIT 冒烟才暴露)**:
+- **根因**:`renderTopActions`(nav.js:51;`initShell→setLang` 早期构建 topActions map)**裸引用** `openResumeModal`。**cut2** 把 resume-modals 转 deferred module 后,`openResumeModal` 变 window 桥、**载入晚于 INIT** → 构建 map 时 **ReferenceError** → `initShell` 抛 → **INIT 未跑完**(go/appReady/subscribe/appMgr 均未执行)。
+- **为何潜伏三刀**:cut2–4 冒烟只查 `appBooted`(=buildNav,在 initShell **之前**)+ 各刀自身功能,**漏查完整 INIT 完成** → cut2 起 initShell 实已抛、但表象(nav 在、hydration 后页面在)掩盖。**我的 cut2–4 冒烟不充分**,第26轮 pass 基于此不充分证据。
+- **修**:`renderTopActions` handler 一律**惰性闭包** `fn:()=>X()`(点击时解析、与 module 载序解耦):openResumeModal(已中招)+ openNewJob/openMarketValue/openNewAction(尚 classic、将中招)四处一并 lazy 化=防复发。**此修 retroactively 修好 cut2**,当前 HEAD 正确。
+- **验(修后 · fresh)**:★完整 INIT 完成(appMgrBtn 接线=末行跑到)、9 页全 render+正确 top-action 数、match 顶栏点击→openResumeModal 惰性开模态、appMgr 开、D3/profile 隔离不变、tsc0。
+- **★流程纠偏(纳入后续每刀)**:冒烟必查**完整 INIT 完成**(appMgrBtn.onclick 已接 或 __INIT done 哨兵),非仅 appBooted。**建议评审复核:第26轮四刀在此修后是否需补一次"完整 INIT"回归确认**(我判断 cut3/4 逻辑本身无暗改、仅冒烟盲区,此修已覆盖;但请评审定夺)。
