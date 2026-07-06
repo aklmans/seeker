@@ -11,7 +11,7 @@ function aiSuggs(){
 
 function copMatch(jobId){copClose();matchState.jobId=jobId;matchState.done=false;go('match');renderMatch();setTimeout(runMatch,260);}
 function copInterview(jobId){copClose();goInterview(jobId);}
-function copPlan(skill,jobLabel){genPlanFromGap(skill,jobLabel||'');renderActions();renderOverview();copClose();toast('已生成「'+skill+'」训练计划');go('actions');}
+function copPlan(skill,jobLabel){genPlanFromGap(skill,jobLabel||'');renderActions();renderOverview();copClose();toast('已生成「'+cEsc(skill)+'」训练计划');go('actions');} // skill 可为 gap/技能名(JD 抽取=§4-4 Untrusted);toast 经 el(innerHTML)→ 须 cEsc,否则 cAB 只是把注入点从 onclick 移到此 toast
 function copResume(jobId){copClose();aiResumeForJob(jobId);}
 function copNewJob(){copClose();openNewJob();}
 function copNewAction(){copClose();openNewAction();}
@@ -42,7 +42,7 @@ function copReply(t){
   const j=findJob(t), sk=findSkill(t);
   // 0. destructive → preview + confirm (anti-anxiety guardrail)
   if(has('删除','删掉','移除','去掉')&&j&&has('岗位','公司','它','这个','删'))
-    return `确认删除岗位 <b>${j.co} · ${j.role.split('·')[0].trim()}</b>?它会从列表移除 —— 这一步可撤销,不会真正丢失。`+cAct([cBtn('确认删除','agentDeleteJob('+j.id+')',true), cBtn('取消','agentCancel()')]);
+    return `确认删除岗位 <b>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</b>?它会从列表移除 —— 这一步可撤销,不会真正丢失。`+cAct([cAB('确认删除','agentDeleteJob',[j.id],true), cBtn('取消','agentCancel()')]);
   if(has('清空','清除所有','重置全部','删光','全部删'))
     return `你要清空<b>所有数据</b>(岗位 / 简历 / 记录)?这是个大动作。建议先在「数据设置 → DATA」导出备份再操作。`+cAct([cBtn('我已备份,继续','agentChat(\'(演示)清空已拦截 —— 真实版本会在此二次确认并支持撤销。\')'), cBtn('取消','agentCancel()')]);
   // 0b. settings changes are NOT allowed via chat (privacy/security) — only open
@@ -53,19 +53,19 @@ function copReply(t){
   if(has('上传简历','建档','解析简历')) return '好,简历是整个产品的输入源。'+cAct([cBtn('上传简历,AI 自动建档','copClose();openResumeUpload()',true)]);
   // 2. resume rewrite
   if(has('简历')&&has('改','定制','优化','改写','重写')){
-    if(j) return `我用 <b>${j.co}</b> 这个岗位的 JD 给你定制简历,把"做过什么"改成"拿到什么结果"。`+cAct([cBtn('生成定制简历','copResume('+j.id+')',true)]);
+    if(j) return `我用 <b>${cEsc(j.co)}</b> 这个岗位的 JD 给你定制简历,把"做过什么"改成"拿到什么结果"。`+cAct([cAB('生成定制简历','copResume',[j.id],true)]);
     return '想针对哪个岗位改简历?告诉我公司名,比如"帮我改字节那个岗位的简历"。'+cAct([cBtn('打开智能匹配','copGo(\'match\')')]);
   }
   // 3. match
   if(has('匹配','合适','对得上','配得上','能投','行不行')&&j){
     const pct=Math.round(j.match*10); const gaps=topGapsOf(j); const strong=j.need.filter(n=>{const s=skillByName(n);return s&&s.lvl>=3;}).length;
-    return `已分析你与 <b>${j.co} · ${j.role.split('·')[0].trim()}</b> 的匹配:`+
-      cCard(`综合匹配度 ${pct} / 100`, `已具备 ${strong} 项硬性要求,可补充 ${gaps.length} 项:${gaps.slice(0,4).join(' / ')||'无明显缺口,可直接投'}。不是不够格,是差临门一脚。`)+
-      cAct([cBtn('查看完整匹配','copMatch('+j.id+')',true), cBtn('生成训练计划','copPlan(\''+(gaps[0]||'系统设计')+'\',\''+j.co+'\')'), cBtn('模拟面试','copInterview('+j.id+')')]);
+    return `已分析你与 <b>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</b> 的匹配:`+
+      cCard(`综合匹配度 ${pct} / 100`, `已具备 ${strong} 项硬性要求,可补充 ${gaps.length} 项:${gaps.slice(0,4).map(cEsc).join(' / ')||'无明显缺口,可直接投'}。不是不够格,是差临门一脚。`)+
+      cAct([cAB('查看完整匹配','copMatch',[j.id],true), cAB('生成训练计划','copPlan',[gaps[0]||'系统设计', j.co]), cAB('模拟面试','copInterview',[j.id])]);
   }
   // 4. interview
   if(has('面试','模拟','练题','陪练')){
-    if(j) return `用 <b>${j.co}</b> 的 JD 关键词陪你练,出题 + 评分 + 反馈。`+cAct([cBtn('开始模拟面试','copInterview('+j.id+')',true)]);
+    if(j) return `用 <b>${cEsc(j.co)}</b> 的 JD 关键词陪你练,出题 + 评分 + 反馈。`+cAct([cAB('开始模拟面试','copInterview',[j.id],true)]);
     return '选个岗位来练吧,我用它的真实 JD 出题。'+cAct([cBtn('打开面试陪练','copGo(\'interview\')',true)]);
   }
   // 5. add job
@@ -73,29 +73,29 @@ function copReply(t){
   // 6. training plan / 补技能
   if((has('训练计划','学习计划','怎么补','怎么练','补齐','计划')&&sk)||(has('补')&&sk)){
     const p=planFor(sk.name);
-    return `给你排了「${sk.name}」的训练计划:约 ${p.weeks} 周、${p.ms.length} 个里程碑。推荐资源:${p.res.slice(0,2).join(' · ')}。`+cAct([cBtn('加入行动清单','copPlan(\''+sk.name+'\',\'\')',true)]);
+    return `给你排了「${cEsc(sk.name)}」的训练计划:约 ${p.weeks} 周、${p.ms.length} 个里程碑。推荐资源:${p.res.slice(0,2).map(cEsc).join(' · ')}。`+cAct([cAB('加入行动清单','copPlan',[sk.name,''],true)]);
   }
   // 7. add action
   if(has('加','添加','新建')&&has('行动','任务','待办')) return '好,添加一个行动 —— 建议带上目标和里程碑,方便刻意练习。'+cAct([cBtn('添加行动','copNewAction()',true)]);
   // 8. mark done
   if(has('完成','搞定','做完','标记')){
     const a=findAction(t);
-    if(a) return `把「${a.title}」标记为已完成?`+cAct([cBtn('确认完成','copDoneAct('+a.id+')',true), cBtn('打开行动清单','copGo(\'actions\')')]);
+    if(a) return `把「${cEsc(a.title)}」标记为已完成?`+cAct([cAB('确认完成','copDoneAct',[a.id],true), cBtn('打开行动清单','copGo(\'actions\')')]);
   }
   // 9. questions — gaps
   if(has('缺口','短板','差什么','差哪','该补','弱项')){
-    const rows=TOP_GAPS.map(g=>`${g.rank} ${g.name} · ${g.jobs} 个岗位需要`).join('<br>');
+    const rows=TOP_GAPS.map(g=>`${g.rank} ${cEsc(g.name)} · ${g.jobs} 个岗位需要`).join('<br>');
     return '你当前最高优先级的能力缺口:'+cCard('Top 3 缺口', rows)+cAct([cBtn('一键补 Rust','copPlan(\'Rust\',\'\')',true), cBtn('看缺口矩阵','copGo(\'analysis\')')]);
   }
   // 10. what to do next
   if(has('该做','下一步','现在做','干什么','做什么','怎么开始')){
     const a=ACTIONS.filter(x=>x.state==='doing')[0]||ACTIONS.find(x=>x.state==='todo');
-    return `下一步最该做的一件事:<b>${a.title}</b>。${a.goal||''}`+cAct([cBtn('去完成','copGo(\'actions\')',true), cBtn('智能匹配新岗位','copGo(\'match\')')]);
+    return `下一步最该做的一件事:<b>${cEsc(a.title)}</b>。${cEsc(a.goal||'')}`+cAct([cBtn('去完成','copGo(\'actions\')',true), cBtn('智能匹配新岗位','copGo(\'match\')')]);
   }
   // 11. best match
   if(has('最匹配','最适合','最该投','匹配最高','最有戏','优先投')){
     const best=[...JOBS].sort((a,b)=>b.match-a.match)[0];
-    return `按匹配度,<b>${best.co} · ${best.role.split('·')[0].trim()}</b> 最该优先(匹配 ${best.match.toFixed(1)}/10)。`+cAct([cBtn('查看完整匹配','copMatch('+best.id+')',true)]);
+    return `按匹配度,<b>${cEsc(best.co)} · ${cEsc(best.role.split('·')[0].trim())}</b> 最该优先(匹配 ${best.match.toFixed(1)}/10)。`+cAct([cAB('查看完整匹配','copMatch',[best.id],true)]);
   }
   // 12. market value / salary
   if(has('值多少','市场价值','身价','薪资','工资','值钱','行情')) return `按你的能力档案和 12 份目标 JD 估算,你的市场价值约 <b>${YOU_VALUE} 万/年</b>,在「后端·高级」带中上沿。`+cAct([cBtn('看完整市场价值报告','copMarket()',true), cBtn('看市场情报','copGo(\'analysis\')')]);

@@ -8,10 +8,26 @@ function copClose(){copEl().classList.remove('open');}
 function copToggle(){copEl().classList.contains('open')?copClose():copOpen();}
 function copScroll(){const m=$('#copMsgs'); m.scrollTop=m.scrollHeight;}
 function copAppend(role, html){const d=el(`<div class="cop-msg ${role}">${html}</div>`); $('#copMsgs').appendChild(d); copScroll(); return d;}
+// ★★§4-4 转义纪律(P1 审计刀):Copilot/Agent 面板经 el(innerHTML) 渲染、CSP unsafe-inline 无兜底 → 转义是唯一防线。
+// cEsc:HTML 文本 + 属性上下文转义(外部/业务数据 job.co/sk.name 等[JD 抽取=Untrusted]进 DOM 前一律过)。
+const cEsc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// cCard/cAct 是纯模板(内容拼装);调用方须先 cEsc 外部数据(见 copReply)。
 const cCard=(t,m)=>`<div class="cop-card"><div class="cct">${t}</div>${m?`<div class="ccm">${m}</div>`:''}</div>`;
 const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</div>`:'';
+// ⚠ cBtn 的 oc 是内联 onclick JS 串,**只可传静态串(零外部数据)**;带外部数据用 cAB(下),否则 ' 或 " breakout → 任意 JS。label 由调用方保证静态。
 const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc}">${l}</button>`;
-const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button onclick="copSend('${s}')">${s}</button>`).join('')}</div>`;
+// cAB(action-button · P1 结构性修):fn=window 上函数名(静态、开发者控制),args=参数数组(可含外部数据)→ JSON 存 data-cargs、
+// 点击时经委派**按值传参**调用,外部数据**永不拼进 JS/HTML 串** → 从根消除 onclick 注入类(优于脆弱引号转义)。label 经 cEsc。
+const cAB=(l,fn,args,acc)=>`<button class="btn ${acc?'btn-accent':''}" data-cact="${cEsc(fn)}" data-cargs="${cEsc(JSON.stringify(args||[]))}">${cEsc(l)}</button>`;
+const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csugg="${cEsc(s)}">${cEsc(s)}</button>`).join('')}</div>`;
+// 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 静态、args/值按值传 → onclick/copSend 注入类从根消除。
+document.addEventListener('click', (e)=>{
+  const t=e.target; if(!t || !t.closest) return;
+  const ab=t.closest('[data-cact]');
+  if(ab){ const fn=window[ab.getAttribute('data-cact')]; let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} if(typeof fn==='function') fn(...args); return; }
+  const sg=t.closest('[data-csugg]');
+  if(sg) copSend(sg.getAttribute('data-csugg'));
+});
 
 /* ---- 抽壳序3-d-1:Copilot/Agent 发送核心(红线:用户输入进 DOM 前 text.replace(/</g,&lt;) 转义逐字保留;frameQuery→streamReply|appReply 链) ---- */
 function copSend(text, aiText){
