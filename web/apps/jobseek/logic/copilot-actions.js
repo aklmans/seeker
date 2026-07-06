@@ -24,8 +24,9 @@ function agentDeleteJob(id){
   const persist=jobsPersistOn();
   if(persist) window.SeekerRT.db.remove('jobs', String(id)).catch(e=>console.error('[data] remove job', e));
   renderJobs(); renderOverview(); renderAnalysis(); renderMatch();
-  agentChat('已删除「'+job.co+' · '+job.role.split('·')[0].trim()+'」。改主意了可以点撤销。');
-  toastUndo('已删除「'+job.co+'」',()=>{
+  const jesc=(/** @type {any} */ s)=>String(s==null?'':s).replace(/</g,'&lt;'); // job.co/job.role = JD 抽取外部内容(§4-4 Untrusted),进 DOM 前转义
+  agentChat('已删除「'+jesc(job.co)+' · '+jesc(job.role.split('·')[0].trim())+'」。改主意了可以点撤销。'); // 第23轮[应改]同根修(agentChat 亦经 el/innerHTML,复审冒烟坐实此第二 sink)
+  toastUndo('已删除「'+jesc(job.co)+'」',()=>{ // 第23轮[应改]:job.co 可为 JD 抽取的外部内容(Untrusted),toast 经 el(innerHTML) 渲染须转义
     JOBS.splice(idx,0,job);
     if(persist) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] restore job', e));
     renderJobs();renderOverview();renderAnalysis();renderMatch();

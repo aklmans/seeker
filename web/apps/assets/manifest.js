@@ -29,7 +29,9 @@
       en: 'Curate prompts & notes — reusable personal data assets the AI can reference with your grant',
     },
     collections: ['assets_prompts', 'assets_notes'],
-    aiReadable: 'default-on',
+    // 第23轮[建议]采纳:notes 是自由文本兜底容器、可能承载敏感个人信息,而 D3 授权是 per-app 单档(分集合授权=第5轮开放问题⑤)
+    // → 整应用 default-off(隐私·反焦虑取向;blurb 本就写"授权后"),用户在应用管理页一键授权即开;prompts 的 AI 语料用例经显式 opt-in。
+    aiReadable: 'default-off',
     groups: {
       assets: { zh: '资产', en: 'ASSETS' },
     },

@@ -42,7 +42,7 @@ function renderPrompts(){
     const snap=ASSETS_PROMPTS[i]; ASSETS_PROMPTS.splice(i,1);
     if(collPersistOn()) /** @type {any} */ (window).SeekerRT.db.remove('assets_prompts', String(snap.id)).catch((/** @type {unknown} */ e)=>console.error('[assets] remove prompt', e));
     renderPrompts();
-    toastUndo(tt('已删除「','Deleted "')+(snap.title||tt('未命名','untitled'))+tt('」','"'), ()=>{ ASSETS_PROMPTS.splice(i,0,snap); persistPrompts(); renderPrompts(); });
+    toastUndo(tt('已删除「','Deleted "')+(apEsc(snap.title)||tt('未命名','untitled'))+tt('」','"'), ()=>{ ASSETS_PROMPTS.splice(i,0,snap); persistPrompts(); renderPrompts(); }); // 第23轮[应改]:toast 消息经 el(innerHTML) 渲染,title 须转义(同 render 路径纪律)
   };});
 }
 

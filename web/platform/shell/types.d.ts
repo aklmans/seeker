@@ -176,6 +176,7 @@ export interface SeekerShellApi {
   notifyDataCleared(): void;
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
-  /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */
+  /** **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径,供「清空全部数据」等须完整枚举的破坏性操作消费。
+   *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];
 }
