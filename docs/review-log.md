@@ -809,3 +809,12 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 
 ### F. 首刀 = 步1(INIT 块 → module)
 **请评审过此规划(尤其 C 的耦合判断 + D 步1/2 的时序编排 by construction 正确性)再开步1。** 不动手。
+
+### 🏁 第27轮评审回执 —— 规划认可 + 1 必修 + 3 精化(动手前折入)
+**结论**:规划**认可**(核心发现 rt-ready 耦合时序系统=真洞察、评审独立核证属实:dispatch@884∈873 module、水合监听全 classic 解析期注册、persistence@1053 晚于 873;转 module 不迁 dispatch=静默不水合)。定序自洽,按此推进。**动手前硬前提**:
+- **★必修·步2=「拆分」非「整块迁」**:873 module 一身二职——`window.SeekerRT/Guardrail/Widgets/Markdown` **桥建立(须早于同步消费者)** + `dispatchEvent`(须晚于水合注册)。整块搬末位会崩早期访问桥的代码。**只迁 `dispatchEvent` 一行、桥建立留早位**;动手前 grep 全仓"dispatch 前、非 rt-ready handler 内"同步访问这 4 桥的点,有则拆、无则整块搬亦可但留痕此判断。
+- **★精化·有状态 litmus(细化步3「按 toast 模板」)**:判据=该绑定是否出现 `X = …`(整体重赋)?**是→封装/访问器/不 dual-publish**(`SEED` demo-seed.js:9 `let SEED=null`→`SEED={…}`、`lastUndo` 已做);**否(只 `X.k=`/`X.push`)→ `window.X=X` 同引用、dual-publish 安全、勿套无谓访问器**(`PROFILE` const+`[k]=`、`JOBS/ACTIONS` `.length=0`/`.push`)。
+- **★精化·`setState` 最高危待查**(index.html:964 `let setState={…}`,跨 shell-boot/settings/i18n/nav 重度消费):转它前**先定 hydrate 是重赋值 `setState={…}` 还是只 mutate `setState.x=`**——前者地雷(访问器+原子翻全部消费者)、后者安全。
+- **★精化·PROFILE 红线最小暴露**:虽引用安全,但隐私红线符号→消费者**直接 import、不给 `window.PROFILE` 桥**(纵深防御、少一全局面;红线符号 import-first 非 window-bridge)。
+- **澄清**:实为**四步**(步4 尾"可选 main.js 单入口"若单列则步5,不单列即四步——按四步推进);**冒烟补两条**:步1/2 后 ①profile 双红线仍隔离(module 化不漏 PROFILE 进 AI 路径、rt.profile 通道不变)②D3/CACT_ALLOWED 边界仍生效(boot 序变不影响 set_ai_readable 推送时点)。
+**推进**:每步 commit+C2,步1/2 时序刀 + 步3 有状态刀逐刀送审。**下一步:开步1(INIT 块→module)。**
