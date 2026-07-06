@@ -901,7 +901,9 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
   window.SeekerWidgets = { renderWidget };          // show_widget 沙箱渲染(#2 · W1/W2)
   window.SeekerMarkdown = { render: renderMarkdown }; // 安全 Markdown 渲染(不可信模型输出)
   initMcpConfirm({ rt, confirmDestructive });        // MCP 工具调用确认桥(#2 · C4)
-  window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
+  /* ★3.y 步2(拆分,非整块迁·评审第27轮必修):桥建立(window.SeekerRT/Guardrail/Widgets/Markdown + initMcpConfirm)
+     留此**早位**(须早于同步消费者;grep 证全仓无 dispatch 前同步桥访问、均在函数内 runtime/rt-ready handler);
+     而 dispatch('seeker-rt-ready') 须**晚于所有水合注册** → 迁至 body 末位 module(见文件尾),两约束解耦。 */
 </script>
 </head>
 <body>
@@ -1337,6 +1339,13 @@ function openAppManager(){
    移出 parse-time classic 块:解除 dom/icons/i18n/nav/registry/keys/shell-boot/copilot-chrome 的 parse-time 钉死
    (INIT 不再解析期同步用它们);INIT-module 置于 873 rt-setup module **之前** → 保「渲空壳(INIT)→ rt-ready 水合(dispatch)」时序不变式。
    ★仅"执行序"迁出;函数定义(shellReconcilePages/shellReassemble/clearAppData/renderAppMgr/openAppManager)仍留本 classic 块。 */
+</script>
+<script type="module">
+  /* ★3.y 步2:seeker-rt-ready dispatch —— body **末位** module(所有水合监听已注册之后:classic 解析期的
+     profile/persistence/notes/prompts + widget onAction(rt-ready)+ INIT-module 的 shellPushAiReadable,均早于本 tag)。
+     桥建立(window.SeekerRT/Guardrail/Widgets/Markdown)留 head 873 module 早位、此处**仅 dispatch** → 水合注册文件今后转 module
+     不再受"注册须早于 dispatch"约束(步3 解锁前置)。末位跑 → window.SeekerRT 已就绪(873 在前)+ 所有监听就位 → 两时序不变式 by construction。 */
+  window.dispatchEvent(new CustomEvent('seeker-rt-ready'));
 </script>
 </body>
 </html>
