@@ -871,6 +871,26 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/copilot-chrome.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
 <script type="module">
+  /* ---------- INIT 启动执行序(3.y 步1:从 body parse-time 迁入 module)----------
+     ★须早于下方 873 rt-setup module 的 dispatch('seeker-rt-ready') → 保「渲空壳(INIT)→ rt-ready 水合」序不变式。
+     module=deferred=全文档解析后跑:此时 head/body 全 classic 全局(buildNav/$/IC/PAGES/copInit/… + 应用 manifest 注册)已就绪;
+     引用经全局词法环境/window 解析(同 modal.js 刀已验);appReady 写 copilot-chrome.js 的 global-lexical `let appReady`。 */
+  buildNav();
+  buildPages();
+  $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
+  $('#themeBtn2').onclick=toggleTheme;
+  copInit();
+  agentInit();
+  initShell();
+  initKeys();
+  go('overview');
+  window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约):jobseek init=captureSeed+syncDemoBanner
+  appReady=true;
+  window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable
+  window.addEventListener('seeker-rt-ready', shellPushAiReadable); // rt 就绪后推一次初始可读集(前端为真相源)
+  { const amb=$('#appMgrBtn'); if(amb) amb.onclick=openAppManager; }
+</script>
+<script type="module">
   import { rt } from './platform/runtime/index.js';
   import { renderWidget } from './platform/capability/widgets/render.js';
   import { confirmDestructive } from './platform/guardrail/index.js';
@@ -1313,24 +1333,10 @@ function openAppManager(){
   renderAppMgr(m);
 }
 
-/* ---------- INIT(原单体启动序列,原序照抄)---------- */
-
-buildNav();
-buildPages();
-$('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
-$('#themeBtn2').onclick=toggleTheme;
-copInit();
-agentInit();
-initShell();
-initKeys();
-go('overview');
-window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约,清第18轮 INIT 分解债):jobseek init=captureSeed+syncDemoBanner 移 manifest.init;INIT 只调平台 + 契约
-appReady=true;
-
-/* ---------- 壳装配接线(阶段2:开关变化重装配 + rt 就绪推可读集 + 应用管理入口)---------- */
-window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable
-window.addEventListener('seeker-rt-ready', shellPushAiReadable); // rt 就绪后推一次初始可读集(前端为真相源)
-{ const amb=$('#appMgrBtn'); if(amb) amb.onclick=openAppManager; }
+/* ---------- INIT 启动执行序 → 迁至 head 的 <script type=module>(3.y 步1)----------
+   移出 parse-time classic 块:解除 dom/icons/i18n/nav/registry/keys/shell-boot/copilot-chrome 的 parse-time 钉死
+   (INIT 不再解析期同步用它们);INIT-module 置于 873 rt-setup module **之前** → 保「渲空壳(INIT)→ rt-ready 水合(dispatch)」时序不变式。
+   ★仅"执行序"迁出;函数定义(shellReconcilePages/shellReassemble/clearAppData/renderAppMgr/openAppManager)仍留本 classic 块。 */
 </script>
 </body>
 </html>

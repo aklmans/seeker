@@ -48,12 +48,14 @@ function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
   const map={
     overview:[{t:tt('智能匹配','Smart match'), a:'btn-accent', fn:()=>go('match')}],
-    match:[{t:tt('我的简历','My resume'), fn:openResumeModal}],
+    // 3.y:handler 一律**惰性闭包**(点击时解析),与 module 载序解耦 —— openResumeModal 等已/将 ESM 化为 deferred module bridge,
+    //       renderTopActions 在 INIT(initShell→setLang)早于 body module 载入时构建此 map,裸引用会 ReferenceError(cut2 潜伏、步1 暴露)。
+    match:[{t:tt('我的简历','My resume'), fn:()=>openResumeModal()}],
     resumes:[{t:tt('+ 生成针对性简历','+ Tailored resume'), a:'btn-accent', fn:()=>resumeGenerate(resumeState.jobId, renderResumes)}],
-    jobs:[{t:tt('+ 录入岗位','+ Add job'), a:'btn-accent', fn:openNewJob}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
+    jobs:[{t:tt('+ 录入岗位','+ Add job'), a:'btn-accent', fn:()=>openNewJob()}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
     analysis:[{t:tt('导出报告','Export report'), fn:()=>toast(tt('已导出分析报告 (mock)','Analysis report exported (mock)'))}],
-    skills:[{t:tt('市场价值报告','Market value'), fn:openMarketValue}],
-    actions:[{t:tt('+ 添加行动','+ Add action'), fn:openNewAction}],
+    skills:[{t:tt('市场价值报告','Market value'), fn:()=>openMarketValue()}],
+    actions:[{t:tt('+ 添加行动','+ Add action'), fn:()=>openNewAction()}],
     interview:[],
     settings:[]
   };
