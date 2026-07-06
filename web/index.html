@@ -984,25 +984,25 @@ function hydrateSettings(){
 /* persistProfileField/hydrateProfile(+rt-ready)已抽壳 → platform/shell/profile.js(序5-a · ★★双红线:rt.profile 隔离、绝不串 rt.db;profile 只经设置页改) */
 /* _mgrEsc/_mgrTime/openHistoryManager/openMemoryManager/openDocsManager/openMcpManager 已抽壳 → platform/shell/settings.js(序5-c-3;隐私/RAG/MCP 管理,零 jobseek 依赖) */
 // 清空所有业务数据(#业务打磨):清前自动备份;种子守卫保证清后不再播种演示数据。
-// ★★待清账(第22轮[建议] · 有时限:阶段4「第二应用」之前或同刀,勿延后):CLEARABLE_COLLS 硬编码集合名 → 改用
-// SeekerShell.collections()(契约已就位)∪ 壳自持 messages;否则第二应用一落,「清空全部数据」会静默漏掉其集合
-// → 破坏「破坏性操作完整可撤销」红线(§4-3 反焦虑)。同刀解 clearAllDataFlow 内 setDemoMode(jobseek)归属。
-const CLEARABLE_COLLS=['jobs','skills','actions','resumes','iv_records','messages'];
+// 阶段4-0(第22轮[建议]落地):集合清单经 SeekerShell.collections() 契约枚举(全部已注册应用∪壳自持,存在性口径)
+// —— 新应用集合自动纳入,「清空全部数据」永不静默漏集合(§4-3 可撤销完整性);
+// app-local 状态复位经 SeekerShell.notifyDataCleared() 契约(第9契约,如 jobseek 退演示模式),平台零 setDemoMode 直调。
 async function clearAllCollections(){ // 抽出便于安全测试 + 不依赖 reload
   const rt=window.SeekerRT; if(!rt) return;
   try{ await rt.db.backup(); }catch(_e){}                 // 清前自动备份(可日后导入恢复)
-  for(const c of CLEARABLE_COLLS){
+  for(const c of window.SeekerShell.collections()){
     try{ const rows=await rt.db.list(c); for(const r of rows){ try{ await rt.db.remove(c, r.id); }catch(_e){} } }catch(_e){}
   }
 }
 function clearAllDataFlow(){
   const G=window.SeekerGuardrail;
   if(!G||!G.confirmDestructive||!window.SeekerRT){ toast(tt('该端暂不支持','Not supported here')); return; }
+  const n=window.SeekerShell.collections().length;
   G.confirmDestructive({
     title:tt('清空所有业务数据?','Clear all data?'),
-    detail:tt('将删除全部岗位 / 技能 / 行动 / 简历 / 面试记录 / 对话历史。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all jobs / skills / actions / resumes / interview records / chat history. Personal info and settings stay. A backup is saved first — you can re-import it later.'),
+    detail:tt('将删除全部应用的业务数据与对话历史(共 '+n+' 个数据集合,含已停用应用)。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all apps\' business data and chat history ('+n+' collections, including disabled apps). Personal info and settings stay. A backup is saved first — you can re-import it later.'),
     confirmLabel:tt('清空','Clear'),
-    onConfirm:async()=>{ await clearAllCollections(); setDemoMode(false); markOnboarded(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
+    onConfirm:async()=>{ await clearAllCollections(); window.SeekerShell.notifyDataCleared(); markOnboarded(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
   });
 }
 /* renderSettings 已抽壳 → platform/shell/settings.js(序5-c-3;拆分+契约消费,非纯剪切,偏离逐条见该文件头注释) */
@@ -1229,7 +1229,7 @@ window.SeekerShell.setShell({
     icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>',
     render: () => renderSettings() }],
   groups: { system: { zh:'系统', en:'SYSTEM' } },
-  collections: ['messages'], // 对话历史归对话 chrome(壳);清空数据的 CLEARABLE_COLLS 阶段3 与此对齐
+  collections: ['messages'], // 对话历史归对话 chrome(壳);「清空全部数据」经 SeekerShell.collections() 枚举含此(阶段4-0)
 });
 // 组合填充:PAGES/GROUPS 保名(buildNav/buildPages/go/initKeys/setLang/rerenderPages 等消费方零改动)。
 PAGES.push(...window.SeekerShell.pages());

@@ -251,6 +251,16 @@
     });
   }
 
+  /** 「清空全部数据」后通知应用清 app-local 状态(如 jobseek 退演示模式)。汇总型副作用。
+   *  遍历**全部已注册应用**(含禁用)——与 collections() 存在性口径一致:禁用应用的数据同被清,其本地状态须一致复位。 */
+  function notifyDataCleared() {
+    apps.forEach((a) => {
+      if (typeof a.onDataCleared === 'function') {
+        try { a.onDataCleared(); } catch (e) { console.error('[shell] onDataCleared', a.id, e); }
+      }
+    });
+  }
+
   /** 各启用应用的设置贡献(新增 tab + 追加进壳既有 tab)。汇总型:并集(同 cards())。 @returns {AppSettingsSpec[]} */
   function appSettings() {
     /** @type {AppSettingsSpec[]} */
@@ -275,10 +285,13 @@
     return undefined;
   }
 
-  /** @returns {string[]} 启用应用 + 壳声明的集合并集(数据归属不随开关变;此为存在性,非 AI 可读——后者见 aiReadableCollections) */
+  /** @returns {string[]} **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径(数据归属不随开关变),
+   *  供「清空全部数据」等**必须完整枚举**的破坏性操作消费(§4-3:漏集合=清不干净=破坏可撤销完整性;
+   *  D2 关=数据保留,由应用管理页 per-app 清数据独立承担)。非 AI 可读——后者见 aiReadableCollections(启用∩授权)。
+   *  阶段4-0 修:原实现按 enabledApps() 过滤与本文档"存在性"矛盾(当时无消费者);首个消费者落地时校正。 */
   function collections() {
     const out = new Set(shellOwn.collections || []);
-    enabledApps().forEach((a) => (a.collections || []).forEach((c) => out.add(c)));
+    apps.forEach((a) => (a.collections || []).forEach((c) => out.add(c)));
     return [...out];
   }
 
@@ -305,6 +318,7 @@
     renderAppChips,
     appSettings,
     initApps,
+    notifyDataCleared,
     collId,
     collections,
   };

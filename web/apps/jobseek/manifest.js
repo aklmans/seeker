@@ -77,5 +77,7 @@
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
     // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
     init: () => { captureSeed(); syncDemoBanner(); },
+    // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。
+    onDataCleared: () => setDemoMode(false),
   });
 })();

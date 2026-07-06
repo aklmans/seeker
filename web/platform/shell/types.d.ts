@@ -113,6 +113,8 @@ export interface AppManifest {
   settings?: () => AppSettingsSpec;
   /** 应用启动钩子:壳 INIT 末尾(壳装配+首页渲染后)调用,应用做自己的 boot 副作用(如 jobseek 抓演示种子、挂示例提示条)。 */
   init?: () => void;
+  /** 「清空全部数据」确认后、reload 前调用:应用清自己的 app-local 状态(如 jobseek 退演示模式);数据集合本身由壳按 collections() 统一清。 */
+  onDataCleared?: () => void;
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
 }
@@ -170,6 +172,8 @@ export interface SeekerShellApi {
   appSettings(): AppSettingsSpec[];
   /** 依次调各启用应用的 init 钩子(壳 INIT 末尾);汇总型副作用,全调无返回(同 renderAppChips)。 */
   initApps(): void;
+  /** 「清空全部数据」后通知**全部已注册应用**(含禁用——数据被清是事实,app-local 状态须一致)清自己的本地状态;汇总型副作用。 */
+  notifyDataCleared(): void;
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 组合:启用应用 + 壳声明的集合并集(阶段2 AI 三层闸消费)。 */

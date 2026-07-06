@@ -38,6 +38,7 @@ declare function dataResumeRowHTML(): string; // → logic/settings-jobseek.js
 /* 应用启动钩子(序5-e initApps 契约;manifest init 引用桥) */
 declare function captureSeed(): void; // → logic/demo-seed.js(序4-d-3)
 declare function syncDemoBanner(): void; // → logic/demo-seed.js(序4-d-3)
+declare function setDemoMode(on: boolean): void; // → logic/demo-seed.js(序4-d-3;manifest onDataCleared 引用桥,阶段4-0 第9契约)
 
 /* 徽标 liveCount 依赖(JOBS/ACTIONS→data.js · 3-f;tt 已抽壳→platform/shell/i18n.js 实际定义、tsc 桥删 · 序1-c;setState 壳全局未抽) */
 declare const JOBS: Array<Record<string, unknown>>; // → data.js
