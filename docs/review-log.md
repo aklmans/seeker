@@ -838,3 +838,12 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 
 ### 🏁 第28轮评审回执 —— 步1+2 + cut2 回归修 通过
 **结论**:`9d7103e`(步1+nav 修)+`c2a7af9`(步2)**通过**、cut2 回归**闭合**。**评审独立完整-INIT 双向扫描**:13 个 module 化符号在整条 INIT 链(buildNav/initShell/setLang/renderTopActions/copInit/agentInit/go/renderOverview)的 bare eager 引用**仅 nav.js:86 closeModal**(overlay click 闭包内、本就 lazy)→ **cut3/4 无同类 bug**,cut2 那处唯一、已被 nav 惰性修覆盖。**评审认领第26轮扫描盲区**:其只扫「四刀 import 的符号无 parse-time 消费者」、漏「resume-modals **export 给 classic** 的 openResumeModal 的 parse-time 消费者(renderTopActions)」= 单向;+ 我(exec)冒烟只查 appBooted(在 initShell 之前)= 双盲。**连带**:R1 `138cf6a` 称 App Manager 工作与回归矛盾 → 那道真机冒烟亦踩同盲区(step2 修后 build 真机复验 App Manager 已可靠确认)。**两裁点**:①第26轮四刀补完整-INIT 确认=需要且已满足(评审双向扫描+exec 步1完整-INIT冒烟+步2修后真机);②**nav 惰性 handler=行为等价认可**,评审**立为规范**:handler map 引用「将 ESM 化的符号」一律惰性闭包。**流程纠偏(双方各补一条)**:exec=冒烟必查完整 INIT 完成;评审=代码层 parse-time 扫描须覆盖 module **双向**符号(import 面 + export-给-classic 面)。**★步3 前置(评审钉)**:`setState`/`SEED` 转前**先查重赋值性**(litmus:出现 `X={...}` 整体重赋→封装/访问器;只 `X.k=`→dual-publish)。开步3(base+中层)。
+
+### 步3-a/b(commit `683a788`/`e702fe7`)· base 工具层(dom/icons/i18n)→ ES module · 待审
+**前置双向 parse-time 扫描(第28轮纠偏落地)**:`.js` 顶层扫描空;index.html 命中(880-881 IC.sun/$ 在 **INIT-module 内**=deferred、1021+ tt 在 `clearAllDataFlow` 等**函数体内**=runtime)→ **无 classic 顶层消费 $/el/tt/IC**(INIT 已 module)→ base 安全转。
+- **3-a dom.js**($/$$/el,纯 const 箭头无重赋值):export + window 桥(`/** @type {any} */(window)` 保 @ts-check 净)。tsc 桥 +$/$$/el 类型化 ambient(消费者 assets;顺带消 TS7006 级联)。
+- **3-b icons.js**(IC=const 对象)+ **i18n.js**(tt/L/T 读 setState.lang;I18N 内部私有不上桥):export + 桥。tsc 桥 +IC(Record<string,string>)+tt。
+- **载序要点**:base module tag(859/860/861)**早于 INIT-module(874)** → INIT 的 `$`/`IC.sun`/`tt()` 经 window 桥可用;classic 消费者按全局名调不变。三者纯/const → dual-publish 同引用安全(非有状态,不触原子红线)。
+- **验(web fresh · 均含★完整 INIT)**:完整 INIT 完成、9 页 render、themeBtn IC.sun + 模态 IC.x 图标渲染、tt/lang 工作、App Manager 模态开(用 $/el)、D3/profile 隔离不变、node/tsc0/0 err。逐字节。
+- **@ts-check base 工具转换模式确立**:export + `(any)`-cast window 桥 + shell-globals.d.ts **类型化** ambient(异于 @ts-nocheck 刀的无类型 declare)。
+**下一步 = 步3 中层**(nav/registry/keys/shell-boot/copilot-chrome + 水合注册 profile/persistence)—— **含有状态 + 红线**:registry 启用态、copilot `appMode`/`appReady`、**`setState`(★转前先查重赋值性)**、**`PROFILE`(红线,import-first 不上桥)**、`SEED`(demo-seed `let SEED=null`→重赋值=封装)。按有状态 litmus 逐刀,红线双审。
