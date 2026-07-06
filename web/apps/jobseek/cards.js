@@ -364,7 +364,7 @@ function renderJobSourcesEl(data){
   [...card.querySelectorAll('[data-opensrc]')].forEach(b=>b.onclick=()=>{
     const s=sources[+b.dataset.opensrc]; if(!s) return;
     const rt=window.SeekerRT;
-    if(rt&&rt.web&&rt.web.open) rt.web.open(String(s.url)).catch(e=>toast(String((e&&e.message)||e)));
+    if(rt&&rt.web&&rt.web.open) rt.web.open(String(s.url)).catch(e=>toast(errText(e)));
   });
   return card;
 }

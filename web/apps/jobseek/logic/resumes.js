@@ -184,7 +184,7 @@ function downloadText(filename, text, mime){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     return true;
-  }catch(e){ toast(String((e&&e.message)||e)); return false; }
+  }catch(e){ toast(errText(e)); return false; }
 }
 // 文档模型 → .docx(Rust 零依赖渲染 → base64 → Blob 下载)。纯本地、不出网;web 端降级会报错(已被按钮门控隐藏)。
 async function exportDocx(fname, model){
@@ -198,7 +198,7 @@ async function exportDocx(fname, model){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast(tt('已下载 Word','Downloaded Word'));
-  }catch(e){ toast(String((e&&e.message)||e)); }
+  }catch(e){ toast(errText(e)); }
 }
 // 从针对性简历构造「导出模型」(单一来源):title + 各段 blocks。MD / 逐段复制 / Word 共用。
 function resumeExportModel(id){

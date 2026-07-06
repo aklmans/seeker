@@ -15,3 +15,6 @@ function toastUndo(msg, restoreFn){
   $('.toast-undo',t).onclick=doUndo;
   setTimeout(()=>{close();if(lastUndo===doUndo)lastUndo=null;},6500);
 }
+/** 错误消息进 toast(→el/innerHTML)前转义 —— §4-4:e.message 可含 rt.mcp/rt.ai 端点返回的外部内容(第25轮[应改])。
+ *  返回转义后文本(文本上下文,& < > 足够);纯错误 toast(errText(e)),带前缀 toast(prefix+errText(e))。自持不依赖 cEsc(基础层)。 */
+function errText(e){ return String((e&&e.message)||e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

@@ -145,7 +145,7 @@ function openNewJob(editId){
       const text=await window.SeekerRT.web.fetch(url);
       const blobI=$('#aiBlob',m); if(blobI) blobI.value=text;
       if(sEl) sEl.textContent=tt('已抓取,核对后点「让 AI 整理」↓','Fetched — review, then “Let AI organize” ↓');
-    }catch(e){ if(sEl) sEl.textContent=''; toast(String((e&&e.message)||e)); }
+    }catch(e){ if(sEl) sEl.textContent=''; toast(errText(e)); }
     finally{ aiFetchBtn.disabled=false; }
   };
   // 共享文件摄入(文件选择器 + 拖放共用):图片→多模态抽取;PDF→平台提取文字填框;文本→读入框。

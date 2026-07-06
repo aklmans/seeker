@@ -118,7 +118,7 @@ async function openDocsManager(){
     const name=((nameI&&nameI.value)||'').trim();
     addBtn.disabled=true; const old=addBtn.textContent; addBtn.textContent=tt('添加中…','Adding…');
     try{ const r=await rt.docs.add(name, text); toast(tt('已加入「','Added "')+((r&&r.name)||name||tt('未命名','Untitled'))+'」 · '+((r&&r.chunks)||0)+tt(' 片段',' chunks')); if(nameI)nameI.value=''; if(textI)textI.value=''; if(hint)hint.textContent=''; await render(); }
-    catch(e){ toast(String((e&&e.message)||e)); }
+    catch(e){ toast(errText(e)); }
     finally{ addBtn.disabled=false; addBtn.textContent=old; }
   };
   const fileBtn=m.querySelector('#docFileBtn'), fileI=m.querySelector('#docFile');
@@ -227,7 +227,7 @@ async function openMcpManager(){
       : `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('还没有 MCP 服务器。添加一个,让 AI 用上外部工具(每次调用都会先问你)。','No MCP servers yet. Add one to give the AI external tools — it asks before each call.')}</p>`;
     [...m.querySelectorAll('[data-mcptoggle]')].forEach(b=>b.onclick=async()=>{
       const s=rows.find(x=>x.name===b.dataset.mcptoggle); if(!s) return;
-      try{ await rt.mcp.setEnabled(s.name, !s.enabled); }catch(e){ toast(String((e&&e.message)||e)); } await render();
+      try{ await rt.mcp.setEnabled(s.name, !s.enabled); }catch(e){ toast(errText(e)); } await render();
     });
     [...m.querySelectorAll('[data-mcpdel]')].forEach(b=>b.onclick=()=>{
       if(!G||!G.confirmDestructive) return;
@@ -243,7 +243,7 @@ async function openMcpManager(){
       const name=b.dataset.mcpauthsave, box=findEdit(name), inp=box&&box.querySelector('input');
       const has=!!(inp&&inp.value.trim());
       try{ await rt.mcp.setAuth(name, (inp&&inp.value)||''); toast(has?tt('令牌已保存','Token saved'):tt('令牌已清除','Token cleared')); }
-      catch(e){ toast(String((e&&e.message)||e)); }
+      catch(e){ toast(errText(e)); }
       await render();
     });
     // 环境变量(stdio):展开行内「名 + 值」→ setEnv(值直送钥匙串;留空 = 清除该变量)。
@@ -257,13 +257,13 @@ async function openMcpManager(){
       const varName=(vn&&vn.value.trim())||''; if(!varName){ toast(tt('请填变量名','Enter a var name')); return; }
       const hasVal=!!(vv&&vv.value.trim());
       try{ await rt.mcp.setEnv(name, varName, (vv&&vv.value)||''); toast((hasVal?tt('已保存 ','Saved '):tt('已清除 ','Cleared '))+varName); }
-      catch(e){ toast(String((e&&e.message)||e)); }
+      catch(e){ toast(errText(e)); }
       await render();
     });
     [...m.querySelectorAll('[data-mcpenvclear]')].forEach(el=>el.onclick=async()=>{
       const name=el.dataset.cn, varName=el.dataset.cv;
       try{ await rt.mcp.setEnv(name, varName, ''); toast(tt('已清除 ','Cleared ')+varName); }
-      catch(e){ toast(String((e&&e.message)||e)); }
+      catch(e){ toast(errText(e)); }
       await render();
     });
   };
@@ -278,7 +278,7 @@ async function openMcpManager(){
         const url=val('#mcpUrl'); if(!url){ toast(tt('请填端点 URL','Enter endpoint URL')); return; }
         await rt.mcp.add(name, { url });
         const token=val('#mcpToken');
-        if(token){ try{ await rt.mcp.setAuth(name, token); }catch(e){ toast(String((e&&e.message)||e)); } }
+        if(token){ try{ await rt.mcp.setAuth(name, token); }catch(e){ toast(errText(e)); } }
       } else {
         const cmd=val('#mcpCmd'); if(!cmd){ toast(tt('请填命令','Enter command')); return; }
         await rt.mcp.add(name, { command:cmd, args:parseArgs(val('#mcpArgs')) });
@@ -288,7 +288,7 @@ async function openMcpManager(){
       if(hint)hint.textContent='';
       await render();
     }
-    catch(e){ toast(String((e&&e.message)||e)); }
+    catch(e){ toast(errText(e)); }
     finally{ addBtn.disabled=false; }
   };
   const testBtn=m.querySelector('#mcpTestBtn');
@@ -307,7 +307,7 @@ async function openMcpManager(){
       if(hint)hint.textContent=tt('成功 · ','OK · ')+r.toolCount+tt(' 个工具',' tools');
       toast(tt('连接成功 · ','Connected · ')+r.toolCount+tt(' 工具',' tools'));
     }
-    catch(e){ if(hint)hint.textContent=''; toast(String((e&&e.message)||e)); }
+    catch(e){ if(hint)hint.textContent=''; toast(errText(e)); }
     finally{ testBtn.disabled=false; }
   };
 }
@@ -342,7 +342,7 @@ function renderSettings(){
     <p class="seclabel" style="margin-bottom:10px;">— LLM</p>
     ${row(tt('接口协议','Protocol'),`<select class="select" id="mdProto">${proto.map(p=>`<option value="${p[0]}" ${p[0]===MODEL.protocol?'selected':''}>${p[1]}</option>`).join('')}</select>`)}
     ${row('Base URL',`<input class="input" id="mdBase" placeholder="https://api.anthropic.com" value="${(MODEL.baseUrl||'').replace(/"/g,'&quot;')}">`)}
-    ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="sk-…" value="${MODEL.apiKey}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
+    ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="sk-…" value="${(MODEL.apiKey||'').replace(/"/g,'&quot;')}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
     ${row(tt('模型(可存多个,点选当前)','Models (save many, click to use)'),`<div style="display:flex;flex-direction:column;gap:8px;">
       <div id="mdModelList" class="md-models"></div>
       <div style="display:flex;gap:8px;"><input class="input" id="mdModelAdd" placeholder="${tt('添加模型名,如 gpt-4o','Add a model, e.g. gpt-4o')}"><button class="btn" id="mdModelAddBtn">${tt('添加','Add')}</button></div></div>`)}
@@ -352,10 +352,10 @@ function renderSettings(){
     ${row(tt('连接','Connection'),`<button class="btn btn-accent" id="mdTest">${tt('测试连接','Test connection')}</button>`)}
     <p class="seclabel" style="margin:24px 0 10px;">— SPEECH · STT</p>
     ${row(tt('STT 引擎','STT engine'),`<select class="select" id="mdStt">${sttEng.map(e=>`<option value="${e[0]}" ${e[0]===MODEL.stt?'selected':''}>${e[1]}</option>`).join('')}</select>`)}
-    ${sttSelf?row(tt('STT 地址 / Key','STT URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdSttUrl" placeholder="base_url" value="${(MODEL.sttUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdSttKey" type="password" placeholder="api_key" value="${MODEL.sttKey}" style="max-width:150px;"></div>`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音识别 · 免费 · 本地','Built-in browser STT · free · local')}</p>`}
+    ${sttSelf?row(tt('STT 地址 / Key','STT URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdSttUrl" placeholder="base_url" value="${(MODEL.sttUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdSttKey" type="password" placeholder="api_key" value="${(MODEL.sttKey||'').replace(/"/g,'&quot;')}" style="max-width:150px;"></div>`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音识别 · 免费 · 本地','Built-in browser STT · free · local')}</p>`}
     <p class="seclabel" style="margin:20px 0 10px;">— SPEECH · TTS</p>
     ${row(tt('TTS 引擎','TTS engine'),`<select class="select" id="mdTts">${ttsEng.map(e=>`<option value="${e[0]}" ${e[0]===MODEL.tts?'selected':''}>${e[1]}</option>`).join('')}</select>`)}
-    ${ttsSelf?row(tt('TTS 地址 / Key','TTS URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdTtsUrl" placeholder="base_url" value="${(MODEL.ttsUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdTtsKey" type="password" placeholder="api_key" value="${MODEL.ttsKey}" style="max-width:150px;"></div>`)+row(tt('音色','Voice'),`<input class="input" id="mdTtsVoice" placeholder="voice id" value="${(MODEL.ttsVoice||'').replace(/"/g,'&quot;')}">`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音合成 · 免费 · 本地','Built-in browser TTS · free · local')}</p>`}
+    ${ttsSelf?row(tt('TTS 地址 / Key','TTS URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdTtsUrl" placeholder="base_url" value="${(MODEL.ttsUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdTtsKey" type="password" placeholder="api_key" value="${(MODEL.ttsKey||'').replace(/"/g,'&quot;')}" style="max-width:150px;"></div>`)+row(tt('音色','Voice'),`<input class="input" id="mdTtsVoice" placeholder="voice id" value="${(MODEL.ttsVoice||'').replace(/"/g,'&quot;')}">`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音合成 · 免费 · 本地','Built-in browser TTS · free · local')}</p>`}
     <div class="lock-note" style="margin-top:18px;"><span class="li">🔒</span><span>${tt('你填的 Base URL / API Key 仅保存在本地浏览器,不上传我们的服务器。音频按所选引擎处理:选「浏览器/自托管」则<b>音频不离开本机</b>,只把文字发给大模型;「个人信息」隐私字段始终不参与 AI。','Your Base URL / API Key stay in this browser, never uploaded to our servers. Audio is handled by the chosen engine: with browser/self-hosted, <b>audio never leaves your machine</b> — only text goes to the LLM; private profile fields never touch AI.')}</span></div>
   </div>`;
   const managed=`<div class="next-hero" style="max-width:580px;"><div class="nh-in">
@@ -454,8 +454,8 @@ function wireDataIO(){
     return;
   }
   const rt=window.SeekerRT;
-  exp.onclick=()=>rt.db.export(false).then(p=>toast(tt('已导出到 ','Exported to ')+p)).catch(e=>toast(String((e&&e.message)||e)));
-  if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已脱敏导出(不含隐私)到 ','Redacted export to ')+p)).catch(e=>toast(String((e&&e.message)||e)));
+  exp.onclick=()=>rt.db.export(false).then(p=>toast(tt('已导出到 ','Exported to ')+p)).catch(e=>toast(errText(e)));
+  if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已脱敏导出(不含隐私)到 ','Redacted export to ')+p)).catch(e=>toast(errText(e)));
   if(imp&&impFile){
     imp.onclick=()=>impFile.click();
     impFile.onchange=()=>{
@@ -466,7 +466,7 @@ function wireDataIO(){
           const total=Object.values(counts||{}).reduce((a,b)=>a+(+b||0),0);
           toast(tt('已导入 ','Imported ')+total+tt(' 条(导入前已自动快照)',' records (snapshot taken first)'));
           if(typeof hydrateJobs==='function') hydrateJobs();
-        }).catch(e=>toast(tt('导入失败:','Import failed: ')+String((e&&e.message)||e)));
+        }).catch(e=>toast(tt('导入失败:','Import failed: ')+errText(e)));
         impFile.value='';
       };
       reader.readAsText(f);
@@ -486,10 +486,10 @@ function renderModelList(){
   [...wrap.querySelectorAll('[data-mdl]')].forEach(ch=>ch.onclick=(e)=>{ if(e.target.closest('[data-mdlx]')) return; selectModelUI(ch.dataset.mdl); });
   [...wrap.querySelectorAll('[data-mdlx]')].forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); removeModelUI(b.dataset.mdlx); });
 }
-function selectModelUI(m){ if(!m) return; const was=MODEL.model; MODEL.model=m; if(settingsPersistOn()) window.SeekerRT.ai.selectModel(m).catch(e=>toast(String((e&&e.message)||e))); renderModelList(); if(m!==was) toast(tt('已切换到 ','Now using ')+m); }
+function selectModelUI(m){ if(!m) return; const was=MODEL.model; MODEL.model=m; if(settingsPersistOn()) window.SeekerRT.ai.selectModel(m).catch(e=>toast(errText(e))); renderModelList(); if(m!==was) toast(tt('已切换到 ','Now using ')+m); }
 function removeModelUI(m){ MODEL.models=(MODEL.models||[]).filter(x=>x!==m); if(MODEL.model===m) MODEL.model=MODEL.models[0]||''; if(settingsPersistOn()) window.SeekerRT.ai.removeModel(m).catch(()=>{}); renderModelList(); toast(tt('已删除模型 ','Removed ')+m); }
 function addModelUI(m){ m=(m||'').trim(); if(!m) return; if(!(MODEL.models||[]).includes(m)) MODEL.models=(MODEL.models||[]).concat(m); MODEL.model=m;
-  if(settingsPersistOn()) window.SeekerRT.ai.setConfig({model:m}).then(()=>toast(tt('已添加并启用 ','Added & using ')+m)).catch(e=>toast(String((e&&e.message)||e)));
+  if(settingsPersistOn()) window.SeekerRT.ai.setConfig({model:m}).then(()=>toast(tt('已添加并启用 ','Added & using ')+m)).catch(e=>toast(errText(e)));
   else toast(tt('已添加并启用 ','Added & using ')+m);
   renderModelList(); }
 /* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model(多)→provider.json。
@@ -508,20 +508,20 @@ async function wireModelConfigDesktop(){
   }catch(_e){ /* 未就绪 */ }
   base.onblur=()=>{ rt.ai.setConfig({baseUrl:base.value.trim()})
     .then(()=>toast(tt('已保存 Base URL','Base URL saved')))
-    .catch(e=>toast(String((e&&e.message)||e))); };
+    .catch(e=>toast(errText(e))); };
   if(embed) embed.onblur=()=>{ rt.ai.setConfig({embedModel:embed.value.trim()})
     .then(()=>toast(tt('已保存嵌入模型(长期记忆 / 检索用)','Embed model saved'))).catch(()=>{}); };
   if(ua) ua.onblur=()=>{ rt.ai.setConfig({userAgent:ua.value.trim()})
-    .then(()=>toast(tt('已保存 User-Agent','User-Agent saved'))).catch(e=>toast(String((e&&e.message)||e))); };
+    .then(()=>toast(tt('已保存 User-Agent','User-Agent saved'))).catch(e=>toast(errText(e))); };
   if(key) key.onblur=()=>{ const v=key.value.trim(); if(!v) return;
     rt.secret.set(KEYACC, v).then(()=>{
       key.value=''; try{ if(typeof MODEL!=='undefined') MODEL.apiKey=''; }catch(_e){}
       key.placeholder=cfgPh();
       toast(tt('API Key 已存入系统钥匙串','API Key saved to system keychain'));
-    }).catch(e=>toast(String((e&&e.message)||e))); };
+    }).catch(e=>toast(errText(e))); };
   if(test) test.onclick=()=>{ const old=test.textContent; test.disabled=true; test.textContent=tt('测试中…','Testing…');
     rt.ai.complete({userText:'ping'})
       .then(()=>toast(tt('连接成功 ✓','Connected ✓')))
-      .catch(e=>toast(tt('连接失败:','Failed: ')+String((e&&e.message)||e)))
+      .catch(e=>toast(tt('连接失败:','Failed: ')+errText(e)))
       .finally(()=>{ test.disabled=false; test.textContent=old; }); };
 }
