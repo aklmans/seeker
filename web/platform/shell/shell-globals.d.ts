@@ -9,9 +9,13 @@
  * 当前条目:
  *   modal.js(3.y 首刀)→ openModal / closeModal(消费者:apps/assets/pages/{prompts,notes}.js)
  *   toast.js(3.y 有状态刀)→ toast / toastUndo(消费者同上;errText/runLastUndo 无 @ts-check 消费者、lastUndo 不外露→均不入桥)
+ *   dom.js(3.y 步3 base)→ $ / $$ / el(消费者:assets/pages/{prompts,notes}.js;类型同 dom.js JSDoc)
  */
 
 declare function openModal(html: string, wide?: boolean): Element;
 declare function closeModal(): void;
 declare function toast(msg: string): void;
 declare function toastUndo(msg: string, restoreFn: () => void): void;
+declare const $: (s: string, r?: ParentNode) => Element | null;
+declare const $$: (s: string, r?: ParentNode) => Element[];
+declare const el: (h: string) => Element | null;
