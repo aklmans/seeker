@@ -848,5 +848,12 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **@ts-check base 工具转换模式确立**:export + `(any)`-cast window 桥 + shell-globals.d.ts **类型化** ambient(异于 @ts-nocheck 刀的无类型 declare)。
 **下一步 = 步3 中层**(nav/registry/keys/shell-boot/copilot-chrome + 水合注册 profile/persistence)—— **含有状态 + 红线**:registry 启用态、copilot `appMode`/`appReady`、**`setState`(★转前先查重赋值性)**、**`PROFILE`(红线,import-first 不上桥)**、`SEED`(demo-seed `let SEED=null`→重赋值=封装)。按有状态 litmus 逐刀,红线双审。
 
+### ★ 第29轮 [阻断] · step3-a 破 overlay-click-关闭 —— 已修复复验闭环(commit `412508f`)
+**评审 preview 功能测抓出真回归**(非 render/console,是**交互功能测**):step3-a dom.js→module 后,**nav.js:86 `$('#overlay').addEventListener(...)` 是 classic 顶层 parse-time 裸用 `$`** → dom deferred module 晚于 nav classic parse → `$` 未就绪 → 绑定抛 ReferenceError、监听没挂 → **点 overlay 不关闭模态 + 每加载一条 uncaught**。**归属 step3-a**(683a788~1 dom=classic 时 nav:86 正常)。
+- **修**:overlay 绑定收进 nav.js `wireOverlay()`、由 INIT-module(deferred,晚于 dom module)调 → `$` 就绪(同 cut2 惰性修一类)。
+- **★我的扫描缺陷(认领)**:第28轮我们刚立"双向扫描须抓 classic 顶层 eager 消费",这轮我的 grep 仍**漏 nav.js:86**——过滤器 `-vE '=>'` 把**含箭头回调的顶层语句**(overlay 绑定 `e=>{…}`)排掉了 = 扫描器自身缺陷。**纠正**:改「列 classic column-0 非声明语句 + 手工查 base 符号」独立复扫 → 证 **nav.js:86 是唯一** classic 顶层 eager 消费 `$/el/tt/IC`(其余 column-0:registry@12/nav initTheme@76 IIFE + profile@18/copilot-chrome@29 addEventListener **仅用 document/window**,不碰 base 工具)→ blast radius 收敛=仅此一处、icons/i18n(3-b)无同类。
+- **★验(含评审要求的功能测)**:web fresh —— **点 overlay→模态关闭(overlayClickClosed:true)** + 点模态内不关(e.target≠overlay,行为保)+ 完整 INIT + 9 页 render + **0 uncaught**。node/tsc0。
+- **★流程再纠偏(评审 + 我)**:①冒烟必含**受影响交互的功能验证**(不只 render 存在性 + console);②双向扫描的**工具本身**要能抓含 `=>` 回调的顶层 eager 语句(用"列顶层非声明语句手工过"而非"grep 带 `=>` 过滤")。**[阻断] 修复,请评审复验(flag→clear)。**
+
 ### ★ setState 重赋值性调查(评审最高危前提)= **mutated-property,dual-publish 安全**
 grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`(无 hydrate 后整体重赋);其余全是 **`setState.X=` 属性 mutate**(`.lang=`×11、`.theme/fontsize/goal/density/motion/salary/period/autobackup/trainCounts=` 各1)。**litmus 判定:引用稳定、从不整体重赋 → `window.setState=setState` 同引用 dual-publish 安全**(消费者读 `setState.lang` 与被 mutate 的是同一对象、无分裂)、**无需封装/访问器**。⚠ setState 是 index.html 内联壳全局(非 shell/ 文件),其"转 module"是后续独立子刀;中层文件现读/mutate 它经 classic 全局(i18n module 已读 setState.lang 正常)。**结论:setState 转换时按 mutated-property 处理(异于 SEED/lastUndo 的 reassigned=封装)。**
