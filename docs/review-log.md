@@ -954,10 +954,17 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **链① 注册链(解锁 registry+keys)= 自足**:唯一硬阻塞 = registry 的 **5 个 parse-time 消费**(setShell@1253/PAGES.push@1261/GROUPS@1262 + jobseek/assets manifest 的 register IIFE)。不牵扯业务层(manifest 引用的业务全局几乎全 lazy、runtime 经全局词法解析;唯一 eager 的 SEEKER_CARDS 也 module-eval 读全局词法)。
 - **链② PROFILE 链(解锁 profile)= 贵**:profile→module 要 PROFILE export-不上-window → settings/resumes 须 import PROFILE → 拖上 data/intake-action/interview(resumes parse-time 读 JOBS[0].id + ivRec reassigned 跨文件写 interview)= 5-6 刀。**用户裁定:只做链①(批 A),链② 单独择期**。
 
-### 批 A(commit `c02dec5`)· 注册链 module 化 + INIT 重排 · 待审
+### 批 A(commit `c02dec5`)· 注册链 module 化 + INIT 重排 · 🏁 第33轮通过
 **性质=原子协调刀**(parse-time 注册链不能拆:registry→module ⟹ manifest→module ⟹ SHELL BOOT→module ⟹ INIT 重排,一动全动)。**仅改 index.html**;registry/keys/manifest.js 的 IIFE 内容**零改**(IIFE 自挂 window.SeekerShell/SeekerKeys,转 module 只改执行时机 parse-time→deferred)。
 - **改动**:keys@856 / registry@858 / jobseek-manifest@1246 / assets-manifest@1249 → `type=module`;SHELL BOOT@1250 → `type=module`(setShell/PAGES.push/GROUPS 改 deferred 执行)+ **3 函数上桥**(shellReassemble/shellPushAiReadable/openAppManager 供 INIT 消费;shellReconcilePages/clearAppData/renderAppMgr 仅本 module 内部、grep 证零外部消费 → 不上桥);**INIT 执行序从 head@原873 迁至 SHELL BOOT module 之后**。
 - **★新载序(全 deferred,文档 tag 序)**:registry@858 → base 工具 modules → rt-bridge(head)→〔业务 classic parse-time 更早,定义 PAGES/render*/SEEKER_CARDS〕→ manifest×2 → SHELL BOOT → INIT → dispatch(末位)。**时序不变式 by construction**:注册(registry 定义 + manifest register)先于 setShell/PAGES.push 先于 INIT buildNav(读填好的 PAGES)先于 dispatch('seeker-rt-ready')水合。
 - **★parse-time 重排=第29轮[阻断]同类风险,故重功能测**(fresh-server + force-revalidate、0 console error):**SeekerShell 定义 + 2 应用注册**(manifest module register 成功)+ **11 nav 项**(PAGES 填好=SHELL BOOT 先于 INIT buildNav 跑了,注册链未断)+ 完整 INIT(appMgrBtn 接线)+ 9 页全渲 + **App Manager 开+列 2 应用**(openAppManager 桥)+ **真 toggle**(关 assets→9 项→开→11 项复原,shellReassemble 桥)+ **D3 aiReadableCollections 正常**(启用∩授权,assets default-off 不入)。node --check×4 OK、tsc exit 0。
 - **★评审可复验点**(⚠先 force-revalidate 清浏览器缓存):`window.SeekerShell.list().length===2` + `document.querySelectorAll('#nav .nav-item').length===11` + `typeof document.querySelector('#appMgrBtn').onclick==='function'`。
 - **归属说明**:批 A 解锁 registry/keys 的 module 化(parse-time 阻塞解除);IIFE→export/import 的纯净化归后续账本清空(与所有过渡 window 桥一起摘)。**profile(链②)仍卡、单独择期**。
+
+### ★ 第33轮裁定 = 通过(结构性判据决定性)+ ★硬流程账:独立功能测缺口
+评审确认:**parse-time 重排的正确结构检查**——找 classic 文件顶层/parse-time 消费 deferred 符号(SeekerShell/SeekerKeys)的点,**可靠扫描空**(register/setShell/PAGES.push/K.register/buildNav 全在 deferred module 或函数体 runtime;`SeekerShell.collections()` 消费全在 clearAllCollections/clearAllDataFlow 函数体)→ 时序不变式成立;IIFE 零改(commit 仅 index.html)、node×4/tsc0。**用修正可靠方法、覆盖 classic .js + index.html 双面**(异于第29轮扫描不可靠)。**批调整认可**:注册链 parse-time 必须一起 module 化=原子协调 commit(不能一基元一 commit)是唯一正确。
+- **★硬流程账(连续第4轮 · 必须闭合)**:评审 preview 端口 8123 被**本会话 server 锁**(第4轮)、claude-in-chrome 无连接浏览器、桌面是 Tauri 非 web preview → **评审跑不了任何独立功能测**,只能采信 exec 的 fresh-server force-revalidate 留痕。**本轮判通过**因结构性判据对 parse-time 重排决定性(可靠扫描空 + 注册全 deferred + IIFE 零改,均 grep/读定义即决)+ exec 留痕(2 应用注册/11 nav/App Manager/toggle/D3/0 err)。**但 parse-time 重排 + 大 blast radius 正是第29轮[阻断]类别,理想须独立功能测兜底**。**★下一个更大的原子刀(profile 链②/账本清空)前必须闭合此缺口**:① 空出 8123 / 连浏览器给评审亲跑,**或** ② exec 在该 build 上跑**真机 WKWebView 冒烟**(桌面 asset:// 免 web 缓存坑,同 R1 金标准)作独立确认。
+- **★exec 应对**:①已**停本会话 preview server 释放 8123**(根治"占端口挡评审"根因,评审下轮可独立跑 web);②下一刀前主动跑真机 WKWebView 冒烟 或 让评审亲跑,**不再只靠自测+扫描**。
+
+**批 A 通过。** 下一步:profile(链②,双红线双审)或账本清空——**任一大刀前先闭合独立功能测**(停 server 已释放 8123 = 第一步)。
