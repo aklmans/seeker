@@ -945,3 +945,19 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **preview 连续第三轮用不了**(8123 被本会话 0217de5b server 锁),结构性判据决定性(原子翻转完整 grep+§4-4 逐字节+可靠扫描空+node/tsc,均 grep/读定义即决);**exec 已在 0217de5b force-revalidate 后补跑 belt-and-suspenders 全绿**(window.appMode/appReady undefined + no-split + appReady setter 置 split + cEsc 转义 + 13 cmds + INIT done)= 闭环。
 
 **步3 中层-e 通过。** 下一步 **profile.js(★★双红线:profile 硬隔离 + 设置不可经对话改;PROFILE import-first 不上 window 桥)收尾中层**,然后 registry+keys 注册单体 module 化批。
+
+---
+
+## 3.y · classic 单体 module 化(子阶段)· 依赖调查 + 批 A 落地
+
+**四路只读调查(4 agent 并行)结论**:抽壳 arc 已把绝大多数符号搬走,**index.html inline classic 只剩 4 个状态符号**(PAGES/GROUPS/setState/WEIGHTS,**全 mutated-property → dual-publish 安全免访问器**)+ 函数块。剩余阻塞收敛成**两条链**:
+- **链① 注册链(解锁 registry+keys)= 自足**:唯一硬阻塞 = registry 的 **5 个 parse-time 消费**(setShell@1253/PAGES.push@1261/GROUPS@1262 + jobseek/assets manifest 的 register IIFE)。不牵扯业务层(manifest 引用的业务全局几乎全 lazy、runtime 经全局词法解析;唯一 eager 的 SEEKER_CARDS 也 module-eval 读全局词法)。
+- **链② PROFILE 链(解锁 profile)= 贵**:profile→module 要 PROFILE export-不上-window → settings/resumes 须 import PROFILE → 拖上 data/intake-action/interview(resumes parse-time 读 JOBS[0].id + ivRec reassigned 跨文件写 interview)= 5-6 刀。**用户裁定:只做链①(批 A),链② 单独择期**。
+
+### 批 A(commit `c02dec5`)· 注册链 module 化 + INIT 重排 · 待审
+**性质=原子协调刀**(parse-time 注册链不能拆:registry→module ⟹ manifest→module ⟹ SHELL BOOT→module ⟹ INIT 重排,一动全动)。**仅改 index.html**;registry/keys/manifest.js 的 IIFE 内容**零改**(IIFE 自挂 window.SeekerShell/SeekerKeys,转 module 只改执行时机 parse-time→deferred)。
+- **改动**:keys@856 / registry@858 / jobseek-manifest@1246 / assets-manifest@1249 → `type=module`;SHELL BOOT@1250 → `type=module`(setShell/PAGES.push/GROUPS 改 deferred 执行)+ **3 函数上桥**(shellReassemble/shellPushAiReadable/openAppManager 供 INIT 消费;shellReconcilePages/clearAppData/renderAppMgr 仅本 module 内部、grep 证零外部消费 → 不上桥);**INIT 执行序从 head@原873 迁至 SHELL BOOT module 之后**。
+- **★新载序(全 deferred,文档 tag 序)**:registry@858 → base 工具 modules → rt-bridge(head)→〔业务 classic parse-time 更早,定义 PAGES/render*/SEEKER_CARDS〕→ manifest×2 → SHELL BOOT → INIT → dispatch(末位)。**时序不变式 by construction**:注册(registry 定义 + manifest register)先于 setShell/PAGES.push 先于 INIT buildNav(读填好的 PAGES)先于 dispatch('seeker-rt-ready')水合。
+- **★parse-time 重排=第29轮[阻断]同类风险,故重功能测**(fresh-server + force-revalidate、0 console error):**SeekerShell 定义 + 2 应用注册**(manifest module register 成功)+ **11 nav 项**(PAGES 填好=SHELL BOOT 先于 INIT buildNav 跑了,注册链未断)+ 完整 INIT(appMgrBtn 接线)+ 9 页全渲 + **App Manager 开+列 2 应用**(openAppManager 桥)+ **真 toggle**(关 assets→9 项→开→11 项复原,shellReassemble 桥)+ **D3 aiReadableCollections 正常**(启用∩授权,assets default-off 不入)。node --check×4 OK、tsc exit 0。
+- **★评审可复验点**(⚠先 force-revalidate 清浏览器缓存):`window.SeekerShell.list().length===2` + `document.querySelectorAll('#nav .nav-item').length===11` + `typeof document.querySelector('#appMgrBtn').onclick==='function'`。
+- **归属说明**:批 A 解锁 registry/keys 的 module 化(parse-time 阻塞解除);IIFE→export/import 的纯净化归后续账本清空(与所有过渡 window 桥一起摘)。**profile(链②)仍卡、单独择期**。
