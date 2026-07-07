@@ -1,14 +1,15 @@
-// @ts-nocheck —— 抽壳序4-d-2 择取:jobseek 数据持久化 + 水合层(jobs/resumes + 编排)。逻辑零改动。
+// @ts-nocheck —— 3.y 步3 中层:jobseek 数据持久化 + 水合层 classic 全局 → ES module(export)+ 过渡 window 兼容桥。逻辑逐字节保留。
 /** jobseek · 数据持久化/水合:nextJobId/persistJob/hydrateJobs(+rt-ready)、persistResume/removeResume/clearAllTailoredResumes/hydrateResumes、hydrateBizColls(+rt-ready)。
- *  依赖:平台 jobsPersistOn/collPersistOn/persistColl/hydrateColl/markOnboarded(data-store 序4-b/4-d-1)、hydrateMessages(copilot-chrome 序3-d-13)、rerenderPages(nav);
- *  jobseek JOBS/SKILLS/ACTIONS/IV_RECORDS/RESUME_TAILORED/MASTER(data.js)、renderX 渲染器、toast/tt(平台)、SeekerRT/SeekerGuardrail(rt)。
- *  ⚠ rt-ready 时序不变式:本文件是 classic <script src>、解析期执行 → addEventListener('seeker-rt-ready', …) 在模块脚本(deferred)dispatch 之前注册(同第5轮时序法)。
+ *  依赖:平台 jobsPersistOn/collPersistOn/persistColl/hydrateColl/markOnboarded、hydrateMessages、rerenderPages、current(过渡态经全局词法/window);
+ *  jobseek JOBS/SKILLS/ACTIONS/IV_RECORDS/RESUME_TAILORED/MASTER(data.js)、renderX、toast/tt、window.SeekerRT/SeekerGuardrail。classic 消费者按全局名调不变。
+ *  ⚠ rt-ready 时序(3.y 步2 payoff):本文件转 **module**(deferred)后,`addEventListener('seeker-rt-ready', …)` 在 module-load 注册 ——
+ *    因步2 把 dispatch 迁到 body **末位** module(在本 module 之后),注册仍早于 dispatch(第5轮不变式 by construction 保住)。
  *  ★red-line(逐字保留):resumes 集合只存专业模块结构、**联系方式绝不入 resumes**(走独立 profile 实时渲染)→ query_data('resumes') 天然不含联系方式。 */
 
 /* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
-function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
-function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] upsert job', e)); }
-async function hydrateJobs(){
+export function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
+export function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] upsert job', e)); }
+export async function hydrateJobs(){
   if(!jobsPersistOn()) return;
   try{
     const rows = await window.SeekerRT.db.list('jobs');
@@ -21,18 +22,18 @@ window.addEventListener('seeker-rt-ready', hydrateJobs);
 
 /* resumes 红线安全持久化:只存专业模块结构(modules 含 basic/locked 标记但**无 PROFILE 内容**);
    联系方式始终从独立 profile 实时渲染、**绝不入 resumes 集合**,故 query_data('resumes') 天然不含联系方式。 */
-function persistResume(jobId){
+export function persistResume(jobId){
   if(!collPersistOn()) return;
   const r = RESUME_TAILORED[jobId]; if(!r) return;
   window.SeekerRT.db.upsert('resumes', { id:'r_'+jobId, jobId:jobId, template:r.template, modules:r.modules })
     .catch(e=>console.error('[data] upsert resume', e));
 }
-function removeResume(jobId){
+export function removeResume(jobId){
   if(!collPersistOn()) return;
   window.SeekerRT.db.remove('resumes', 'r_'+jobId).catch(e=>console.error('[data] remove resume', e));
 }
 // 清空所有针对性简历(走 guardrail 预览 + 撤销)。主简历资料(哨兵 r__master__ 不在 RESUME_TAILORED)与个人信息不受影响。
-function clearAllTailoredResumes(){
+export function clearAllTailoredResumes(){
   const ids=Object.keys(RESUME_TAILORED);
   if(!ids.length){ toast(tt('没有针对性简历','No tailored resumes')); return; }
   const G=window.SeekerGuardrail;
@@ -46,7 +47,7 @@ function clearAllTailoredResumes(){
     onUndo:()=>{ Object.keys(snap).forEach(k=>{ RESUME_TAILORED[k]=snap[k]; persistResume(k); }); renderResumes(); try{ renderInterview(); }catch(_e){} },
   });
 }
-async function hydrateResumes(){
+export async function hydrateResumes(){
   if(!collPersistOn()) return;
   try{
     const rows = await window.SeekerRT.db.list('resumes');
@@ -62,7 +63,7 @@ async function hydrateResumes(){
     try{ if(current==='settings') renderSettings(); }catch(_e){}   // 水合后若在设置页,重渲让主简历资料显示
   }catch(e){ console.error('[data] hydrate resumes', e); }
 }
-async function hydrateBizColls(){
+export async function hydrateBizColls(){
   await hydrateColl('skills', SKILLS);
   await hydrateColl('actions', ACTIONS);
   await hydrateColl('iv_records', IV_RECORDS);
@@ -71,3 +72,5 @@ async function hydrateBizColls(){
   try{ rerenderPages(); }catch(_e){}
 }
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
+/* 过渡 window 兼容桥:classic 消费者(jobs/cards/resumes/intake/settings 等)按全局名调不变;逐个改 import 后摘。均纯函数(无模块态)→ dual-publish 安全。 */
+window.nextJobId=nextJobId; window.persistJob=persistJob; window.hydrateJobs=hydrateJobs; window.persistResume=persistResume; window.removeResume=removeResume; window.clearAllTailoredResumes=clearAllTailoredResumes; window.hydrateResumes=hydrateResumes; window.hydrateBizColls=hydrateBizColls;
