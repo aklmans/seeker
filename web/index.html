@@ -852,10 +852,10 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 .ks-lb{font-size:13.5px; color:var(--ink-2);}
 .kbd{font-family:var(--font-mono); font-size:11px; color:var(--ink); background:var(--bg-subtle); border:0.5px solid var(--border-strong); border-radius:3px; padding:3px 8px; white-space:nowrap; letter-spacing:0.04em;}
 </style>
-<!-- 应用内快捷键(A 层 · 集中模块,业务无关);须先于内联 bootstrap 定义 window.SeekerKeys -->
-<script src="./platform/keys/keys.js"></script>
-<!-- 应用壳注册表(多应用平台 · 阶段1);classic:单体 INIT 在解析期同步消费,须先于内联脚本定义 window.SeekerShell -->
-<script src="./platform/shell/registry.js"></script>
+<!-- 应用内快捷键(A 层 · 集中模块,业务无关);IIFE 自挂 window.SeekerKeys,消费者(initKeys)全 runtime -->
+<script type="module" src="./platform/keys/keys.js"></script>
+<!-- 应用壳注册表(多应用平台);3.y 注册链 module 化:module(最早 deferred)自挂 window.SeekerShell,先于 manifest.register/SHELL BOOT/INIT(均已 module、载序在后) -->
+<script type="module" src="./platform/shell/registry.js"></script>
 <script type="module" src="./platform/shell/dom.js"></script>
 <script type="module" src="./platform/shell/icons.js"></script>
 <script type="module" src="./platform/shell/i18n.js"></script>
@@ -870,27 +870,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script type="module" src="./platform/shell/shell-boot.js"></script>
 <script type="module" src="./platform/shell/copilot-chrome.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
-<script type="module">
-  /* ---------- INIT 启动执行序(3.y 步1:从 body parse-time 迁入 module)----------
-     ★须早于下方 873 rt-setup module 的 dispatch('seeker-rt-ready') → 保「渲空壳(INIT)→ rt-ready 水合」序不变式。
-     module=deferred=全文档解析后跑:此时 head/body 全 classic 全局(buildNav/$/IC/PAGES/copInit/… + 应用 manifest 注册)已就绪;
-     引用经全局词法环境/window 解析(同 modal.js 刀已验);appReady 经 setAppReady() 写(copilot-chrome 转 module、有状态不上桥、单一写入口)。 */
-  buildNav();
-  buildPages();
-  wireOverlay(); // 3.y 步3-a 修:overlay-click-关闭绑定(原 nav 顶层裸用 $、dom 转 module 后 parse-time 抛)→ 收进函数、此处 deferred 调
-  $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
-  $('#themeBtn2').onclick=toggleTheme;
-  copInit();
-  agentInit();
-  initShell();
-  initKeys();
-  go('overview');
-  window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约):jobseek init=captureSeed+syncDemoBanner
-  setAppReady(true);   // 3.y:appReady 有状态、copilot-chrome 转 module 后经 setAppReady() 单一写入口(不上 appReady 桥)
-  window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable
-  window.addEventListener('seeker-rt-ready', shellPushAiReadable); // rt 就绪后推一次初始可读集(前端为真相源)
-  { const amb=$('#appMgrBtn'); if(amb) amb.onclick=openAppManager; }
-</script>
+<!-- 3.y 注册链 module 化:INIT 执行序迁至 SHELL BOOT module 之后(见 body 尾部;须晚于 registry@858/manifest×2/SHELL BOOT 的注册 + PAGES.push,故不能再置于 head——本处原 INIT-module 已移除)。 -->
 <script type="module">
   import { rt } from './platform/runtime/index.js';
   import { renderWidget } from './platform/capability/widgets/render.js';
@@ -1242,13 +1222,15 @@ function initKeys(){
 }
 
 </script>
-<!-- 小应用注册(阶段1 适配器:实现仍内联在上方脚本,manifest 引用其全局;阶段3 逐页迁入 apps/jobseek/) -->
-<script src="./apps/jobseek/manifest.js"></script>
+<!-- 小应用注册;3.y 注册链 module 化:manifest 转 module(deferred,晚于 registry@858 module → SeekerShell 就绪);IIFE 内 register。业务全局(SEEKER_CARDS/render*)经全局词法环境 runtime 解析(定义方仍 classic parse-time)。prompts/notes 留 classic(定义 renderPrompts/renderNotes 供 assets manifest 全局词法读)。 -->
+<script type="module" src="./apps/jobseek/manifest.js"></script>
 <script src="./apps/assets/pages/prompts.js"></script>
 <script src="./apps/assets/pages/notes.js"></script>
-<script src="./apps/assets/manifest.js"></script>
-<script>
-/* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)============ */
+<script type="module" src="./apps/assets/manifest.js"></script>
+<script type="module">
+/* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)· 3.y 注册链 module 化 ============ */
+/* 载序:registry@858(module)+ manifest×2(module)均已 deferred 先跑 → window.SeekerShell 就绪、apps 已注册;
+   本 module setShell/PAGES.push(pages())/GROUPS 在此 deferred 执行(不再 parse-time),下方 INIT-module 再消费填好的 PAGES。 */
 // 壳自持:设置页(全局配置框架;求职专属设置段阶段3 起由 manifest 贡献)+ 对话历史集合。
 window.SeekerShell.setShell({
   pages: [{ id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system',
@@ -1336,10 +1318,29 @@ function openAppManager(){
   renderAppMgr(m);
 }
 
-/* ---------- INIT 启动执行序 → 迁至 head 的 <script type=module>(3.y 步1)----------
-   移出 parse-time classic 块:解除 dom/icons/i18n/nav/registry/keys/shell-boot/copilot-chrome 的 parse-time 钉死
-   (INIT 不再解析期同步用它们);INIT-module 置于 873 rt-setup module **之前** → 保「渲空壳(INIT)→ rt-ready 水合(dispatch)」时序不变式。
-   ★仅"执行序"迁出;函数定义(shellReconcilePages/shellReassemble/clearAppData/renderAppMgr/openAppManager)仍留本 classic 块。 */
+/* 3.y 注册链 module 化:SHELL BOOT 转 module → INIT 消费的 3 函数上桥(供下方迁来的 INIT-module 读)。
+   其余 shellReconcilePages/clearAppData/renderAppMgr 仅本 module 内部消费(grep 证)→ 不上桥。 */
+window.shellReassemble=shellReassemble; window.shellPushAiReadable=shellPushAiReadable; window.openAppManager=openAppManager;
+</script>
+<script type="module">
+  /* ---------- INIT 启动执行序(3.y 注册链 module 化:从 head@原873 迁至此)----------
+     ★载序命门:本 module 晚于 SHELL BOOT module(其 setShell/PAGES.push 已跑、PAGES 填好、shellReassemble/openAppManager 已上桥),
+     且早于末位 dispatch('seeker-rt-ready') → 「渲空壳(INIT)→ rt-ready 水合」序不变式仍守。引用经全局词法/window runtime 解析。 */
+  buildNav();
+  buildPages();
+  wireOverlay(); // overlay-click-关闭绑定收进函数、此处 deferred 调($ 就绪)
+  $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
+  $('#themeBtn2').onclick=toggleTheme;
+  copInit();
+  agentInit();
+  initShell();
+  initKeys();
+  go('overview');
+  window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约):jobseek init=captureSeed+syncDemoBanner
+  setAppReady(true);   // 3.y:appReady 有状态 → setAppReady() 单一写入口(copilot-chrome,不上 appReady 桥)
+  window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable
+  window.addEventListener('seeker-rt-ready', shellPushAiReadable); // rt 就绪后推一次初始可读集(前端为真相源)
+  { const amb=$('#appMgrBtn'); if(amb) amb.onclick=openAppManager; }
 </script>
 <script type="module">
   /* ★3.y 步2:seeker-rt-ready dispatch —— body **末位** module(所有水合监听已注册之后:classic 解析期的
