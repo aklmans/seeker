@@ -855,7 +855,7 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **★验(含评审要求的功能测)**:web fresh —— **点 overlay→模态关闭(overlayClickClosed:true)** + 点模态内不关(e.target≠overlay,行为保)+ 完整 INIT + 9 页 render + **0 uncaught**。node/tsc0。
 - **★流程再纠偏(评审 + 我)**:①冒烟必含**受影响交互的功能验证**(不只 render 存在性 + console);②双向扫描的**工具本身**要能抓含 `=>` 回调的顶层 eager 语句(用"列顶层非声明语句手工过"而非"grep 带 `=>` 过滤")。**[阻断] 修复,请评审复验(flag→clear)。**
 
-### 步3 中层-a(commit … persistence)· persistence.js → ES module · ★验证步2 payoff · 待审
+### 步3 中层-a(commit `921bc61`)· persistence.js → ES module · ★验证步2 payoff · 🏁 第30轮通过
 jobseek 持久化/水合层 → module。8 函数 export + window 桥(逐字节;★red-line:resumes 只存 {id,jobId,template,modules}、无联系方式,保留)。**0 模块态 → dual-publish 安全**。修正扫描(第29轮方法):导出符号无 classic 顶层 eager 消费者。
 - **★步2 payoff 兑现**:两处 `addEventListener('seeker-rt-ready', hydrateJobs/hydrateBizColls)` 现在 **module-load(deferred)注册** —— 因步2 dispatch 迁末位(在本 module 之后)、注册仍早于 dispatch → 水合照常。**这正是步2 拆分要解锁的能力(水合注册文件可转 module),第一次实证。**
 - **验**:web(fresh · 功能测)——完整 INIT、8 桥、rt-ready re-dispatch 无错、hydrateBizColls 直调无错、9 页、0 err。**★桌面 WKWebView 真机(真实 SQLite)= 过**:重建 Seeker.app 启动 → **持久化的 Agent 对话被 hydrateMessages 渲染出来**(hydrateMessages ← hydrateBizColls ← 本 module 注册的 rt-ready 监听)→ **module 注册的 rt-ready 监听在真机 fire 并水合了真实数据**=步2 payoff 真机实证。
@@ -863,13 +863,13 @@ jobseek 持久化/水合层 → module。8 函数 export + window 桥(逐字节;
 ### ★ setState 重赋值性调查(评审最高危前提)= **mutated-property,dual-publish 安全**
 grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`(无 hydrate 后整体重赋);其余全是 **`setState.X=` 属性 mutate**(`.lang=`×11、`.theme/fontsize/goal/density/motion/salary/period/autobackup/trainCounts=` 各1)。**litmus 判定:引用稳定、从不整体重赋 → `window.setState=setState` 同引用 dual-publish 安全**(消费者读 `setState.lang` 与被 mutate 的是同一对象、无分裂)、**无需封装/访问器**。⚠ setState 是 index.html 内联壳全局(非 shell/ 文件),其"转 module"是后续独立子刀;中层文件现读/mutate 它经 classic 全局(i18n module 已读 setState.lang 正常)。**结论:setState 转换时按 mutated-property 处理(异于 SEED/lastUndo 的 reassigned=封装)。**
 
-### 步3 中层-b(commit `4041d7d`)· shell-boot.js(initShell)→ ES module · 待审
+### 步3 中层-b(commit `4041d7d`)· shell-boot.js(initShell)→ ES module · 🏁 第30轮通过
 壳启动 `initShell`(拖放守卫 + 侧栏/Agent 栏宽度恢复 + 语言恢复 + `hydrateSettings` + 侧栏收展/拖拽接线 + `setLang`)→ export + window 桥。**单函数、无模块态**(litmus:非有状态 → 无封装,dual-publish 桥安全)。逐字节(diff 仅函数头 `+export`、尾 `+桥` 行、注释)。
 - **载序**:shell-boot module@870 **早于** INIT-module@874;`initShell()` 唯一调点 = index.html:885(**INIT-module 内、deferred**)→ 桥就绪。依赖 `$/setLang/setState/hydrateSettings/toggleSidebar` 经全局词法/window,运行时(initShell 跑在 INIT)解析。
 - **修正扫描(第29轮方法 · 列 classic column-0 非声明语句手工过)**:`initShell()` 全仓唯一调点 index.html:885(deferred module)→ **无 classic 顶层 eager 消费者**(blast radius=仅 INIT-module)。
 - **验**:node/tsc0 + web fresh 功能测 —— 完整 INIT(`appMgrBtn.onclick` 挂 = INIT 跑到末行、晚于 initShell@885)、initShell 接线生效(sbCollapse/langBtn/sbResize onclick 挂上)、点侧栏收起功能生效、0 err。
 
-### 步3 中层-c(commit `1c9186a`)· data-store.js(通用集合引擎 + persistMsg)→ ES module · 待审
+### 步3 中层-c(commit `1c9186a`)· data-store.js(通用集合引擎 + persistMsg)→ ES module · 🏁 第30轮通过
 10 函数(jobsPersistOn/onboarded/markOnboarded/collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl/persistMsg)classic 全局 → export + window 桥。**函数体逐字节零改动**(diff:每行 `-function X`/`+export function X` 仅前缀 export,体无变)。
 - **★红线逐字保留(数据框架红线基元,加倍审)**:引擎只处理**通用集合**(`rt.db.upsert/list`),**profile 永不经此**(走独立 `rt.profile`)→ persist 永不把 profile 写通用 AI 可读集(合 D3 / profile 硬隔离);persistMsg 存 messages 已移出后端 `QUERYABLE` → AI 不可 `query_data('messages')`。红线注释原样。
 - **有状态 litmus**:`__msgSeq`(persistMsg 内 `++`)= 模块内私有、**外部无消费者** → **不上桥**(既无外部读者、reassign 也仅模块内 → 无分裂)。异于 dual-publish 的 10 桥函数(纯函数,仅读 localStorage/`rt` + mutate 传入 arr)。
@@ -879,3 +879,17 @@ grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`
 - **验**:node --check OK;tsc exit 0(0 行);web fresh-server 功能测 —— 10/10 桥就绪、完整 INIT、9 页全渲(overview 经 `onboarded`、assets 经 `hydrateColl` 水合)、overlay-close 未回归、**0 console error**。
 
 > **本批送审(3 刀 · 步3 中层非红线/红线各一)**:persistence `921bc61`(中层-a)+ shell-boot `4041d7d`(中层-b)+ data-store `1c9186a`(中层-c)。共性:逐字节 export+桥、修正扫描无 classic 顶层 eager 消费、fresh-server 功能测净。data-store 是数据框架红线基元(profile 硬隔离 + messages 非 AI 可读)请加倍审。
+
+### ★ 第30轮裁定(`76681ec..HEAD` · 921bc61/4041d7d/1c9186a)= **通过**
+评审结论:**data-store 红线加倍审达标 + 三刀逐字节 + 综合可靠扫描干净**。逐条:
+- **profile 永不经引擎**:data-store 代码只 `rt.db.upsert/list`、**零 `rt.profile`**(仅注释)→ 隐私表走独立 rt.profile(profile.js)、D3/profile 硬隔离逐字保持。✓
+- **messages 非 QUERYABLE**:persistMsg 经 `rt.db.upsert('messages')` 存,但 capability.rs 本刀未改、messages 不在静态 QUERYABLE(profile/messages/settings/secrets 永不在内)→ AI 不可 `query_data('messages')`。✓
+- **`__msgSeq` 有状态 litmus 正确**:`let __msgSeq=0` + `++`(重赋值绑定)→ **不上桥**(dual-publish 会分裂)、模块内私有(grep 证无 window.__msgSeq)→ 无分裂。与第27轮 litmus 一致。✓
+- **★综合可靠扫描 = decisive**:三刀 20 符号(persistence 8 + initShell + data-store 10)用修正法(含箭头回调行)扫 → **无 classic 顶层 eager 消费者** → onboarded/hydrateColl "not defined" 非 nav:86 类真回归。
+- **步2 payoff 时序坐实**:data-store@867 < INIT-module@874(桥先于消费者);persistence@1076 注册 rt-ready 早于 dispatch@1349(末位)→ 转 module 仍水合(第27轮 dispatch-末位裁定兑现)。
+- **"假错"判断认可 + 方法论精化**:onboarded/hydrateColl "not defined" = force-revalidate 缓存中间态假错(同第12/15/19/20轮裁断一脉)。**精化(评审)**:真正判据是**可靠扫描**(真回归会被扫到如 nav:86;假错扫描空如本轮)= **主证**,fresh-server console = 佐证。
+- node×3/tsc exit0。
+
+**★ belt-and-suspenders 补冒烟(评审非阻塞建议 · exec 侧已闭环)**:评审这轮端口 8123 被**本会话 server 占用**(同第5轮情形,评审 preview 工具控不了别会话的 server)故未亲跑功能测——**但占用 8123 的正是 exec 本会话的 fresh server**,exec 补跑评审点名三项全绿:**overlay-close 未回归**(`overlayClose_ok:true`)+ **onboarded 消费**(overview 渲染 `overview_ok:true`)+ **hydrateColl 消费**(assets 导航 `assets_nav_ok:true`)+ **0 console error**(fresh 首载未 reload)。评审"码层证据已足(异于第29轮:本轮可靠扫描 + 红线 grep + 时序 + 逐字节 + **真机 WKWebView SQLite 水合金标准**)"认可,补冒烟作双保险闭环。
+
+**步3 中层(a/b/c)🏁 全过审。** 下一步步3 剩余(nav 有状态 `current`/registry/keys/copilot-chrome 有状态 `appMode`·`appReady` + PROFILE 消费链 → **profile.js 收尾:PROFILE import-first 不上 window 桥 + 双红线双审**)。
