@@ -839,7 +839,7 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 ### 🏁 第28轮评审回执 —— 步1+2 + cut2 回归修 通过
 **结论**:`9d7103e`(步1+nav 修)+`c2a7af9`(步2)**通过**、cut2 回归**闭合**。**评审独立完整-INIT 双向扫描**:13 个 module 化符号在整条 INIT 链(buildNav/initShell/setLang/renderTopActions/copInit/agentInit/go/renderOverview)的 bare eager 引用**仅 nav.js:86 closeModal**(overlay click 闭包内、本就 lazy)→ **cut3/4 无同类 bug**,cut2 那处唯一、已被 nav 惰性修覆盖。**评审认领第26轮扫描盲区**:其只扫「四刀 import 的符号无 parse-time 消费者」、漏「resume-modals **export 给 classic** 的 openResumeModal 的 parse-time 消费者(renderTopActions)」= 单向;+ 我(exec)冒烟只查 appBooted(在 initShell 之前)= 双盲。**连带**:R1 `138cf6a` 称 App Manager 工作与回归矛盾 → 那道真机冒烟亦踩同盲区(step2 修后 build 真机复验 App Manager 已可靠确认)。**两裁点**:①第26轮四刀补完整-INIT 确认=需要且已满足(评审双向扫描+exec 步1完整-INIT冒烟+步2修后真机);②**nav 惰性 handler=行为等价认可**,评审**立为规范**:handler map 引用「将 ESM 化的符号」一律惰性闭包。**流程纠偏(双方各补一条)**:exec=冒烟必查完整 INIT 完成;评审=代码层 parse-time 扫描须覆盖 module **双向**符号(import 面 + export-给-classic 面)。**★步3 前置(评审钉)**:`setState`/`SEED` 转前**先查重赋值性**(litmus:出现 `X={...}` 整体重赋→封装/访问器;只 `X.k=`→dual-publish)。开步3(base+中层)。
 
-### 步3-a/b(commit `683a788`/`e702fe7`)· base 工具层(dom/icons/i18n)→ ES module · 待审
+### 步3-a/b(commit `683a788`/`e702fe7`)· base 工具层(dom/icons/i18n)→ ES module · 🏁 第29轮通过([阻断]修后,评审亲跑功能测复验)
 **前置双向 parse-time 扫描(第28轮纠偏落地)**:`.js` 顶层扫描空;index.html 命中(880-881 IC.sun/$ 在 **INIT-module 内**=deferred、1021+ tt 在 `clearAllDataFlow` 等**函数体内**=runtime)→ **无 classic 顶层消费 $/el/tt/IC**(INIT 已 module)→ base 安全转。
 - **3-a dom.js**($/$$/el,纯 const 箭头无重赋值):export + window 桥(`/** @type {any} */(window)` 保 @ts-check 净)。tsc 桥 +$/$$/el 类型化 ambient(消费者 assets;顺带消 TS7006 级联)。
 - **3-b icons.js**(IC=const 对象)+ **i18n.js**(tt/L/T 读 setState.lang;I18N 内部私有不上桥):export + 桥。tsc 桥 +IC(Record<string,string>)+tt。
@@ -848,7 +848,7 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **@ts-check base 工具转换模式确立**:export + `(any)`-cast window 桥 + shell-globals.d.ts **类型化** ambient(异于 @ts-nocheck 刀的无类型 declare)。
 **下一步 = 步3 中层**(nav/registry/keys/shell-boot/copilot-chrome + 水合注册 profile/persistence)—— **含有状态 + 红线**:registry 启用态、copilot `appMode`/`appReady`、**`setState`(★转前先查重赋值性)**、**`PROFILE`(红线,import-first 不上桥)**、`SEED`(demo-seed `let SEED=null`→重赋值=封装)。按有状态 litmus 逐刀,红线双审。
 
-### ★ 第29轮 [阻断] · step3-a 破 overlay-click-关闭 —— 已修复复验闭环(commit `412508f`)
+### ★ 第29轮 [阻断] · step3-a 破 overlay-click-关闭 —— 🏁 已修复 + 评审亲跑功能测复验通过(commit `412508f`)
 **评审 preview 功能测抓出真回归**(非 render/console,是**交互功能测**):step3-a dom.js→module 后,**nav.js:86 `$('#overlay').addEventListener(...)` 是 classic 顶层 parse-time 裸用 `$`** → dom deferred module 晚于 nav classic parse → `$` 未就绪 → 绑定抛 ReferenceError、监听没挂 → **点 overlay 不关闭模态 + 每加载一条 uncaught**。**归属 step3-a**(683a788~1 dom=classic 时 nav:86 正常)。
 - **修**:overlay 绑定收进 nav.js `wireOverlay()`、由 INIT-module(deferred,晚于 dom module)调 → `$` 就绪(同 cut2 惰性修一类)。
 - **★我的扫描缺陷(认领)**:第28轮我们刚立"双向扫描须抓 classic 顶层 eager 消费",这轮我的 grep 仍**漏 nav.js:86**——过滤器 `-vE '=>'` 把**含箭头回调的顶层语句**(overlay 绑定 `e=>{…}`)排掉了 = 扫描器自身缺陷。**纠正**:改「列 classic column-0 非声明语句 + 手工查 base 符号」独立复扫 → 证 **nav.js:86 是唯一** classic 顶层 eager 消费 `$/el/tt/IC`(其余 column-0:registry@12/nav initTheme@76 IIFE + profile@18/copilot-chrome@29 addEventListener **仅用 document/window**,不碰 base 工具)→ blast radius 收敛=仅此一处、icons/i18n(3-b)无同类。
