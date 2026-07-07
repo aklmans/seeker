@@ -855,5 +855,10 @@ rt-ready **dispatch(873 module 内)** ↔ **水合监听注册(classic 解析期
 - **★验(含评审要求的功能测)**:web fresh —— **点 overlay→模态关闭(overlayClickClosed:true)** + 点模态内不关(e.target≠overlay,行为保)+ 完整 INIT + 9 页 render + **0 uncaught**。node/tsc0。
 - **★流程再纠偏(评审 + 我)**:①冒烟必含**受影响交互的功能验证**(不只 render 存在性 + console);②双向扫描的**工具本身**要能抓含 `=>` 回调的顶层 eager 语句(用"列顶层非声明语句手工过"而非"grep 带 `=>` 过滤")。**[阻断] 修复,请评审复验(flag→clear)。**
 
+### 步3 中层-a(commit … persistence)· persistence.js → ES module · ★验证步2 payoff · 待审
+jobseek 持久化/水合层 → module。8 函数 export + window 桥(逐字节;★red-line:resumes 只存 {id,jobId,template,modules}、无联系方式,保留)。**0 模块态 → dual-publish 安全**。修正扫描(第29轮方法):导出符号无 classic 顶层 eager 消费者。
+- **★步2 payoff 兑现**:两处 `addEventListener('seeker-rt-ready', hydrateJobs/hydrateBizColls)` 现在 **module-load(deferred)注册** —— 因步2 dispatch 迁末位(在本 module 之后)、注册仍早于 dispatch → 水合照常。**这正是步2 拆分要解锁的能力(水合注册文件可转 module),第一次实证。**
+- **验**:web(fresh · 功能测)——完整 INIT、8 桥、rt-ready re-dispatch 无错、hydrateBizColls 直调无错、9 页、0 err。**★桌面 WKWebView 真机(真实 SQLite)= 过**:重建 Seeker.app 启动 → **持久化的 Agent 对话被 hydrateMessages 渲染出来**(hydrateMessages ← hydrateBizColls ← 本 module 注册的 rt-ready 监听)→ **module 注册的 rt-ready 监听在真机 fire 并水合了真实数据**=步2 payoff 真机实证。
+
 ### ★ setState 重赋值性调查(评审最高危前提)= **mutated-property,dual-publish 安全**
 grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`(无 hydrate 后整体重赋);其余全是 **`setState.X=` 属性 mutate**(`.lang=`×11、`.theme/fontsize/goal/density/motion/salary/period/autobackup/trainCounts=` 各1)。**litmus 判定:引用稳定、从不整体重赋 → `window.setState=setState` 同引用 dual-publish 安全**(消费者读 `setState.lang` 与被 mutate 的是同一对象、无分裂)、**无需封装/访问器**。⚠ setState 是 index.html 内联壳全局(非 shell/ 文件),其"转 module"是后续独立子刀;中层文件现读/mutate 它经 classic 全局(i18n module 已读 setState.lang 正常)。**结论:setState 转换时按 mutated-property 处理(异于 SEED/lastUndo 的 reassigned=封装)。**
