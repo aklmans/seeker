@@ -893,3 +893,14 @@ grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`
 **★ belt-and-suspenders 补冒烟(评审非阻塞建议 · exec 侧已闭环)**:评审这轮端口 8123 被**本会话 server 占用**(同第5轮情形,评审 preview 工具控不了别会话的 server)故未亲跑功能测——**但占用 8123 的正是 exec 本会话的 fresh server**,exec 补跑评审点名三项全绿:**overlay-close 未回归**(`overlayClose_ok:true`)+ **onboarded 消费**(overview 渲染 `overview_ok:true`)+ **hydrateColl 消费**(assets 导航 `assets_nav_ok:true`)+ **0 console error**(fresh 首载未 reload)。评审"码层证据已足(异于第29轮:本轮可靠扫描 + 红线 grep + 时序 + 逐字节 + **真机 WKWebView SQLite 水合金标准**)"认可,补冒烟作双保险闭环。
 
 **步3 中层(a/b/c)🏁 全过审。** 下一步步3 剩余(nav 有状态 `current`/registry/keys/copilot-chrome 有状态 `appMode`·`appReady` + PROFILE 消费链 → **profile.js 收尾:PROFILE import-first 不上 window 桥 + 双红线双审**)。
+
+### 步3 中层-d(commit `5d31b42`)· nav.js → ES module(★首个有状态符号封装刀)· 待审
+壳导航装配 11 函数 classic 全局 → export + 过渡 window 桥,函数体逐字节零改动(sed 仅 `^function `→`export function `,机械、不触体)。**本刀是步3 首个「有状态符号」转换(评审最高危类别),按第27轮 litmus 处理 `current`。**
+- **★`current` litmus = 重赋值 + 外部消费者 → 封装访问器、不 dual-publish**:
+  - `let current='overview'`,**唯一写者 = nav.js**(声明 + go:`current=id` 整体重赋值;全仓 grep `current=` 仅此二处)。
+  - **8 个外部消费者**读它:index.html×3(contextNew `m[current]` / Mod+F `pageSearchInput(current)` / shellReassemble `p.id===current`+`go(current)`)、profile.js:15、settings.js:408、persistence.js:63、prompts.js:69、notes.js:59。
+  - litmus 判定:**重赋值 + 有外部消费者 → 若 `window.current=current` dual-publish,go 重赋值后 window 快照分裂**(消费者读到过时值)→ **封装 `export function currentPage(){return current}` 访问器(每调返回最新)、current 不上桥**;**同刀原子翻转** 8 消费者裸 `current`→`currentPage()`。样板同 `lastUndo`→`runLastUndo()`(index.html:1225 先例)。
+- **★无快照分裂 = 功能测实证**(评审"有状态原子翻转红线"的关键验证):fresh-server —— `window.current` **undefined**(不 dual-publish 红线)+ `window.currentPage` 访问器桥;**`go(x)`→`currentPage()` 立即=x**(jobs/skills/settings/overview 四页逐验 `x→x`、`split_ok:true`)→ 外部消费者读对、无分裂。
+- **修正扫描(第29轮法 · 双向)**:nav 11 导出函数消费者全运行时(INIT-module@874 deferred 调 buildNav/buildPages/wireOverlay/go、shell-boot@870 调 setLang、apps render 调 syncNavCounts、nav 内部互调)→ **无 classic 顶层 parse-time eager 消费者**;`current` 消费者全运行时(contextNew/Mod+F 回调、shellReassemble 体、rt-ready 水合)→ 桥就绪。nav.js module top-level eval 仅 initTheme IIFE(document/localStorage)+ 桥赋值,不依赖他桥。
+- **tsc 桥**:shell-globals.d.ts +`currentPage`(★访问器)+`frontis`/`signFoot`(nav 转 module 后不再是 ambient 全局,assets @ts-check prompts/notes 消费 → 需 decl;初次 tsc 暴露、已补)。
+- **验**:node --check×6 OK;tsc exit 0;fresh-server 功能测——完整 INIT(appMgrBtn 接线)+ 9 页全渲 + currentPage 跟踪每页 + contextNew/shellReassemble/assets 消费路径解析 + overlay-close 未回归 + 12/12 桥 + **0 console error**(fresh 首载)。**★评审可复验点**:`window.current===undefined` + `go('settings');currentPage()==='settings'`。
