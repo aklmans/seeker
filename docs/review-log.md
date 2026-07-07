@@ -968,3 +968,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★exec 应对**:①已**停本会话 preview server 释放 8123**(根治"占端口挡评审"根因,评审下轮可独立跑 web);②下一刀前主动跑真机 WKWebView 冒烟 或 让评审亲跑,**不再只靠自测+扫描**。
 
 **批 A 通过。** 下一步:profile(链②,双红线双审)或账本清空——**任一大刀前先闭合独立功能测**(停 server 已释放 8123 = 第一步)。
+
+### ★ 批 A 真机 WKWebView 冒烟(独立功能测缺口闭合 · 金标准)
+应第33轮硬流程账,exec 跑**真机桌面冒烟**(桌面 asset:// 嵌入前端、**免 web 缓存坑**,同 R1 金标准):
+- **构建证含批 A**:`cargo run` **重编译 7.59s**(非缓存)、binary mtime(08:26)> index.html(07:39)→ 嵌入的是批 A 前端;`Finished dev` + 仅一条 `IMKCFRunLoopWakeUpReliable`(macOS IME 无害警告)、无 panic。
+- **★注册链真机证**:WKWebView 渲染完整壳 —— **assets 应用在 nav**(Prompt 库/笔记)= assets manifest **module** register 成功;**「数据设置」是壳自持页(SHELL BOOT `setShell` 注册)在 nav** = SHELL BOOT **module 的 deferred `setShell` 跑了**;nav 渲染 = INIT **module** `buildNav` 跑了 → **注册链 registry→manifest→SHELL BOOT→INIT 在真机按序执行**(任一断则壳空/无 assets)。
+- **★交互真机证**:点「数据设置」→ 导航 + `renderSettings` **全渲**(5 tab 基本/个人/模型/数据/关于 + 外观控件主题·字号·语言·密度·动效)= INIT 接线 nav 点击(`buildNav` `b.onclick=go`)+ `go` + 设置框架 functional;Copilot launcher「问问 AI·⌘K」+ 模式切换 + 主题/语言/v0.1.0 皆在 = copInit/agentInit/initShell 跑了。
+- **jobseek 不在 nav + overview 空 = 桌面持久禁用态**(非批 A 回归):nav=`enabledApps().flatMap(pages)`,jobseek 缺失 ⟺ jobseek 在桌面 localStorage `seeker-apps` 被禁用(assets 走同一 register/enabledApps 路径却正常渲染 → 链路没断,只是 jobseek 被关);恰证 D2「关应用=UI 下架、数据保留」。App Manager ⊞ 未从该图标开(⊞ 疑非 `#appMgrBtn`;openAppManager/shellReassemble 桥 web 冒烟已证)——不影响 boot 确认。
+- **★结论**:批 A 的 parse-time 注册链重排在**真机 WKWebView(asset:// 免缓存)decisively 跑通** = 评审要的金标准独立确认,**连续 4 轮功能测缺口就此闭合**。web 冒烟(App Manager/toggle/shellReassemble/openAppManager/D3)+ 真机(boot 链/渲染/导航/设置框架)双证。
