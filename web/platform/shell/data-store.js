@@ -51,4 +51,4 @@ export function persistMsg(surface, role, text, cards){
 }
 /* 过渡 window 兼容桥:classic 消费者(persistence/settings/copilot-chrome/cards/assets/demo-seed 等)按全局名调不变;逐个改 import 后摘。
    函数纯(仅读 localStorage/window.SeekerRT + mutate 传入 arr);__msgSeq 私有不上桥 → dual-publish 安全。 */
-window.jobsPersistOn=jobsPersistOn; window.onboarded=onboarded; window.markOnboarded=markOnboarded; window.collPersistOn=collPersistOn; window.seededColl=seededColl; window.markSeededColl=markSeededColl; window.withCollId=withCollId; window.persistColl=persistColl; window.hydrateColl=hydrateColl; window.persistMsg=persistMsg;
+window.jobsPersistOn=jobsPersistOn; window.onboarded=onboarded; window.markOnboarded=markOnboarded; window.collPersistOn=collPersistOn; window.persistColl=persistColl; window.hydrateColl=hydrateColl; window.persistMsg=persistMsg;

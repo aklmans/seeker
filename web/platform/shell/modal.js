@@ -30,4 +30,4 @@ export function closeModal(){
   if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(_e){} } _modalPrevFocus=null;
 }
 /* 过渡 window 桥(抽壳约束⑤延续):classic 消费者(index.html INIT + jobseek 11 文件)按全局名调不变 → 零回归;逐个转 import 后摘桥。 */
-window.openModal=openModal; window.closeModal=closeModal; window.focusableIn=focusableIn;
+window.openModal=openModal; window.closeModal=closeModal;

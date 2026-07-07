@@ -73,4 +73,4 @@ export async function hydrateBizColls(){
 }
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
 /* 过渡 window 兼容桥:classic 消费者(jobs/cards/resumes/intake/settings 等)按全局名调不变;逐个改 import 后摘。均纯函数(无模块态)→ dual-publish 安全。 */
-window.nextJobId=nextJobId; window.persistJob=persistJob; window.hydrateJobs=hydrateJobs; window.persistResume=persistResume; window.removeResume=removeResume; window.clearAllTailoredResumes=clearAllTailoredResumes; window.hydrateResumes=hydrateResumes; window.hydrateBizColls=hydrateBizColls;
+window.nextJobId=nextJobId; window.persistJob=persistJob; window.hydrateJobs=hydrateJobs; window.persistResume=persistResume; window.removeResume=removeResume; window.clearAllTailoredResumes=clearAllTailoredResumes; window.hydrateBizColls=hydrateBizColls;
