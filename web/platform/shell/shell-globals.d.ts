@@ -13,6 +13,7 @@
  *   i18n.js(3.y 步3 base)→ tt(消费者同上;L/T 无 @ts-check 消费者、I18N 内部私有 → 不入桥)
  *   icons.js(3.y 步3 base)→ IC(消费者 assets/pages/{prompts,notes}.js 的 IC.x)
  *   data-store.js(3.y 步3 中层)→ persistColl / collPersistOn / hydrateColl(消费者同上;其余导出无 @ts-check 消费者)
+ *   nav.js(3.y 步3 中层)→ currentPage(★有状态 current 访问器)+ frontis / signFoot(页首/页脚模板;消费者 assets/pages/{prompts,notes}.js;go/buildNav 等其余导出无 @ts-check 消费者)
  */
 
 declare function openModal(html: string, wide?: boolean): Element;
@@ -27,3 +28,6 @@ declare const IC: Record<string, string>;
 declare function persistColl(name: string, arr: any[]): void;
 declare function collPersistOn(): boolean;
 declare function hydrateColl(name: string, arr: any[]): Promise<void>;
+declare function currentPage(): string;
+declare function frontis(eyebrow: string, title: string): string;
+declare function signFoot(): string;

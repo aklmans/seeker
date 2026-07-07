@@ -862,7 +862,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script type="module" src="./platform/shell/toast.js"></script>
 <script type="module" src="./platform/shell/modal.js"></script>
 <script type="module" src="./platform/shell/ai-render.js"></script>
-<script src="./platform/shell/nav.js"></script>
+<script type="module" src="./platform/shell/nav.js"></script>
 <script src="./platform/shell/ai-engine.js"></script>
 <script type="module" src="./platform/shell/data-store.js"></script>
 <script src="./platform/shell/profile.js"></script>
@@ -1197,7 +1197,7 @@ function pageSearchInput(id){
 }
 function contextNew(){
   const m={jobs:openNewJob, actions:openNewAction};
-  const fn=m[current]; if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
+  const fn=m[currentPage()]; if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
 }
 function keysHelpHTML(){
   const groups=window.SeekerKeys.groups();
@@ -1221,7 +1221,7 @@ function initKeys(){
   PAGES.forEach((p,i)=>{ const n=i+1; if(n<=9) K.register({id:'nav'+n, combo:'Mod+'+n, group:G.navg, label:{zh:p.label,en:p.en}, run:()=>go(p.id)}); });
   K.registerAll([
     {id:'new', combo:'Mod+N', when:isDesktop, group:G.ctx, label:{zh:'新建(随当前页)',en:'New (current page)'}, run:contextNew}, /* 仅桌面:网页让位浏览器 Ctrl/⌘+N(满足设计文档 §三"不抢 Mod+N") */
-    {id:'find', combo:'Mod+F', group:G.ctx, when:()=>!!pageSearchInput(current), label:{zh:'聚焦搜索 / 筛选',en:'Focus search / filter'}, run:()=>{const i=pageSearchInput(current);if(i){i.focus();if(i.select)i.select();}}},
+    {id:'find', combo:'Mod+F', group:G.ctx, when:()=>!!pageSearchInput(currentPage()), label:{zh:'聚焦搜索 / 筛选',en:'Focus search / filter'}, run:()=>{const i=pageSearchInput(currentPage());if(i){i.focus();if(i.select)i.select();}}},
     {id:'undo', combo:'Mod+Z', group:G.ctx, label:{zh:'撤销(可逆操作)',en:'Undo'}, run:()=>{ if(!runLastUndo()) toast(tt('没有可撤销的操作','Nothing to undo')); }} /* 3.y:lastUndo 有状态→经 toast.js 的 runLastUndo() 访问器(不外露 mutable 值),同刀原子翻转 */
   ]);
   /* 信息行:仅进帮助浮层、不分发(输入内已有行为 + M5 语音占位) */
@@ -1282,7 +1282,7 @@ function shellReassemble(){
   for(const k in GROUPS) delete GROUPS[k]; Object.assign(GROUPS, S.groups());
   shellReconcilePages();
   buildNav();
-  if(!PAGES.some(p=>p.id===current)) go((PAGES[0]&&PAGES[0].id)||'settings'); else go(current);
+  if(!PAGES.some(p=>p.id===currentPage())) go((PAGES[0]&&PAGES[0].id)||'settings'); else go(currentPage());
   shellPushAiReadable();
 }
 // 清某应用数据(按 manifest.collections 逐集合;清前自动备份;清后 reload 让内存从空 DB 重新水合)。

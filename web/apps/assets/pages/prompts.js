@@ -66,6 +66,6 @@ function openPromptModal(id){
 }
 
 window.addEventListener('seeker-rt-ready', async ()=>{
-  try{ await hydrateColl('assets_prompts', ASSETS_PROMPTS); if(current==='prompts') renderPrompts(); }
+  try{ await hydrateColl('assets_prompts', ASSETS_PROMPTS); if(currentPage()==='prompts') renderPrompts(); }
   catch(e){ console.error('[assets] hydrate prompts', e); }
 });

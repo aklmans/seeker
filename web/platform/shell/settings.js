@@ -3,7 +3,7 @@
  *  profile/data tab 尾部 extend)。依赖 SeekerShell.appSettings()(序5-c-1 契约,序5-c-2 首个消费者 jobseek)。
  *  ★双红线延续:profile tab 的 PROFILE 字段部分(persistProfileField/PROFILE)仍走 platform/shell/profile.js,
  *  本文件只拼版式、不碰 rt.profile;设置不可经对话改(本文件是唯一改设置入口,Agent 不可达)。
- *  过渡期跨壳全局引用(同 setState/current 先例,非 app 专属、未来 3.y 可再收):
+ *  过渡期跨壳全局引用(同 setState 先例 + currentPage 访问器[原裸 current],非 app 专属、未来 3.y 可再收):
  *  setState/settingsPersistOn/saveSettings/hydrateSettings/WEIGHTS(index.html,归属定另刀)、
  *  clearAllDataFlow(index.html,内部混 jobseek setDemoMode + CLEARABLE_COLLS,归属定另刀)。
  *  ⚠ 非纯剪切偏离(逐条披露):
@@ -405,7 +405,7 @@ function renderSettings(){
   $('#page-settings').innerHTML=frontis('SETTINGS',tt('数据设置','Settings'))+tabbar+`<div class="sec" style="border-bottom:none;padding-top:18px;">${sections[settingsState.tab]}</div>`+signFoot();
   $$('#page-settings [data-stab]').forEach(b=>b.onclick=()=>{settingsState.tab=b.dataset.stab;renderSettings();});
   $$('#page-settings [data-pf]').forEach(inp=>{ inp.oninput=()=>{PROFILE[inp.dataset.pf]=inp.value;}; inp.onchange=()=>persistProfileField(inp.dataset.pf, inp.value); }); // 改完(失焦)落盘到隔离的 profile 仓库
-  $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{const v=b.dataset.theme;if(v==='system'){toast('已设为跟随系统 (mock)');}else{document.documentElement.dataset.theme=v;try{localStorage.setItem('jh-theme',v);}catch(e){}renderTopActions(current);$('#themeBtn2').innerHTML=v==='dark'?IC.sun:IC.moon;}renderSettings();});
+  $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{const v=b.dataset.theme;if(v==='system'){toast('已设为跟随系统 (mock)');}else{document.documentElement.dataset.theme=v;try{localStorage.setItem('jh-theme',v);}catch(e){}renderTopActions(currentPage());$('#themeBtn2').innerHTML=v==='dark'?IC.sun:IC.moon;}renderSettings();});
   $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>{setState.fontsize=b.dataset.fs;saveSettings();renderSettings();toast('正文字号 '+b.dataset.fs+'px');});
   $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setState.lang=b.dataset.lang;try{localStorage.setItem('jh-lang',b.dataset.lang);}catch(e){}renderSettings();toast(b.dataset.lang==='en'?'English (demo)':'已切换为中文');});
   $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;saveSettings();renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});

@@ -1,6 +1,6 @@
 // @ts-nocheck —— 3.y 步3 中层:jobseek 数据持久化 + 水合层 classic 全局 → ES module(export)+ 过渡 window 兼容桥。逻辑逐字节保留。
 /** jobseek · 数据持久化/水合:nextJobId/persistJob/hydrateJobs(+rt-ready)、persistResume/removeResume/clearAllTailoredResumes/hydrateResumes、hydrateBizColls(+rt-ready)。
- *  依赖:平台 jobsPersistOn/collPersistOn/persistColl/hydrateColl/markOnboarded、hydrateMessages、rerenderPages、current(过渡态经全局词法/window);
+ *  依赖:平台 jobsPersistOn/collPersistOn/persistColl/hydrateColl/markOnboarded、hydrateMessages、rerenderPages、currentPage(nav.js 访问器,原裸 current,经全局桥);
  *  jobseek JOBS/SKILLS/ACTIONS/IV_RECORDS/RESUME_TAILORED/MASTER(data.js)、renderX、toast/tt、window.SeekerRT/SeekerGuardrail。classic 消费者按全局名调不变。
  *  ⚠ rt-ready 时序(3.y 步2 payoff):本文件转 **module**(deferred)后,`addEventListener('seeker-rt-ready', …)` 在 module-load 注册 ——
  *    因步2 把 dispatch 迁到 body **末位** module(在本 module 之后),注册仍早于 dispatch(第5轮不变式 by construction 保住)。
@@ -60,7 +60,7 @@ export async function hydrateResumes(){
       }
       if(rec.jobId!=null) RESUME_TAILORED[rec.jobId] = { template:rec.template||'minimal', modules:rec.modules||[] };
     }
-    try{ if(current==='settings') renderSettings(); }catch(_e){}   // 水合后若在设置页,重渲让主简历资料显示
+    try{ if(currentPage()==='settings') renderSettings(); }catch(_e){}   // 水合后若在设置页,重渲让主简历资料显示
   }catch(e){ console.error('[data] hydrate resumes', e); }
 }
 export async function hydrateBizColls(){

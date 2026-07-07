@@ -1,10 +1,12 @@
-// @ts-nocheck —— 抽壳序1-g 过渡:导航装配,运行时依赖 PAGES/GROUPS/setState/chrome(后定义);类型化留 3.y;逻辑零改动。
-/** 平台 · 壳导航/页面框架装配 current/buildNav/syncNavCounts/setLang/rerenderPages/go/renderTopActions/toggleTheme/frontis/signFoot/buildPages。
+// @ts-nocheck —— 3.y 步3 中层:壳导航装配 classic 全局 → ES module(export)+ 过渡 window 桥。逻辑逐字节。
+/** 平台 · 壳导航/页面框架装配 currentPage/buildNav/syncNavCounts/setLang/rerenderPages/go/renderTopActions/toggleTheme/frontis/signFoot/buildPages。
  *  chrome(updateAgentChrome/updateCopChrome/renderModeSwitch)归序3、留 index.html;setLang/go 运行时调之(函数延迟)。
- *  挂全局 + 载序前置(在消费者前;引用的 PAGES/setState/chrome 均函数体内运行时求值)→ 抽壳零回归(约束⑤)。 */
-let current='overview';
+ *  ★current 有状态(go:current=id 整体重赋值)+ 8 外部消费者 → 封装访问器 currentPage()、**不上 window 桥**(litmus:重赋值+外部消费者,dual-publish 会分裂快照);消费者经 currentPage() 读(同刀原子翻转,同 lastUndo→runLastUndo 先例)。
+ *  其余 11 函数 export + 过渡 window 桥(classic/module 消费者按全局名调不变);PAGES/GROUPS/setState/chrome 均函数体内运行时求值(经全局词法/window)→ 载序零回归。 */
+let current='overview';                              // 模块私有(唯一写者 go:current=id);★不上 window 桥
+export function currentPage(){ return current; }     // 唯一读取通道:每调返回最新 current → 外部消费者从裸 current 改经此、无快照分裂
 
-function buildNav(){
+export function buildNav(){
   const nav=$('#nav'); nav.innerHTML=''; let lastGroup=null;
   PAGES.forEach(p=>{
     if(p.group&&p.group!==lastGroup){ lastGroup=p.group; const g=GROUPS[p.group]; nav.appendChild(el(`<div class="nav-group">${setState.lang==='en'?g.en:g.zh}</div>`)); }
@@ -17,10 +19,10 @@ function buildNav(){
   });
 }
 // 导航徽标随真实数据刷新:buildNav 只在 init/切语言时跑,岗位/行动增删后须就地更新计数(否则陈旧、看着像写死)。
-function syncNavCounts(){
+export function syncNavCounts(){
   PAGES.forEach(p=>{ if(!p.liveCount) return; const c=$(`.nav-item[data-id="${p.id}"] .count`); if(c) c.textContent=p.liveCount(); });
 }
-function setLang(l){
+export function setLang(l){
   setState.lang=l; try{localStorage.setItem('jh-lang',l);}catch(e){}
   const lb=$('#langBtn'); if(lb)lb.textContent=l==='en'?'EN':'中';
   buildNav(); renderModeSwitch();
@@ -30,9 +32,9 @@ function setLang(l){
   rerenderPages();
 }
 /* tt 已抽壳 → platform/shell/i18n.js(序1-c) */
-function rerenderPages(){PAGES.forEach(p=>{try{if(p.render)p.render();}catch(e){}});}
+export function rerenderPages(){PAGES.forEach(p=>{try{if(p.render)p.render();}catch(e){}});}
 
-function go(id){
+export function go(id){
   current=id;
   $$('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.id===id));
   const p=PAGES.find(x=>x.id===id);
@@ -44,7 +46,7 @@ function go(id){
   window.scrollTo(0,0);
   if(typeof agentShowCanvas==='function') agentShowCanvas();
 }
-function renderTopActions(id){
+export function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
   const map={
     overview:[{t:tt('智能匹配','Smart match'), a:'btn-accent', fn:()=>go('match')}],
@@ -66,7 +68,7 @@ function renderTopActions(id){
 }
 
 /* ============ THEME ============ */
-function toggleTheme(){
+export function toggleTheme(){
   const cur=document.documentElement.dataset.theme;
   const next=cur==='dark'?'light':'dark';
   document.documentElement.dataset.theme=next;
@@ -86,15 +88,15 @@ function toggleTheme(){
    ★3.y 步3-a 修(第29轮[阻断]):overlay-click-关闭绑定从 classic 顶层(parse-time **裸用 $**)收进 wireOverlay()、由 INIT-module 调 ——
    dom.js 转 deferred module 后,nav(classic@parse-time)早于 dom module → 顶层 $ 未就绪 → 原绑定抛 ReferenceError、监听没挂(overlay 点击不关闭)。
    收进函数 = 执行推迟到 INIT-module(deferred,晚于 dom module)→ $ 就绪(同 cut2 惰性修一类)。 */
-function wireOverlay(){ const o=$('#overlay'); if(o) o.addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();}); }
+export function wireOverlay(){ const o=$('#overlay'); if(o) o.addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();}); }
 /* Esc 关弹窗已收编进 SeekerKeys 的 Esc 逐层链(见 initKeys) */
 
-function frontis(eyebrow,title){
+export function frontis(eyebrow,title){
   return `<div class="frontis"><div><p class="eyebrow">— ${eyebrow}</p><h1 class="title">${title}<span class="dot">.</span></h1></div></div>`;
 }
-function signFoot(){return `<footer class="sign"><span>JOBHUNT · 2026</span><span>本地优先 · LOCAL-FIRST</span></footer>`;}
+export function signFoot(){return `<footer class="sign"><span>JOBHUNT · 2026</span><span>本地优先 · LOCAL-FIRST</span></footer>`;}
 
-function buildPages(){
+export function buildPages(){
   const c=$('#content');
   PAGES.forEach(p=>{
     const pg=el(`<section class="page" id="page-${p.id}"></section>`);
@@ -103,3 +105,6 @@ function buildPages(){
   // 首渲:按注册页循环(app 贡献 render;单页失败不拖垮其他应用的页)。
   PAGES.forEach(p=>{ try{ if(p.render) p.render(); }catch(e){ console.error('[shell] render '+p.id, e); } });
 }
+/* 过渡 window 兼容桥:classic/module 消费者(index.html INIT/shell-boot/settings/apps 等)按全局名调不变;逐个改 import 后摘。
+   ★current 不上桥(有状态,dual-publish 分裂快照)—— 外部经 currentPage() 访问器读。initTheme 是 IIFE(自执行、无导出)。 */
+window.currentPage=currentPage; window.buildNav=buildNav; window.syncNavCounts=syncNavCounts; window.setLang=setLang; window.rerenderPages=rerenderPages; window.go=go; window.renderTopActions=renderTopActions; window.toggleTheme=toggleTheme; window.wireOverlay=wireOverlay; window.frontis=frontis; window.signFoot=signFoot; window.buildPages=buildPages;

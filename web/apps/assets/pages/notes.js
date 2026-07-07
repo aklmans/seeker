@@ -56,6 +56,6 @@ function openNoteModal(id){
 }
 
 window.addEventListener('seeker-rt-ready', async ()=>{
-  try{ await hydrateColl('assets_notes', ASSETS_NOTES); if(current==='notes') renderNotes(); }
+  try{ await hydrateColl('assets_notes', ASSETS_NOTES); if(currentPage()==='notes') renderNotes(); }
   catch(e){ console.error('[assets] hydrate notes', e); }
 });
