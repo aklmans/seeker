@@ -862,3 +862,20 @@ jobseek 持久化/水合层 → module。8 函数 export + window 桥(逐字节;
 
 ### ★ setState 重赋值性调查(评审最高危前提)= **mutated-property,dual-publish 安全**
 grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`(无 hydrate 后整体重赋);其余全是 **`setState.X=` 属性 mutate**(`.lang=`×11、`.theme/fontsize/goal/density/motion/salary/period/autobackup/trainCounts=` 各1)。**litmus 判定:引用稳定、从不整体重赋 → `window.setState=setState` 同引用 dual-publish 安全**(消费者读 `setState.lang` 与被 mutate 的是同一对象、无分裂)、**无需封装/访问器**。⚠ setState 是 index.html 内联壳全局(非 shell/ 文件),其"转 module"是后续独立子刀;中层文件现读/mutate 它经 classic 全局(i18n module 已读 setState.lang 正常)。**结论:setState 转换时按 mutated-property 处理(异于 SEED/lastUndo 的 reassigned=封装)。**
+
+### 步3 中层-b(commit `4041d7d`)· shell-boot.js(initShell)→ ES module · 待审
+壳启动 `initShell`(拖放守卫 + 侧栏/Agent 栏宽度恢复 + 语言恢复 + `hydrateSettings` + 侧栏收展/拖拽接线 + `setLang`)→ export + window 桥。**单函数、无模块态**(litmus:非有状态 → 无封装,dual-publish 桥安全)。逐字节(diff 仅函数头 `+export`、尾 `+桥` 行、注释)。
+- **载序**:shell-boot module@870 **早于** INIT-module@874;`initShell()` 唯一调点 = index.html:885(**INIT-module 内、deferred**)→ 桥就绪。依赖 `$/setLang/setState/hydrateSettings/toggleSidebar` 经全局词法/window,运行时(initShell 跑在 INIT)解析。
+- **修正扫描(第29轮方法 · 列 classic column-0 非声明语句手工过)**:`initShell()` 全仓唯一调点 index.html:885(deferred module)→ **无 classic 顶层 eager 消费者**(blast radius=仅 INIT-module)。
+- **验**:node/tsc0 + web fresh 功能测 —— 完整 INIT(`appMgrBtn.onclick` 挂 = INIT 跑到末行、晚于 initShell@885)、initShell 接线生效(sbCollapse/langBtn/sbResize onclick 挂上)、点侧栏收起功能生效、0 err。
+
+### 步3 中层-c(commit `1c9186a`)· data-store.js(通用集合引擎 + persistMsg)→ ES module · 待审
+10 函数(jobsPersistOn/onboarded/markOnboarded/collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl/persistMsg)classic 全局 → export + window 桥。**函数体逐字节零改动**(diff:每行 `-function X`/`+export function X` 仅前缀 export,体无变)。
+- **★红线逐字保留(数据框架红线基元,加倍审)**:引擎只处理**通用集合**(`rt.db.upsert/list`),**profile 永不经此**(走独立 `rt.profile`)→ persist 永不把 profile 写通用 AI 可读集(合 D3 / profile 硬隔离);persistMsg 存 messages 已移出后端 `QUERYABLE` → AI 不可 `query_data('messages')`。红线注释原样。
+- **有状态 litmus**:`__msgSeq`(persistMsg 内 `++`)= 模块内私有、**外部无消费者** → **不上桥**(既无外部读者、reassign 也仅模块内 → 无分裂)。异于 dual-publish 的 10 桥函数(纯函数,仅读 localStorage/`rt` + mutate 传入 arr)。
+- **tsc 桥**:shell-globals.d.ts +`persistColl/collPersistOn/hydrateColl` ambient(@ts-check apps 消费者 assets prompts/notes 的 tsc 净;其余导出无 @ts-check 消费者不入账)。
+- **修正扫描(第29轮方法 · 双向)**:data-store module@867 **早于** INIT-module@874 及全部 classic 消费者;10 符号在 classic 文件的用法**全在函数体内**(demo-seed `markOnboarded/persistColl`@seedDemoData 体、resumes/intake-action/actions 的 `persistColl`@各函数体、余为注释)→ **无 classic column-0 parse-time eager 消费者**(blast radius 收敛)。
+- **★stale-console 甄别(方法论留痕)**:转换初 web 冒烟见 `onboarded is not defined`/`hydrateColl is not defined` —— 经诊断标记(`DS_RAN_AFTER_INIT:false` + `onboarded_at_INIT_start:"function"`)证 **data-store 桥在 INIT 开跑前就绪**、错误是 **force-revalidate 中间态遗留(preview console 跨 reload 累积)非真回归**;**重启 server → fresh 首载 = 0 console error**(定论)。**固化:force-revalidate + 快速改-reload 会留假错;fresh-server 首载才是 console 判据**(标记已全数清除、无残留)。
+- **验**:node --check OK;tsc exit 0(0 行);web fresh-server 功能测 —— 10/10 桥就绪、完整 INIT、9 页全渲(overview 经 `onboarded`、assets 经 `hydrateColl` 水合)、overlay-close 未回归、**0 console error**。
+
+> **本批送审(3 刀 · 步3 中层非红线/红线各一)**:persistence `921bc61`(中层-a)+ shell-boot `4041d7d`(中层-b)+ data-store `1c9186a`(中层-c)。共性:逐字节 export+桥、修正扫描无 classic 顶层 eager 消费、fresh-server 功能测净。data-store 是数据框架红线基元(profile 硬隔离 + messages 非 AI 可读)请加倍审。
