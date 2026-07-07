@@ -894,7 +894,7 @@ grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`
 
 **步3 中层(a/b/c)🏁 全过审。** 下一步步3 剩余(nav 有状态 `current`/registry/keys/copilot-chrome 有状态 `appMode`·`appReady` + PROFILE 消费链 → **profile.js 收尾:PROFILE import-first 不上 window 桥 + 双红线双审**)。
 
-### 步3 中层-d(commit `5d31b42`)· nav.js → ES module(★首个有状态符号封装刀)· 待审
+### 步3 中层-d(commit `5d31b42`)· nav.js → ES module(★首个有状态符号封装刀)· 🏁 第31轮通过
 壳导航装配 11 函数 classic 全局 → export + 过渡 window 桥,函数体逐字节零改动(sed 仅 `^function `→`export function `,机械、不触体)。**本刀是步3 首个「有状态符号」转换(评审最高危类别),按第27轮 litmus 处理 `current`。**
 - **★`current` litmus = 重赋值 + 外部消费者 → 封装访问器、不 dual-publish**:
   - `let current='overview'`,**唯一写者 = nav.js**(声明 + go:`current=id` 整体重赋值;全仓 grep `current=` 仅此二处)。
@@ -904,3 +904,16 @@ grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`
 - **修正扫描(第29轮法 · 双向)**:nav 11 导出函数消费者全运行时(INIT-module@874 deferred 调 buildNav/buildPages/wireOverlay/go、shell-boot@870 调 setLang、apps render 调 syncNavCounts、nav 内部互调)→ **无 classic 顶层 parse-time eager 消费者**;`current` 消费者全运行时(contextNew/Mod+F 回调、shellReassemble 体、rt-ready 水合)→ 桥就绪。nav.js module top-level eval 仅 initTheme IIFE(document/localStorage)+ 桥赋值,不依赖他桥。
 - **tsc 桥**:shell-globals.d.ts +`currentPage`(★访问器)+`frontis`/`signFoot`(nav 转 module 后不再是 ambient 全局,assets @ts-check prompts/notes 消费 → 需 decl;初次 tsc 暴露、已补)。
 - **验**:node --check×6 OK;tsc exit 0;fresh-server 功能测——完整 INIT(appMgrBtn 接线)+ 9 页全渲 + currentPage 跟踪每页 + contextNew/shellReassemble/assets 消费路径解析 + overlay-close 未回归 + 12/12 桥 + **0 console error**(fresh 首载)。**★评审可复验点**:`window.current===undefined` + `go('settings');currentPage()==='settings'`。
+
+### ★ 第31轮裁定 = 通过 + 访问器模板**适用范围**厘清(评审纠正 · 影响后续 4-5 符号)
+评审确认 current litmus + 原子翻转正确(写者唯一 nav.js:go、外部 8 消费者全翻 currentPage() 零残留裸 current、current 不上桥→`window.current===undefined`、访问器 live 读无分裂);逐字节(函数体 diff 空)+ 双向扫描空(12 符号无 classic 顶层消费者)+ node×6/tsc0。**= lastUndo→runLastUndo 同款 reassigned 类正确样板。**
+- **★我领受表述纠正**:送审说"setState/JOBS/MODEL/PROFILE 都复用访问器模板"**不精确** —— 访问器**只适用 reassigned 绑定**,那 5 个是 mutated-property、应 dual-publish、**不该套访问器**。真正可复用的是 **litmus 本身**(判 binding 是否 `X=…` 整体重赋),current 只立了 **reassigned 分支**样板。
+
+| 类别 | 判据 | 处理 | 符号 |
+|---|---|---|---|
+| **reassigned** | binding 出现 `X=…` 整体重赋(快照会过时) | module-private + 访问器 `getX(){return X}`、**不上 X 桥** | current✓/lastUndo✓/SEED/**appMode·appReady**(copilot-chrome) |
+| **mutated-property** | 只 `X.k=`/`X.push`,引用稳定从不整体重赋 | **`window.X=X` dual-publish 同引用即安全、免访问器**(套访问器=无谓 indirection、`getJobs(){return JOBS}` 返同一引用白加一层) | setState/JOBS/ACTIONS/MODEL/PROFILE |
+| **PROFILE 额外** | mutated(dual-publish 本安全)但隐私红线 | **import-first、不给 window 桥**(最小暴露,第27/30轮已裁) | PROFILE |
+
+**一句话**:reassigned→访问器;mutated-property→dual-publish 同引用(免访问器);PROFILE→import 不上桥。别把 current 的访问器无差别套到 setState/JOBS/MODEL/PROFILE。
+- **belt-and-suspenders**:评审 preview 工具锁死 8123(本会话 66cf9a30 server 占)、旁路端口撞工具转发层绕不过 —— 但本轮命门是**纯结构问题**(原子翻转完整 + 访问器正确,grep+读定义即决定,异于第29轮运行时时序需功能测),3 可复验点由代码结构**保证**;且 exec 已在 66cf9a30 fresh server 亲跑功能测(window.current undefined + go(x)→currentPage()===x 四页 + 9 页全渲 + 0 err)= 闭环。
