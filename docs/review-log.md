@@ -976,3 +976,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★交互真机证**:点「数据设置」→ 导航 + `renderSettings` **全渲**(5 tab 基本/个人/模型/数据/关于 + 外观控件主题·字号·语言·密度·动效)= INIT 接线 nav 点击(`buildNav` `b.onclick=go`)+ `go` + 设置框架 functional;Copilot launcher「问问 AI·⌘K」+ 模式切换 + 主题/语言/v0.1.0 皆在 = copInit/agentInit/initShell 跑了。
 - **jobseek 不在 nav + overview 空 = 桌面持久禁用态**(非批 A 回归):nav=`enabledApps().flatMap(pages)`,jobseek 缺失 ⟺ jobseek 在桌面 localStorage `seeker-apps` 被禁用(assets 走同一 register/enabledApps 路径却正常渲染 → 链路没断,只是 jobseek 被关);恰证 D2「关应用=UI 下架、数据保留」。App Manager ⊞ 未从该图标开(⊞ 疑非 `#appMgrBtn`;openAppManager/shellReassemble 桥 web 冒烟已证)——不影响 boot 确认。
 - **★结论**:批 A 的 parse-time 注册链重排在**真机 WKWebView(asset:// 免缓存)decisively 跑通** = 评审要的金标准独立确认,**连续 4 轮功能测缺口就此闭合**。web 冒烟(App Manager/toggle/shellReassemble/openAppManager/D3)+ 真机(boot 链/渲染/导航/设置框架)双证。
+
+## 3.y · 账本清空 · 调查 + 僵尸桥清扫(commit `0d6f45e`)
+**盘点**:过渡 window 桥 **82 个**、shell-globals.d.ts **15** 条、monolith-globals.d.ts **27** 条,服务 **19 个仍 classic 的业务文件**(data/intake-action/interview/resumes/settings-jobseek/cards/copilot-actions/demo-seed/frame-query/match/… + assets prompts/notes)。
+- **★账本清空大头卡 classic 业务层**:桥是给 classic 消费者的过渡兼容,消费者没 module 化就摘不了桥 → **完整账本清空 = 业务层 module 化(profile 链②)之后的收尾,不能独立完成**(与 profile 同源阻塞)。
+- **独立可做部分 = 僵尸桥清扫(已做)**:抽壳叶子刀期防御性过度上桥,**12 个桥全仓 0 外部消费者**(内部函数仍经模块作用域工作)→ 安全删:copilot-chrome 7(copOpen/copAppend/agentAppend/agentScroll/cmdOpen/cmdRender/cmdRun)+ modal(focusableIn)+ persistence(hydrateResumes)+ data-store(seededColl/markSeededColl/withCollId)。桥 82→70。
+- **★踩坑诚实披露**:初判 shell-globals `$`/`$$` 为僵尸(grep `\b$\b` 被正则 `$`=行尾锚骗、误报 0 消费)→ 删其 ambient → **tsc 抓出** assets prompts/notes 实际用 $/$$(TS2592/2304)→ **已复原**。教训:含正则特殊字符的符号(`$`)不能用 grep 词边界验消费,tsc/node 是兜底。
+- **验**:node×4/tsc exit0、fresh-server 冒烟——INIT done + 7/7 僵尸摘 window + Copilot 面板(copToggle/copSend 内部 copOpen/copAppend 仍工作)+ agentSend + 9 页 + 0 console error。
+- **★3.y 收尾再定位**:profile 链② + 账本清空大头 = **同一件事**(classic 业务层 module 化:data/intake-action/interview/resumes/settings/cards/…+assets+index.html inline);做完则 profile 解锁 + 账本自然清空。僵尸清扫是这之前唯一能独立做的账本项。
