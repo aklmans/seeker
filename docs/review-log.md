@@ -917,3 +917,21 @@ grep 全仓:`setState=` **仅 index.html:986 初始声明** `let setState={...}`
 
 **一句话**:reassigned→访问器;mutated-property→dual-publish 同引用(免访问器);PROFILE→import 不上桥。别把 current 的访问器无差别套到 setState/JOBS/MODEL/PROFILE。
 - **belt-and-suspenders**:评审 preview 工具锁死 8123(本会话 66cf9a30 server 占)、旁路端口撞工具转发层绕不过 —— 但本轮命门是**纯结构问题**(原子翻转完整 + 访问器正确,grep+读定义即决定,异于第29轮运行时时序需功能测),3 可复验点由代码结构**保证**;且 exec 已在 66cf9a30 fresh server 亲跑功能测(window.current undefined + go(x)→currentPage()===x 四页 + 9 页全渲 + 0 err)= 闭环。
+
+### ★ 步3 剩余批调整裁定(registry 锁死 · exec 与用户对齐)
+原计划 registry+keys+copilot-chrome 一批。**调查发现三者差异大**,用户裁定「只做 copilot-chrome」:
+- **registry.js = 结构性锁死**:`SeekerShell` 有整条 **classic parse-time 注册流**先于它消费——`manifest.js`×2 的 `register()`(index.html:1246/1249 classic `<script src>`)+ inline boot 的 `setShell()`/`PAGES.push(pages())`/`GROUPS assign`(1253-1262 classic 顶层)。registry 转 deferred module → 这些 parse-time 语句先跑、`SeekerShell` 未定义 → 全抛(nav:86 类)。registry.js 注释 line4-5 本就说明它 classic 是**故意的**。转它 = 大协调刀(registry+2manifest+2assets页+inline boot 全 module 化,且 manifest 依赖 index.html 业务单体)→ **推迟到注册单体 module 化/INIT 收口批**。
+- **keys.js**:消费者仅 `initKeys()`@886(INIT-module 运行时)+ `keysHelpHTML()` 体 → 技术可转,但已 @ts-check 干净 IIFE、现在转只是薄 tag-flip(真 export/import 同样卡在 classic inline 消费者)→ 与 registry 同批推迟。
+- **copilot-chrome.js**:@ts-nocheck + 有状态 = 唯一真正受益的刀 → 本轮做。
+
+### 步3 中层-e(commit `28f7db0`)· copilot-chrome.js → ES module(★第二个有状态刀 · getter+setter 双子)· 待审
+Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBtn/cAB/cSuggs)classic 全局 → export + 过渡 window 桥,函数体逐字节零改动(sed `^function `→`export function `+`^const c`→`export const c`;async hydrateMessages 手补;diff 无函数体行)。
+- **★两个有状态符号方向相反,验证第31轮分支 litmus 覆盖两向**:
+  - **`appMode`**(`let appMode='editor'`,内部写 `setAppMode`@93 唯一写者、外部读 index keys 1214/1215/1240)= **reassigned + 外部读者** → `getAppMode()` **getter**(同 current);同刀翻转 3 外部读者 `appMode==='agent'`→`getAppMode()==='agent'`;不上 appMode 桥。
+  - **`appReady`**(`let appReady=false`,**外部写** index INIT:889 `appReady=true`、内部读 `agentShowCanvas`@100)= **reassigned + 外部写者(新子模式)** → `setAppReady(v)` **setter**;翻转 index:889 → `setAppReady(true)`;不上 appReady 桥。→ **getter/setter 按数据流向定,方向相反各一半**。
+  - `cmdActive`/`cmdFiltered`(内部私有)、`CACT_ALLOWED`(§4-4 委派白名单,内部私有)→ 不上桥(grep 证外部零消费)。
+- **§4-4 红线随迁保留**:cEsc/cAB 委派机制逐字节(delegation listener @module-eval 挂上、CACT_ALLOWED 白名单不变、cEsc 转义不变);6 卡模板 const 是 apps copReply 消费的导出、随迁桥。
+- **双向扫描空**:copInit@883/agentInit@884/setAppReady@889 全在 INIT-module(deferred),无 classic 顶层 parse-time 调用者(与 registry 相反=copilot-chrome 可转的关键)。
+- **★浏览器缓存踩坑(重要方法论留痕)**:初次冒烟**全桥 undefined + INIT 断在 copInit**,但 dynamic-import 探针证 module 有效(38 exports)、node/tsc 净 → 根因 = **浏览器缓存旧 classic copilot-chrome 当 module 跑**(classic 版无 export/桥、函数 module-scoped → window 桥空 → INIT copInit 抛 → 级联);**fresh-server 重启不清浏览器缓存**(仅清 server + console buffer)、**force-revalidate(fetch cache:'reload' 全 script)才清** → 清后全绿。stale console(cEsc/current "not defined")亦同源。**固化:桥 undefined 先排缓存(dynamic-import 探针 + force-revalidate),再疑代码**。
+- **验(fresh-server + force-revalidate 后 · 0 console error)**:完整 INIT(appMgrBtn 接线)+ **window.appMode/appReady/cmdActive undefined**(红线不 dual-publish)+ getAppMode/setAppReady 桥;**appMode 无快照分裂**(setAppMode(x)→getAppMode()===x)、**appReady setter 生效**(agent 模式 agentShowCanvas 置 split=读内部 appReady=true)、Copilot 面板开关、命令面板 13 cmds、cEsc 转义、cAB 委派模板、9 页全渲(render 经 window.cEsc 桥无抛)、current 前刀未回归。node --check OK、tsc exit 0。
+- **★评审可复验点**:`typeof window.appMode==='undefined'` + `setAppMode('agent');getAppMode()==='agent'` + `setAppMode('editor');getAppMode()==='editor'`。**⚠复验前先 force-revalidate**(fetch 全 script cache:'reload' + reload),否则浏览器缓存旧 classic 版会假失败。
