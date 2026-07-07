@@ -877,6 +877,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
      引用经全局词法环境/window 解析(同 modal.js 刀已验);appReady 写 copilot-chrome.js 的 global-lexical `let appReady`。 */
   buildNav();
   buildPages();
+  wireOverlay(); // 3.y 步3-a 修:overlay-click-关闭绑定(原 nav 顶层裸用 $、dom 转 module 后 parse-time 抛)→ 收进函数、此处 deferred 调
   $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
   $('#themeBtn2').onclick=toggleTheme;
   copInit();

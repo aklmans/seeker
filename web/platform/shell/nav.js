@@ -82,8 +82,11 @@ function toggleTheme(){
 /* toast/toastUndo/lastUndo 已抽壳 → platform/shell/toast.js(序1-d) */
 
 /* ============ MODAL ============ */
-/* focusableIn/openModal/closeModal 已抽壳 → platform/shell/modal.js(序1-e;overlay 绑定留下) */
-$('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+/* focusableIn/openModal/closeModal 已抽壳 → platform/shell/modal.js(序1-e)。
+   ★3.y 步3-a 修(第29轮[阻断]):overlay-click-关闭绑定从 classic 顶层(parse-time **裸用 $**)收进 wireOverlay()、由 INIT-module 调 ——
+   dom.js 转 deferred module 后,nav(classic@parse-time)早于 dom module → 顶层 $ 未就绪 → 原绑定抛 ReferenceError、监听没挂(overlay 点击不关闭)。
+   收进函数 = 执行推迟到 INIT-module(deferred,晚于 dom module)→ $ 就绪(同 cut2 惰性修一类)。 */
+function wireOverlay(){ const o=$('#overlay'); if(o) o.addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();}); }
 /* Esc 关弹窗已收编进 SeekerKeys 的 Esc 逐层链(见 initKeys) */
 
 function frontis(eyebrow,title){
