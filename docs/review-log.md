@@ -1194,3 +1194,21 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议](记账)**:两处 §1 平台硬编码 jobseek(contextNew、wgtAction delete-job)已随 CACT_ALLOWED 契约化账挂号——**批10 收尾时一并核对是否落契约分发,勿遗漏**。
 
 **批9 三刀(9a/9b/9c)全过审。** 剩批10 = 账本清空终局刀(余桥 + monolith-globals 27 条 + shell-globals tt 末条 + ai-engine.js classic→module + 内联 onclick 绑定处置)——先出账本清点方案再动。
+
+---
+
+### 批10 方案(commit `4ee75f6`)+ 批10a(`67b8037`)死桥清扫 + 批10b(`6e6c00c`)manifest 枢纽/双账本整删 · ⏳ 待审
+**批10 = 账本清空终局刀,方案先行**(docs/proposal-batch10-ledger-cleanup.md;用户已批:①纯机械、(d)+§1 留批11 ②接受 i18n⇄shell-state 运行时环)。三路并行清点实测 **198 桥符号**(订正旧"70 桥"=按语句行估;platform 82/jobseek 113/index.html 3、assets 0)分类 a死10/b可flip136/b+classic阻6/c=BOOT-INIT块23/d=window强制25;§1 债 ~10 符号走契约(批11)。完成态目标:198→~35 白名单桥。
+
+**批10a · 死桥 ×10 + tsconfig stale**(每个先亲验 grep,命中仅注释/HTML id/I18N 键/字符串标签):
+- data.js KEYWORDS/PIPELINE/GENERAL/META(pages 用 *Real() 派生;GENERAL/META 仍被本文件顶层 forEach 用→const 留桥删)· demo-seed seedDemoData(批9c 归位后 frDemo 同文件词法)· persistence hydrateBizColls(自注册 rt-ready)· copilot-chrome copSend/agentGreet/cmdFilterList(全内部词法)· shell-state clearAllCollections(唯一消费者=同文件 clearAllDataFlow)。tsconfig 删 stale web/domain/** ×2。
+- **验**:node×5/tsc 0;preview 净方法(先证 served 新鲜防假阴性)0 错、9/10 死符号 undefined、**★window.copSend typeof object = DOM 具名访问**(index.html:929 id="copSend" 按钮自动暴露、旧桥曾遮蔽;零消费者读→无行为差异)、**★最险路径 LIVE**:showEmptyState→点 frDemo→seedDemoData 模块词法调通(demo 横幅+overview 重渲+JOBS 种 12)。
+
+**批10b · manifest → import 枢纽 + 双 d.ts 整删 + 16 唯一消费桥同刀销**:
+- jobseek/manifest.js 28 裸全局 → 17 条 import(26 jobseek + 平台 tt/setState=apps→platform 方向 §1 允许);SEEKER_CARDS eager 读由 **import 图自定序**(强于原 tag-order);docstring 重写(阶段1 适配器表述过时)。
+- **i18n.js setState flip = 跨层泄漏解**:原经 apps 侧 monolith-globals.d.ts 供 platform 文件 ambient;⚠运行时环(i18n⇄shell-state)已裁接受(全函数体读、零 eager 互读)。
+- **双账本整删**:monolith-globals.d.ts(27)+ shell-globals.d.ts(tt)git rm;**tsc exit 0 = import 完全接管**。★1 处诚实类型改进:AGENT_CMDS 定义处补 `@type CommandSpec[]`(账本删后 @ts-nocheck 源推断 label 降级 string[] 被 tsc 契约面抓住——源头标注、类型随 import 传导,优于用点 cast)。
+- **16 桥销**(先逐一亲验:除 manifest 外命中仅注释/契约方法名):settings-jobseek 6 + frameQuery + SEEKER_CARDS + demo-seed 3 + copilot-actions 4 + masterSectionHTML。
+- **验**:node×8/tsc 0;preview 净方法 0 错——16 删桥全 undefined(**★③(b) 如期复现三次方**:6 桥文件同 URL 内容变→运行时 stale 有桥假象、served 证已删→定向 8 文件 cache:reload+reload 全净)、契约面全通(11 页/cards 11/appCommands 13/appSuggs 4/frameQuery)、liveCount 真值、**★真实双向语言切换**(setLang('en')→"7 to-do"→复原)=i18n/manifest 的 setState import 同一单例;**测试自纠**:bare setLang() 误赋 lang=undefined+污染 jh-lang="undefined"(setLang(l) 带参签名)——测试 bug 非代码回归、已清并复测。
+
+**账本清空进度**:198 → 172 桥(死 10 + 唯一消费 16);d.ts 0 本。**剩 10c**(ai-engine→module 红线单送)**10d**(全网 flip ~136+23,+真机)。**8123 已释放,评审可亲跑 preview**(6+ 文件同 URL 内容变,若遇 stale 按③(b) 定向重验)。
