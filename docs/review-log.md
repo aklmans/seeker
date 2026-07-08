@@ -1342,3 +1342,25 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 **pageActions 通过(第46轮;§1 契约化 2/4;★真删 7 桥 28→21;§1 债 12→5 处;契约面 +pageActions/+PageAction)。** 四契约模式已两刀立稳。
 
 **下一刀:widgetActions(§1 契约化 3/4)** —— widget-actions delete-job 分支 3 符号(JOBS/renderJobs/renderOverview)整段回迁 jobseek + 平台留通用 destructive 闸;**红线加倍审**(§4-3/§4-4:破坏性一律 confirmDestructive、widgetId 平台按端口传入不信任 iframe 自报、payload 仅当数据、不可信 action toast 前 `<`-转义 —— 逐字保留)。
+
+---
+
+### 批11B · widgetActions 契约(§1 契约化 3/4 · 红线刀,commit `7b52b1e`)· ⏳ 待审
+**四契约之三**(约束② 契约必审 + **约束③ 红线加倍审**)。平台 wgtAction 的 delete-job 分支硬编码 jobseek 的 JOBS/renderJobs/renderOverview,整段回迁 apps/jobseek;平台只留「通用 destructive 闸 + guardrail 调用」。**删 3 桥(21→18)**。
+
+- **★契约的红线设计 = 收规格、不收执行**:契约**不是**「应用给 handler 由平台调」,而是「应用返回 `confirmDestructive` **规格数据**,平台**自己**调 guardrail」⇒ ①应用无法绕过护栏(预览+确认+可撤销一律平台驱动);②`WidgetActionSpec` **故意不含 `source`**,平台 `{ ...spec, source:'widget '+widgetId }` **source 置于 spread 之后** ⇒ 应用即便声明也被覆盖、**无法伪造来源**(§4-4 零信任;widgetId 由 render.js 按端口归属传入,本刀未动);③`if(!G) return` fail-closed **在咨询契约之前** ⇒ 无护栏时连应用代码都不被调到;④registry `typeof spec.onConfirm==='function'` 守卫,缺执行体视为未认领 → 落通用分支(仍过护栏)。
+- **契约扩展(约束②)**:types.d.ts +`WidgetActionSpec`(无 source)+ AppManifest/SeekerShellApi 双声明;registry.js +`widgetActions(action,payload)` 选择型(同 pageNew)+ api。
+- **回迁**:新增 `apps/jobseek/logic/widget-actions-jobseek.js`(@ts-nocheck,同 settings-jobseek 约定)。`jobseekWidgetAction` = 原分支**逐字迁入**(8 行 byte-verbatim 机械验:snap 闭包/JOBS.find/_label/title/detail/confirmLabel/onConfirm/onUndo/undoText);认领条件 = 原 `action==='delete-job' && payload.id!=null && jobsPersistOn()` 的**德摩根取反**,不认领→undefined→平台通用分支(逐字等价)。manifest 声明 `widgetActions`。
+- **平台侧 9 处红线逐字未变(vs HEAD 机械验)**:破坏性正则 / 非破坏 toast `<`-转义 / `if(!G) return` / 通用分支四项 / rt-ready 注册。移除 jobsPersistOn import(条件随分支回迁)。
+- **删 3 桥**:剥注释后全树扫描 —— 3 符号每个 CODE 引用皆 `[IMPORT/DEF]`、**零裸读**;index.html 零引用;3 符号无同名 `id=` 元素。**平台侧剥注释后零 jobseek 符号(§1 铁证)**。
+- **顺带订正 4 处失效注释**(data/resumes/interview/match):原称「JOBS[0] 急读 window.JOBS + tag-order 保障桥就绪」,桥删后该说法失效且误导 → 订正为第43轮判据(急读 **import 绑定**、载序由 **import 图自定序**、data.js 在 SCC 之外先求值)。
+- **§1 债**:widget-actions 3 处清零(5 → **2 处剩**:settings 的 showEmptyState/hydrateJobs)。
+- **验**:node×10 / **tsc 真退出码 0**;preview 净方法 · **经真实入口 `SeekerWidgets.onAction` 驱动 wgtAction 本身**(`onAction.name==='wgtAction'`):
+  ①**非破坏动作**`<img src=x onerror=…>` → 仅 toast、零 guardrail、`__wxss=0`、`img[onerror]=0`(toast 显示转义后的字面文本);
+  ②**fail-closed**:删 SeekerGuardrail → delete-job 零弹窗零执行;
+  ③**分支语义**:网页态 jobsPersistOn()=false → 不认领 → 通用「确认操作」分支;stub 桌面态 → jobseek 认领,规格 title='删除岗位?'、detail='将删除岗位:字节跳动 · 后端高级工程师'、onConfirm/onUndo 为函数、**`'source' in spec === false`**;
+  ④**★来源不可伪造 PoC**:stub 应用返回 `source:'SYSTEM · 可信来源'` → 弹窗实显「来源 · widget wgt-99」(平台 widgetId 胜出);其 onConfirm 在**确认前 / 取消后均未执行** ⇒ 应用不能绕过护栏;
+  ⑤**★预览+确认+可撤销全链**(stub db、不动真实数据):12 岗位 → 弹窗(确认前 JOBS 仍 12 = 未执行)→「删除」→ `remove(jobs,1)`+`list(jobs)` → 撤销 toast「已删除岗位」→「撤销」→ **`upsert(jobs,SNAPSHOT)`**(证 onConfirm/onUndo 共享的 `let snap` 闭包迁移后完好)+`list(jobs)`;JOBS 经 **import 绑定**读写(桥已删)、`length=0`/`push(...)` 同对象。
+  复位后 0 console(all)/11 页/12 岗位/契约 5 齐/无残留弹窗。**真机 asset:// boot 重编 6.49s、进程存活、零 panic**(桌面态 jobsPersistOn()=true ⇒ 新 import 链正是其实际路径)。
+
+**下一刀:cActions(§1 契约化 4/4 · 收官)** —— CACT_ALLOWED 里 10 个 jobseek 名(copNewJob/copNewAction/copMarket/copResumeUpload/copDoneAct/copInterview/copMatch/copPlan/copResume/agentDeleteJob)改由各 manifest 声明之**并集**;分发器 `window[name]` → 注册 Map ⇒ **杀掉最后一批 window-强制桥**。§4-4 不变式(白名单不得含把 data-cargs 反射进 innerHTML/eval/Function/setTimeout(串) 者)须随契约一并搬进契约面。另:settings 2 处残留(showEmptyState/hydrateJobs)。
