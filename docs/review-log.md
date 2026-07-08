@@ -1197,7 +1197,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批10 方案(commit `4ee75f6`)+ 批10a(`67b8037`)死桥清扫 + 批10b(`6e6c00c`)manifest 枢纽/双账本整删 · ⏳ 待审
+### 批10 方案(commit `4ee75f6`)+ 批10a(`67b8037`)死桥清扫 + 批10b(`6e6c00c`)manifest 枢纽/双账本整删 · 🏁 第41轮通过
 **批10 = 账本清空终局刀,方案先行**(docs/proposal-batch10-ledger-cleanup.md;用户已批:①纯机械、(d)+§1 留批11 ②接受 i18n⇄shell-state 运行时环)。三路并行清点实测 **198 桥符号**(订正旧"70 桥"=按语句行估;platform 82/jobseek 113/index.html 3、assets 0)分类 a死10/b可flip136/b+classic阻6/c=BOOT-INIT块23/d=window强制25;§1 债 ~10 符号走契约(批11)。完成态目标:198→~35 白名单桥。
 
 **批10a · 死桥 ×10 + tsconfig stale**(每个先亲验 grep,命中仅注释/HTML id/I18N 键/字符串标签):
@@ -1212,3 +1212,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:node×8/tsc 0;preview 净方法 0 错——16 删桥全 undefined(**★③(b) 如期复现三次方**:6 桥文件同 URL 内容变→运行时 stale 有桥假象、served 证已删→定向 8 文件 cache:reload+reload 全净)、契约面全通(11 页/cards 11/appCommands 13/appSuggs 4/frameQuery)、liveCount 真值、**★真实双向语言切换**(setLang('en')→"7 to-do"→复原)=i18n/manifest 的 setState import 同一单例;**测试自纠**:bare setLang() 误赋 lang=undefined+污染 jh-lang="undefined"(setLang(l) 带参签名)——测试 bug 非代码回归、已清并复测。
 
 **账本清空进度**:198 → 172 桥(死 10 + 唯一消费 16);d.ts 0 本。**剩 10c**(ai-engine→module 红线单送)**10d**(全网 flip ~136+23,+真机)。**8123 已释放,评审可亲跑 preview**(6+ 文件同 URL 内容变,若遇 stale 按③(b) 定向重验)。
+
+### ★ 第41轮裁定 = 通过(10a+10b · 无阻断/应改,5 [建议] 其一为送审词实质订正)
+- **删桥面五向扫描全零(评审独立)**:逐文件符号集差算出删桥=26(吻合);26 符号对内联 on*=/显式 window.X/`window[name]`(CACT 6 与 26 零交集)/**cBtn·cAct onclick 串(函数名藏字符串、前两类扫描必漏)**/eval·new Function 五向全零;再以 node 扫描器(剥注释+字符串、保模板 ${})证 26 符号仅 [DEF]/[IMPORT]、零裸读;false positive 逐条辨明(agentGreet=I18N 键、registry frameQuery=契约方法、copSend=id 属性)。
+- **manifest 枢纽 §1 净**:17 import/28 符号,零 platform→apps、零跨应用;index.html 零改动 ⇒ tag 序不变;SEEKER_CARDS import 图自定序 LIVE(cards() 11 键)。
+- **★★送审词实质订正([建议]① 采纳)**:「已批的运行时环生效」**不成立**——shell-state.js import 行=0,本轮只有单向边 i18n→shell-state,环待 10d;**flip 真正引入且送审词漏报的是:import 边把 shell-state 的 module-eval 从 tag@866 提前到 i18n@861 依赖位**(body 跑在 i18n body 之前;亲验其顶层只剩两行桥赋值零 eager 读 ✓、PAGES 桥更早于 SHELL BOOT@875=第39轮不变式被加强)。**裁定②补:import 边 = 第二种载序移动机制(provider 的 module-eval 被提前到 consumer 的 tag 位),与 tag-order 并列**。前瞻(10d 成环):先求值方=shell-state,i18n `const I18N` TDZ、`export function tt/L/T` 提升 ⇒ 顶层可调 tt() 但**禁调 T()/L()**;最稳=维持零 eager 互读。
+- **AGENT_CMDS 两次真反证**:整删标注→tsc 报 label:string[] 不匹配(exec 陈述原因逐字复现=必要);改 number[]→tsc 在 manifest:83 契约面抓(受契约约束非自由断言);残留=@ts-nocheck 吞「字面量 vs 标注」漂移 → **[建议]② 10d flip @ts-check 时复验字面量满足 CommandSpec[]**。tsc 真退出码 0(评审指出 `…|tail;echo $?` 取 tail 退出码不作数、已不经管道复测)。
+- **亲跑 preview 净方法**:0 console;25 删桥 undefined + 9 window-强制桥在;appReply() 返 452 字符卡 HTML(copReply 删桥后只能经 manifest import 到达=契约链坐实);setLang('en'/'zh') 正确签名无 jh-lang 污染;tt 随 setState.lang 即时反映=同一对象;最险路径因果对照(清 jh-demo→frDemo→复置+横幅=三删桥词法/import 链全通)。
+- **★裁定新([建议]③ 死桥核验方法论补丁)**:`typeof window.X!=='undefined'` **不足证桥在**——`id="X"` 元素经 DOM 具名访问占据 window.X(copSend 即是、评审新鲜度探针亦误报一次);判据须加 `instanceof HTMLElement`/`===getElementById(X)`;反向隐患=未来模块裸读 copSend 得按钮元素非 ReferenceError(静默错值)→ 后续解耦 id 与函数名(挂批11/后续账)。
+- **[建议]④ 覆盖边界**:本轮未跑真机;web 预览 isDesktop()=false → desktop-gated persist 写路径未执行(唯一涉及的 hydrateBizColls 以函数引用注册、结构不受影响)→ **10d 真机金标准须覆盖 i18n→shell-state 载序前移**。
+- **[建议]⑤**:.claude/launch.json 换行重排=preview 工具噪声勿误提交(已排除在外);评审按符号去重数 171 vs 报 172=计数口径差非缺陷。
+
+**10a+10b 通过(198→172 桥、d.ts 0 本)。** 剩 10c(ai-engine→module 红线单送)+ 10d(全网 flip;checklist:①copilot-actions @ts-check 时复验 AGENT_CMDS 字面量 ②真机覆盖 i18n→shell-state 载序前移 ③shell-state flip tt 后维持零 eager 互读[禁顶层 T/L])。
