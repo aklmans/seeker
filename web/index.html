@@ -864,6 +864,8 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script type="module" src="./platform/shell/ai-render.js"></script>
 <script type="module" src="./platform/shell/nav.js"></script>
 <script type="module" src="./platform/shell/shell-state.js"></script><!-- 批9a:壳状态 PAGES/GROUPS/setState/WEIGHTS + 设置/数据框架(原 index.html inline);置于 SHELL BOOT 前供 PAGES/GROUPS module-eval 急读 -->
+<script type="module" src="./platform/shell/shell-keys.js"></script><!-- 批9b:壳键盘注册 + 侧栏 chrome(原 index.html inline);消费全 runtime(INIT 调 initKeys) -->
+<script type="module" src="./platform/shell/widget-actions.js"></script><!-- 批9b:widget-action 回流(自注册 rt-ready、零外部消费者) -->
 <script src="./platform/shell/ai-engine.js"></script>
 <script type="module" src="./platform/shell/data-store.js"></script>
 <script type="module" src="./platform/shell/profile.js"></script>
@@ -1072,41 +1074,7 @@ function openMarketValue(){
 /* hydrateMessages 已抽壳 → platform/shell/copilot-chrome.js(序3-d-13;messages 壳自持集合,★红线用户文本 esc 逐字保留) */
 /* hydrateBizColls(+rt-ready)已择取 → apps/jobseek/logic/persistence.js(序4-d-2;jobseek 集合水合编排) */
 
-/* ===== #2 W3:widget-action 回流处理(domain)。破坏性一律过 platform/guardrail。 =====
-   widgetId 由平台按端口归属传入(不信任 iframe 自报);payload 仅当数据。 */
-async function wgtAction(widgetId, action, payload){
-  payload = payload || {};
-  const destructive = /^(delete|clear|remove|reset|wipe)/i.test(String(action));
-  if(!destructive){
-    /* 安全动作:当「用户意图」致意(接 Agent 为后续 domain 决策)。 */
-    try{ if(typeof toast==='function') toast((tt('组件请求:','Widget: '))+String(action).replace(/</g,'&lt;')); }catch(_e){} /* action 来自不可信 iframe(§4 Untrusted);toast 经 el(innerHTML)→ 进 DOM 前 <-转义 */
-    return;
-  }
-  const G=window.SeekerGuardrail; if(!G) return;
-  if(action==='delete-job' && payload.id!=null && jobsPersistOn()){
-    let snap=null;
-    /* 预览显示可读目标(公司 · 岗位)而非裸 id —— 威胁 T5 的「预览」腿(#4 §⑥);未命中回退 #id。 */
-    const _job=JOBS.find(x=>String(x.id)===String(payload.id));
-    const _label=_job?(_job.co+(_job.role?(' · '+String(_job.role).split('·')[0].trim()):'')):('#'+payload.id);
-    await G.confirmDestructive({
-      title:tt('删除岗位?','Delete job?'), detail:tt('将删除岗位:','Will delete job: ')+_label,
-      source:'widget '+widgetId, confirmLabel:tt('删除','Delete'),
-      onConfirm:async()=>{ snap=await window.SeekerRT.db.remove('jobs',String(payload.id)); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
-      onUndo:async()=>{ if(snap) await window.SeekerRT.db.upsert('jobs',snap); JOBS.length=0; JOBS.push(...await window.SeekerRT.db.list('jobs')); try{renderJobs();renderOverview();}catch(_e){} },
-      undoText:tt('已删除岗位','Job deleted'),
-    });
-    return;
-  }
-  /* 通用破坏性(含演示):一律先预览+确认,确认后才执行 + 可撤销。 */
-  await G.confirmDestructive({
-    title:tt('确认操作','Confirm action'), detail:(tt('组件请求执行:','Widget requests: '))+action,
-    source:'widget '+widgetId, confirmLabel:tt('执行','Run'),
-    onConfirm:()=>{ window.__wgtExecuted={widgetId:widgetId, action:action}; },
-    onUndo:()=>{ window.__wgtExecuted=null; },
-    undoText:tt('已执行','Done')+' · '+action,
-  });
-}
-window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window.SeekerWidgets.onAction=wgtAction; });
+/* ★批9b:wgtAction(#2 W3 widget-action 回流 + rt-ready 挂 SeekerWidgets.onAction)已抽壳 → platform/shell/widget-actions.js(module-private 自注册、零外部消费者;红线逐字:不信任 iframe/破坏性过 guardrail/toast 转义)。 */
 
 /* copSend/copInit 已抽壳 → platform/shell/copilot-chrome.js(序3-d-1 发送核心 / 序3-d-3 面板初始化) */
 
@@ -1118,65 +1086,7 @@ window.addEventListener('seeker-rt-ready', ()=>{ if(window.SeekerWidgets) window
 /* renderAgentCmds + AGENT_CMDS 已择取 → apps/jobseek/logic/copilot-actions.js(序3-d-8;命令数据经 SeekerShell.appCommands 契约[序3-d-7]供平台命令面板) */
 /* Agent /命令面板机制(cmdActive/cmdFiltered/cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)已抽壳 → platform/shell/copilot-chrome.js(序3-d-9;命令数据经 SeekerShell.appCommands 契约) */
 
-/* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
-function syncSbToggleTitle(){ const col=$('#sbCollapse'); if(col) col.title=(document.body.dataset.sidebar==='rail')?tt('展开侧栏','Expand sidebar'):tt('收起侧栏','Collapse sidebar'); }
-function toggleSidebar(){
-  const r=document.body.dataset.sidebar==='rail';
-  document.body.dataset.sidebar=r?'':'rail';
-  const col=$('#sbCollapse'); if(col)col.textContent=r?'«':'»';
-  syncSbToggleTitle();   // 提示词随状态切换(此前一直是「收起侧栏」)
-}
-function isDesktop(){return !!(window.__TAURI__);}
-function pageSearchInput(id){
-  const pg=$('#page-'+id); if(!pg)return null;
-  /* 原型真实搜索框是 .iv-search(面试页);其余页为 chip 筛选、无文本框 */
-  return pg.querySelector('input[type="search"], input.iv-search, input.search, [data-search] input, input[data-search]');
-}
-function contextNew(){
-  const m={jobs:openNewJob, actions:openNewAction};
-  const fn=m[currentPage()]; if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
-}
-function keysHelpHTML(){
-  const groups=window.SeekerKeys.groups();
-  const body=groups.map(g=>`<div class="ks-grp"><div class="ks-gh">${tt(g.group.zh,g.group.en)}</div>`+
-    g.items.map(it=>`<div class="ks-row"><span class="ks-lb">${tt(it.label.zh,it.label.en)}</span><span class="kbd">${it.fmt}</span></div>`).join('')+`</div>`).join('');
-  return `<div class="modal-head"><div><p class="eyebrow">— SHORTCUTS</p><h2 style="margin-top:5px;">${tt('键盘快捷键','Keyboard shortcuts')}<span class="dot">.</span></h2><div class="sub"><span>Mod = ⌘ / Ctrl</span></div></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body"><div class="ks-wrap">${body}</div></div>`;
-}
-function initKeys(){
-  const K=window.SeekerKeys;
-  if(!K){ console.error('[keys] window.SeekerKeys 未加载 —— 快捷键将全部失效;请检查 platform/keys/keys.js 是否被 frontendDist 内嵌并成功加载'); return; }
-  const G={glob:{zh:'全局',en:'Global'},navg:{zh:'导航',en:'Navigate'},ctx:{zh:'语境',en:'Contextual'},agent:{zh:'Agent / 命令',en:'Agent / Command'},iv:{zh:'面试陪练',en:'Interview'}};
-  K.registerAll([
-    {id:'agent', combo:'Mod+K', allowInInput:true, group:G.glob, label:{zh:'唤起 Agent / 问问 AI',en:'Open Agent / Ask AI'}, run:()=>{ if(getAppMode()==='agent'){const ip=$('#agentInput');if(ip)ip.focus();}else copToggle(); }},
-    {id:'mode', combo:'Mod+\\', allowInInput:true, group:G.glob, label:{zh:'切换 Agent / 编辑器',en:'Toggle Agent / Editor'}, run:()=>setAppMode(getAppMode()==='agent'?'editor':'agent')},
-    {id:'sidebar', combo:'Mod+B', allowInInput:true, group:G.glob, label:{zh:'收起 / 展开侧栏',en:'Toggle sidebar'}, run:toggleSidebar},
-    {id:'settings', combo:'Mod+,', allowInInput:true, group:G.glob, label:{zh:'数据设置',en:'Settings'}, run:()=>go('settings')},
-    {id:'help', combo:'Mod+/', allowInInput:true, group:G.glob, label:{zh:'快捷键帮助',en:'Shortcut help'}, run:()=>openModal(keysHelpHTML())},
-    {id:'theme', combo:'Mod+Shift+D', allowInInput:true, group:G.glob, label:{zh:'切换深 / 浅主题',en:'Toggle theme'}, run:toggleTheme}
-  ]);
-  PAGES.forEach((p,i)=>{ const n=i+1; if(n<=9) K.register({id:'nav'+n, combo:'Mod+'+n, group:G.navg, label:{zh:p.label,en:p.en}, run:()=>go(p.id)}); });
-  K.registerAll([
-    {id:'new', combo:'Mod+N', when:isDesktop, group:G.ctx, label:{zh:'新建(随当前页)',en:'New (current page)'}, run:contextNew}, /* 仅桌面:网页让位浏览器 Ctrl/⌘+N(满足设计文档 §三"不抢 Mod+N") */
-    {id:'find', combo:'Mod+F', group:G.ctx, when:()=>!!pageSearchInput(currentPage()), label:{zh:'聚焦搜索 / 筛选',en:'Focus search / filter'}, run:()=>{const i=pageSearchInput(currentPage());if(i){i.focus();if(i.select)i.select();}}},
-    {id:'undo', combo:'Mod+Z', group:G.ctx, label:{zh:'撤销(可逆操作)',en:'Undo'}, run:()=>{ if(!runLastUndo()) toast(tt('没有可撤销的操作','Nothing to undo')); }} /* 3.y:lastUndo 有状态→经 toast.js 的 runLastUndo() 访问器(不外露 mutable 值),同刀原子翻转 */
-  ]);
-  /* 信息行:仅进帮助浮层、不分发(输入内已有行为 + M5 语音占位) */
-  K.registerAll([
-    {id:'i-esc', combo:'', display:'Esc', group:G.ctx, label:{zh:'逐层退出 / 关闭',en:'Exit / close (layered)'}},
-    {id:'i-slash', combo:'', display:'/', group:G.agent, label:{zh:'输入框开头唤起命令浮层',en:'Type / for command palette'}},
-    {id:'i-enter', combo:'', display:'Enter', group:G.agent, label:{zh:'发送',en:'Send'}},
-    {id:'i-shiftenter', combo:'', display:(K.isMac?'⇧ Enter':'Shift+Enter'), group:G.agent, label:{zh:'换行',en:'New line'}},
-    {id:'i-updown', combo:'', display:'↑ ↓', group:G.agent, label:{zh:'命令浮层选择 / 空输入调历史',en:'Palette select / recall last'}},
-    {id:'i-voice', combo:'Mod+Shift+M', display:K.fmt('Mod+Shift+M'), group:G.iv, label:{zh:'语音作答(M5 上线)',en:'Voice answer (in M5)'}}
-  ]);
-  /* Esc 逐层链(优先级高→低):命令浮层 → 弹窗/帮助 → Copilot → 收起画布 */
-  K.registerEscape(()=>{ if(cmdIsOpen()){cmdClose();return true;} return false; }, 50);
-  K.registerEscape(()=>{ const o=$('#overlay'); if(o&&o.classList.contains('open')){closeModal();return true;} return false; }, 40);
-  K.registerEscape(()=>{ const c=copEl(); if(c&&c.classList.contains('open')){copClose();return true;} return false; }, 30);
-  K.registerEscape(()=>{ if(getAppMode()==='agent'&&document.body.dataset.agent==='split'){agentCollapse();return true;} return false; }, 20);
-  K.attach();
-}
+/* ★批9b:键盘系统(initKeys/toggleSidebar/syncSbToggleTitle/isDesktop + 私有 pageSearchInput/contextNew/keysHelpHTML)已抽壳 → platform/shell/shell-keys.js(过渡桥;INIT 调 initKeys、shell-boot 接线 toggleSidebar、isDesktop 供 4 模块 typeof 守卫读,均 runtime)。 */
 
 </script>
 <!-- 小应用注册;3.y 注册链 + 业务层 module 化:manifest/pages/cards 均转 module(deferred,晚于 registry@858 module → SeekerShell 就绪);IIFE 内 register。jobseek 业务全局(SEEKER_CARDS/render*)定义方已 module(批1-6),经 window 桥 runtime 全局词法解析;assets prompts/notes 亦 module,其 render 由 assets/manifest.js import 直取(批7 Option B、不再上 window 桥)。 -->
