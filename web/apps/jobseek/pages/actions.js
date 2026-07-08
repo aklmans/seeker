@@ -8,7 +8,7 @@
 /* ---------- ACTIONS ---------- */
 let actTab='全部';
 function sessMins(a){return (a.sessions||[]).reduce((x,s)=>x+s.mins,0);}
-function renderActions(){
+export function renderActions(){
   syncNavCounts();
   const counts={全部:ACTIONS.length, 进行中:ACTIONS.filter(a=>a.state==='doing').length, 待开始:ACTIONS.filter(a=>a.state==='todo').length, 已完成:ACTIONS.filter(a=>a.state==='done').length};
   const tabs=[['全部',tt('全部','All')],['进行中',tt('进行中','In progress')],['待开始',tt('待开始','Not started')],['已完成',tt('已完成','Done')]];
@@ -123,3 +123,6 @@ function openActionDetail(id){
     };
   };
 }
+
+/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderActions() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+window.renderActions=renderActions;

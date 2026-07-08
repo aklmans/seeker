@@ -1,7 +1,7 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 总览页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- OVERVIEW ---------- */
-function renderOverview(){
+export function renderOverview(){
   syncNavCounts();
   if(!onboarded()){ renderFirstRun(); return; }   // 首启未决定 → 价值主张落地页 + 岔路(开始我的 / 逛示例)
   const n=JOBS.length||1;
@@ -57,3 +57,6 @@ function renderOverview(){
   const digestHtml=dg?`<div class="sec" style="border-bottom:none;padding:2px 0 0;"><p style="font-size:12px;color:var(--ink-3);font-family:var(--font-mono);letter-spacing:0.04em;">${dg}</p></div>`:'';
   $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+digestHtml+stats+two+pipe+signFoot();
 }
+
+/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderOverview() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+window.renderOverview=renderOverview;

@@ -1,7 +1,7 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 岗位分析页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- ANALYSIS ---------- */
-function renderAnalysis(){
+export function renderAnalysis(){
   if(!JOBS.length){   // 空态教学(评审 P1-9):无岗位 → 讲清这页干嘛 + 指回录入
     $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+
       `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位,这页就活了','Add target jobs and this comes alive')}</h3><p style="max-width:600px;">${tt('录入岗位后,这里从你的 JD 聚合:高频技能、能力缺口、城市 / 公司类型分布、JD 关键词 —— 你的私人市场地图,只有持续收集才攒得出。','Once you add jobs, this aggregates from your JDs: high-frequency skills, skill gaps, city / company-type distribution, and JD keywords — your private market map, built only by collecting over time.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
@@ -79,3 +79,6 @@ function renderAnalysis(){
     <span class="dot"></span><span class="lbl">${tt('你的私人市场地图 · 已从 '+JOBS.length+' 份 JD 聚合出 '+distinctNeedSkills()+' 个高频技能 —— 持续收集,地图越长越值钱(只有你才有的研究资产)。','Your private market map · '+distinctNeedSkills()+' high-frequency skills from '+JOBS.length+' JDs — the more you collect, the more valuable it gets (a research asset only you have).')}</span></div></div>`;
   $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+marketMap+skillTable+matrix+dist+market+cloud+signFoot();
 }
+
+/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderAnalysis() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+window.renderAnalysis=renderAnalysis;

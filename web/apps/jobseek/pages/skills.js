@@ -26,7 +26,7 @@ function trainingFor(name){
   (typeof IV_RECORDS!=='undefined'?IV_RECORDS:[]).forEach(r=>{ if((r.tags||[]).includes(name)) n+=1; });
   return n;
 }
-function renderSkills(){
+export function renderSkills(){
   const buckets={compound:[],accumulate:[],depreciate:[]};
   SKILLS.forEach(s=>buckets[s.accrual].push(s));
   const invest={compound:tt('优先投入','Invest first'),accumulate:tt('稳定维护','Maintain'),depreciate:tt('够用即可','Good enough')};
@@ -111,3 +111,6 @@ function openSkillDetail(name){
     </div>`;
   openModal(html);
 }
+
+/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderSkills() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+window.renderSkills=renderSkills;

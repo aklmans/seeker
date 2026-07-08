@@ -3,7 +3,7 @@
 /* ---------- JOBS ---------- */
 let jobFilter={city:'全部', status:'全部'};
 let selectedJob=null;
-function renderJobs(){
+export function renderJobs(){
   syncNavCounts();
   const cities=['全部','北京','上海','深圳','杭州'];
   const statuses=[['全部','全部'],['fav','收藏'],['todo','待投'],['sent','已投'],['interview','面试'],['reject','拒绝']];
@@ -128,3 +128,6 @@ function openJobDetail(id, row){
     redrawTl();
   };
 }
+
+/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderJobs() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+window.renderJobs=renderJobs;
