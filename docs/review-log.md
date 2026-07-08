@@ -1319,3 +1319,16 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 **pageNew 通过(第45轮;§1 契约化 1/4;桥不变 28、§1 债 14→12 处;契约面 +pageNew)。** 下一刀 = pageActions(2/4)。
 
 **下一刀:pageActions(§1 契约化 2/4)** —— nav.renderTopActions 7 符号(openResumeModal/resumeGenerate/resumeState/renderResumes/openNewJob/openMarketValue/openNewAction)→ 汇总型 per-page 顶栏动作契约;此刀删 openNewJob/openNewAction 2 桥(最后全局消费者去)。
+
+---
+
+### 批11B · pageActions 契约(§1 契约化 2/4,commit `45b5a50`)· ⏳ 待审
+**四契约之二**(约束② 必审)。消除 nav.renderTopActions 对 jobseek **7 符号**裸读,改经新增 `SeekerShell.pageActions` **汇总型**契约(镜像 cards/appCommands 并集);nav 是这 7 符号的最后平台裸读者 → **7 个 window 桥随之删(28→21)**——比 pageNew 大一档(红线面=顶栏动作装配、桥删 7)。
+- **契约扩展(约束②)**:registry.js `pageActions(pageId)` 汇总型(enabledApps 遍历、各 `a.pageActions(pageId)` 并集,同 cards)+ api;types.d.ts +PageAction 接口(`{t,a?,fn}`)+ AppManifest/SeekerShellApi 双声明。
+- **应用声明**:manifest.js +6 import(openResumeModal/openMarketValue/resumeGenerate/resumeState + **go/toast**=apps→platform 允许)+ `pageActions:(pageId)=>({overview/match/resumes/jobs/analysis/skills/actions:[...]}[pageId]||[])`=原 nav map **逐字迁入**;惰性(fn 闭包点击求值、tt 每次调用重求值=语言切换即时、顶层零 eager 读)。
+- **平台改绑**:nav.renderTopActions 硬编码 map 删,改 `SeekerShell.pageActions(id).forEach(...)`;渲染循环逐字不变;interview/settings→[]。
+- **删 7 桥(28→21)· 每消费者已 import 核实**:openNewJob/openNewAction(nav=最后裸读者,shell-keys 已 pageNew 清)、openResumeModal/openMarketValue/resumeState+renderResumes+resumeGenerate(唯一裸读者=nav)。**七向全树扫描**:7 符号每个非-manifest 消费者均 `import`(cards/copilot-actions/persistence/job-actions/settings-jobseek/demo-seed/jobs)或 resumes.js 内部使用;**index.html 零引用**、platform 零裸读 → 删桥零 ReferenceError。5 处"过渡桥"注释同步更新为「已摘」。
+- **§1 债**:nav 7 处清零(pageNew 后 12 → 5 处剩:widget-actions 3 + settings 2)。
+- **验**:node×8 / **tsc 真退出码 0**;preview 净方法(③(b) 定向重验 8 改文件):契约面(pageActions 是函数、7 页标签逐字匹配原 map、interview/settings→[])+ **7 桥全 undefined**(第41轮判据:无一为元素 id)+ 功能端到端(skills「市场价值报告」→ 市场价值模态[openMarketValue import];**resumes「+ 生成针对性简历」→ AI 生成模态**=resumeGenerate(resumeState.jobId, renderResumes) 3 删桥符号全经 import、resumeState import 即同对象;语言切换 jobs「+ 录入岗位」↔「+ Add job」↔ 复位=契约重求值 tt);0 console/11 页/截图 clean;**真机 asset:// boot 重编 6.04s、进程存活、零 panic**(7 删桥 + 新 import 边定序无碍)。
+
+**下一刀:widgetActions(§1 契约化 3/4)** —— widget-actions delete-job 分支 3 符号(JOBS/renderJobs/renderOverview)整段回迁 jobseek + 平台留通用 destructive 闸;**红线加倍审**(§4-3 破坏性 confirmDestructive/widgetId 平台传入不信任 iframe 逐字保留)。
