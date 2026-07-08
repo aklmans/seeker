@@ -141,6 +141,7 @@ export function renderAgentCmds(){
   $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
 }
 /* ---- /command palette ---- */
+/** @type {import('../../../platform/shell/types').CommandSpec[]} */ // ★批10b:账本删后类型随 import 传导——在定义处标注(替代原 monolith-globals ambient,label 元组不降级 string[])
 export const AGENT_CMDS=[
   {cmd:'/match', label:['智能匹配','Smart match'], desc:['最该投哪个','Best fit'], run:()=>agentSend(tt('我最该投哪个岗位?','Which job should I apply to?'))},
   {cmd:'/resume', label:['改简历','Tune resume'], desc:['打开简历','Open resume'], run:()=>copGo('resumes')},
@@ -159,4 +160,4 @@ export const AGENT_CMDS=[
 
 /* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
-window.agentDeleteJob=agentDeleteJob; window.aiSuggs=aiSuggs; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copReply=copReply; window.copResume=copResume; window.renderAgentCmds=renderAgentCmds; window.AGENT_CMDS=AGENT_CMDS;
+window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;

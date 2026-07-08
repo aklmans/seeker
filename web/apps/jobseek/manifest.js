@@ -1,11 +1,29 @@
 // @ts-check
 /**
- * jobseek(求职工作台)· 阶段1 适配器 manifest。
- * 页面 / 卡片 / 框定的**实现仍内联在 index.html**(全局函数),本文件只把它们注册进壳
- * (行为零回归);阶段3 按页把实现迁入本目录,manifest 形态不变。
- * 依赖的单体全局清单见 ./monolith-globals.d.ts(= 阶段3 搬迁账本)。
- * 加载时机:classic、置于全部单体内联脚本之后、壳 BOOT 之前(index.html 尾部)。
+ * jobseek(求职工作台)· manifest = 本应用的 import 枢纽(批10b,同批7 assets Option B)。
+ * 页面/卡片/框定/设置段/演示钩子全部经 import 直取(不再依赖 window ambient)——
+ * 阶段1 适配器时代的搬迁账本 ./monolith-globals.d.ts 随本刀**整删**(26 条随 flip 销、setState 由 i18n.js 同批 flip 销)。
+ * 跨层仅 window.SeekerShell 契约保持全局;tt/setState 为 apps→platform 方向 import(§1 允许)。
+ * 加载时机:type=module、置于壳 BOOT 之前;SEEKER_CARDS 等 eager 读由 import 图自定序(强于 tag-order)。
  */
+import { renderOverview } from './pages/overview.js';
+import { renderJobs } from './pages/jobs.js';
+import { renderAnalysis } from './pages/analysis.js';
+import { renderSkills } from './pages/skills.js';
+import { renderActions } from './pages/actions.js';
+import { renderMatch } from './logic/match.js';
+import { renderResumes } from './logic/resumes.js';
+import { renderInterview } from './logic/interview.js';
+import { frameQuery } from './logic/frame-query.js';
+import { copReply, aiSuggs, AGENT_CMDS, renderAgentCmds } from './logic/copilot-actions.js';
+import { SEEKER_CARDS } from './cards.js';
+import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML } from './logic/settings-jobseek.js';
+import { masterSectionHTML } from './logic/intake-action.js';
+import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
+import { JOBS, ACTIONS } from './data.js';
+import { tt } from '../../platform/shell/i18n.js';
+import { setState } from '../../platform/shell/shell-state.js';
+
 (function () {
   'use strict';
   // rail 态导航图标(自单体 NAV_ICONS 原文迁入;细线 1.5px 圆角端,active 自动取暖橙)。

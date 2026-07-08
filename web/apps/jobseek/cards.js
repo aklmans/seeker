@@ -410,4 +410,4 @@ export const SEEKER_CARDS = {
 };
 
 /* 过渡 window 兼容桥:SEEKER_CARDS 被 manifest.js:61 module-eval 急读(cards@1059 早于 manifest@1226 → 桥就绪)+ nextStep/calmDigest 被 overview 调;改 import 后摘。其余 show/render 卡函数 + jobLabel 经 SEEKER_CARDS 表内部互调、私有。★简历红线/外链转义在函数体、逐字保留。 */
-window.SEEKER_CARDS=SEEKER_CARDS; window.nextStep=nextStep; window.calmDigest=calmDigest;
+window.nextStep=nextStep; window.calmDigest=calmDigest;

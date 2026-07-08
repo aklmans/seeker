@@ -46,4 +46,3 @@ export function frameQuery(text){
 }
 
 /* 过渡 window 桥:frameQuery 经 manifest.frameQuery 契约 + copilot-chrome 消费。★红线逐字保留(在函数体):框定 prompt 的"联系方式绝不入集合、只改专业内容"等隔离措辞。 */
-window.frameQuery=frameQuery;

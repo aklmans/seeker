@@ -52,4 +52,3 @@ export function dataResumeRowHTML(){
 
 /* 过渡 window 桥:6 段函数经 manifest.settings 契约(tabs render/wire + extend.profile/data)。
    ★红线逐字保留(在函数体):wireMasterSection 编辑 MASTER 走 persistMaster、绝不写 profile(联系方式在平台 settings.js 的 data-pf)。 */
-window.goalsSectionHTML=goalsSectionHTML; window.wireGoalsSection=wireGoalsSection; window.weightsSectionHTML=weightsSectionHTML; window.wireWeightsSection=wireWeightsSection; window.wireMasterSection=wireMasterSection; window.dataResumeRowHTML=dataResumeRowHTML;
