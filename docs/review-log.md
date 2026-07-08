@@ -1374,3 +1374,17 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 **widgetActions 通过(第47轮;§1 契约化 3/4;删 3 桥 21→18;§1 债 5→2 处;契约面 +widgetActions/+WidgetActionSpec)。**
 
 **下一刀:cActions(§1 契约化 4/4 · 收官)** —— CACT_ALLOWED 里 10 个 jobseek 名(copNewJob/copNewAction/copMarket/copResumeUpload/copDoneAct/copInterview/copMatch/copPlan/copResume/agentDeleteJob)改由各 manifest 声明之**并集**;分发器 `window[name]` → 注册 Map ⇒ **杀掉最后一批 window-强制桥**。§4-4 不变式(白名单不得含把 data-cargs 反射进 innerHTML/eval/Function/setTimeout(串) 者)须随契约一并搬进契约面。另:settings 2 处残留(showEmptyState/hydrateJobs)。
+
+---
+
+### 批11B · cActions 契约(§1 契约化 4/4 · 收官,commit `58f8f05`)· ⏳ 待审
+**四契约收官**(约束② 契约必审)。Copilot cAB 委派的最后一段 §1 债:CACT_ALLOWED 硬编码 jobseek 名 + 分发器 `window[name]`。改为「**注册表即白名单**」:平台自有 `CACT_OWN`(copGo/agentCancel)∪ `SeekerShell.cActions()`(各 manifest 声明之**并集**)。**删 13 桥(18→5)**。**注:实际 11 个 jobseek 名**(送审词的 10 漏了第44轮新增的 `agentBackupContinue`)。
+- **★契约红线:注册表即白名单(§4-4,不再 window[name])**:委派 `CACT_ALLOWED.has(name) && window[name]` → `cactHandler(name)`(查 CACT_OWN 再查 cActions())。①**gadget 面从根消除**——只能命中已登记处理器,未修 HTML 注入面即便落 `<button data-cact="eval">` 也取不到 eval(旧 window[name] 路径可以);②**免疫 DOM 具名访问遮蔽(第41轮判据)**——`id="copMatch"` 元素不再顶替处理器;③**防原型污染**——CACT_OWN + registry.cActions() 均 `Object.create(null)` + 只收 own-enumerable function 值 ⇒ `data-cact="toString"/"constructor"/"valueOf"` 取不到;④**§4-4 不变式随契约面固化**——types.d.ts/registry.cActions/manifest.cActions 三处注明「登记项任一参数不得流进 innerHTML/eval/Function/setTimeout(串)」,`agentChat`(不转义 innerHTML sink)**不登记**、固定串走无参包装 agentBackupContinue(第44轮先例)。
+- **契约扩展(约束②)**:types.d.ts +AppManifest.cActions?()=>Record<名,处理器> + SeekerShellApi.cActions()(注 null 原型);registry.js +cActions() 汇总型(并集/Object.create(null)/只收 function 值)+ api。
+- **应用声明**:manifest.js +import 11 处理器 + `cActions:()=>({…11…})`。**平台改绑**:copilot-chrome.js CACT_ALLOWED Set 删 → CACT_OWN + cactHandler(name)。
+- **删 13 桥(18→5)**:copGo/agentCancel(平台 2)+ 11 jobseek 名 —— 两文件 window 桥清零。tokenizer 全树扫描(剥注释+字符串字面量):13 名每个 CODE 引用皆 [DEF]/[IMPORT]、**零裸读、零显式 window.X 读**;唯一到达路径 = 委派查表。
+- **cAB 三角闭合**:13 个 cAB('…',name,…) 调用点 = 2 CACT_OWN + 11 app cActions,零调用点未登记、零登记项无调用点。
+- **终态**:业务桥 **18→5**;5 = showEmptyState/hydrateJobs(§1 settings 残留,末件)+ shellReassemble/shellPushAiReadable/openAppManager(**HTML 跨内联块、结构性不可 import,非业务桥**)。§1 债 5→**2 处**(仅 settings 残留)。
+- **验**:node×4 / **tsc 真退出码 0**;preview 净方法(定向重验 4 文件)· 经真实委派驱动:契约面(cActions() 返 11 处理器、**null 原型** `'toString' in m===false`、13 桥全 undefined);**★委派全链**(copGo 平台 OWN→关面板跳 settings;copMarket app→市场价值模态;agentDeleteJob 破坏性→派发到 app 处理器;**copReply→cAB HTML→真实点击→查表调用** '上传简历'→`data-cact="copResumeUpload"`→上传模态);**★负向**(gadget 关闭:`data-cact="alert"/"eval"/"Function"` 全 inert、alert 未调、__pwn 未定义;`"toString"/"constructor"/"valueOf"` inert=null 原型;**agentChat 仍被挡**=不在登记表、__xss 未定义、img[onerror]=0=第44轮不变式经契约面延续)。0 console/11 页;**真机 asset:// boot 重编 5.74s、进程存活、零 panic**。
+
+**下一刀(末件):settings 2 残留** —— showEmptyState(settings:446 `typeof window.showEmptyState` 落地页空态)→ 经 jobseek 既有 appSettings 契约段内自绑;hydrateJobs(settings:480 数据导入后重水合)→ 复用/新增存在性广播契约。做完 = **§1 债清零 + 0 业务桥终态**(仅剩 3 个平台 HTML 跨块桥,非业务)。批11B(四契约 + settings 残留)收官。
