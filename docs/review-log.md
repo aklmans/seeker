@@ -984,3 +984,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★踩坑诚实披露**:初判 shell-globals `$`/`$$` 为僵尸(grep `\b$\b` 被正则 `$`=行尾锚骗、误报 0 消费)→ 删其 ambient → **tsc 抓出** assets prompts/notes 实际用 $/$$(TS2592/2304)→ **已复原**。教训:含正则特殊字符的符号(`$`)不能用 grep 词边界验消费,tsc/node 是兜底。
 - **验**:node×4/tsc exit0、fresh-server 冒烟——INIT done + 7/7 僵尸摘 window + Copilot 面板(copToggle/copSend 内部 copOpen/copAppend 仍工作)+ agentSend + 9 页 + 0 console error。
 - **★3.y 收尾再定位**:profile 链② + 账本清空大头 = **同一件事**(classic 业务层 module 化:data/intake-action/interview/resumes/settings/cards/…+assets+index.html inline);做完则 profile 解锁 + 账本自然清空。僵尸清扫是这之前唯一能独立做的账本项。
+
+## 3.y · 业务层 module 化(大块 · 逐刀)· 方案 `docs/proposal-business-layer-modularization.md`
+**7 路只读 agent 调查凑齐依赖图**。10 批顺序(叶子先/provider 后/红线后):1 页面层 → 2 数据叶子 → 3 intake-action → 4 逻辑叶子 → 5★interview+resumes 协调 → 6★data+match 协调(核心时序刀)→ 7 settings+assets(删 shell-globals.d.ts)→ 8★profile 收尾(双红线)→ 9 index.html inline → 10 账本清空。**有状态几乎全 mutated(dual-publish 免访问器);仅 SEED(私有)+ ivRec(移 resumes)reassigned。硬时序坑=match/interview/resumes:4 parse-time 读 JOBS[0]→data.js 同批。红线=profile/frame-query/copilot-actions/intake-action。**
+
+### 批1(commit `ee77d44`)· 页面层 overview/jobs/skills/actions/analysis → ES module · 待审
+5 页 classic → module:各 `export function renderX` + 尾部过渡 window 桥(唯一外部消费=render*,manifest 箭头 `render:()=>renderX()` + 运行时 cards/persistence/其他页/index.html 按全局名调)。**函数体逐字节零改**(sed 仅加 export 前缀)。
+- **状态符号 module-private 不上桥**:jobFilter/skillFilter(mutated)、actTab(reassigned)、selectedJob(死写)全**文件本地**(调查证零跨文件消费)→ 转 module 直接私有、无需桥/访问器。
+- **内部辅助不上桥**:openJobDetail/jobTimelineRows/capCard/trainingFor/openSkillDetail/sessMins/recalcProgress/toggleAction/openActionDetail —— JS 接线(非内联 onclick)、仅文件内消费 → module-private。内联 onclick 目标(go/openResumeModal/openMarketValue)是**他文件**符号、桥仍在,不受影响。
+- **无 parse-time 坑**:5 页顶层仅状态字面量初始化 + 函数声明,零外部符号 parse-time 读。载序:页 module@960-964 早于 INIT-module(批A后@~1325)→ buildPages 调 manifest 箭头时 window.renderX 桥就绪。
+- **验**:node×5/tsc exit0;fresh-server+force-revalidate 冒烟——INIT done + **5/5 render 桥** + **9 页全渲** + jobs 页互调 renderActions/renderOverview(经桥)+ skills 页渲染 + **0 console error**。
