@@ -1247,3 +1247,19 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - node×4/tsc 真退出码 0/preview 0 console/11 页;真机 exec 自报按既往采信。
 
 **批10c 通过(172→169 桥、classic 0、d.ts 0)。** 剩 10d(全网 flip;checklist×4:AGENT_CMDS 字面量复验/真机覆盖载序前移/shell-state flip 后零 eager 互读[禁顶层 T/L]/★go 入 (d) 白名单)。
+
+---
+
+### 批10d(commit `fc79de7`)· 全网 import 化收官 —— 133 桥删、账本终态 36 白名单桥 · ⏳ 待审
+**批10 终局刀**。scanner+applier(token-aware:剥注释/字符串/regex-literal、保模板 ${})生成并应用:30 个 .js 注入 ~430 符号 import(provider 分组)+ BOOT/INIT 内联块各 12 符号 import;**133 桥删**;白名单 **33+3 桥**就地注解——(d) window-解析强制 26(内联 onclick/cBtn 串/CACT `window[name]`/aiErrHTML 的 **go**=第42轮[建议]①)+ **§1 平台裸读计算得出**(nav 7/shell-keys 2/widget-actions 3/**settings 2=hydrateJobs+showEmptyState 为清点外多抓**)+ HTML 跨内联块 3。**§1 硬规则内建**:platform 消费者 × apps provider → 不注入(保桥),杜绝反向 import。
+
+**★功能测抓出 3 类真缺口(node/tsc 均盲——@ts-nocheck 间 export 存在性仅 runtime link 可判)**:
+① resume-modals.js `openResumeModal/openResumeUpload` **有桥无 export**(批3 时代遗留)→ 全仓"桥而未 export"扫描仅此 2 处、补 export;
+② **spread 盲区**:检测 lookbehind `(?<![.\w$])` 把 `...X` 第三点当属性访问 → `...SKILLS` 三处漏 import(copilot-actions/intake-job/analysis,LIVE 症状=analysis 页空)→ 全量 133 符号 spread 复扫仅此 3 处、补;
+③ **自伤诚实披露**:调试中 `import('./apply10d.mjs')` 无 argv 把应用器**当副作用真跑第二遍**、HTML 块扫描无 import-tracking 不幂等 → BOOT 重注 go/toast、INIT 重注 go → **重复声明 SyntaxError 双块静默死** → 去重 + node 逐块 parse 终检(4 块零重复)。
+
+**★方法论新判据(裁定④补)**:preview console 工具**不捕获未处理 module 级异常**(uncaught import 链错/SyntaxError 零显示——批10b jobseek 整应用消失时亦零 console)——块级静默死用 **Blob-module 重放**(textContent→blob URL import)使错误可捕获定位;本轮以此揪出重复声明。
+
+**验证**:node ×38 / tsc 0;全量 spread 复扫净;白名单桥 **HTMLElement 判据**(第41轮补丁首轮全面应用);preview 净方法(fresh 实例+42 URL 定向重验):**0 console、11 页全渲**(analysis TOP SKILLS=修复 LIVE)、eager 态 ivState/resumeState.jobId===JOBS[0].id(import 图定序)、14 死桥抽查 undefined、9 白名单在、**Mod+B/copilot 发送/Esc 逐层/语言双向(7 to-do)/市场价值模态/wgtAction** 全链 LIVE。**checklist**:②真机 asset:// boot 无崩(6.10s、窗口稳、零 panic=覆盖 i18n⇄shell-state 环+全新 import 图)③shell-state 顶层零执行语句、环双向 runtime-only ④go 白名单 LIVE;①AGENT_CMDS @ts-check 复验=header flip 非本批范围(@type 注解已立,挂后续)。
+
+**账本终态:169 → 36 桥(33 白名单 + 3 HTML 跨块);classic 0;d.ts 0;活跃 JS 全 module 全 import 化。** 批10(方案+a/b/c/d)全落。剩批11(绑定改造 [data-close]/[data-go] 委派 + §1 契约化四处)单列。**8123 已释放。**
