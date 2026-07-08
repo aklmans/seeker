@@ -1,5 +1,6 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
-/** jobseek · 岗位智能录入(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
+/** jobseek · 岗位智能录入(平台化阶段3 逐页搬迁)。classic 全局语义不变(monolith-globals.d.ts 账本批10b 已整删)。 */
+import { extractSeekerBlock } from '../../../platform/shell/ai-engine.js'; // ★批10c:ai-engine 转 module、桥不设 → doExtract 改 import(apps→platform 方向)
 /* ---------- NEW JOB MODAL ---------- */
 // 真·JD 技能抽取(评审 P1-8):扫 JD 文本匹配已知技能词(用户 SKILLS 名 + 技术词表),反映真实 JD,非写死。
 const TECH_VOCAB=['Go','Java','Python','Rust','C++','C#','JavaScript','TypeScript','Node','React','Vue','Spring','MySQL','PostgreSQL','MongoDB','Redis','Kafka','RabbitMQ','Elasticsearch','gRPC','RPC','GraphQL','RESTful','微服务','分布式系统','分布式','高并发','性能优化','系统设计','服务治理','容量规划','DDD','缓存','消息队列','K8s','Kubernetes','Docker','云原生','中间件','稳定性','高可用','可用性','监控','CI/CD','算法','数据结构','Linux','网络','多线程','并发','存储','数据库','大数据','Hadoop','Spark','Flink'];

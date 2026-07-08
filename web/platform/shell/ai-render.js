@@ -29,5 +29,6 @@ export function aiErrHTML(err){
   /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
   return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
 }
-/* 过渡 window 兼容桥(约束⑤延续):classic 消费者(ai-engine/copilot-chrome/cards)按全局名调不变 → 零回归;逐个改 import 后摘。纯函数、零模块态 → dual-publish 安全。 */
-window.aiHTML=aiHTML; window.displayText=displayText; window.toolStatusText=toolStatusText; window.aiErrHTML=aiErrHTML;
+/* 过渡 window 兼容桥:aiHTML 尚被 copilot-chrome(hydrateMessages AI 历史渲染)裸全局读 → 桥留待 10d flip。
+   ★批10c:displayText/toolStatusText/aiErrHTML 桥删——唯一消费者 ai-engine.js 已转 module 改 import(solo 桥随刀销)。纯函数、零模块态。 */
+window.aiHTML=aiHTML;

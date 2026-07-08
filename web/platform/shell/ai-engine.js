@@ -1,11 +1,17 @@
-// @ts-nocheck —— 抽壳序2 过渡:AI 引擎,引用 aiHTML/displayText/toolStatusText/tt(序1)+ SeekerShell.cards() 契约 + SeekerRT.ai;类型化留 3.y;逻辑零改动。
-/** 平台 · AI 引擎 extractSeekerBlock/streamReply(+aiLangHint)—— 解析/流式渲染不可信 AI 输出(红线)。
- *  安全属性(逐字保留 · 第10轮评审逐刀验):
+// @ts-nocheck —— 批10c:最后一个 classic 外链 → ES module;依赖全改 import、消费者(copilot-chrome/intake-job)同刀 flip → **零 window 桥收官**。函数体逐字节零改。
+/** 平台 · AI 引擎 extractSeekerBlock/streamReply(+aiLangHint 私有)—— 解析/流式渲染不可信 AI 输出(红线)。
+ *  安全属性(逐字保留 · 第10轮评审逐刀验、批10c 加倍审):
  *   ① streamReply 卡剥离走 SeekerShell.cards() 契约、prose 经 aiHTML(Markdown 安全/esc 回退)、AI 原始 HTML 不进 DOM、持久卡 CARDS[k].persist 过滤;
  *   ② extractSeekerBlock 提取 JSON 经 CARDS[kind].valid 校验后才 push/show(不臆造/不注入);
  *   ③ Untrusted 框定:AI 输出经解析 + valid、当数据非指令。
- *  挂全局 + 载序前置(在 ai-render.js/序1 后 —— 依赖 aiHTML;消费者 copSend/agentSend 序3 后运行时调)→ 零回归(约束⑤)。 */
-function extractSeekerBlock(text, kind){
+ *  ★载序(裁定②):本文件依赖(i18n@861/ai-render@864/shell-state@866/data-store@867)tag 皆早于本文件 @869 → import 边零提升;
+ *    顶层零语句(仅函数声明)→ 零 eager 读;消费者全 runtime(copSend/agentSend/doExtract)。aiLangHint 零外部消费者 → 私有不 export。 */
+import { tt } from './i18n.js';
+import { setState } from './shell-state.js';
+import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
+import { persistMsg } from './data-store.js';
+
+export function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
   const m = s.match(new RegExp('```seeker:' + kind + '\\s*([\\s\\S]*?)```'));
   if(!m) return { prose:s, data:null };
@@ -21,7 +27,7 @@ function extractSeekerBlock(text, kind){
 // AI 回复语言:把当前界面语言作为指令附在发给模型的文本末尾。
 // (系统提示在平台层、domain 改不了;故经 user_text 传达。显示给用户的仍是原文,只有发给模型的带此指令。)
 function aiLangHint(){ return setState.lang==='en' ? '\n\n[Please reply in English.]' : '\n\n[请用简体中文回复。]'; }
-function streamReply(thinkBubble, text, who, scrollFn){
+export function streamReply(thinkBubble, text, who, scrollFn){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;

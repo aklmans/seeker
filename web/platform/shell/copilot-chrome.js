@@ -1,7 +1,10 @@
 // @ts-nocheck —— 3.y 步3 中层:Copilot/Agent 面板机制 classic 全局 → ES module(export)+ 过渡 window 桥。逻辑逐字节。
 /** 平台 · Copilot 面板机制 copEl/copOpen/copClose/copToggle/copScroll/copAppend + UI 模板 cCard/cAct/cBtn/cSuggs。
  *  依赖 $/el;cSuggs onclick 调 copSend(序3-b)、cBtn onclick 字符串(运行时);jobseek 专属响应(aiSuggs/copMatch/copReply)留 index.html/apps。
- *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。 */
+ *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。
+ *  ★批10c:streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag@871 晚于 ai-engine@869 → import 边零提升(裁定②)。 */
+import { streamReply } from './ai-engine.js';
+
 export function copEl(){return $('#copPanel');}
 export function copOpen(){copEl().classList.add('open'); setTimeout(()=>$('#copInput').focus(),260);}
 export function copClose(){copEl().classList.remove('open');}
