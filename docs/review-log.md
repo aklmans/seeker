@@ -1322,7 +1322,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批11B · pageActions 契约(§1 契约化 2/4,commit `45b5a50`)· ⏳ 待审
+### 批11B · pageActions 契约(§1 契约化 2/4,commit `45b5a50`)· 🏁 第46轮通过(无阻断/应改)
 **四契约之二**(约束② 必审)。消除 nav.renderTopActions 对 jobseek **7 符号**裸读,改经新增 `SeekerShell.pageActions` **汇总型**契约(镜像 cards/appCommands 并集);nav 是这 7 符号的最后平台裸读者 → **7 个 window 桥随之删(28→21)**——比 pageNew 大一档(红线面=顶栏动作装配、桥删 7)。
 - **契约扩展(约束②)**:registry.js `pageActions(pageId)` 汇总型(enabledApps 遍历、各 `a.pageActions(pageId)` 并集,同 cards)+ api;types.d.ts +PageAction 接口(`{t,a?,fn}`)+ AppManifest/SeekerShellApi 双声明。
 - **应用声明**:manifest.js +6 import(openResumeModal/openMarketValue/resumeGenerate/resumeState + **go/toast**=apps→platform 允许)+ `pageActions:(pageId)=>({overview/match/resumes/jobs/analysis/skills/actions:[...]}[pageId]||[])`=原 nav map **逐字迁入**;惰性(fn 闭包点击求值、tt 每次调用重求值=语言切换即时、顶层零 eager 读)。
@@ -1331,4 +1331,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **§1 债**:nav 7 处清零(pageNew 后 12 → 5 处剩:widget-actions 3 + settings 2)。
 - **验**:node×8 / **tsc 真退出码 0**;preview 净方法(③(b) 定向重验 8 改文件):契约面(pageActions 是函数、7 页标签逐字匹配原 map、interview/settings→[])+ **7 桥全 undefined**(第41轮判据:无一为元素 id)+ 功能端到端(skills「市场价值报告」→ 市场价值模态[openMarketValue import];**resumes「+ 生成针对性简历」→ AI 生成模态**=resumeGenerate(resumeState.jobId, renderResumes) 3 删桥符号全经 import、resumeState import 即同对象;语言切换 jobs「+ 录入岗位」↔「+ Add job」↔ 复位=契约重求值 tt);0 console/11 页/截图 clean;**真机 asset:// boot 重编 6.04s、进程存活、零 panic**(7 删桥 + 新 import 边定序无碍)。
 
-**下一刀:widgetActions(§1 契约化 3/4)** —— widget-actions delete-job 分支 3 符号(JOBS/renderJobs/renderOverview)整段回迁 jobseek + 平台留通用 destructive 闸;**红线加倍审**(§4-3 破坏性 confirmDestructive/widgetId 平台传入不信任 iframe 逐字保留)。
+### ★ 第46轮裁定 = 通过(无 [阻断]、无 [应改];真删 7 桥,账目严密)
+- **① 删 7 桥的消费者面(本刀最要害一关)· 评审独立全树扫描**:桥集差独立算出精确 **7 删、零加**;再对每符号做 **tokenizer 全树扫描**(剥注释/字符串/regex、spread-aware)→ **7 符号的每一个消费者都是 `[DEF]` 或 `[IMPORT]`,零裸读无 import** ⇒ 零 ReferenceError(第28轮 cut2 / 第29轮 nav:86 那类静默回归的判据)。配合:**7 符号均无同名 `id=` 元素**(排除 DOM 具名访问掩盖删桥的反向隐患)、LIVE 证 7 桥运行时全 undefined。
+- **② §1 方向**:nav 剥注释后**零引用这 7 符号**、跨层 apps `window.X` 读全空 ⇒ nav 从此不再裸读任何 apps 符号;§1 债 12 → **5 处剩**(widget-actions 3 + settings 2)。
+- **③ 契约同构(约束②)**:pageActions ≅ cards/appCommands 汇总型——`enabledApps().forEach` 遍历、各应用结果并集(cards 用 `Object.assign` 并对象、pageActions 用 `push(...list)` 并数组,与 appCommands 并数组同型);`typeof a.pageActions==='function'` + `Array.isArray(list)` **双守卫**防无契约应用;types.d.ts 三声明(PageAction 接口 + 应用面 + 消费面)齐备。
+- **④ 逐字迁入 + 惰性**:renderTopActions 硬编码 map 原样搬进 manifest.pageActions,`[pageId]||[]` 兜底、nav 渲染循环不变 = 零行为;manifest 新增 import(+go/toast=apps→platform 允许)顶层零 eager 调用(全在嵌套箭头、resumeState 仅闭包内读)、provider 皆 hoisted ⇒ TDZ 安全。
+- **⑤ 金标准(评审经真实顶栏按钮驱动 renderTopActions 本身)**:skills「市场价值报告」→ openMarketValue 模态;**resumes「+ 生成针对性简历」→ AI RESUME 模态开(`字节跳动 · 后端高级工程师`)不抛** —— `resumeGenerate(resumeState.jobId, renderResumes)` 三删桥符号全经 import、**模态显示的正是 resumeState.jobId 指向的岗位 = import 读同一对象坐实**;jobs「+ 录入岗位」→ openNewJob 模态;语言切换 ↔ 复位(闭包 tt 每次重求值)。0 console/11 页/字面 onclick 仍 0/剩余桥在;node×8/tsc 真 0;真机按我留痕采信。
+- **⑥ 桥计数吻合**:评审按 `window.X=X` 去重独立数得 27 window 符号 − 6 运行时命名空间 = **21**,与我一致(**无 ±1 差异**)。
+
+**pageActions 通过(第46轮;§1 契约化 2/4;★真删 7 桥 28→21;§1 债 12→5 处;契约面 +pageActions/+PageAction)。** 四契约模式已两刀立稳。
+
+**下一刀:widgetActions(§1 契约化 3/4)** —— widget-actions delete-job 分支 3 符号(JOBS/renderJobs/renderOverview)整段回迁 jobseek + 平台留通用 destructive 闸;**红线加倍审**(§4-3/§4-4:破坏性一律 confirmDestructive、widgetId 平台按端口传入不信任 iframe 自报、payload 仅当数据、不可信 action toast 前 `<`-转义 —— 逐字保留)。
