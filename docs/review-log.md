@@ -1030,7 +1030,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **批1-4 🏁 通过。** 下一步批5(interview+resumes 协调刀:ivRec 移 resumes + 循环 import + parse-time)。
 
-### 批5(commit `c794ea2`)· interview+resumes 协调刀 → ES module(★高风险)· 待审
+### 批5(commit `c794ea2`)· interview+resumes 协调刀 → ES module(★高风险)· 🏁 第35轮通过
 **第一个高风险协调批**:2 文件同批转 module(循环耦合 + ivRec 跨文件所有权移动 + parse-time JOBS[0])。函数体逐字节零改。
 - **★ivRec 所有权 interview.js:5 → resumes.js**:核实其生命周期全在 resumes(ivToggleVoice/ivStopVoice/ivVoiceDemo 的 `ivRec=new SR()`/`=null`/`='demo'`、9 处读写全在 resumes),**interview.js 从不引用**(仅第5行声明)→ 移后 resumes 内**私有**(reassigned 但文件本地、不上桥不访问器)、**消除跨文件 reassigned 纠缠**(否则需 setter 原子翻转)。这是"reassigned+跨文件"的最优解=归位为文件私有。
 - **interview.js**:export ivState(mutated dual-publish,含 resumes 跨文件 `.k=` mutate 同引用安全)+ renderInterview 桥;ivResumeRef 私有。
@@ -1041,3 +1041,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★踩坑(方法论)**:初次冒烟 console 报 `renderInterview/renderResumes not defined @buildPages` → 判**浏览器缓存旧 classic 版当 module 跑(无 window 桥)**;**重启 server + force-revalidate 后 fresh clean 载 = 0 console error**(同 copilot-chrome;第29轮"功能测须 clean 载、桥 undefined 先排缓存"教训)。
 - **验(fresh clean 载 · 0 console error)**:INIT done + **15/15 桥** + ivRec/ivToggleVoice/内部函数私有不上桥 + **★INIT buildPages 直接渲 interview/resumes(非 rerenderPages 兜底,clean 载页有内容)** + 循环耦合切页(interview 含 INTERVIEW/resumes 渲染)+ **resumeState dual-publish 跨文件 mutate 同引用可见** + **ivStopVoice(用移入的 ivRec)OK 不抛** + 9 页全渲。node×2/tsc0。
 - **★真机金标准**:jobseek 业务批的真机验受限(桌面 localStorage jobseek 持久禁用 → interview/resumes 页不在桌面 nav;**preview fresh〔jobseek 启用〕反而是更佳业务测环境**);故 jobseek 业务批(5)靠 clean preview,批6(data+match、影响 boot+全页)做真机金标准。**8123 已释放,评审可亲跑 preview。**
+
+### ★ 第35轮裁定 = 通过(结构性 + 亲跑 preview 功能测 双清)+ ★litmus 精化
+评审确认 + preview LIVE 双证。**★权威 litmus 精化(第31/32轮延伸,standing)**:
+> **reassigned + 跨文件消费**:先看能否**归位到唯一消费文件**(→ 变文件私有 reassigned、零机制,同 SEED 先例);**真·多文件消费**才 getter/setter 访问器。ivRec/SEED = 归位样板,优于给跨文件 reassigned 套 setter。
+- **ivRec 归位裁定认可**:interview.js 零 ivRec 代码引用(仅注释)= 声明放错文件 → 归位 resumes(唯一消费文件)变私有;preview LIVE `window.ivRec===undefined` + ivStopVoice(用移入 ivRec)不抛。
+- **循环耦合 = 安全(runtime-only)**:interview↔resumes 双向调用全在函数体经桥、**两文件 top-level 互不 eager 引用 → 无 module-eval 循环依赖**;preview LIVE 双向渲染 + resumeState dual-publish 跨文件 mutate。
+- **resumes PROFILE 红线保持**:PROFILE 只**读**渲染简历预览(联系方式显示、函数体 runtime);`persistResume` **只存 {id,jobId,template,modules}、联系方式绝不入集合**(:116)→ resumes 集合 AI 可读无联系方式;preview LIVE 证预览渲染 PROFILE。
+- **★批6 前瞻(评审提示,须重验)**:`JOBS[0]@:4` 是 **eager 跨模块读**(resumeState/ivState/matchState module-eval 急读 JOBS[0])——本轮 data.js@929 classic parse-time < resumes@1053 module deferred → 就绪、安全。**批6 data→module 后 JOBS 变 deferred**:须保 ① data module tag 早于 match/interview/resumes(现 929<1041/1052/1053 ✓)② JOBS[0] 非空(mock 12 保证);**此 eager 跨模块读是脆弱点、批6 重验**。可选清理=lazy init(`jobId:null` 首渲设),但非零回归、本轮不要求。
+- **"not defined @buildPages" = 缓存假错**:可靠扫描证 renderInterview/renderResumes 无 classic 顶层消费者、buildPages 在 INIT module(deferred);force-revalidate clean 载 0 err。
+- **真机金标准定序认可**:桌面 jobseek 持久禁用 → preview fresh(jobseek 启用)是更佳业务测环境;批6(影响 boot+全页)做真机。
+
+**批5 通过。** 下一步批6(data.js+match.js 核心时序刀:JOBS[0] parse-time → import {JOBS},同批A型 import 图定序;★真机金标准)。
