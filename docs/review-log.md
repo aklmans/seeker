@@ -1143,7 +1143,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批9a(commit `93b1386`)· 壳核心状态 + 设置/数据框架 index.html inline → shell-state.js · ⏳ 待审
+### 批9a(commit `93b1386`)· 壳核心状态 + 设置/数据框架 index.html inline → shell-state.js · 🏁 第39轮通过
 **批9(index.html inline → module)拆 3 子批(第38轮后与用户对齐:真实体量 6 块 ~370 行 ~24 符号、boot-critical → 拆 9a 壳状态 / 9b 键盘+chrome+widget / 9c jobseek 业务)。9a = 第一刀**。9 符号从 index.html classic inline **逐字节零改**抽出为 `platform/shell/shell-state.js`:
 - 壳状态:**PAGES/GROUPS**(mutated-property;SHELL BOOT@1243/1244 module-eval 急读 `PAGES.push`/`Object.assign(GROUPS)`)+ **setState/WEIGHTS**。
 - 设置/数据框架:settingsPersistOn/saveSettings/hydrateSettings + **clearAllCollections/clearAllDataFlow**(破坏性红线:预览+确认+可撤销+清前备份,逐字保留)。
@@ -1157,3 +1157,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★方法论(自纠)**:验证中一度 `import('shell-state.js?probe=')` 制造第二实例、其顶层 `window.PAGES=PAGES` 空数组**回填覆盖**了 canonical 桥(读到 len=0 假象)→ **带 window 副作用的 module 绝不可 cache-bust import**(会 clobber 桥);平直 reload 后 canonical PAGES.length===11。
 
 **剩 9b**(键盘系统 initKeys/isDesktop/toggleSidebar/contextNew/pageSearchInput/keysHelpHTML/syncSbToggleTitle + widget wgtAction + openMarketValue → 新 platform/shell 文件)· **9c**(jobseek 业务 dotsHTML/renderFirstRun/showEmptyState/aiResumeForJob/goInterview → apps/jobseek)· **批10**(账本清空)。**8123 已释放,评审可亲跑 preview。**
+
+### ★ 第39轮裁定 = 通过(结构 + 亲跑 preview 净方法 + 真机)
+- **★载序命门 = tag-order 解、LIVE 坐实**:shell-state.js@866 早于 SHELL BOOT@875(deferred doc 序)→ shell-state 先 eval 设 window.PAGES(同一数组)、SHELL BOOT 后 eval 急读 push/Object.assign、INIT 读填好的。**preview LIVE**:index.html 新鲜 + **window.PAGES.length===11** + GROUPS 5 + nav 11 + 9 页全渲 + 桥全就绪。同批6 JOBS tag-order 型(provider 早置)。
+- **破坏性红线逐字保留核实**:clearAllDataFlow = confirmDestructive(预览+确认)+ rt.db.backup(清前备份)+ SeekerShell.collections()(契约枚举)+ notifyDataCleared(第9契约)+ reload;saveSettings 体逐字(jh-settings + WEIGHTS.map);mutated-property 4 符号 dual-publish 同引用安全;可靠扫描空;node/tsc 净。
+- **★方法论自纠 = 评审采纳(cache-bust import 适用边界补全,精化裁定③)**:**off-window module(批8 profile.js,无 window 副作用)→ `?bust=` import 安全验 exports;on-window module(批9a shell-state.js,顶层 window.X=)→ `?bust=` 造第二实例 clobber canonical 桥(空数组回填覆盖、假 len=0)→ 只能平直 reload + 直读 canonical 桥**。评审本轮即按此法(平直 reload + 直读 window.PAGES、未 cache-bust import shell-state)。asset:// 真机始终最可信。
+- **真机金标准采信**:cargo asset:// 重编 5.96s + boot 无崩(窗口 Seeker 1880×964 visible、RSS 141MB、无 panic)= shell-state module + SHELL BOOT 急读不崩 boot。
+
+**批9a 通过。** 剩 9b(键盘系统 + widget wgtAction + openMarketValue)· 9c(jobseek 业务 renderFirstRun 等)· 批10(账本清空)。9b/9c 继续亲跑净方法 + 真机叠加。
