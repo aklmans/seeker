@@ -1054,7 +1054,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **批5 通过。** 下一步批6(data.js+match.js 核心时序刀:JOBS[0] parse-time → import {JOBS},同批A型 import 图定序;★真机金标准)。
 
-### 批6(commit `b1676bc`)· data.js + match.js 核心时序刀 → ES module(★高风险 parse-time)· 待审
+### 批6(commit `b1676bc`)· data.js + match.js 核心时序刀 → ES module(★高风险 parse-time)· 🏁 第36轮通过
 **批6 核心协调刀**:data.js(JOBS/SKILLS/ACTIONS provider,被 77 处消费 JOBS)转 module,解 parse-time JOBS[0] 时序。函数体逐字节零改。
 - **data.js**:export JOBS/SKILLS/ACTIONS(mutated-property:`.push`/`.length=0`/`.splice`/hydration in-place → dual-publish 同引用即安全、免访问器)+ 9 const(STATUS/ACCRUAL/PRI/CAT_LABEL/TOP_GAPS/KEYWORDS/PIPELINE/GENERAL/META)桥;CITY_DIST/KIND_DIST/TECH_META 私有。**自包含叶子**(零外部符号依赖;module-eval 的 `SKILLS.forEach`/`GENERAL.forEach`/`META.forEach` 全自包含、无外部时序风险)。
 - **match.js**:export matchState(mutated dual-publish,cards/copilot-actions 跨文件 `.k=` 同引用安全)+ renderMatch/runMatch 桥;matchReadout/bindReadout 私有。红线:renderMatch 渲 RESUME.filename/derivedSkills 元数据、无联系方式。
@@ -1062,3 +1062,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验(fresh clean 载 preview 冒烟 · 0 console error)**:INIT done + **window.JOBS=12 jobs** + **★eager JOBS[0] 读全初始化**(`matchState.jobId===JOBS[0].id` + `ivState.jobId===JOBS[0].id` + `resumeState.jobId===JOBS[0].id`——**评审前瞻的脆弱点验证通过**)+ JOBS dual-publish `.push` mutate 同引用 + data 桥 10/10 + 私有(CITY_DIST/KIND_DIST/TECH_META/matchReadout)不上桥 + 9 页全渲 + match 渲染。node×2/tsc0。
 - **★真机 WKWebView 金标准(asset:// 免缓存)**:`cargo run` 重编译 **6.63s**(含批6、binary mtime > index.html)、**启动 + 壳渲染无崩**(dark 主题、JOBHUNT/资产/系统 nav、总览、v0.1.0)——**data.js module + 全业务模块 module-eval 不崩 boot**(若 data 未先 eval、eager 读会 throw)。⚠桌面 localStorage jobseek 持久禁用 → match/interview/resumes 页不在桌面 nav、eager-read 精确值靠 **preview clean 冒烟证**(jobseek 启用环境)。
 - **★方法论固化**:批6 起沿用「fresh restart + force-revalidate 后 clean 载才是 console 判据」(批5 stale-cache 教训)——本轮 clean 载 0 err。**8123 已释放,评审可亲跑 preview。**
+
+### ★ 第36轮裁定 = 通过(结构 + 亲跑 preview + 真机金标准 三证)
+评审确认:整个业务层核心协调刀(data 被 77 处消费),第35轮标的 JOBS[0] 脆弱点本轮 **LIVE 兑现**。
+- **★JOBS[0] module-eval 时序 = tag-order 解、LIVE 成立**:data.js `window.JOBS=JOBS` 在 module-eval 设桥(非箭头);tag-order data@929 < match@1041 < interview@1052 < resumes@1053(deferred doc 序=eval 序)→ data 先 eval 设桥、3 reader 读到。**preview LIVE(决定性)**:`JOBS.length===12` + 3 eager 跨模块读全对(matchState/ivState/resumeState.jobId 全 ===JOBS[0].id)——若 data 没先 eval 这 3 个 module-eval 急读会 undefined/throw、模块崩;全 true = tag-order 真工作、脆弱点站得住。
+- **★权威模式固化(评审 · standing)**:**跨模块 eager module-eval 读**(JOBS[0]/SEEKER_CARDS 类)需 **tag-order(provider 先于 consumer)+ provider 在 module-eval 设桥**。**批2(cards SEEKER_CARDS)+ 批6(data JOBS)双证此模式**。(异于 runtime 函数体读——那个只需桥就绪、无 tag-order 约束。)
+- **双证**:可靠扫描空(剩余 classic 仅 assets prompts/notes,顶层零读 JOBS/SKILLS/ACTIONS)+ dual-publish 同引用(preview 证跨模块 mutate)+ preview clean 0 err + **真机 WKWebView 金标准采信(同 R1;asset:// 免缓存证 module-eval 序正确、data module+全业务 module-eval 不崩 boot)**。web+真机双证。
+- **[建议] 已采纳(doc-staleness)**:interview:4/resumes:4 注释"data.js 仍 classic、全局词法就绪"已过时(批6 data 转 module)→ **改为"data.js 已 module@929、tag-order 先 eval 设 JOBS 桥"** 反映真 WHY(免未来读者误解时序前提)。match:4 的 WHY 已在其桥注释正确表述。
+
+**批6 通过 —— parse-time 时序坑全清(JOBS[0] 是最后一个)。** 下一步:批7(settings+assets → 删 shell-globals.d.ts)+ 批8 **profile 双红线**(链②收尾:PROFILE import-first 不上 window 桥;PROFILE 读在函数体 runtime 非 eager,焦点红线非时序)。

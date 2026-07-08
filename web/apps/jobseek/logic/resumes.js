@@ -1,7 +1,7 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 简历模块(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- RESUMES (独立模块) ---------- */
-export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 内联 onclick 跨文件写)→ dual-publish 免访问器;JOBS[0] module-eval 读(data.js 仍 classic、全局词法就绪)
+export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 内联 onclick 跨文件写)→ dual-publish 免访问器;JOBS[0] module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1053 在其后 → 就绪)
 let ivRec=null;  // ★从 interview.js 移入:语音识别句柄(reassigned:=new SR()/=null/='demo'),生命周期全在本文件(ivToggleVoice/ivStopVoice/ivVoiceDemo)→ 模块私有、不上桥不访问器(消除跨文件 reassigned 纠缠)
 function modLabel(m){const map={basic:['基本信息','Basic info'],summary:['个人简介','Summary'],skills:['专业能力','Skills'],work:['工作经历','Experience'],projects:['项目经历','Projects'],edu:['教育经历','Education'],honors:['荣誉奖项','Honors'],portfolio:['个人作品','Portfolio'],research:['研究经历','Research'],other:['其他经历','Other']};return map[m.key]?tt(map[m.key][0],map[m.key][1]):m.label;}
 function blockHTML(m){
