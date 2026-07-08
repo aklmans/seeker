@@ -1224,3 +1224,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议]⑤**:.claude/launch.json 换行重排=preview 工具噪声勿误提交(已排除在外);评审按符号去重数 171 vs 报 172=计数口径差非缺陷。
 
 **10a+10b 通过(198→172 桥、d.ts 0 本)。** 剩 10c(ai-engine→module 红线单送)+ 10d(全网 flip;checklist:①copilot-actions @ts-check 时复验 AGENT_CMDS 字面量 ②真机覆盖 i18n→shell-state 载序前移 ③shell-state flip tt 后维持零 eager 互读[禁顶层 T/L])。
+
+---
+
+### 批10c(commit `c36dabe`)· ai-engine.js → module(★最后一个 classic 外链清零 · 红线刀)· ⏳ 待审
+**红线单送**(约束③ 加倍审)。ai-engine.js classic → type=module,函数体逐字节零改(diff 仅 2 个 export 前缀 + 头注释 + import 块):
+- export extractSeekerBlock/streamReply;**aiLangHint 私有**(零外部消费者);自身 7 裸依赖全 import(tt/setState/aiHTML/displayText/toolStatusText/aiErrHTML/persistMsg)。
+- **零 window 桥收官**:两消费者同刀 flip——copilot-chrome(streamReply)+ intake-job(extractSeekerBlock,apps→platform);ai-render 3 solo 桥随刀销(displayText/toolStatusText/aiErrHTML 唯一消费者=ai-engine;先亲验 grep 除定义/ai-engine 外零命中),aiHTML 桥留(copilot-chrome hydrateMessages 裸读、10d)。
+- **红线四属性逐字**:①卡剥离走 SeekerShell.cards() 契约、prose 经 aiHTML、AI 原始 HTML 不进 DOM、持久卡 persist 过滤 ②JSON 经 CARDS[kind].valid 后才 push/show ③Untrusted 当数据非指令 ④grep 证 cards()×2/valid×2/aiHTML×3/persist 逐字在。
+- **载序(裁定②核对)**:依赖 tag(i18n@861/ai-render@864/shell-state@866/data-store@867)皆早于 @869 → **import 边零提升**;顶层零语句零 eager 读;消费者全 runtime。
+- **★里程碑:index.html classic 外链 = 0**(活跃 JS 全 type=module;classic 时代终结)。
+- **验**:node×4/tsc 0;preview 净方法(③(b) 最高危形=classic→module 同 URL、定向 4 文件重验):0 错;**extractSeekerBlock LIVE 逐字语义**(合法块解析+剥离、broken JSON→data null+prose 不剥=第14行语义);**ai-engine off-window → `?bust=` import 安全验 exports**(裁定③ on/off-window 分野的正用);3 solo 桥 undefined+aiHTML 在;**★copSend 全链 LIVE**(点击→3 条消息=copilot-chrome import 解析成功);11 页。**★真机金标准**(cargo asset:// 免缓存):重编 6.26s、boot 无崩、零 panic = definitive。
+- **账本进度**:172 → 169 桥(3 solo 销;ai-engine 自身零桥入账)。**剩 10d**(全网 flip ~133+23,+真机,checklist ×3:AGENT_CMDS 字面量复验/真机覆盖 i18n→shell-state 载序前移/shell-state flip tt 后零 eager 互读)。**8123 已释放。**
