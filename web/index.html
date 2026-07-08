@@ -863,6 +863,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script type="module" src="./platform/shell/modal.js"></script>
 <script type="module" src="./platform/shell/ai-render.js"></script>
 <script type="module" src="./platform/shell/nav.js"></script>
+<script type="module" src="./platform/shell/shell-state.js"></script><!-- 批9a:壳状态 PAGES/GROUPS/setState/WEIGHTS + 设置/数据框架(原 index.html inline);置于 SHELL BOOT 前供 PAGES/GROUPS module-eval 急读 -->
 <script src="./platform/shell/ai-engine.js"></script>
 <script type="module" src="./platform/shell/data-store.js"></script>
 <script type="module" src="./platform/shell/profile.js"></script>
@@ -941,11 +942,9 @@ function dotsHTML(lvl, cls){let s='<span class="dots '+(cls||'')+'">';for(let i=
 
 /* ============ NAV ============ */
 /* 多应用平台(阶段1):导航项/分组由壳组合 —— apps/jobseek/manifest.js 注册业务页、
-   壳自持设置页(文件尾 SHELL BOOT 段 setShell + 填充)。PAGES/GROUPS **保名空置**,
-   让全部既有消费方(buildNav/buildPages/go/initKeys/setLang/rerenderPages)零改动;
+   壳自持设置页(文件尾 SHELL BOOT 段 setShell + 填充)。
    图标随页面条目走(p.icon),原 NAV_ICONS 字典迁入 manifest。 */
-const PAGES=[];
-const GROUPS={};
+/* ★批9a:PAGES/GROUPS(+ setState/WEIGHTS + 设置/数据框架)已抽壳 → platform/shell/shell-state.js;载序早于 SHELL BOOT(供 PAGES/GROUPS module-eval 急读 @1243/1244)。消费方按全局名读不变(过渡桥)。 */
 /* I18N/L/T 已抽壳 → platform/shell/i18n.js(抽壳序1-c) */
 /* current/buildNav/syncNavCounts/setLang/rerenderPages 已抽壳 → platform/shell/nav.js(序1-g);chrome updateAgentChrome/updateCopChrome 已抽壳 → platform/shell/copilot-chrome.js(序3-d-12) */
 /* go/renderTopActions/toggleTheme/frontis/signFoot 已抽壳 → platform/shell/nav.js(序1-g) */
@@ -964,50 +963,8 @@ const GROUPS={};
 <script type="module" src="./apps/jobseek/pages/actions.js"></script>
 <script>
 /* ---------- SETTINGS ---------- */
-let setState={theme:'light', fontsize:'14', goal:20, trainCounts:true, lang:'zh', density:'standard', motion:'on', autobackup:'on', period:'2026 年 6 月', salary:'30 — 60 万'};
-/* settingsState/MODEL/SET_TABS 已抽壳 → platform/shell/settings.js(序5-c-3;SET_TABS 裁剪+app tabs 契约插入,见该文件头注释③) */
-const WEIGHTS=[['兴趣分',40],['成长分',30],['匹配分',20],['机会分',10]];
-
-/* ===== 数据设置持久化(除非用户清除,持续保留)。profile 落盘(rt.profile · 隔离);
-   目标/权重/外观偏好走 localStorage(jh-settings);theme/lang 沿用各自既有键。 ===== */
-function settingsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
-function saveSettings(){
-  try{ localStorage.setItem('jh-settings', JSON.stringify({
-    fontsize:setState.fontsize, goal:setState.goal, trainCounts:setState.trainCounts, density:setState.density,
-    motion:setState.motion, autobackup:setState.autobackup, period:setState.period, salary:setState.salary,
-    weights:WEIGHTS.map(w=>w[1])
-  })); }catch(_e){}
-}
-function hydrateSettings(){
-  try{ const s=JSON.parse(localStorage.getItem('jh-settings')||'null'); if(!s) return;
-    ['fontsize','goal','trainCounts','density','motion','autobackup','period','salary'].forEach(k=>{ if(s[k]!=null) setState[k]=s[k]; });
-    if(Array.isArray(s.weights)) s.weights.forEach((v,i)=>{ if(WEIGHTS[i]!=null && typeof v==='number') WEIGHTS[i][1]=v; });
-  }catch(_e){}
-}
-/* persistProfileField/hydrateProfile(+rt-ready)已抽壳 → platform/shell/profile.js(序5-a · ★★双红线:rt.profile 隔离、绝不串 rt.db;profile 只经设置页改) */
-/* _mgrEsc/_mgrTime/openHistoryManager/openMemoryManager/openDocsManager/openMcpManager 已抽壳 → platform/shell/settings.js(序5-c-3;隐私/RAG/MCP 管理,零 jobseek 依赖) */
-// 清空所有业务数据(#业务打磨):清前自动备份;种子守卫保证清后不再播种演示数据。
-// 阶段4-0(第22轮[建议]落地):集合清单经 SeekerShell.collections() 契约枚举(全部已注册应用∪壳自持,存在性口径)
-// —— 新应用集合自动纳入,「清空全部数据」永不静默漏集合(§4-3 可撤销完整性);
-// app-local 状态复位经 SeekerShell.notifyDataCleared() 契约(第9契约,如 jobseek 退演示模式),平台零 setDemoMode 直调。
-async function clearAllCollections(){ // 抽出便于安全测试 + 不依赖 reload
-  const rt=window.SeekerRT; if(!rt) return;
-  try{ await rt.db.backup(); }catch(_e){}                 // 清前自动备份(可日后导入恢复)
-  for(const c of window.SeekerShell.collections()){
-    try{ const rows=await rt.db.list(c); for(const r of rows){ try{ await rt.db.remove(c, r.id); }catch(_e){} } }catch(_e){}
-  }
-}
-function clearAllDataFlow(){
-  const G=window.SeekerGuardrail;
-  if(!G||!G.confirmDestructive||!window.SeekerRT){ toast(tt('该端暂不支持','Not supported here')); return; }
-  const n=window.SeekerShell.collections().length;
-  G.confirmDestructive({
-    title:tt('清空所有业务数据?','Clear all data?'),
-    detail:tt('将删除全部应用的业务数据与对话历史(共 '+n+' 个数据集合,含已停用应用)。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all apps\' business data and chat history ('+n+' collections, including disabled apps). Personal info and settings stay. A backup is saved first — you can re-import it later.'),
-    confirmLabel:tt('清空','Clear'),
-    onConfirm:async()=>{ await clearAllCollections(); window.SeekerShell.notifyDataCleared(); markOnboarded(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
-  });
-}
+/* ★批9a:setState/WEIGHTS + 设置/数据框架(settingsPersistOn/saveSettings/hydrateSettings/clearAllCollections/clearAllDataFlow)已抽壳 → platform/shell/shell-state.js(过渡桥;消费者裸全局读不变)。 */
+/* settingsState/MODEL/SET_TABS 已抽壳 → platform/shell/settings.js(序5-c-3);persistProfileField/hydrateProfile → platform/shell/profile.js(批8 双红线);_mgrEsc/openHistoryManager/openMemoryManager/openDocsManager/openMcpManager → settings.js(序5-c-3) */
 /* renderSettings 已抽壳 → platform/shell/settings.js(序5-c-3;拆分+契约消费,非纯剪切,偏离逐条见该文件头注释) */
 
 /* wireDataIO 已抽壳 → platform/shell/settings.js(序5-c-3) */
