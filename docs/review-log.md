@@ -1053,3 +1053,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **真机金标准定序认可**:桌面 jobseek 持久禁用 → preview fresh(jobseek 启用)是更佳业务测环境;批6(影响 boot+全页)做真机。
 
 **批5 通过。** 下一步批6(data.js+match.js 核心时序刀:JOBS[0] parse-time → import {JOBS},同批A型 import 图定序;★真机金标准)。
+
+### 批6(commit `b1676bc`)· data.js + match.js 核心时序刀 → ES module(★高风险 parse-time)· 待审
+**批6 核心协调刀**:data.js(JOBS/SKILLS/ACTIONS provider,被 77 处消费 JOBS)转 module,解 parse-time JOBS[0] 时序。函数体逐字节零改。
+- **data.js**:export JOBS/SKILLS/ACTIONS(mutated-property:`.push`/`.length=0`/`.splice`/hydration in-place → dual-publish 同引用即安全、免访问器)+ 9 const(STATUS/ACCRUAL/PRI/CAT_LABEL/TOP_GAPS/KEYWORDS/PIPELINE/GENERAL/META)桥;CITY_DIST/KIND_DIST/TECH_META 私有。**自包含叶子**(零外部符号依赖;module-eval 的 `SKILLS.forEach`/`GENERAL.forEach`/`META.forEach` 全自包含、无外部时序风险)。
+- **match.js**:export matchState(mutated dual-publish,cards/copilot-actions 跨文件 `.k=` 同引用安全)+ renderMatch/runMatch 桥;matchReadout/bindReadout 私有。红线:renderMatch 渲 RESUME.filename/derivedSkills 元数据、无联系方式。
+- **★载序命门(评审第35轮前瞻的脆弱点、本轮重验)**:`data.js module@929` 早于 `match@1041`/`interview@1052`/`resumes@1053` —— 它们顶层 `let state={jobId:JOBS[0].id}` 于 **module-eval 急读 window.JOBS**;doc 序 929<1041<1052<1053 保 **data 先 eval、JOBS 桥就绪**(JOBS[0] 非空由 mock 12 保证)。= 批A型 import 图定序的 **tag-order 变体**;评审第35轮已裁 tag-order 可接受、本轮重验。
+- **验(fresh clean 载 preview 冒烟 · 0 console error)**:INIT done + **window.JOBS=12 jobs** + **★eager JOBS[0] 读全初始化**(`matchState.jobId===JOBS[0].id` + `ivState.jobId===JOBS[0].id` + `resumeState.jobId===JOBS[0].id`——**评审前瞻的脆弱点验证通过**)+ JOBS dual-publish `.push` mutate 同引用 + data 桥 10/10 + 私有(CITY_DIST/KIND_DIST/TECH_META/matchReadout)不上桥 + 9 页全渲 + match 渲染。node×2/tsc0。
+- **★真机 WKWebView 金标准(asset:// 免缓存)**:`cargo run` 重编译 **6.63s**(含批6、binary mtime > index.html)、**启动 + 壳渲染无崩**(dark 主题、JOBHUNT/资产/系统 nav、总览、v0.1.0)——**data.js module + 全业务模块 module-eval 不崩 boot**(若 data 未先 eval、eager 读会 throw)。⚠桌面 localStorage jobseek 持久禁用 → match/interview/resumes 页不在桌面 nav、eager-read 精确值靠 **preview clean 冒烟证**(jobseek 启用环境)。
+- **★方法论固化**:批6 起沿用「fresh restart + force-revalidate 后 clean 载才是 console 判据」(批5 stale-cache 教训)——本轮 clean 载 0 err。**8123 已释放,评审可亲跑 preview。**
