@@ -1029,3 +1029,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★流程闭环**:评审谢 exec 释放 8123(连续 4 轮诉求)→ 高风险批 5/6/8 **exec 亲跑 preview + 真机金标准 + 评审也亲跑 preview(端口保持可用)叠加**。
 
 **批1-4 🏁 通过。** 下一步批5(interview+resumes 协调刀:ivRec 移 resumes + 循环 import + parse-time)。
+
+### 批5(commit `c794ea2`)· interview+resumes 协调刀 → ES module(★高风险)· 待审
+**第一个高风险协调批**:2 文件同批转 module(循环耦合 + ivRec 跨文件所有权移动 + parse-time JOBS[0])。函数体逐字节零改。
+- **★ivRec 所有权 interview.js:5 → resumes.js**:核实其生命周期全在 resumes(ivToggleVoice/ivStopVoice/ivVoiceDemo 的 `ivRec=new SR()`/`=null`/`='demo'`、9 处读写全在 resumes),**interview.js 从不引用**(仅第5行声明)→ 移后 resumes 内**私有**(reassigned 但文件本地、不上桥不访问器)、**消除跨文件 reassigned 纠缠**(否则需 setter 原子翻转)。这是"reassigned+跨文件"的最优解=归位为文件私有。
+- **interview.js**:export ivState(mutated dual-publish,含 resumes 跨文件 `.k=` mutate 同引用安全)+ renderInterview 桥;ivResumeRef 私有。
+- **resumes.js**:export resumeState(mutated dual-publish,含 interview 内联 onclick `resumeState.jobId=X` 跨文件写)+ renderResumes/resumeGenerate + **10 iv***(ivBankHTML/ivRecordsHTML/ivStopVoice/ivStartRound/ivGenerate/ivAddQuestion/ivBindBank/ivBindRecords/ivPractice/ivRenderSummary,供 interview.renderInterview 循环消费)桥;ivRec + ~27 resume 编辑/导出内部函数私有。
+- **★循环耦合**:interview.renderInterview 调 resumes 的 10 iv*、resumes 调 renderInterview + 读写 ivState —— 全运行时经桥、安全(无 parse-time 循环)。
+- **★parse-time JOBS[0]@interview:4/resumes:4**:data.js 仍 classic → JOBS 全局词法就绪、module-eval 读安全(批6 data.js 转时改 `import {JOBS}`)。
+- **★红线逐字保留(函数体)**:resumes 只存专业模块结构、**联系方式绝不入 resumes 集合**(走独立 PROFILE 实时渲染)→ query_data('resumes') 天然无联系方式;PROFILE 现经**全局词法读 classic profile.js**(批8 profile 转 module 时 resumes 改 `import {PROFILE}`)。
+- **★踩坑(方法论)**:初次冒烟 console 报 `renderInterview/renderResumes not defined @buildPages` → 判**浏览器缓存旧 classic 版当 module 跑(无 window 桥)**;**重启 server + force-revalidate 后 fresh clean 载 = 0 console error**(同 copilot-chrome;第29轮"功能测须 clean 载、桥 undefined 先排缓存"教训)。
+- **验(fresh clean 载 · 0 console error)**:INIT done + **15/15 桥** + ivRec/ivToggleVoice/内部函数私有不上桥 + **★INIT buildPages 直接渲 interview/resumes(非 rerenderPages 兜底,clean 载页有内容)** + 循环耦合切页(interview 含 INTERVIEW/resumes 渲染)+ **resumeState dual-publish 跨文件 mutate 同引用可见** + **ivStopVoice(用移入的 ivRec)OK 不抛** + 9 页全渲。node×2/tsc0。
+- **★真机金标准**:jobseek 业务批的真机验受限(桌面 localStorage jobseek 持久禁用 → interview/resumes 页不在桌面 nav;**preview fresh〔jobseek 启用〕反而是更佳业务测环境**);故 jobseek 业务批(5)靠 clean preview,批6(data+match、影响 boot+全页)做真机金标准。**8123 已释放,评审可亲跑 preview。**
