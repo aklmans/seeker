@@ -935,8 +935,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 /* ICONS 已抽壳 → platform/shell/icons.js(抽壳序1-b) */
 
 
-/* skill demand matrix for analysis (top skills × first companies) */
-function dotsHTML(lvl, cls){let s='<span class="dots '+(cls||'')+'">';for(let i=1;i<=5;i++)s+='<span class="'+(i<=lvl?'on':'')+'"></span>';return s+'</span>';}
+/* ★批9c:dotsHTML(技能点渲染件)已归位 → apps/jobseek/logic/job-actions.js(过渡桥;analysis/skills 裸全局读不变)。 */
 </script>
 <script>
 /* ============ HELPERS ============ */
@@ -972,27 +971,7 @@ function dotsHTML(lvl, cls){let s='<span class="dots '+(cls||'')+'">';for(let i=
 /* wireDataIO 已抽壳 → platform/shell/settings.js(序5-c-3) */
 
 /* renderModelList/selectModelUI/removeModelUI/addModelUI/wireModelConfigDesktop 已抽壳 → platform/shell/settings.js(序5-c-3) */
-// 首启价值主张落地页(评审 ★A/B):一句话说清"是什么/为什么/给谁" + 本地优先·隐私·反焦虑信任锚 + 岔路。
-function renderFirstRun(){
-  const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;">
-    <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0;">— ${tt('本地优先 · 反焦虑','LOCAL-FIRST · CALM')}</p>
-    <h2 class="sectitle" style="font-size:28px;margin:11px 0 0;">${tt('把求职,当成一个研究项目','Run your job hunt like a research project')}<span class="dot">.</span></h2>
-    <p style="font-size:14.5px;color:var(--ink-2);line-height:1.75;max-width:620px;margin:14px 0 0;">${tt('收集你心仪的岗位,Seeker 帮你反推出「该补什么能力、简历怎么改、面试怎么练」。所有数据只存在你的电脑里,联系方式永不参与 AI。','Collect the jobs you want, and Seeker reverse-engineers what skills to build, how to tune your resume, and how to prep interviews. All your data stays on this machine — your contact details never go to AI.')}</p></div>`;
-  const steps=`<div class="sec" style="border-bottom:none;padding-top:10px;">
-    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('上传你的简历','Upload your resume')}</h3><p>${tt('AI 自动把你的技能 / 经历建成「能力档案」—— 本地处理、联系方式不参与 AI;解锁匹配与缺口分析。','AI builds your skills & experience into a career-asset profile — local-only, contact details excluded; unlocks matching & gap analysis.')}</p><button class="btn" id="frResume" style="margin-top:10px;">${tt('+ 上传简历','+ Upload resume')}</button></div></div>
-    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('录入 3-5 个心仪岗位','Add 3-5 jobs you want')}</h3><p>${tt('粘贴 JD,Seeker 自动抽取要求 —— 简历 + 岗位齐了,才算得准匹配、找得出缺口。','Paste a JD and Seeker auto-extracts the requirements — with both resume and jobs, it can compute fit and find gaps.')}</p></div></div>
-    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('看匹配与缺口,定行动','See fit & gaps, then act')}</h3><p>${tt('AI 算出你与每个岗位的差距、该补什么,一键排进行动:补能力 / 改简历 / 练面试。稳步推进 —— 你没有落后。','AI computes your gap to each job and what to build — turn it into actions: skills / resume / interviews. Steady progress — you\'re not behind.')}</p></div></div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:26px;">
-      <button class="btn btn-accent" id="frStart">${tt('+ 录入第一个岗位','+ Add your first job')}</button>
-      <button class="btn" id="frDemo">${tt('先用示例数据逛一圈 →','Explore with sample data →')}</button>
-    </div></div>`;
-  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('开始吧','Get started'))+hero+steps+signFoot();
-  const rb=$('#frResume'); if(rb) rb.onclick=()=>{ markOnboarded(); renderOverview(); openResumeModal(); }; // 上传简历:标记上手 → 工作台 → 简历模态(解锁匹配/缺口)
-  const s=$('#frStart'); if(s) s.onclick=()=>{ markOnboarded(); renderOverview(); openNewJob(); };  // 开始我的:标记上手 → 空工作台 → 录第一个岗位
-  const d=$('#frDemo'); if(d) d.onclick=()=>{ seedDemoData(); };                                     // 先逛示例:显式播种 + 示例提示条
-}
-// 设置页「查看引导态」:强制预览落地页(已上手用户也能看)。
-function showEmptyState(){ go('overview'); renderFirstRun(); }
+/* ★批9c:renderFirstRun/showEmptyState(首启落地页 + 设置页引导预览)已归位 → apps/jobseek/logic/demo-seed.js(首启/演示同 surface;showEmptyState 经 settings.js 内联 onclick 消费 → 保 window 桥)。 */
 
 </script>
 <script type="module" src="./apps/jobseek/logic/intake-job.js"></script>
@@ -1000,16 +979,12 @@ function showEmptyState(){ go('overview'); renderFirstRun(); }
 <script type="module" src="./apps/jobseek/logic/match.js"></script>
 <script type="module" src="./apps/jobseek/logic/resume-modals.js"></script>
 <script>
-/* ---------- per-job AI: resume rewrite ---------- */
-function aiResumeForJob(id){
-  const j=JOBS.find(x=>x.id===id);
-  resumeGenerate(id, renderResumes);
-}
-function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; ivState.q=null; ivState.search=''; go('interview'); renderInterview(); }
+/* ★批9c:aiResumeForJob/goInterview(岗位→简历/面试快捷动作)已归位 → apps/jobseek/logic/job-actions.js(过渡桥;jobs/match/cards/copilot 消费不变)。 */
 
 </script>
 <script type="module" src="./apps/jobseek/logic/interview.js"></script>
 <script type="module" src="./apps/jobseek/logic/resumes.js"></script>
+<script type="module" src="./apps/jobseek/logic/job-actions.js"></script><!-- 批9c:岗位快捷动作 + 市场价值 + dotsHTML(原 index.html inline;消费全 runtime) -->
 <script type="module" src="./apps/jobseek/logic/copilot-actions.js"></script>
 <script type="module" src="./apps/jobseek/logic/frame-query.js"></script>
 <script type="module" src="./apps/jobseek/logic/persistence.js"></script>
@@ -1017,21 +992,7 @@ function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; iv
 <script type="module" src="./apps/jobseek/logic/settings-jobseek.js"></script>
 <script type="module" src="./apps/jobseek/cards.js"></script>
 <script>
-/* ---------- MARKET VALUE modal ---------- */
-function openMarketValue(){
-  const html=`<div class="modal-head"><div><p class="eyebrow">— MARKET VALUE</p><h2 style="margin-top:5px;">${tt('你的市场价值报告','Your market-value report')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body"><div id="mvHost"></div></div>`;
-  const m=openModal(html);
-  aiRun($('#mvHost',m),[tt('聚合你的能力档案与项目证据','Aggregating your assets & evidence'),tt('对照 12 份目标 JD 与市场薪资带','Comparing against 12 JDs & salary bands'),tt('估算你的市场定位','Estimating your market position')],
-    ()=>`<div style="text-align:center;padding:8px 0 18px;border-bottom:0.5px solid var(--border);">
-      <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 8px;">${tt('综合估算 · 年包','Estimate · annual')}</p>
-      <div class="score-big" style="justify-content:center;"><span class="v accent">${YOU_VALUE}</span><span class="u">${tt('万 / 年','w / yr')}</span></div>
-      <p style="font-size:12.5px;color:var(--ink-3);margin:12px 0 0;">${tt('落在「后端 · 高级」带的中上沿,补齐 1-2 项复利能力即可冲「专家」带。','Upper-mid of the Senior Backend band; fill 1-2 compounding skills to reach the Expert band.')}</p></div>
-    <div class="msec" style="border-bottom:none;"><p class="seclabel">— LEVERAGE</p><h3 class="sectitle" style="font-size:15px;margin-bottom:10px;">${tt('最高杠杆动作','Highest-leverage moves')}<span class="dot">.</span></h3>
-      ${[[tt('补齐 分布式系统 证据','Add distributed-systems evidence'),tt('已有经历,整理即用,提升匹配最快','Already have it — organize and use; fastest match gain')],[tt('完成 Rust 项目','Finish the Rust project'),tt('稀缺 + 需求半年涨 42%,差异化最大','Scarce + demand up 42% in 6mo; biggest differentiator')],[tt('强化 系统设计 表达','Sharpen system-design delivery'),tt('高级岗硬门槛,直接影响面试通过率','Senior-role gate; directly affects pass rate')]].map((x,i)=>`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${x[0]}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:3px;">${x[1]}</div></div></div>`).join('')}
-      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">${tt('这份报告在职时也值得每季度看一次 —— 把求职工具变成长期的职业资产管家。','Worth reviewing quarterly even while employed — turning a job tool into a long-term career-asset manager.')}</p></div>`,
-    {label:tt('估算市场价值中…','Estimating market value…')});
-}
+/* ★批9c:openMarketValue(市场价值模态)已归位 → apps/jobseek/logic/job-actions.js(ownership 订正:读 YOU_VALUE/aiRun 皆 jobseek;analysis/skills 内联 onclick 消费 → 保 window 桥)。 */
 
 /* ============ COPILOT (global AI command surface) ============ */
 /* Copilot 面板机制 copEl…copAppend + cCard/cAct/cBtn/cSuggs 已抽壳 → platform/shell/copilot-chrome.js(序3-a) */

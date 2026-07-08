@@ -44,6 +44,30 @@ export function syncDemoBanner(){
   } else if(bar){ bar.remove(); }
 }
 
+/* ★批9c:首启落地页(原 index.html inline)归位至此 —— 首启/演示同 surface,frDemo 直调同文件 seedDemoData。 */
+// 首启价值主张落地页(评审 ★A/B):一句话说清"是什么/为什么/给谁" + 本地优先·隐私·反焦虑信任锚 + 岔路。
+export function renderFirstRun(){
+  const hero=`<div class="sec" style="border-bottom:none;padding-bottom:0;">
+    <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0;">— ${tt('本地优先 · 反焦虑','LOCAL-FIRST · CALM')}</p>
+    <h2 class="sectitle" style="font-size:28px;margin:11px 0 0;">${tt('把求职,当成一个研究项目','Run your job hunt like a research project')}<span class="dot">.</span></h2>
+    <p style="font-size:14.5px;color:var(--ink-2);line-height:1.75;max-width:620px;margin:14px 0 0;">${tt('收集你心仪的岗位,Seeker 帮你反推出「该补什么能力、简历怎么改、面试怎么练」。所有数据只存在你的电脑里,联系方式永不参与 AI。','Collect the jobs you want, and Seeker reverse-engineers what skills to build, how to tune your resume, and how to prep interviews. All your data stays on this machine — your contact details never go to AI.')}</p></div>`;
+  const steps=`<div class="sec" style="border-bottom:none;padding-top:10px;">
+    <div class="guide-step"><span class="gnum">— 01</span><div><h3>${tt('上传你的简历','Upload your resume')}</h3><p>${tt('AI 自动把你的技能 / 经历建成「能力档案」—— 本地处理、联系方式不参与 AI;解锁匹配与缺口分析。','AI builds your skills & experience into a career-asset profile — local-only, contact details excluded; unlocks matching & gap analysis.')}</p><button class="btn" id="frResume" style="margin-top:10px;">${tt('+ 上传简历','+ Upload resume')}</button></div></div>
+    <div class="guide-step"><span class="gnum">— 02</span><div><h3>${tt('录入 3-5 个心仪岗位','Add 3-5 jobs you want')}</h3><p>${tt('粘贴 JD,Seeker 自动抽取要求 —— 简历 + 岗位齐了,才算得准匹配、找得出缺口。','Paste a JD and Seeker auto-extracts the requirements — with both resume and jobs, it can compute fit and find gaps.')}</p></div></div>
+    <div class="guide-step" style="border-bottom:none;"><span class="gnum">— 03</span><div><h3>${tt('看匹配与缺口,定行动','See fit & gaps, then act')}</h3><p>${tt('AI 算出你与每个岗位的差距、该补什么,一键排进行动:补能力 / 改简历 / 练面试。稳步推进 —— 你没有落后。','AI computes your gap to each job and what to build — turn it into actions: skills / resume / interviews. Steady progress — you\'re not behind.')}</p></div></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:26px;">
+      <button class="btn btn-accent" id="frStart">${tt('+ 录入第一个岗位','+ Add your first job')}</button>
+      <button class="btn" id="frDemo">${tt('先用示例数据逛一圈 →','Explore with sample data →')}</button>
+    </div></div>`;
+  $('#page-overview').innerHTML=frontis('OVERVIEW',tt('开始吧','Get started'))+hero+steps+signFoot();
+  const rb=$('#frResume'); if(rb) rb.onclick=()=>{ markOnboarded(); renderOverview(); openResumeModal(); }; // 上传简历:标记上手 → 工作台 → 简历模态(解锁匹配/缺口)
+  const s=$('#frStart'); if(s) s.onclick=()=>{ markOnboarded(); renderOverview(); openNewJob(); };  // 开始我的:标记上手 → 空工作台 → 录第一个岗位
+  const d=$('#frDemo'); if(d) d.onclick=()=>{ seedDemoData(); };                                     // 先逛示例:显式播种 + 示例提示条
+}
+// 设置页「查看引导态」:强制预览落地页(已上手用户也能看)。
+export function showEmptyState(){ go('overview'); renderFirstRun(); }
+
 /* 过渡 window 桥:captureSeed/syncDemoBanner 经 manifest.init;setDemoMode 经 manifest.onDataCleared;seedDemoData 被 index.html 落地页 onclick。
+   ★批9c:renderFirstRun 被 overview.js:6 裸全局读;showEmptyState 被 settings.js:384 内联 onclick="showEmptyState()" 消费 → **须保 window 桥**(内联属性按 window 解析)。
    ★SEED(let,reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器。 */
-window.captureSeed=captureSeed; window.syncDemoBanner=syncDemoBanner; window.setDemoMode=setDemoMode; window.seedDemoData=seedDemoData;
+window.captureSeed=captureSeed; window.syncDemoBanner=syncDemoBanner; window.setDemoMode=setDemoMode; window.seedDemoData=seedDemoData; window.renderFirstRun=renderFirstRun; window.showEmptyState=showEmptyState;
