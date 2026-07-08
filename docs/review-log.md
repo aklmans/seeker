@@ -1140,3 +1140,20 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **真机金标准采信**:cargo asset:// 重编译 5.89s + boot 无崩(进程稳 2.5min/134MB、窗口 Seeker 1880×964 visible、无 panic)= data/profile module + 全业务 module-eval 不崩 boot、asset:// 免缓存 = definitive 证代码正确(同 R1 留痕采信)+ preview 净方法双证。
 
 **批8 通过 —— PROFILE 现对 window/AI 结构性不可达,隐私红线从抽壳前"全局可读"收紧到"仅显式 importer"、实打实强化安全。** 剩批9(index.html inline→module)+ 批10(账本清空 · shell-globals tt 末条)= classic 业务层 module 化 + 账本全收尾。
+
+---
+
+### 批9a(commit `93b1386`)· 壳核心状态 + 设置/数据框架 index.html inline → shell-state.js · ⏳ 待审
+**批9(index.html inline → module)拆 3 子批(第38轮后与用户对齐:真实体量 6 块 ~370 行 ~24 符号、boot-critical → 拆 9a 壳状态 / 9b 键盘+chrome+widget / 9c jobseek 业务)。9a = 第一刀**。9 符号从 index.html classic inline **逐字节零改**抽出为 `platform/shell/shell-state.js`:
+- 壳状态:**PAGES/GROUPS**(mutated-property;SHELL BOOT@1243/1244 module-eval 急读 `PAGES.push`/`Object.assign(GROUPS)`)+ **setState/WEIGHTS**。
+- 设置/数据框架:settingsPersistOn/saveSettings/hydrateSettings + **clearAllCollections/clearAllDataFlow**(破坏性红线:预览+确认+可撤销+清前备份,逐字保留)。
+- 全 export + 过渡 window 桥;消费者(SHELL BOOT/nav/settings/profile/settings-jobseek/demo-seed/index.html initKeys/shellReassemble)裸全局读不变。9c 符号(renderFirstRun/showEmptyState)仍留 inline。
+
+**★载序(命门)**:shell-state.js tag 置于 nav.js 后、SHELL BOOT 前 → PAGES/GROUPS 于 module-eval 即设桥,供 SHELL BOOT 急读。无 classic parse-time 读者(原 inline 亦无顶层读、消费全在函数体或 SHELL BOOT deferred module)→ 抽到 deferred module 安全(同批6 JOBS tag-order 型,但 provider=shell-state 早置)。
+
+**验证**:node --check OK;tsc exit 0(monolith-globals.d.ts:46 `setState` ambient 不变 → 消费者仍解析)。
+- **preview 净方法(fresh server + 平直 reload)**:0 console 错、**★window.PAGES.length===11**(SHELL BOOT 急读 push 到抽出的 PAGES 跨模块生效=命门验证)、GROUPS 5 键、setState.lang='zh'、WEIGHTS 4、nav 建好(5076)、overview/settings/skills/analysis 全渲、9 桥 typeof 就绪;截图证壳全渲(11 页 nav + 首启落地)。
+- **★真机金标准(cargo asset:// 免 HTTP 缓存)**:重编译 5.96s、boot 无崩(进程稳、窗口 Seeker 1880×964 visible、RSS 141MB、无 panic)=抽出 PAGES/GROUPS 跨模块急读在真 WKWebView 生效。
+- **★方法论(自纠)**:验证中一度 `import('shell-state.js?probe=')` 制造第二实例、其顶层 `window.PAGES=PAGES` 空数组**回填覆盖**了 canonical 桥(读到 len=0 假象)→ **带 window 副作用的 module 绝不可 cache-bust import**(会 clobber 桥);平直 reload 后 canonical PAGES.length===11。
+
+**剩 9b**(键盘系统 initKeys/isDesktop/toggleSidebar/contextNew/pageSearchInput/keysHelpHTML/syncSbToggleTitle + widget wgtAction + openMarketValue → 新 platform/shell 文件)· **9c**(jobseek 业务 dotsHTML/renderFirstRun/showEmptyState/aiResumeForJob/goInterview → apps/jobseek)· **批10**(账本清空)。**8123 已释放,评审可亲跑 preview。**
