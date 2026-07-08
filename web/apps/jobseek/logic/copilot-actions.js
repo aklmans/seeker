@@ -35,6 +35,9 @@ export function copNewJob(){copClose();openNewJob();}
 export function copNewAction(){copClose();openNewAction();}
 export function copMarket(){copClose();openMarketValue();}
 export function copResumeUpload(){copClose();openResumeUpload();}  // ★批11A:原 cBtn 复合串 'copClose();openResumeUpload()' 的包装(cAB 白名单按名调)
+/* ★第44轮[应改]修:agentChat 是不转义 innerHTML sink,若入 CACT_ALLOWED 则委派把 data-cargs 反射进 innerHTML = 重开白名单注释点名要防的「二次 innerHTML」放大面(评审 PoC 实证)。
+   本调用点本就只传固定串 → 仿 agentCancel 加无参包装,agentChat 从白名单移除;内部调用者(agentCancel/agentDeleteJob)走词法/import 调 agentChat 不受影响。 */
+export function agentBackupContinue(){ agentChat('(演示)清空已拦截 —— 真实版本会在此二次确认并支持撤销。'); }
 export function copDoneAct(id){const a=ACTIONS.find(x=>x.id===id);if(a){const prev={state:a.state,progress:a.progress};a.state='done';a.progress=100;renderActions();renderOverview();toastUndo('已标记完成 ✓',()=>{a.state=prev.state;a.progress=prev.progress;renderActions();renderOverview();});}copScroll();}
 
 export function agentDeleteJob(id){
@@ -63,7 +66,7 @@ export function copReply(t){
   if(has('删除','删掉','移除','去掉')&&j&&has('岗位','公司','它','这个','删'))
     return `确认删除岗位 <b>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</b>?它会从列表移除 —— 这一步可撤销,不会真正丢失。`+cAct([cAB('确认删除','agentDeleteJob',[j.id],true), cAB('取消','agentCancel',[])]);
   if(has('清空','清除所有','重置全部','删光','全部删'))
-    return `你要清空<b>所有数据</b>(岗位 / 简历 / 记录)?这是个大动作。建议先在「数据设置 → DATA」导出备份再操作。`+cAct([cAB('我已备份,继续','agentChat',['(演示)清空已拦截 —— 真实版本会在此二次确认并支持撤销。']), cAB('取消','agentCancel',[])]);
+    return `你要清空<b>所有数据</b>(岗位 / 简历 / 记录)?这是个大动作。建议先在「数据设置 → DATA」导出备份再操作。`+cAct([cAB('我已备份,继续','agentBackupContinue',[]), cAB('取消','agentCancel',[])]);
   // 0b. settings changes are NOT allowed via chat (privacy/security) — only open
   const tlow=t.toLowerCase();
   if(has('改','设为','调成','修改','调整','设成','换成','配置成')&&(has('设置','主题','字号','模型配置','隐私','权重','偏好','界面语言','密度','钥匙','密钥','接口','协议','base')||tlow.includes('api')||tlow.includes('key')||tlow.includes('token')||tlow.includes('url')))
@@ -180,4 +183,4 @@ export const AGENT_CMDS=[
 /* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.copResumeUpload=copResumeUpload; window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;
+window.copResumeUpload=copResumeUpload; window.agentBackupContinue=agentBackupContinue; window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;

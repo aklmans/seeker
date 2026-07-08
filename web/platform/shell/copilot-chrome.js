@@ -33,8 +33,12 @@ export const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csu
 // 任一未修 HTML 注入面若能落 <button data-cact="…">,不设防时可派发任意 window 函数,把 HTML 注入升级为 JS 执行 / 二次 innerHTML
 // (★注意 copAppend/agentAppend 本身即 innerHTML sink、eval/Function 等更甚 → 前缀判定不够,必须精确白名单)。此表堵住升级面。
 // ⚠ 新增 cAB 处理器时须在此登记(与 copReply 的 cAB('…',fn,…) 一一对应)。
-// ★批11A:cBtn→cAB 迁移新增 7 名(agentCancel/agentChat/copGo=chrome 自有;copNewJob/copNewAction/copMarket/copResumeUpload=jobseek,§1 名单债随批11B cActions 契约化清)。
-const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume','agentCancel','agentChat','copGo','copNewJob','copNewAction','copMarket','copResumeUpload']);
+// ★批11A:cBtn→cAB 迁移新增名(agentCancel/copGo=chrome 自有;copNewJob/copNewAction/copMarket/copResumeUpload/agentBackupContinue=jobseek,§1 名单债随批11B cActions 契约化清)。
+// ★★第44轮[应改]修 · 不变式:**白名单里不得有任何处理器把 data-cargs 参数反射进 innerHTML**——`agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),
+//   入白名单则委派按值把 data-cargs 传进 sink = 重开上方注释点名要防的「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行)。
+//   故 agentChat **不入白名单**;其唯一 cAB 调用点(固定串)改走无参包装 agentBackupContinue(同 agentCancel 先例)。
+//   ⚠ 新增白名单项前自检:该处理器的任一参数是否会流进 innerHTML / eval / Function / setTimeout(串)?是 → 改无参包装或先转义。
+const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume','agentCancel','agentBackupContinue','copGo','copNewJob','copNewAction','copMarket','copResumeUpload']);
 // 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 过白名单、args/值按值传 → onclick/copSend 注入类从根消除。
 document.addEventListener('click', (e)=>{
   const t=e.target; if(!t || !t.closest) return;
@@ -195,4 +199,4 @@ export async function hydrateMessages(){
    ★有状态不上桥:appMode(reassigned→getAppMode 读)、appReady(外部写→setAppReady)、cmdActive/cmdFiltered/CACT_ALLOWED(内部私有)。
    cEsc/cCard/cAct/cBtn/cAB/cSuggs = apps copReply 卡模板消费的导出(§4-4 转义纪律随迁)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.copGo=copGo; window.agentChat=agentChat; window.agentCancel=agentCancel; 
+window.copGo=copGo; window.agentCancel=agentCancel; 
