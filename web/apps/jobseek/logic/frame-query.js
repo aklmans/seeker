@@ -8,7 +8,7 @@
    泛化匹配(支持"给我排一个 Rust 训练计划"等含可变内容的问法)。
    改简历红线:resumes 集合只存专业模块(联系方式绝不入集合,始终从 profile 实时渲染),
    故 query_data('resumes') 天然不含联系方式;框定再显式要求"只改专业内容、不碰联系方式"。 */
-function frameQuery(text){
+export function frameQuery(text){
   const t = String(text || '');
   const G = '请**先用 query_data 工具**读取我本地的真实数据再据此回答,不要编造数据或岗位。';
   // 块4:AI 对话式 CRUD(放最前 —— 否则"把薪资改成X"会误命中下面的 value-card 等查询意图)。AI 一律只提案,落库由我在卡片确认。
@@ -44,3 +44,6 @@ function frameQuery(text){
       + '请在回答**末尾**附一个代码块渲染市场价值卡(正文简洁):\n```seeker:value-card\n{}\n```\n我的原始请求:' + t;
   return text;
 }
+
+/* 过渡 window 桥:frameQuery 经 manifest.frameQuery 契约 + copilot-chrome 消费。★红线逐字保留(在函数体):框定 prompt 的"联系方式绝不入集合、只改专业内容"等隔离措辞。 */
+window.frameQuery=frameQuery;

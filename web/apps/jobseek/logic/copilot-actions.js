@@ -3,22 +3,22 @@
  *  从 COPILOT 段的 chrome(copGo/agentChat/agentCancel/copSend,留 index.html)间择出;copSend(chrome)运行时调 copReply(本文件)
  *  —— 过渡态跨全局,契约化(copSend 经 SeekerShell 调应用回复)留新轮。classic 全局;依赖见 ../monolith-globals.d.ts。 */
 // 开场建议随数据态(评审 P0-6):零数据 → 引导上手(原"我和字节匹配吗"对新用户是死链);有数据 → 真实可用查询。EN 避撇号(cSuggs 内联 onclick)。
-function aiSuggs(){
+export function aiSuggs(){
   return JOBS.length
     ? [tt('我最该投哪个岗位?','Which job fits me best?'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?'), tt('帮我改简历','Help me tune my resume'), tt('我现在最该做什么?','What should I do next?')]
     : [tt('这个工具能帮我做什么?','What can this tool do for me?'), tt('我该从哪一步开始?','Where should I start?'), tt('你能读到我的哪些数据?','What data can you read?')];
 }
 
-function copMatch(jobId){copClose();matchState.jobId=jobId;matchState.done=false;go('match');renderMatch();setTimeout(runMatch,260);}
-function copInterview(jobId){copClose();goInterview(jobId);}
-function copPlan(skill,jobLabel){genPlanFromGap(skill,jobLabel||'');renderActions();renderOverview();copClose();toast('已生成「'+cEsc(skill)+'」训练计划');go('actions');} // skill 可为 gap/技能名(JD 抽取=§4-4 Untrusted);toast 经 el(innerHTML)→ 须 cEsc,否则 cAB 只是把注入点从 onclick 移到此 toast
-function copResume(jobId){copClose();aiResumeForJob(jobId);}
-function copNewJob(){copClose();openNewJob();}
-function copNewAction(){copClose();openNewAction();}
-function copMarket(){copClose();openMarketValue();}
-function copDoneAct(id){const a=ACTIONS.find(x=>x.id===id);if(a){const prev={state:a.state,progress:a.progress};a.state='done';a.progress=100;renderActions();renderOverview();toastUndo('已标记完成 ✓',()=>{a.state=prev.state;a.progress=prev.progress;renderActions();renderOverview();});}copScroll();}
+export function copMatch(jobId){copClose();matchState.jobId=jobId;matchState.done=false;go('match');renderMatch();setTimeout(runMatch,260);}
+export function copInterview(jobId){copClose();goInterview(jobId);}
+export function copPlan(skill,jobLabel){genPlanFromGap(skill,jobLabel||'');renderActions();renderOverview();copClose();toast('已生成「'+cEsc(skill)+'」训练计划');go('actions');} // skill 可为 gap/技能名(JD 抽取=§4-4 Untrusted);toast 经 el(innerHTML)→ 须 cEsc,否则 cAB 只是把注入点从 onclick 移到此 toast
+export function copResume(jobId){copClose();aiResumeForJob(jobId);}
+export function copNewJob(){copClose();openNewJob();}
+export function copNewAction(){copClose();openNewAction();}
+export function copMarket(){copClose();openMarketValue();}
+export function copDoneAct(id){const a=ACTIONS.find(x=>x.id===id);if(a){const prev={state:a.state,progress:a.progress};a.state='done';a.progress=100;renderActions();renderOverview();toastUndo('已标记完成 ✓',()=>{a.state=prev.state;a.progress=prev.progress;renderActions();renderOverview();});}copScroll();}
 
-function agentDeleteJob(id){
+export function agentDeleteJob(id){
   const idx=JOBS.findIndex(j=>j.id===id); if(idx<0){agentChat('没找到这个岗位。');return;}
   const job=JOBS[idx]; JOBS.splice(idx,1);
   const persist=jobsPersistOn();
@@ -37,7 +37,7 @@ function findJob(t){return JOBS.find(j=>t.includes(j.co))||JOBS.find(j=>t.includ
 function findSkill(t){return [...SKILLS].sort((a,b)=>b.name.length-a.name.length).find(s=>t.includes(s.name));}
 function findAction(t){return ACTIONS.find(a=>{const k=a.title.replace(/[·\s]/g,'');return [...k].some(()=>false)|| a.title.split(/[·\s]/).some(w=>w.length>1&&t.includes(w))|| (a.cap&&t.includes(a.cap));});}
 
-function copReply(t){
+export function copReply(t){
   const has=(...ws)=>ws.some(w=>t.includes(w));
   const j=findJob(t), sk=findSkill(t);
   // 0. destructive → preview + confirm (anti-anxiety guardrail)
@@ -126,7 +126,7 @@ function copReply(t){
    renderAgentCmds = 技能 chips(平台 agentInit/updateAgentChrome 经全局触发,渲染进 #agentCmds)。
    依赖 tt/$/$$(平台序1)+ agentSend/copGo/copNewJob(chrome/jobseek 运行时全局);逻辑零改动。 ---- */
 // Agent 命令 chips(双语;随语言重渲 —— 见 updateAgentChrome 调用)。查询也双语,配合 frameQuery 的中英关键词框定。
-function renderAgentCmds(){
+export function renderAgentCmds(){
   const host=$('#agentCmds'); if(!host) return;
   const cmds=[
     [tt('智能匹配','Smart match'), tt('我最该投哪个岗位?','Which job should I apply to?')],
@@ -141,7 +141,7 @@ function renderAgentCmds(){
   $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
 }
 /* ---- /command palette ---- */
-const AGENT_CMDS=[
+export const AGENT_CMDS=[
   {cmd:'/match', label:['智能匹配','Smart match'], desc:['最该投哪个','Best fit'], run:()=>agentSend(tt('我最该投哪个岗位?','Which job should I apply to?'))},
   {cmd:'/resume', label:['改简历','Tune resume'], desc:['打开简历','Open resume'], run:()=>copGo('resumes')},
   {cmd:'/interview', label:['面试陪练','Interview'], desc:['出题练习','Practice'], run:()=>copGo('interview')},
@@ -156,3 +156,7 @@ const AGENT_CMDS=[
   {cmd:'/market', label:['市场情报','Market intel'], desc:['趋势/薪资','Trends/pay'], run:()=>copGo('analysis')},
   {cmd:'/settings', label:['数据设置','Settings'], desc:['仅打开 · 不可改','Open only · read-only'], run:()=>copGo('settings')}
 ];
+
+/* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
+   ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
+window.agentDeleteJob=agentDeleteJob; window.aiSuggs=aiSuggs; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copReply=copReply; window.copResume=copResume; window.renderAgentCmds=renderAgentCmds; window.AGENT_CMDS=AGENT_CMDS;

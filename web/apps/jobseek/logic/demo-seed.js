@@ -8,11 +8,11 @@
    onboarded:已做首启选择(开始我的 / 逛示例)。迁移:旧版已被种子过的用户(jh-seeded-jobs)视为已上手,不弹落地页。 */
 let SEED=null; // 演示种子快照(INIT 时趁内存还是 mock 字面量抓一份,供"先逛示例"显式播种)
 function demoMode(){ try{ return localStorage.getItem('jh-demo')==='1'; }catch(_e){ return false; } }
-function setDemoMode(on){ try{ on?localStorage.setItem('jh-demo','1'):localStorage.removeItem('jh-demo'); }catch(_e){} }
-function captureSeed(){ if(SEED) return; try{ SEED={ jobs:JOBS.slice(), skills:SKILLS.slice(), actions:ACTIONS.slice(), ivRecords:IV_RECORDS.slice() }; }catch(_e){ SEED={jobs:[],skills:[],actions:[],ivRecords:[]}; } }
+export function setDemoMode(on){ try{ on?localStorage.setItem('jh-demo','1'):localStorage.removeItem('jh-demo'); }catch(_e){} }
+export function captureSeed(){ if(SEED) return; try{ SEED={ jobs:JOBS.slice(), skills:SKILLS.slice(), actions:ACTIONS.slice(), ivRecords:IV_RECORDS.slice() }; }catch(_e){ SEED={jobs:[],skills:[],actions:[],ivRecords:[]}; } }
 
 /** 显式播种演示数据(用户在落地页选「先用示例逛一圈」时)。用 INIT 抓的 SEED 快照持久化 + 标记演示模式。 */
-function seedDemoData(){
+export function seedDemoData(){
   captureSeed();
   if(SEED){
     JOBS.length=0; JOBS.push(...SEED.jobs);
@@ -26,7 +26,7 @@ function seedDemoData(){
   go('overview'); renderOverview(); syncDemoBanner();
 }
 /** 示例模式提示条(反焦虑:无红色;bg-subtle + 橙「示例」chip + 出口「清空示例,开始我的」)。本次会话可隐藏,重启仍提示以确保出口可达。 */
-function syncDemoBanner(){
+export function syncDemoBanner(){
   const main=document.querySelector('.main'); if(!main) return;
   let bar=document.getElementById('demoBanner');
   if(demoMode()){
@@ -43,3 +43,7 @@ function syncDemoBanner(){
     }
   } else if(bar){ bar.remove(); }
 }
+
+/* 过渡 window 桥:captureSeed/syncDemoBanner 经 manifest.init;setDemoMode 经 manifest.onDataCleared;seedDemoData 被 index.html 落地页 onclick。
+   ★SEED(let,reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器。 */
+window.captureSeed=captureSeed; window.syncDemoBanner=syncDemoBanner; window.setDemoMode=setDemoMode; window.seedDemoData=seedDemoData;
