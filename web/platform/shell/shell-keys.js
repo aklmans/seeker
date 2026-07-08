@@ -1,9 +1,9 @@
-// @ts-nocheck —— 批9b:壳键盘注册 + 侧栏 chrome 从 index.html inline 抽出为 module(逻辑零改动)。读 $/tt/IC/toast/openModal/closeModal/toggleTheme/go/currentPage/runLastUndo/PAGES/getAppMode/setAppMode/copToggle/copEl/copClose/agentCollapse/cmdIsOpen/cmdClose/openNewJob/openNewAction/SeekerKeys 仍运行时全局(待批10 转 import 再 @ts-check)。
+// @ts-nocheck —— 批9b:壳键盘注册 + 侧栏 chrome 从 index.html inline 抽出为 module(逻辑零改动)。平台依赖已 import(批10d);跨层契约全局 SeekerKeys/SeekerShell 保持 window(批11B contextNew 经 SeekerShell.pageNew 契约、不再裸读 apps 符号)。
 /** 平台 · 壳键盘注册(A 层 · 集中注册;分发模块在 platform/keys/keys.js)+ 侧栏 chrome(原 index.html inline 抽出 · 批9b)。
  *  initKeys 由 INIT-module 运行时调(deferred、晚于本 module eval → 桥就绪);isDesktop 被 shell-state/data-store/settings/copilot-chrome 运行时 typeof 守卫读;
  *  toggleSidebar 被 shell-boot.initShell 运行时接线(#sbCollapse.onclick);syncSbToggleTitle 被 nav.setLang typeof 守卫调。
  *  pageSearchInput/contextNew/keysHelpHTML 仅 initKeys 内消费(grep 证)→ module-private 不 export 不上桥。
- *  §1 归属债(pre-existing,随 CACT_ALLOWED 契约化账一并清):contextNew 硬编码 jobseek openNewJob/openNewAction——未来经 manifest 契约声明 per-page「新建」动作。 */
+ *  §1 归属债已清(批11B · pageNew):contextNew 原硬编码 jobseek openNewJob/openNewAction,现经 SeekerShell.pageNew(pageId) 契约声明 per-page「新建」动作(平台不再裸读 apps 符号)。 */
 
 /* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
 import { agentCollapse, cmdClose, cmdIsOpen, copClose, copEl, copToggle, getAppMode, setAppMode } from './copilot-chrome.js';
@@ -28,8 +28,10 @@ function pageSearchInput(id){
   return pg.querySelector('input[type="search"], input.iv-search, input.search, [data-search] input, input[data-search]');
 }
 function contextNew(){
-  const m={jobs:openNewJob, actions:openNewAction};
-  const fn=m[currentPage()]; if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
+  // §1 契约化(批11B · pageNew):原硬编码 jobseek {jobs:openNewJob, actions:openNewAction} 裸全局,
+  // 改经 SeekerShell.pageNew(pageId) 契约取当前页「新建」动作 —— 平台不再裸读 apps 符号(选择型、未命中 undefined)。
+  const fn=window.SeekerShell.pageNew(currentPage());
+  if(fn)fn(); else toast(tt('当前页没有「新建」动作','Nothing to create on this page'));
 }
 function keysHelpHTML(){
   const groups=window.SeekerKeys.groups();

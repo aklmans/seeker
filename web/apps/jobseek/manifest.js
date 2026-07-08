@@ -18,7 +18,8 @@ import { frameQuery } from './logic/frame-query.js';
 import { copReply, aiSuggs, AGENT_CMDS, renderAgentCmds } from './logic/copilot-actions.js';
 import { SEEKER_CARDS } from './cards.js';
 import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
-import { masterSectionHTML } from './logic/intake-action.js';
+import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
+import { openNewJob } from './logic/intake-job.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
 import { JOBS, ACTIONS } from './data.js';
 import { tt } from '../../platform/shell/i18n.js';
@@ -93,6 +94,10 @@ import { setState } from '../../platform/shell/shell-state.js';
       },
     }),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),
+    // §1 契约化(批11B · pageNew):平台快捷键 Mod+N / 新建入口按 pageId 取本应用「创建」动作。
+    // 无参箭头包装(契约返回 () => void;openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价)。
+    // 惰性(体在调用时求值)→ manifest eval 不 eager 读 openNewJob/openNewAction、无载序前移。
+    pageNew: (pageId) => ({ jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
     // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
     init: () => { captureSeed(); syncDemoBanner(); },
     // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。

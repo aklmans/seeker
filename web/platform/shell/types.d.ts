@@ -117,6 +117,8 @@ export interface AppManifest {
   onDataCleared?: () => void;
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
+  /** 页级「新建」动作:平台快捷键(Mod+N)/新建入口按 pageId 问应用的「创建」动作;命中返回无参函数,未命中 undefined(平台兜底 toast)。选择型(同 collId)。 */
+  pageNew?: (pageId: string) => (() => void) | undefined;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
@@ -176,6 +178,8 @@ export interface SeekerShellApi {
   notifyDataCleared(): void;
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
+  /** 页级「新建」动作链:依注册序问各启用应用的 pageNew,首个返回函数生效;都未命中返回 undefined(调用方兜底 toast)。 */
+  pageNew(pageId: string): (() => void) | undefined;
   /** **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径,供「清空全部数据」等须完整枚举的破坏性操作消费。
    *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];

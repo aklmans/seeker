@@ -285,6 +285,18 @@
     return undefined;
   }
 
+  /** 页级「新建」动作:依注册序问启用应用的 pageNew,首个返回函数者生效,否则 undefined(调用方兜底 toast)。选择型(同 collId)。
+   *  §1 契约化(批11B):平台快捷键 contextNew 原硬编码 jobseek openNewJob/openNewAction,改经此契约声明 per-page「新建」。 @param {string} pageId @returns {(() => void) | undefined} */
+  function pageNew(pageId) {
+    for (const a of enabledApps()) {
+      if (typeof a.pageNew === 'function') {
+        const fn = a.pageNew(pageId);
+        if (typeof fn === 'function') return fn;
+      }
+    }
+    return undefined;
+  }
+
   /** @returns {string[]} **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径(数据归属不随开关变),
    *  供「清空全部数据」等**必须完整枚举**的破坏性操作消费(§4-3:漏集合=清不干净=破坏可撤销完整性;
    *  D2 关=数据保留,由应用管理页 per-app 清数据独立承担)。非 AI 可读——后者见 aiReadableCollections(启用∩授权)。
@@ -320,6 +332,7 @@
     initApps,
     notifyDataCleared,
     collId,
+    pageNew,
     collections,
   };
   /** @type {any} */ (window).SeekerShell = api;
