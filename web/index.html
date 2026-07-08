@@ -1222,7 +1222,7 @@ function initKeys(){
 }
 
 </script>
-<!-- 小应用注册;3.y 注册链 module 化:manifest 转 module(deferred,晚于 registry@858 module → SeekerShell 就绪);IIFE 内 register。业务全局(SEEKER_CARDS/render*)经全局词法环境 runtime 解析(定义方仍 classic parse-time)。prompts/notes 留 classic(定义 renderPrompts/renderNotes 供 assets manifest 全局词法读)。 -->
+<!-- 小应用注册;3.y 注册链 + 业务层 module 化:manifest/pages/cards 均转 module(deferred,晚于 registry@858 module → SeekerShell 就绪);IIFE 内 register。jobseek 业务全局(SEEKER_CARDS/render*)定义方已 module(批1-6),经 window 桥 runtime 全局词法解析;assets prompts/notes 亦 module,其 render 由 assets/manifest.js import 直取(批7 Option B、不再上 window 桥)。 -->
 <script type="module" src="./apps/jobseek/manifest.js"></script>
 <script type="module" src="./apps/assets/pages/prompts.js"></script>
 <script type="module" src="./apps/assets/pages/notes.js"></script>

@@ -1074,7 +1074,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批7(commit `8242471`)· settings.js + assets(prompts/notes/manifest)→ module/import · ⏳ 待审
+### 批7(commit `8242471`)· settings.js + assets(prompts/notes/manifest)→ module/import · 🏁 第37轮通过
 **批7 双段**:7a 壳设置页转 module;7b assets 转 import-native(平台基元 import + 页 render 经 manifest import)。函数体逐字节零改。
 
 **【7a】platform/shell/settings.js**:`renderSettings` → **export + 过渡 window 桥**;MODEL/settingsState/SET_TABS_SHELL + 各 manager/model-UI/wireDataIO **零外部消费 → module-private**。@ts-nocheck 保持(抽壳序5-c-3 过渡态)。
@@ -1097,3 +1097,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 **★方法论订正(standing 候选)**:`force-revalidate`(`fetch` 全脚本 `{cache:'reload'}` + `location.reload()`)**在本 module 密集页(38 脚本)扰动模块载序**、制造**假 `renderPrompts/renderNotes/renderSettings not defined @buildPages`**(INIT inline-module 抢跑于外部 module)——**非真回归**。`__ord` 探针 + fresh-server 平直 reload 双证真序正确、0 err。**no-store server 已保证新鲜 → 平直 reload / 换服务实例才是净载判据;force-revalidate 对 module 密集页有害**(反转第29轮"桥 undefined 先 force-revalidate"的习惯:那是 classic-桥场景;module-import 场景 force-revalidate 本身即噪声源)。
 
 **剩**:批8(profile 双红线收尾:PROFILE import-first 不上 window、flip settings/resumes 的 PROFILE→import;★高风险真机金标准)· 批9(index.html inline → module)· 批10(账本清空:余桥 + monolith-globals 27 条 + shell-globals tt 末条)。**8123 已释放,评审可亲跑 preview。**
+
+### ★ 第37轮裁定 = 通过(结构 + 亲跑 preview 净方法)+ 方法论订正共担
+评审三处裁定全认可、均独立复核:
+- **① shell-globals.d.ts 15→1 = 认可(评审独立 tsc 整删测)**:评审自跑删测——仅 `jobseek/manifest.js:58 tt` 报错、13 基元零报错 → prompts/notes 转 import 后无 @ts-check 消费者、只剩 tt(jobseek liveCount 裸读未 import)。**数据驱动的诚实决策(tsc 证伪"整删"原假设)**,整删顺延批10。
+- **② Option B = §1 取向正确**:manifest.js:9/10 import 两页 render、grep 证唯一外部消费者 → 页不上 window 桥;app 内 pages↔manifest 走 import(内聚)、跨层仅 SeekerShell 契约全局。优于 Option A(壳侧 ambient 账本长 app 符号=§1 味)。
+- **③ ★方法论订正 = 成立、评审采纳并共担**:force-revalidate(fetch 全脚本 cache:reload + reload)对 **module-import 场景有害**(扰载序、INIT inline-module 抢跑外部 module)。评审独立核实:nocache-server.py:18 确 `no-store` → 平直 reload 本就新鲜、force-revalidate **冗余**;评审本轮即按净方法亲跑(平直 reload)→ 10 页全渲 + CRUD + 0 error 无扰动。**精化裁定③**:force-revalidate 只适 **classic-桥 stale 场景**;**module-import 场景 = no-store + 平直 reload / 换实例才是净判据**。前几轮(34/35/36)换 fresh server 掩盖了冗余、本轮 module-import 密集踩到——**"审查方也该被纠的一处,我领"**(评审共担)。
+- **preview 功能测(评审净方法·0 error)**:10 页全渲(settings export / prompts/notes import 链);MODEL/settingsState/renderPrompts/openPromptModal **私有/import-native 不上桥**(比声称更彻底);**★转义红线 LIVE**:标题注 `<img src=x onerror=…>` → 字面转义、xssFired=0、无 img/script 落地;CRUD 全 import 路径工作;删除 undo 可撤销(反焦虑)。node×4/tsc 净。
+- **[建议] 已采纳(doc-staleness)**:`index.html:1225` 注释"prompts/notes 留 classic(供 manifest 全局词法读)"过时 → 改为反映批1-6 业务全局已 module(经 window 桥 runtime 解析)+ 批7 assets prompts/notes module、render 由 manifest **import 直取**(Option B、不再上 window 桥)。
+
+**批7 通过。** 下一步:批8(profile 双红线 · 链②收尾:PROFILE import-first 不上 window、flip settings/resumes 的 PROFILE→import;runtime 函数体读非时序、焦点红线;★单送 + 亲跑 preview〔净方法:平直 reload + no-store〕+ 真机金标准叠加)· 批9(index.html inline→module)· 批10(账本清空 · shell-globals tt 末条)。
