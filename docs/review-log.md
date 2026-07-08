@@ -1071,3 +1071,29 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议] 已采纳(doc-staleness)**:interview:4/resumes:4 注释"data.js 仍 classic、全局词法就绪"已过时(批6 data 转 module)→ **改为"data.js 已 module@929、tag-order 先 eval 设 JOBS 桥"** 反映真 WHY(免未来读者误解时序前提)。match:4 的 WHY 已在其桥注释正确表述。
 
 **批6 通过 —— parse-time 时序坑全清(JOBS[0] 是最后一个)。** 下一步:批7(settings+assets → 删 shell-globals.d.ts)+ 批8 **profile 双红线**(链②收尾:PROFILE import-first 不上 window 桥;PROFILE 读在函数体 runtime 非 eager,焦点红线非时序)。
+
+---
+
+### 批7(commit `8242471`)· settings.js + assets(prompts/notes/manifest)→ module/import · ⏳ 待审
+**批7 双段**:7a 壳设置页转 module;7b assets 转 import-native(平台基元 import + 页 render 经 manifest import)。函数体逐字节零改。
+
+**【7a】platform/shell/settings.js**:`renderSettings` → **export + 过渡 window 桥**;MODEL/settingsState/SET_TABS_SHELL + 各 manager/model-UI/wireDataIO **零外部消费 → module-private**。@ts-nocheck 保持(抽壳序5-c-3 过渡态)。
+- ★**批8 前置**:本文件读 PROFILE(:333/:407),现经**全局词法读 classic profile.js**;profile 转 module(批8)后须改 `import {PROFILE}`。
+
+**【7b】assets/pages/{prompts,notes}.js**:14 平台基元(`$/$$/tt/IC/openModal/closeModal/toast/toastUndo/persistColl/collPersistOn/hydrateColl/currentPage/frontis/signFoot`)**改 import**(不再依赖 window ambient);`renderPrompts/renderNotes` → **export**。
+- ★**Option B(架构裁定)**:`assets/manifest.js` **import 两页 render**(经 grep 证唯一外部消费者:manifest:41/42 `render:()=>renderPrompts()`)→ **页不再上 window 桥**。**同 app 内 pages↔manifest 走 import,跨层仅 `window.SeekerShell` 契约保持全局**——比"给 assets render 名塞进壳 ambient 账本"(Option A,类目错置)干净、且收缩全局耦合而非扩张。
+- 内联 `onclick="closeModal()"`(prompts:66/notes:56)仍按 window 解析——modal.js 运行时桥仍在;import 供页内直调 + tsc。
+
+**【账本收敛】shell-globals.d.ts:15→1 条(★偏离原计划"整删",附 tsc 铁证)**
+- 原计划(第9轮抽壳序 + 第36轮"批7 删 shell-globals.d.ts")**假设 prompts/notes 是唯一消费者**——**tsc 整删测证伪**:删全文件仅 `tt` 报错(`jobseek/manifest.js:58` liveCount 箭头裸全局读 tt),其余 13 基元零报错=prompts/notes 转 import 后**无消费者**。
+- 故**收敛而非整删**:销 13 条(`el` 从无消费者)+ `renderPrompts/renderNotes` 经 manifest import 不入账本;**仅存 `tt`**(jobseek/manifest.js 裸全局,该 manifest 尚未改 import)。**tsc exit 0 证保留量精确**(缩到仅 tt 仍净=必要且充分)。整删待**批10 账本清空**(manifest 改 import tt 后)。
+
+**验证(结构 + ★亲跑 preview 功能测)**:
+- node --check ×3 OK;`tsc --noEmit` **exit 0**(缩账本后仍净)。
+- ★**preview 功能测(fresh server 换实例 + 平直 reload,no-store)**:**0 console 错**;`window.__ord` 探针证**模块 eval 序 `[settings,prompts,manifest,INIT-buildPages]` 正确**(manifest eval 时 `typeof renderPrompts===function`=import 绑定成立);9 页全渲(prompts 539/notes 510/settings 2522/overview 1528,经 import 链);`window.renderPrompts===undefined`(Option B 无桥、render 经 manifest import 解析)。
+- ★**CRUD 全通(exercise 全 import 基元)**:新建 prompt → openModal/fill/apEsc/persistColl/closeModal/renderPrompts/toast 全 import;删除 → **toastUndo 可撤销(反焦虑红线 LIVE)**。
+- ★**转义红线 LIVE 证**:标题注入 `<script>alert(1)</script>` + 正文 `<b>bold</b>` → DOM 中转义为**字面文本**(`&lt;script&gt;`)、`querySelector('script')===null`、无 live 注入(截图证卡面显示字面标签)。
+
+**★方法论订正(standing 候选)**:`force-revalidate`(`fetch` 全脚本 `{cache:'reload'}` + `location.reload()`)**在本 module 密集页(38 脚本)扰动模块载序**、制造**假 `renderPrompts/renderNotes/renderSettings not defined @buildPages`**(INIT inline-module 抢跑于外部 module)——**非真回归**。`__ord` 探针 + fresh-server 平直 reload 双证真序正确、0 err。**no-store server 已保证新鲜 → 平直 reload / 换服务实例才是净载判据;force-revalidate 对 module 密集页有害**(反转第29轮"桥 undefined 先 force-revalidate"的习惯:那是 classic-桥场景;module-import 场景 force-revalidate 本身即噪声源)。
+
+**剩**:批8(profile 双红线收尾:PROFILE import-first 不上 window、flip settings/resumes 的 PROFILE→import;★高风险真机金标准)· 批9(index.html inline → module)· 批10(账本清空:余桥 + monolith-globals 27 条 + shell-globals tt 末条)。**8123 已释放,评审可亲跑 preview。**
