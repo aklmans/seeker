@@ -1250,7 +1250,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批10d(commit `fc79de7`)· 全网 import 化收官 —— 133 桥删、账本终态 36 白名单桥 · ⏳ 待审
+### 批10d(commit `fc79de7`)· 全网 import 化收官 —— 133 桥删、账本终态 36 白名单桥 · 🏁 第43轮通过
 **批10 终局刀**。scanner+applier(token-aware:剥注释/字符串/regex-literal、保模板 ${})生成并应用:30 个 .js 注入 ~430 符号 import(provider 分组)+ BOOT/INIT 内联块各 12 符号 import;**133 桥删**;白名单 **33+3 桥**就地注解——(d) window-解析强制 26(内联 onclick/cBtn 串/CACT `window[name]`/aiErrHTML 的 **go**=第42轮[建议]①)+ **§1 平台裸读计算得出**(nav 7/shell-keys 2/widget-actions 3/**settings 2=hydrateJobs+showEmptyState 为清点外多抓**)+ HTML 跨内联块 3。**§1 硬规则内建**:platform 消费者 × apps provider → 不注入(保桥),杜绝反向 import。
 
 **★功能测抓出 3 类真缺口(node/tsc 均盲——@ts-nocheck 间 export 存在性仅 runtime link 可判)**:
@@ -1263,3 +1263,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 **验证**:node ×38 / tsc 0;全量 spread 复扫净;白名单桥 **HTMLElement 判据**(第41轮补丁首轮全面应用);preview 净方法(fresh 实例+42 URL 定向重验):**0 console、11 页全渲**(analysis TOP SKILLS=修复 LIVE)、eager 态 ivState/resumeState.jobId===JOBS[0].id(import 图定序)、14 死桥抽查 undefined、9 白名单在、**Mod+B/copilot 发送/Esc 逐层/语言双向(7 to-do)/市场价值模态/wgtAction** 全链 LIVE。**checklist**:②真机 asset:// boot 无崩(6.10s、窗口稳、零 panic=覆盖 i18n⇄shell-state 环+全新 import 图)③shell-state 顶层零执行语句、环双向 runtime-only ④go 白名单 LIVE;①AGENT_CMDS @ts-check 复验=header flip 非本批范围(@type 注解已立,挂后续)。
 
 **账本终态:169 → 36 桥(33 白名单 + 3 HTML 跨块);classic 0;d.ts 0;活跃 JS 全 module 全 import 化。** 批10(方案+a/b/c/d)全落。剩批11(绑定改造 [data-close]/[data-go] 委派 + §1 契约化四处)单列。**8123 已释放。**
+
+### ★ 第43轮裁定 = 通过(批10d · 4 [建议] 其一为送审覆盖面实质订正、其一为评审自我订正)· ★批10 全落
+- **删桥面评审重算**:逐文件符号集差 = **126 唯一符号删桥** + 36 白名单(exec"133"=169−36 减法、口径差非缺陷);126 × **七向扫描全零**(内联 on*[index.html 现 0 个]/window.X/window[name][CACT 6 零交集]/cBtn·cAct 串/eval 串/**裸读无 import[spread-aware]**/**import↔export link 面 0 缺 export**);LIVE 126 全 undefined(唯一 `agentSend`=id 属性 DOM 具名访问,第41轮判据挡误判)。
+- **★★覆盖面实质订正:环规模远大于送审词**——checklist③ 只提 i18n⇄shell-state,**实测 3 个 SCC**(platform 9 环/settings⇄profile/jobseek 15 环),exec 只验了 26 个环成员之 1。评审 **TS AST 全量判定**(阳性对照抓已知 JOBS[0] 急读、补顶层 IIFE 盲区 nav:86 initTheme):**全仓顶层急读 import 绑定共 3 处**(match/resumes/interview 读 JOBS[0].id,provider data.js 在环外先求值)、**环内×非函数声明顶层急读=0 ⇒ 三环 TDZ 安全**。**载序模型升级:tag-order 人工维护 → import 图自定序**。
+- **★★评审自我订正(裁定④补独立确认)**:注入 SyntaxError module + 死 link module,体不跑而 **preview console 0 条** ⇒ **「0 console」必要非充分**(第34-42轮列主证措辞偏强);**自本轮起主证=正向断言**(契约面+内联块跑完证据+功能链 LIVE),console 仅辅证;Blob-module 重放采纳为定位手段。
+- **3 缺口独立复核**:①link 面净 ②评审自己扫描器**有同一 spread 盲区**→换法再扫=0 ③4 内联块 node 净、零重复 import。**红线**:构造 `data-cact="alert"` 被 CACT_ALLOWED 挡(__evil=0)=删 133 桥后 §4-4 仍成立;**第42轮[建议]① LIVE 闭环**(aiErrHTML 的 go('settings') 按钮真跳设置页)。
+- **[建议]① 已即修(commit 同刀)**:`renderFirstRun` 多留死桥(overview 已 import、零 window 消费者)→ 删,**必要白名单 35**;preview 复验(off window + showEmptyState→落地页 import 链 LIVE + 0 console)。
+- **[建议]②(裁定入账)**:环不变式写死——「**任一 SCC 内成员顶层(含 IIFE)不得急读同环成员的非函数声明绑定**」,TS AST+阳性对照可机械复跑;批11 加 import 边时按此校验。**[建议]③(批11 地雷)**:resumes.js:332 内联 onclick **经 window 桥直接写模块状态**(ivState.q=null;…;renderInterview())——绑定改造时与纯调用型分开处理。**[建议]④(批11 工作面)**:§1 债确切清单=平台裸读 apps 符号 **14 处/12 符号**(nav 7/widget-actions 3/shell-keys 2/settings 2)+ CACT_ALLOWED 6 个 jobseek 名。
+- node×35/tsc 真 0/11 页/Mod+B·Mod+/·Esc·模态·copSend 全链(回匹配卡 75/100);真机按留痕采信。
+
+**★批10 全落(方案+10a/b/c/d,第41/42/43轮全过)。账本终态:169 → 35 必要白名单桥(+3 HTML 跨块);classic 0;d.ts 0;活跃 JS 全 module 全 import 化 —— 3.y「账本清空」收官。** 剩批11(绑定改造 [data-close]/[data-go] + §1 契约化四处 + CACT 并集,先出方案)。
