@@ -1,7 +1,7 @@
 // @ts-nocheck —— 抽壳序5-c-3 过渡:设置页框架(壳部分)。非纯剪切——拆分 + 契约消费,逐处偏离已标注;逻辑对等验证见 commit message。
 /** 平台 · 设置页框架:tab 栏 + 壳 tab(basic/profile/model/data/about)+ 契约消费(goals/weights 等 app tab、
  *  profile/data tab 尾部 extend)。依赖 SeekerShell.appSettings()(序5-c-1 契约,序5-c-2 首个消费者 jobseek)。
- *  ★双红线延续:profile tab 的 PROFILE 字段部分(persistProfileField/PROFILE)仍走 platform/shell/profile.js,
+ *  ★双红线延续:profile tab 的 PROFILE 字段部分经 import { PROFILE, persistProfileField } from './profile.js'(批8;profile.js 不上 window 桥、隐私最小暴露),
  *  本文件只拼版式、不碰 rt.profile;设置不可经对话改(本文件是唯一改设置入口,Agent 不可达)。
  *  过渡期跨壳全局引用(同 setState 先例 + currentPage 访问器[原裸 current],非 app 专属、未来 3.y 可再收):
  *  setState/settingsPersistOn/saveSettings/hydrateSettings/WEIGHTS(index.html,归属定另刀)、
@@ -11,6 +11,7 @@
  *   ② sections.goals/weights → 改经 appSettings().tabs 遍历生成(内容来自 jobseek settings-jobseek.js,逐字节未变,只是拼接方式变);
  *   ③ SET_TABS 裁剪平台 5 tab + app tabs 按契约插入同一视觉位置(basic,profile,model,[app tabs],data,about)——最终 7 tab 同序,非同一数组字面量;
  *   ④ data-tc(训练计入能力成长)wiring 的 renderSkills() → rerenderPages()(通用重渲,平台已有机制,避免平台具名调 jobseek 渲染器)。 */
+import { PROFILE, persistProfileField } from './profile.js'; // ★批8:profile 转 module,PROFILE/persistProfileField 改 import(profile.js 不上 window 桥、隐私最小暴露);本文件仍是唯一改 PROFILE 入口(data-pf 输入、Agent 不可达)。
 let settingsState={tab:'basic'};
 const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
@@ -527,5 +528,5 @@ async function wireModelConfigDesktop(){
 }
 /* 过渡 window 桥:renderSettings 经 SeekerShell.setShell 的 render 箭头 + profile/persistence/settings-jobseek/index.html 消费(全 runtime);改 import 后摘。
    其余(MODEL/settingsState/SET_TABS_SHELL 状态 + 各 manager/model-UI/wireDataIO 函数)零外部消费 → module-private。
-   ★settings.js 是批8 前置:profile 转 module 后本文件读 PROFILE(:333/:407)须改 import(现经全局词法读 classic profile.js)。 */
+   ★批8 已落:profile 转 module,本文件读 PROFILE + persistProfileField 经顶部 import(profile.js 不上 window 桥、隐私最小暴露)。 */
 window.renderSettings=renderSettings;

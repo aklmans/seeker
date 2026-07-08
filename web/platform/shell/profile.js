@@ -1,14 +1,15 @@
-// @ts-nocheck —— 抽壳序5-a 过渡:profile 通道(rt.profile · 红线隔离)。逻辑零改动。
+// @ts-nocheck —— 批8 转 module(读 settingsPersistOn/renderSettings/currentPage 仍运行时全局、待批9/10 转 import 再 @ts-check)。profile 通道(rt.profile · 红线隔离),逻辑零改动。
 /** 平台 · profile 通道(个人隐私字段落盘/水合)—— ★★双红线:
  *  ① profile 硬隔离:persistProfileField 只经 rt.profile.set、hydrateProfile 只经 rt.profile.getAll,**绝不串 rt.db**
  *     —— 与 data-store.js 的通用集合引擎(rt.db)**物理分离 = 模块边界即红线边界**;后端 capability.rs QUERYABLE 不含 profile,AI 永不读/写 profile。
  *  ② 设置不可经对话改:profile 只经设置页 data-pf 输入改(见 renderSettings),Agent 只引导去设置页(见 copReply 拦截)。
  *  依赖(运行时全局):settingsPersistOn(持久化条件,index.html)、renderSettings(index.html)、currentPage(nav.js 访问器,原裸 current)。
  *  PROFILE(个人信息对象=壳级用户身份,对应 rt.profile 单一共享仓库)第19轮裁定移平台、本文件自持(序5-b;平台→apps §1 债已清——jobseek resumes.js / index.html renderSettings 读 PROFILE = apps→平台,允许)。
- *  ⚠ rt-ready 时序:classic <script src>、解析期注册 hydrateProfile 监听器 → 先于 deferred module dispatch@881(同第5轮时序法)。 */
+ *  ⚠ rt-ready 时序:批8 转 type=module(deferred)、module-eval 注册 hydrateProfile 监听器 → 仍先于末位 dispatch(批A dispatch 已拆末位;同 prompts/notes rt-ready module 先例)。
+ *  ★批8 双红线之结构强化:PROFILE/persistProfileField export 但**绝不上 window**(隐私最小暴露)——消费者 settings.js/resumes.js 只能 import → window/AI 结构性不可达 PROFILE(比 classic 全局更严;红线①硬隔离叠加)。hydrateProfile 私有(仅本文件自注册监听器、无外部消费者 → 不 export)。 */
 /* 个人隐私信息 — 仅本地、来自「数据设置」,AI 不读取 / 不修改 */
-const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
-function persistProfileField(k, v){ if(settingsPersistOn()) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
+export const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
+export function persistProfileField(k, v){ if(settingsPersistOn()) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
 async function hydrateProfile(){
   if(!settingsPersistOn()) return;
   try{ const p=await window.SeekerRT.profile.getAll();

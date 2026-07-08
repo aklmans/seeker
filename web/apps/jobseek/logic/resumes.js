@@ -1,5 +1,6 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 简历模块(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
+import { PROFILE } from '../../../platform/shell/profile.js'; // ★批8:PROFILE 改 import(profile.js 不上 window 桥、隐私最小暴露)。红线逐字保留:PROFILE 仅在函数体渲染简历预览联系方式、persistResume 绝不入 resumes 集合(见文件尾)。
 /* ---------- RESUMES (独立模块) ---------- */
 export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 内联 onclick 跨文件写)→ dual-publish 免访问器;JOBS[0] module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1053 在其后 → 就绪)
 let ivRec=null;  // ★从 interview.js 移入:语音识别句柄(reassigned:=new SR()/=null/='demo'),生命周期全在本文件(ivToggleVoice/ivStopVoice/ivVoiceDemo)→ 模块私有、不上桥不访问器(消除跨文件 reassigned 纠缠)
@@ -458,5 +459,5 @@ function ivVoiceDemo(){
 
 /* 过渡 window 桥:renderResumes/resumeGenerate 经 manifest/nav/cards/persistence/index.html 消费;10 个 iv* 经 interview.js 的 renderInterview 消费(循环耦合、运行时经桥、安全)。
    resumeState mutated dual-publish(interview.js 内联 onclick 跨文件 mutate 同引用安全)。ivRec(移入)+ 大量 resume 编辑/导出内部函数私有。
-   ★红线(在函数体、逐字保留):resumes 集合只存专业模块结构、联系方式绝不入(走独立 PROFILE 实时渲染)→ query_data(resumes) 天然无联系方式。★PROFILE 现经全局词法读 classic profile.js(批8 转 import)。 */
+   ★红线(在函数体、逐字保留):resumes 集合只存专业模块结构、联系方式绝不入(走独立 PROFILE 实时渲染)→ query_data(resumes) 天然无联系方式。★PROFILE 已 import from platform/shell/profile.js(批8;不上 window 桥)。 */
 window.resumeState=resumeState; window.renderResumes=renderResumes; window.resumeGenerate=resumeGenerate; window.ivAddQuestion=ivAddQuestion; window.ivBankHTML=ivBankHTML; window.ivBindBank=ivBindBank; window.ivBindRecords=ivBindRecords; window.ivGenerate=ivGenerate; window.ivPractice=ivPractice; window.ivRecordsHTML=ivRecordsHTML; window.ivRenderSummary=ivRenderSummary; window.ivStartRound=ivStartRound; window.ivStopVoice=ivStopVoice;
