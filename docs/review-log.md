@@ -1297,3 +1297,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **评审独立复核(第44轮 report 追加、非我上报)**:①**新包装抗注入**——给 `agentBackupContinue` 塞同款 payload → `__xss2=0`(无参函数忽略 data-cargs、到不了 innerHTML=修复彻底的关键:新白名单项本身不放大);②**删 `window.agentChat` 桥的回归面独立验清**——`agentDeleteJob`(copilot-actions:17)`import { agentChat }` 非裸读、`agentCancel`(copilot-chrome:91)同文件词法、`shell-boot` 的 `agentChat`=`$('#agentChat')` 是 aside 非函数;裸读无 import 扫描空;**LIVE 两步护栏全通**(确认卡带 `data-cact="agentDeleteJob"`→执行不抛→岗位 12→11→出「已删除」→toastUndo 撤销恢复 12=证 import 的 agentChat 删桥后仍可达)。
 
 **批11A 通过(第44轮;字面 onclick 清零 · CACT 6→13 · 桥 35→28;[应改] agentChat 放大面已修=白名单仍 13 项、结构不变)。** 剩批11B(§1 契约化四契约 pageActions/pageNew/widgetActions/cActions + settings 残留;完成态 0 业务桥)——每契约一 commit、一轮送审;**地雷** resumes.js:332 内联写模块状态 handler 单列(第43轮[建议]③)。
+
+---
+
+### 批11B · pageNew 契约(§1 契约化 1/4,commit `f1eb02b`)· ⏳ 待审
+**批11B 四契约首刀**(每契约一 commit、一轮送审;约束② SeekerShell 扩展必审)。消除平台 `shell-keys.contextNew` 对 jobseek 符号(openNewJob/openNewAction)的裸全局读,改经新增 `SeekerShell.pageNew` 契约(**镜像既有 collId 选择型**)。**排序理由**:pageNew 最小面(2 符号 / keys 层 / 零红线 / 零桥删)→ 先立可复用「manifest 声明 per-page 动作 → 平台经契约取」模式,pageActions/widgetActions/cActions 承之(cActions 依赖 11A cBtn→cAB、殿后)。
+- **契约扩展(约束②)**:registry.js `pageNew(pageId)` 选择型——`enabledApps()` 依序、首个 `a.pageNew(pageId)` 返回函数生效、否则 undefined(与 collId 逐字同构)+ api 注册;types.d.ts 双声明(`AppManifest.pageNew?` 应用面 + `SeekerShellApi.pageNew` 消费面)。
+- **应用声明**:manifest.js +import openNewJob/openNewAction + `pageNew:(pageId)=>({jobs:()=>openNewJob(),actions:()=>openNewAction()}[pageId])`。**无参箭头包装**=契约 `()=>void`(openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价;@ts-check 下 `(editId)=>void` 不能直接充当 `()=>void`,故包装——这是唯一的形变、零行为)。**惰性**(体在调用时求值)→ manifest eval 不 eager 读→无载序前移(区别 cards:SEEKER_CARDS eager)。
+- **平台改绑**:contextNew `{jobs:openNewJob,actions:openNewAction}[currentPage()]` → `SeekerShell.pageNew(currentPage())`,命中 fn()/未命中 toast 逐字等价;§1 债注释更新为「已清」。
+- **桥/账**:桥数**不变**——openNewJob/openNewAction 的 window 桥仍由 nav.renderTopActions 消费(唯二全局消费者已核实:shell-keys[本刀清] + nav[pageActions 2/4 清]),故 pageActions 时才删这 2 桥。§1 债:shell-keys 2 处清零(14 处/12 符号 → 12 处剩)。
+- **验**:node×3 / **tsc 真退出码 0**(pageNew 类型在 @ts-check 的 registry/manifest 面通过、包装消形变);preview 净方法(③(b) 定向重验三改文件+reload,先遇 classic registry.js 同 URL 缓存假象=pageNew 未定义→定向 fetch{cache:reload} 后正):**契约面**(pageNew 是函数、('jobs')/('actions')→函数、('overview')/('interview')/('nope')→undefined)+**功能端到端**(pageNew('jobs')()→录入岗位模态、('actions')()→添加行动模态、overview→undefined→toast 兜底)+**★金标准驱动改动函数本身**(stub __TAURI__ 过 when:isDesktop → 真 [data-go] 委派导航 jobs → 真实 Mod+N keydown → SeekerKeys → contextNew → 新岗位模态开;__TAURI__ 复原);0 console/11 页/截图 clean/桥仍在;**真机 asset:// boot 重编 5.87s、进程存活、零 panic**(新 manifest→intake-job import 边定序无碍)。
+
+**下一刀:pageActions(§1 契约化 2/4)** —— nav.renderTopActions 7 符号(openResumeModal/resumeGenerate/resumeState/renderResumes/openNewJob/openMarketValue/openNewAction)→ 汇总型 per-page 顶栏动作契约;此刀删 openNewJob/openNewAction 2 桥(最后全局消费者去)。
