@@ -5,7 +5,7 @@
     ⚠ 数据基础层:外链置于内联块 A 之前 —— 消费者(logic 解析期 match.js 读 JOBS[0])须在其后。
     classic 全局语义不变;依赖见 ./monolith-globals.d.ts。 */
 /* ============ MOCK DATA ============ */
-const STATUS = {
+export const STATUS = {
   fav:{k:'fav', label:'收藏', cls:'b-info'},
   todo:{k:'todo', label:'待投', cls:'b-todo'},
   sent:{k:'sent', label:'已投', cls:'b-sent'},
@@ -14,7 +14,7 @@ const STATUS = {
   skip:{k:'skip', label:'放弃', cls:'b-skip'}
 };
 
-const JOBS = [
+export const JOBS = [
   {id:1, co:'字节跳动', role:'后端高级工程师 · 推荐架构', city:'北京', kind:'一线大厂', status:'interview',
    interest:9.0, growth:8.0, match:7.5, chance:6.5, pay:'40-65万', src:'内推', years:'5+', edu:'本科+',
    need:['Go','微服务','Redis','MySQL','K8s','高并发'], plus:['Rust','分布式系统','性能优化'],
@@ -66,7 +66,7 @@ const JOBS = [
 ];
 
 /* skills: name, level 0-5, years, demandJobs (count 0-12), evidence[], priority */
-const SKILLS = [
+export const SKILLS = [
   {name:'Go', lvl:4, years:8, demand:11, pri:'high', state:'已掌握', evidence:['美团核心配送后端','高并发 API 网关','服务治理平台']},
   {name:'MySQL', lvl:4, years:8, demand:10, pri:'mid', state:'已掌握', evidence:['大规模分库分表','慢查询优化体系','百亿级数据迁移','索引治理']},
   {name:'Redis', lvl:3, years:6, demand:9, pri:'mid', state:'已掌握', evidence:['多级缓存设计','分布式锁实现']},
@@ -93,7 +93,7 @@ const SKILLS = [
 ];
 
 /* ---- 积累价值模型 ---- */
-const ACCRUAL = {
+export const ACCRUAL = {
   compound:{label:'复利型', short:'复利', cls:'ac-compound', desc:'随经验复利增长,跨场景迁移,几乎不折旧 — 值得优先重投入。'},
   accumulate:{label:'积累型', short:'积累', cls:'ac-accumulate', desc:'稳定积累、基本不折旧,但增长接近线性 — 稳定维护即可。'},
   depreciate:{label:'易折旧', short:'折旧', cls:'ac-depreciate', desc:'与具体工具/版本绑定,折旧较快 — 够用即可,按需更新,别过度投入。'}
@@ -111,7 +111,7 @@ const TECH_META = {
 SKILLS.forEach(s=>{ s.cat='tech'; const m=TECH_META[s.name]||['accumulate','中','中']; s.accrual=m[0]; s.halflife=m[1]; s.transfer=m[2]; });
 
 /* ---- 通用能力 (transferable) ---- */
-const GENERAL = [
+export const GENERAL = [
   {name:'沟通表达', cat:'general', lvl:3, years:8, demand:9, pri:'mid', state:'已掌握', accrual:'compound', halflife:'长', transfer:'高', evidence:['跨团队需求对齐与方案宣讲','技术方案评审主讲 20+ 次']},
   {name:'跨团队协作', cat:'general', lvl:4, years:8, demand:8, pri:'mid', state:'已掌握', accrual:'compound', halflife:'长', transfer:'高', evidence:['配送-商家-物流三方协同','大促保障跨团队联合作战']},
   {name:'项目管理', cat:'general', lvl:3, years:6, demand:6, pri:'mid', state:'已掌握', accrual:'compound', halflife:'长', transfer:'高', evidence:['主导核心链路重构排期','多人项目拆分与风险跟踪']},
@@ -121,7 +121,7 @@ const GENERAL = [
   {name:'带人与团队建设', cat:'general', lvl:2, years:3, demand:4, pri:'mid', state:'进行中', accrual:'compound', halflife:'长', transfer:'高', evidence:['带 2 名新人独立承担模块']}
 ];
 /* ---- 元能力 (meta) ---- */
-const META = [
+export const META = [
   {name:'学习能力', cat:'meta', lvl:4, years:0, demand:10, pri:'high', state:'已掌握', accrual:'compound', halflife:'长', transfer:'高', evidence:['3 个月自学 Rust 到可用','快速上手陌生业务域']},
   {name:'系统思考', cat:'meta', lvl:3, years:0, demand:8, pri:'high', state:'进行中', accrual:'compound', halflife:'长', transfer:'高', evidence:['从全局视角定位性能瓶颈','权衡式架构决策']},
   {name:'复盘反思', cat:'meta', lvl:3, years:0, demand:6, pri:'mid', state:'已掌握', accrual:'compound', halflife:'长', transfer:'高', evidence:['每次线上故障结构化复盘','季度个人能力盘点']},
@@ -130,9 +130,9 @@ const META = [
 ];
 GENERAL.forEach(c=>SKILLS.push(c));
 META.forEach(c=>SKILLS.push(c));
-const CAT_LABEL={tech:'专业技能', general:'通用能力', meta:'元能力'};
+export const CAT_LABEL={tech:'专业技能', general:'通用能力', meta:'元能力'};
 
-const ACTIONS = [
+export const ACTIONS = [
   {id:1, title:'完成 Rust 实战项目 v0.2', state:'doing', pri:'high', fromJobs:6, due:'2026.05.31', skill:'Rust', cap:'Rust', jobs:'拼多多 / 微软 / 字节跳动', est:'', progress:45,
    goal:'能独立用 Rust 写出生产可用的高并发 KV 服务,并讲清所有权、生命周期与异步并发模型 — 形成一个可放进简历的开源项目。',
    milestones:[{t:'吃透所有权与生命周期',done:true},{t:'掌握 async / tokio 异步模型',done:true},{t:'实现核心 KV 存储引擎',done:false},{t:'压测并做性能调优',done:false},{t:'补 K8s 部署 + README',done:false}],
@@ -180,19 +180,19 @@ const ACTIONS = [
    sessions:[{date:'2026.05.20', mins:25, note:'录入并打分,匹配度意外地高,标记为重点跟进'}],
    reflection:'录入时顺手做了自我匹配,发现配送经历正好对口 — 这种「边录入边发现自己优势」的感觉很解焦虑。'}
 ];
-const PRI = {high:{label:'高',cls:'pl-high'}, mid:{label:'中',cls:'pl-mid'}, low:{label:'低',cls:'pl-low'}};
+export const PRI = {high:{label:'高',cls:'pl-high'}, mid:{label:'中',cls:'pl-mid'}, low:{label:'低',cls:'pl-low'}};
 
 /* derived: top gaps for overview */
-const TOP_GAPS = [
+export const TOP_GAPS = [
   {rank:'01', name:'Rust 实战项目', jobs:6, have:0, pct:18, pri:'高'},
   {rank:'02', name:'分布式系统设计', jobs:7, have:'进行中', pct:40, pri:'中'},
   {rank:'03', name:'K8s 生产实战', jobs:8, have:'仅基础', pct:28, pri:'中'}
 ];
-const KEYWORDS = [
+export const KEYWORDS = [
   ['稳定性',18],['高并发',15],['性能优化',14],['线上故障',12],['Owner',11],['推动',10],
   ['可用性',9],['0-1',8],['落地',8],['容量规划',7],['复盘',6],['演进',6],['治理',5]
 ];
-const PIPELINE = [
+export const PIPELINE = [
   {label:'收藏', n:5, color:'var(--status-info)'},
   {label:'待投', n:3, color:'var(--border-strong)'},
   {label:'已投', n:2, color:'var(--accent)'},
@@ -202,3 +202,9 @@ const PIPELINE = [
 ];
 const CITY_DIST = [['北京',6],['杭州',4],['上海',2],['深圳',1]];
 const KIND_DIST = [['一线大厂',8],['独角兽/二线',2],['外企',1],['创业公司',0]];
+
+/* 过渡 window 兼容桥:全业务层按全局名调 JOBS/SKILLS/ACTIONS 等;改 import 后摘。
+   JOBS/SKILLS/ACTIONS 皆 mutated-property(.push/.length=0/.splice、hydration in-place)→ dual-publish 同引用即安全、免访问器;其余 const 只读。
+   ★载序命门(批6 核心):data.js module@929 须早于 match@1041/interview@1052/resumes@1053 —— 它们顶层 let state={jobId:JOBS[0].id} 于 module-eval 急读 window.JOBS;doc 序 929<1041<1052<1053 保障 data 先 eval、JOBS 桥就绪(JOBS[0] 非空由 mock 12 保证)。
+   CITY_DIST/KIND_DIST/TECH_META 私有不上桥。 */
+window.JOBS=JOBS; window.SKILLS=SKILLS; window.ACTIONS=ACTIONS; window.STATUS=STATUS; window.ACCRUAL=ACCRUAL; window.PRI=PRI; window.CAT_LABEL=CAT_LABEL; window.TOP_GAPS=TOP_GAPS; window.KEYWORDS=KEYWORDS; window.PIPELINE=PIPELINE; window.GENERAL=GENERAL; window.META=META;

@@ -926,7 +926,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
   <div class="cop-input"><textarea id="copInput" rows="1" placeholder="试试:我和字节那个岗位匹配吗?"></textarea><button class="cop-send" id="copSend"></button></div>
 </aside>
 <div class="toast-wrap" id="toasts"></div>
-<script src="./apps/jobseek/data.js"></script>
+<script type="module" src="./apps/jobseek/data.js"></script>
 <script type="module" src="./apps/jobseek/data-helpers.js"></script>
 <script>
 /* ICONS 已抽壳 → platform/shell/icons.js(抽壳序1-b) */
@@ -1038,7 +1038,7 @@ function showEmptyState(){ go('overview'); renderFirstRun(); }
 </script>
 <script type="module" src="./apps/jobseek/logic/intake-job.js"></script>
 <script type="module" src="./apps/jobseek/logic/intake-action.js"></script>
-<script src="./apps/jobseek/logic/match.js"></script>
+<script type="module" src="./apps/jobseek/logic/match.js"></script>
 <script type="module" src="./apps/jobseek/logic/resume-modals.js"></script>
 <script>
 /* ---------- per-job AI: resume rewrite ---------- */

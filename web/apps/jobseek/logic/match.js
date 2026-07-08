@@ -1,8 +1,8 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 智能匹配(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- SMART MATCH (旗舰) ---------- */
-let matchState={jobId:JOBS[0].id, done:false};
-function renderMatch(){
+export let matchState={jobId:JOBS[0].id, done:false};
+export function renderMatch(){
   const resumeBar=`<div class="sec" style="padding-bottom:18px;"><div class="ai-bar" style="border:0.5px solid var(--border);">
     <span class="dot"></span><span class="lbl">已基于简历 · <b>${cEsc(RESUME.filename)}</b> · 自动识别 ${RESUME.derivedSkills} 项能力 / ${RESUME.derivedEvidence} 段证据</span>
     <button class="btn-text" style="margin-left:auto;" onclick="openResumeModal()">更换简历 →</button></div></div>`;
@@ -17,7 +17,7 @@ function renderMatch(){
   $$('#page-match [data-mj]').forEach(b=>b.onclick=()=>{matchState.jobId=+b.dataset.mj;matchState.done=false;renderMatch();});
   if(matchState.done){const j=JOBS.find(x=>x.id===matchState.jobId);$('#matchResult').innerHTML=`<div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>AI</b> 匹配结果</span></div><div style="padding:22px 22px 24px;">${matchReadout(j)}</div></div>`;bindReadout(j);}
 }
-function runMatch(){
+export function runMatch(){
   const j=JOBS.find(x=>x.id===matchState.jobId);
   $('#matchResult').innerHTML=`<div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>AI</b> 正在分析</span></div><div id="aihost"></div></div>`;
   aiRun($('#matchResult').querySelector('#aihost'),
@@ -54,3 +54,7 @@ function bindReadout(j){
   const full=host.querySelector(`[data-full]`); if(full)full.onclick=()=>aiResumeForJob(+full.dataset.full);
   const iv=host.querySelector(`[data-iv]`); if(iv)iv.onclick=()=>goInterview(+iv.dataset.iv);
 }
+
+/* 过渡 window 桥:renderMatch 经 manifest/cards/copilot-actions 消费;runMatch 经 copilot-actions setTimeout + 内联 onclick;matchState mutated dual-publish(cards/copilot-actions 跨文件 .k= 同引用安全)。matchReadout/bindReadout 私有。
+   ★matchState={jobId:JOBS[0].id} module-eval 急读 window.JOBS(data.js@929 先 eval);★红线逐字保留(函数体):RESUME.filename/derivedSkills 元数据、无联系方式。 */
+window.matchState=matchState; window.renderMatch=renderMatch; window.runMatch=runMatch;
