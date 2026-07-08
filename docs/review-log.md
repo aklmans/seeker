@@ -1277,7 +1277,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批11A(commit `2cb3491`)· 绑定改造收官 —— ★字面 onclick 清零 · 桥 35→28 · ⏳ 待审
+### 批11A(commit `2cb3491`)· 绑定改造收官 —— ★字面 onclick 清零 · 桥 35→28 · 🏁 第44轮通过(+1 [应改] 已修 commit `7c269f6`)
 **批11 方案已批(4ee75f6 后 6a58f81;①纯机械留批11 ②运行时环已接受)之 11A(行为面,零契约)**。改绑不改逻辑,每站点语义逐字等价:
 - **两委派清大头**:modal `[data-close]`(14 站点)+ nav `[data-go]`(9 站点+复合钮双属性,modal tag 先注册→先关后跳同原序;page id 全静态、未知 id 行为同旧 throw)。
 - **散点程序绑定**:toast mock ×4 / openResumeModal ×4(含 settings-jobseek 经 **manifest extend.data.wire=wireDataResumeRow**,settings 框架既有全调机制 :446)/ openMarketValue ×2 / openNewJob+runMatch / showEmptyState(§1:平台 window+typeof 守卫读=现状保持,契约化 11B)。
@@ -1287,3 +1287,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:node 全量/tsc 0;preview 净方法 0 console、**★DOM [onclick] 属性=0**、11 页、删桥/白名单核;**全链 LIVE**:data-close 开关模态/data-go 跳页/data-goresume 状态写+跳/cAB copGo 关面板+跳 settings/**负向 data-cact="alert" 仍被挡(__evil=0)**/data-omv 市场价值模态/data-orm 简历模态/mocktoast/setDemoEmpty 落地页;真机 asset:// 无崩。**8123 已释放。**
 
 **剩批11B(§1 契约化四契约:pageActions/pageNew/widgetActions/cActions + settings 残留;完成态 0 业务桥)——每契约一 commit、一轮送审。**
+
+### ★ 第44轮裁定 = 通过 + 1 [应改](§4-4 红线,PoC 实证 · 已修 commit `7c269f6`)
+- **评审 PoC 实证的放大面**:11A 把 cBtn 串迁 cAB 时,`agentChat` 一并进了 CACT_ALLOWED。但 `agentChat(html)=copAppend/agentAppend('ai','<span…>'+html)` 是**不转义**的 innerHTML sink(设计上收 HTML);文档级委派按值把 `data-cargs` 传入 → 13 白名单**唯此一项**把外部串反射进 innerHTML,恰是白名单存在的唯一理由(P2 注释:防「HTML 注入升级为 JS 执行 / 二次 innerHTML」)所要堵的放大面。**PoC**:`<button data-cact="agentChat" data-cargs='["<img src=x onerror=window.__xss=1>"]'>` 点击 → `__xss=1`、img[onerror] 进 DOM(白名单外 alert/__pwn 均挡)。
+- **判 [应改] 非 [阻断] 的依据(评审注)**:纵深防御层——主防线(cAB 结构化 + 全站 cEsc,24/25 轮已验)仍在,端到端 live 击穿还需一个独立 HTML 注入点(当前码未证存在);但 PoC 已击穿此一层且有文档红线 backstop,必须修。执行方视白名单为硬红线者可按 [阻断] 处理。
+- **修复(commit `7c269f6`,~3 行·零行为改动)**:①copilot-actions.js 唯一 cAB 调用点本传固定串 → 仿现成 `agentCancel` 先例加**无参包装** `agentBackupContinue()`(内部 `agentChat('(演示)清空已拦截 …')`),调用点改 `cAB('我已备份,继续','agentBackupContinue',[])`;②copilot-chrome.js `CACT_ALLOWED` **移除 agentChat**(仍 13 项:−agentChat +agentBackupContinue)、删 `window.agentChat` 桥、加不变式注释「白名单里不得有把 data-cargs 反射进 innerHTML 的处理器」;③agentChat 内部调用者(agentCancel/agentDeleteJob)走词法/import 不受影响。
+- **修复复验(exec 亲跑 preview + 真机)**:**PoC 已闭**——`data-cact="agentChat"` 被白名单挡 → `__xss=0`、`img[onerror]=0`(对照 agentBackupContinue 白名单内通过);**正向控制**——`data-cact="agentBackupContinue"` 点击 → `.who +1`、末条正是固定串「Agent(演示)清空已拦截 …」= 白名单路径通、"我已备份,继续"按钮可见行为逐字等价(零回归);**桥删坐实(第41轮 DOM 具名访问判据)**——`window.agentChat===getElementById('agentChat')`、`instanceof HTMLElement`、tag=ASIDE、非 function ⇒ `"object"` 是 `id=agentChat` 的 aside、非函数桥残留;0 console(all)/11 页/**真机 asset:// boot 重编 5.56s、进程存活、零 panic**。
+- **★不变式钉入(§4-4)**:CACT_ALLOWED 内不得有任何处理器把 `data-cargs` 反射进 innerHTML / eval / Function / setTimeout(串);新增白名单项前须自检(源码注释已就地固化)。11A 迁移对其余 12 处理器均满足(取 id 或 cEsc),唯 agentChat 例外、本轮消除。
+
+**批11A 通过(第44轮;字面 onclick 清零 · CACT 6→13 · 桥 35→28;[应改] agentChat 放大面已修=白名单仍 13 项、结构不变)。** 剩批11B(§1 契约化四契约 pageActions/pageNew/widgetActions/cActions + settings 残留;完成态 0 业务桥)——每契约一 commit、一轮送审;**地雷** resumes.js:332 内联写模块状态 handler 单列(第43轮[建议]③)。
