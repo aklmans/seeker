@@ -1,7 +1,7 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 行动录入(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- NEW ACTION MODAL ---------- */
-function openNewAction(){
+export function openNewAction(){
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('添加行动','New action')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
@@ -27,8 +27,8 @@ function openNewAction(){
 }
 
 /* ============ AI ENGINE + P0/P1/P2 FEATURES ============ */
-const RESUME={filename:'我的简历_后端工程师.pdf', uploaded:'2026.05.18', parsed:true, years:8, derivedSkills:23, derivedEvidence:15, summary:'8 年后端 · Go / MySQL / Redis 为主 · 美团核心配送背景'};
-const TREND=[
+export const RESUME={filename:'我的简历_后端工程师.pdf', uploaded:'2026.05.18', parsed:true, years:8, derivedSkills:23, derivedEvidence:15, summary:'8 年后端 · Go / MySQL / Redis 为主 · 美团核心配送背景'};
+export const TREND=[
   {skill:'Rust', pct:42, dir:'up', note:'AI 基建 / 系统编程拉动,半年需求近翻倍'},
   {skill:'分布式系统', pct:24, dir:'up', note:'稳定性岗位扩张'},
   {skill:'K8s', pct:18, dir:'up', note:'云原生持续渗透'},
@@ -39,12 +39,12 @@ const TREND=[
   {skill:'Java', pct:7, dir:'down', note:'增量岗位向 Go 迁移,存量仍大'},
   {skill:'PHP', pct:26, dir:'down', note:'以存量维护为主'}
 ];
-const SALARY=[
+export const SALARY=[
   {role:'后端 · 高级 (P6/P7)', lo:35, hi:55, med:45},
   {role:'后端 · 专家 (P7/P8)', lo:50, hi:75, med:62},
   {role:'架构师 / 基础设施', lo:60, hi:90, med:75}
 ];
-const YOU_VALUE=48;
+export const YOU_VALUE=48;
 const PLAN_LIB={
   'Rust':{weeks:6, ms:['吃透所有权 / 生命周期','掌握 async / tokio 异步模型','实现核心 KV 存储引擎','压测与性能调优','补 K8s 部署 + README'], res:['《Rust 程序设计语言》官方书','tokio 官方教程','《Rust Atomics and Locks》']},
   'K8s':{weeks:3, ms:['kind 本地集群跑通','写 Deployment / Service / Ingress','配探针与滚动发布','接入基础监控'], res:['Kubernetes 官方文档','《Kubernetes in Action》','kind 快速上手指南']},
@@ -53,9 +53,9 @@ const PLAN_LIB={
   'gRPC':{weeks:1, ms:['写 proto 并生成代码','实现双向流','拦截器 / 超时重试'], res:['gRPC 官方文档','Protocol Buffers 指南']},
   'DDD':{weeks:3, ms:['吃透限界上下文','对一个业务做战术建模','落地一次聚合根重构'], res:['《领域驱动设计》','《实现领域驱动设计》']}
 };
-function planFor(skill){return PLAN_LIB[skill]||{weeks:2, ms:['梳理现状与目标差距','找 1 个练手项目','沉淀为可展示证据'], res:['官方文档','社区最佳实践']};}
-function topGapsOf(job){return job.need.filter(n=>{const s=skillByName(n);return !s||s.lvl<3;});}
-function genRewrites(job){
+export function planFor(skill){return PLAN_LIB[skill]||{weeks:2, ms:['梳理现状与目标差距','找 1 个练手项目','沉淀为可展示证据'], res:['官方文档','社区最佳实践']};}
+export function topGapsOf(job){return job.need.filter(n=>{const s=skillByName(n);return !s||s.lvl<3;});}
+export function genRewrites(job){
   const kw=job.need.slice(0,3);
   return [
     {old:'负责后端服务的开发与日常维护,参与需求评审与排期。', neo:`主导 <b>${kw[0]||'核心链路'}</b> 后端架构,单服务 QPS <b>10w+</b>、可用性 <b>99.99%</b>,推动 P99 从 200ms 降至 <b>80ms</b>。`},
@@ -63,9 +63,9 @@ function genRewrites(job){
   ];
 }
 /* ===== Interview question bank + records ===== */
-const IV_CATS=[['design','系统设计'],['perf','高并发·性能'],['dist','分布式·一致性'],['project','项目深挖'],['behavior','行为面试']];
-const IV_CATLABEL=Object.fromEntries(IV_CATS);
-let IV_BANK=[
+export const IV_CATS=[['design','系统设计'],['perf','高并发·性能'],['dist','分布式·一致性'],['project','项目深挖'],['behavior','行为面试']];
+export const IV_CATLABEL=Object.fromEntries(IV_CATS);
+export let IV_BANK=[
   {id:1, cat:'design', text:'设计一个支撑千万级日订单的即时配送调度系统:从需求澄清、容量估算到核心架构与未来演进,讲讲你的整体方案。', tags:['系统设计','高并发'], src:'内置'},
   {id:2, cat:'design', text:'设计一个短链服务,支撑每天 1 亿次生成、10 亿次跳转,谈谈存储选型与缓存策略。', tags:['系统设计','Redis'], src:'内置'},
   {id:3, cat:'design', text:'如何设计一个高可用的分布式 ID 生成器?对比几种方案的取舍。', tags:['系统设计','分布式系统'], src:'内置'},
@@ -81,7 +81,7 @@ let IV_BANK=[
   {id:13, cat:'behavior', text:'讲一次你和产品/上下游激烈分歧的经历,你是怎么推动达成一致的?', tags:['跨团队协作'], src:'内置'},
   {id:14, cat:'behavior', text:'你如何在高压、信息不全的情况下做技术决策?举个例子。', tags:['抗压与情绪韧性'], src:'内置'}
 ];
-let IV_RECORDS=[
+export let IV_RECORDS=[
   {id:3, type:'single', qText:'某热点 key 导致缓存击穿,线上 QPS 瞬间涨 3 倍,你如何快速止血并根治?', cat:'perf', date:'2026.05.26', job:'美团', tags:['高并发','Redis'], answer:'先加互斥锁 + 本地缓存止血,再做热点探测与多级缓存根治…', scores:{structure:8.5,depth:8.0,quant:7.5,overall:8.0}, good:['止血与根治分层,优先级清晰','给了具体限流水位'], improve:['可补充降级开关的灰度策略']},
   {id:2, type:'single', qText:'介绍一个你最有成就感的项目:你的角色、最大的技术挑战、量化结果。', cat:'project', date:'2026.05.21', job:'美团', tags:['项目深挖'], answer:'主导配送调度重构,把 P99 从 200ms 降到 80ms…', scores:{structure:7.5,depth:7.0,quant:7.0,overall:7.2}, good:['有量化结果,可信度高'], improve:['挑战的"难"讲得还不够具体']},
   {id:1, type:'single', qText:'分布式场景下如何保证最终一致性?举一个你真实做过的权衡取舍。', cat:'dist', date:'2026.05.18', job:'蚂蚁集团', tags:['分布式系统'], answer:'用消息队列做异步补偿,先保证可用性,通过对账兜底最终一致…', scores:{structure:7.0,depth:6.5,quant:5.5,overall:6.3}, good:['结构清晰,先讲方案再讲兜底'], improve:['对账频率与延迟没有量化','可以补一句失败重试上限']}
@@ -95,7 +95,7 @@ function aiGenQuestions(job){
   ];
   return base.map((b,i)=>({id:Date.now()+i, cat:b.cat, text:b.text, tags:b.tags, src:'AI'}));
 }
-function ivScore(answer){
+export function ivScore(answer){
   const len=(answer||'').length;
   const base=len>120?7.5:(len>40?6.5:5.5);
   const r=()=>Math.min(9.5, Math.max(5, base+(Math.random()*2-0.8)));
@@ -121,16 +121,16 @@ const IV_STYLE={
   '网易':{tags:['计算机基础','性能','项目'], note:'重基础与性能优化,围绕项目提问。'},
   '微软':{tags:['计算机基础','行为面','英语'], note:'重计算机基础与行为面(STAR),部分环节英文。'}
 };
-function styleFor(co){return IV_STYLE[co]||{tags:['简历 + JD','项目深挖'], note:'以你的简历与 JD 为主,围绕真实经历提问。'};}
-let RESUME_TAILORED={};
+export function styleFor(co){return IV_STYLE[co]||{tags:['简历 + JD','项目深挖'], note:'以你的简历与 JD 为主,围绕真实经历提问。'};}
+export let RESUME_TAILORED={};
 /* PROFILE(个人隐私信息)已抽壳 → platform/shell/profile.js(序5-b · 第19轮裁定:壳级用户身份归平台;仍 AI 不读取/不修改) */
-const MOD_ICON={basic:'👤',summary:'✦',skills:'◆',work:'▣',projects:'▤',edu:'▦',strengths:'✸',certs:'❖',languages:'⊞',honors:'✪',portfolio:'▥',research:'◈',other:'▢'};
+export const MOD_ICON={basic:'👤',summary:'✦',skills:'◆',work:'▣',projects:'▤',edu:'▦',strengths:'✸',certs:'❖',languages:'⊞',honors:'✪',portfolio:'▥',research:'◈',other:'▢'};
 // 主简历资料(专业层,AI 可读):教育/工作/项目/特长/证书/语言/荣誉的单一真实来源 —— 「数据设置·个人信息」填一次,
 // 生成任意针对性简历自动带入,且**填了才显示**。红线:绝不含联系方式(姓名/电话/邮箱在 PROFILE 隐私层、AI 不读);
 // 本对象走 resumes 集合持久化(与简历模块同层,AI 可帮你改这些专业内容、贴合 JD)。
-let MASTER={edu:[],work:[],projects:[],strengths:'',certs:'',languages:'',honors:''};
-function shorten(t,n){t=(''+t).replace(/<\/?b>/g,'');return t.length>(n||40)?t.slice(0,n||40)+'…':t;}
-function genTailoredResume(job){
+export let MASTER={edu:[],work:[],projects:[],strengths:'',certs:'',languages:'',honors:''};
+export function shorten(t,n){t=(''+t).replace(/<\/?b>/g,'');return t.length>(n||40)?t.slice(0,n||40)+'…':t;}
+export function genTailoredResume(job){
   const have=job.need.filter(n=>{const s=skillByName(n);return s&&s.lvl>=3;});
   // 教育/工作/项目从「主简历资料」MASTER 带入真实数据(深拷贝,各份简历独立可改);**填了才显示**(on=有内容)。
   const cl=a=>JSON.parse(JSON.stringify(Array.isArray(a)?a:[]));
@@ -153,7 +153,7 @@ function genTailoredResume(job){
   ]};
 }
 // 主简历资料持久化(走 resumes 集合的哨兵记录 r__master__,AI 可读专业层;不含联系方式)。
-function persistMaster(){
+export function persistMaster(){
   if(!collPersistOn()) return;
   window.SeekerRT.db.upsert('resumes', { id:'r__master__', jobId:'__master__', master:true,
     edu:MASTER.edu, work:MASTER.work, projects:MASTER.projects,
@@ -194,7 +194,7 @@ function masterExtrasHTML(){
     + sub(tt('语言能力','Languages'))+ta('languages',tt('如:英语(CET-6 / 流利)、日语(N2)…','e.g. English (fluent), Japanese (N2)…'))
     + sub(tt('荣誉奖项','Honors / awards'))+ta('honors',tt('如:ACM 区域赛金奖、年度技术之星…','e.g. ACM regional gold, tech star of the year…'));
 }
-function masterSectionHTML(){
+export function masterSectionHTML(){
   const sub=t=>`<p style="font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;color:var(--ink-3);margin:22px 0 8px;text-transform:uppercase;">${t}</p>`;
   return `<div style="margin-top:34px;border-top:0.5px solid var(--border);padding-top:24px;max-width:680px;">
     <p class="seclabel">— RESUME DATA · AI-READABLE</p>
@@ -206,11 +206,11 @@ function masterSectionHTML(){
     ${masterExtrasHTML()}
   </div>`;
 }
-function resMod(r,key){return r.modules?r.modules.find(m=>m.key===key):null;}
-function resSummary(r){const m=resMod(r,'summary');return m?m.content:'';}
-function resSkills(r){const m=resMod(r,'skills');return m&&m.content?m.content:[];}
-function resProjects(r){const m=resMod(r,'projects');return m&&m.items?m.items:[];}
-function genQuestionsFor(job, max){
+export function resMod(r,key){return r.modules?r.modules.find(m=>m.key===key):null;}
+export function resSummary(r){const m=resMod(r,'summary');return m?m.content:'';}
+export function resSkills(r){const m=resMod(r,'skills');return m&&m.content?m.content:[];}
+export function resProjects(r){const m=resMod(r,'projects');return m&&m.items?m.items:[];}
+export function genQuestionsFor(job, max){
   const r=RESUME_TAILORED[job.id]; const st=styleFor(job.co); const out=[];
   if(r){
     const projs=resProjects(r);
@@ -227,7 +227,7 @@ function genQuestionsFor(job, max){
   return out.slice(0, max||3);
 }
 
-function genPlanFromGap(skill, jobLabel){
+export function genPlanFromGap(skill, jobLabel){
   const p=planFor(skill);
   const id=Math.max(...ACTIONS.map(a=>a.id))+1;
   ACTIONS.push({id, title:`训练计划 · 补齐 ${skill}`, state:'todo', pri:'high', fromJobs:0, due:'', skill, cap:skill, jobs:jobLabel||'', est:p.weeks+' 周', note:'AI 生成 · 首选资源:'+p.res[0],
@@ -238,7 +238,7 @@ function genPlanFromGap(skill, jobLabel){
 }
 
 /* AI mock engine: progressive steps → result */
-function aiRun(host, steps, resultFn, opts){
+export function aiRun(host, steps, resultFn, opts){
   opts=opts||{};
   host.innerHTML=`<div class="ai-loading"><span class="ai-dots"><i></i><i></i><i></i></span><span>${opts.label||'AI 分析中…'}</span></div><div id="ai-steps" style="padding:0 16px 16px;"></div>`;
   const sh=host.querySelector('#ai-steps'); let i=0;
@@ -248,3 +248,9 @@ function aiRun(host, steps, resultFn, opts){
   };
   setTimeout(tick, 420);
 }
+
+/* 过渡 window 兼容桥:cards/resumes/interview/match/copilot-actions/settings-jobseek/pages/nav 按全局名调;改 import 后摘。
+   状态符号 IV_BANK/IV_RECORDS/MASTER/RESUME_TAILORED 皆 mutated-property(引用永久稳定、hydration in-place)→ dual-publish 同引用即安全、免访问器。
+   ★红线(逐字保留,在函数体内):MASTER/RESUME_TAILORED = AI 可读专业简历层、绝不含联系方式(姓名/电话/邮箱在 PROFILE 隐私层);persistMaster 只写 resumes 哨兵 r__master__、永不写 profile。
+   私有不上桥:IV_STYLE/PLAN_LIB(状态)、aiGenQuestions/masterEntriesHTML/masterProjectsHTML/masterExtrasHTML(内部)。 */
+window.IV_BANK=IV_BANK; window.IV_RECORDS=IV_RECORDS; window.MASTER=MASTER; window.RESUME_TAILORED=RESUME_TAILORED; window.IV_CATLABEL=IV_CATLABEL; window.IV_CATS=IV_CATS; window.MOD_ICON=MOD_ICON; window.RESUME=RESUME; window.SALARY=SALARY; window.TREND=TREND; window.YOU_VALUE=YOU_VALUE; window.aiRun=aiRun; window.genPlanFromGap=genPlanFromGap; window.genQuestionsFor=genQuestionsFor; window.genRewrites=genRewrites; window.genTailoredResume=genTailoredResume; window.ivScore=ivScore; window.masterSectionHTML=masterSectionHTML; window.openNewAction=openNewAction; window.persistMaster=persistMaster; window.planFor=planFor; window.resMod=resMod; window.resProjects=resProjects; window.resSkills=resSkills; window.resSummary=resSummary; window.shorten=shorten; window.styleFor=styleFor; window.topGapsOf=topGapsOf;
