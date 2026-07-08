@@ -1168,13 +1168,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批9b(commit `0519667`)· 键盘系统 + widget-action 回流 → shell-keys.js / widget-actions.js · ⏳ 待审
+### 批9b(commit `0519667`)· 键盘系统 + widget-action 回流 → shell-keys.js / widget-actions.js · 🏁 第40轮通过
 批9 第二刀,逐字节零改抽出两个新 platform/shell module:
 - **shell-keys.js**(壳键盘注册 A 层 + 侧栏 chrome):export+桥 ×4 = initKeys(INIT-module 运行时调)/toggleSidebar(shell-boot 接线 #sbCollapse)/syncSbToggleTitle(nav.setLang typeof 守卫)/**isDesktop**(shell-state/data-store/settings/copilot-chrome 4 模块 typeof 守卫读);私有 ×3 = pageSearchInput/contextNew/keysHelpHTML(grep 证仅 initKeys 内消费)。**§1 归属债标注**(pre-existing):contextNew 硬编码 jobseek openNewJob/openNewAction → 随 CACT_ALLOWED 契约化账清。
 - **widget-actions.js**(#2 W3):wgtAction + rt-ready 挂 SeekerWidgets.onAction。**零外部消费者(grep 证)→ 全 module-private 自注册、不 export 不上桥**(同 hydrateProfile 先例)。红线逐字:widgetId 平台传入不信任 iframe、破坏性一律 guardrail 预览+确认+可撤销、toast 前 action `<` 转义。**§1 归属债标注**:delete-job 分支硬编码 jobseek 符号。
 - **验**:node×2/tsc 0;preview 净方法 0 错——initKeys LIVE(SeekerKeys **5 组 24 项**)、**★真实 KeyboardEvent Mod+B 切侧栏**(''→rail 经抽出链)、**Mod+/ 开快捷键帮助**(私有 keysHelpHTML LIVE)+ **Esc 逐层链关模态**、wgtAction 挂上 onAction(function)且 window.wgtAction===undefined(私有)、isDesktop 桥 false(web 正确)。
 
-### 批9c(commit `8e02fd7`)· jobseek 业务 inline 归位(★index.html classic inline 实码清零)· ⏳ 待审
+### 批9c(commit `8e02fd7`)· jobseek 业务 inline 归位(★index.html classic inline 实码清零)· 🏁 第40轮通过
 批9 第三刀,6 符号逐字节零改归位 apps/jobseek:
 - **logic/job-actions.js(新)**:openMarketValue + dotsHTML + aiResumeForJob/goInterview。**★ownership 订正**(偏离"9b 含 openMarketValue"框定、grep 证据落地):openMarketValue 读 YOU_VALUE/aiRun(皆 intake-action.js)= jobseek 业务归 apps;analysis:75/skills:68 **内联 onclick 消费 → 保 window 桥**。
 - **logic/demo-seed.js(追加)**:renderFirstRun + showEmptyState(首启落地页;首启/演示同 surface、frDemo 直调同文件 seedDemoData);showEmptyState 被 settings.js:384 内联 onclick 消费 → 保 window 桥。
@@ -1183,3 +1183,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **真机金标准(9b+9c 合并跑)**:见下批注。**8123 已释放,评审可亲跑 preview**(若遇 demo-seed/shell-keys stale,同③(b) 定向重验)。
 
 **批9b+9c 真机金标准(合并跑,cargo asset:// 免 HTTP 缓存)**:重编译 6.58s 重嵌、boot 无崩(窗口 Seeker 1880×964 visible、无 panic)——shell-keys/widget-actions/job-actions/demo-seed 追加全部 module-eval 不崩 boot;asset:// 无缓存陷阱 = definitive。
+
+### ★ 第40轮裁定 = 通过(批9b+9c · 每条独立核验)· 抽壳 arc 真里程碑
+- **widget-actions.js §4-4 红线逐字保留(读全文比对)**:widgetId 平台按端口传入不信任 iframe 自报(双标)、破坏性一律 confirmDestructive(delete-job 预览可读 `公司 · 岗位` 非裸 id=威胁 T5 预览腿、onConfirm/onUndo 成对快照回滚)、不可信 action toast 前 `<`-转义(text-content sink 充分)、wgtAction 私有不上桥(LIVE `window.wgtAction===undefined` 且 `SeekerWidgets.onAction.name==='wgtAction'`)。
+- **shell-keys.js 分层**:4 export 上桥(LIVE 全 function=内联/INIT 消费者按 window 解析需要)、3 私有不上桥(LIVE 全 undefined)。
+- **§1 两裁**:① contextNew 硬编码 jobseek openNewJob/openNewAction = §1 债**认可标注**(与 CACT_ALLOWED/wgtAction delete-job 同类,既有债零逻辑搬移非新增);② **openMarketValue 归属订正正确认可**(grep 坐实读 YOU_VALUE:47/aiRun:241=jobseek → 归 apps,符合第8轮归属驱动)。
+- **★内联 onclick 消费者保 window 桥 = 硬约束核验**:showEmptyState(settings:384)/openMarketValue(analysis:75+skills:68)/renderFirstRun(overview:6 裸读)LIVE 全 function、openMarketValue 真开模态(读 YOU_VALUE=48)、dotsHTML 真返回标记。
+- **★里程碑核验**:index.html 1330→1181(自 monolith 4602 −74%);awk 扫 classic inline 顶层实码=**空**;唯一剩 classic 外链=ai-engine.js(批10 收尾);活跃 JS 全 type=module。**可靠扫描(裁定④主证)**:9 个新 deferred 符号的 classic 顶层 eager 消费者=0 → 无 parse-time 断点。
+- **亲跑 preview(fresh server 净方法)**:0 错;真实 KeyboardEvent Mod+B 切侧栏(unset→rail→复位=initKeys 实跑键映射 live、避第29轮 hoisting 陷阱)、Mod+/ 帮助+Esc 关、onAction 挂 wgtAction 且私有、PAGES=11 全应用渲染(截图)。node×4+tsc 净。
+- **[建议](记账)**:两处 §1 平台硬编码 jobseek(contextNew、wgtAction delete-job)已随 CACT_ALLOWED 契约化账挂号——**批10 收尾时一并核对是否落契约分发,勿遗漏**。
+
+**批9 三刀(9a/9b/9c)全过审。** 剩批10 = 账本清空终局刀(余桥 + monolith-globals 27 条 + shell-globals tt 末条 + ai-engine.js classic→module + 内联 onclick 绑定处置)——先出账本清点方案再动。
