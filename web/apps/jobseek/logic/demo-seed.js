@@ -67,7 +67,8 @@ export function renderFirstRun(){
 // 设置页「查看引导态」:强制预览落地页(已上手用户也能看)。
 export function showEmptyState(){ go('overview'); renderFirstRun(); }
 
-/* 过渡 window 桥:captureSeed/syncDemoBanner 经 manifest.init;setDemoMode 经 manifest.onDataCleared;seedDemoData 被 index.html 落地页 onclick。
+/* 过渡 window 桥:captureSeed/syncDemoBanner 经 manifest.init;setDemoMode 经 manifest.onDataCleared。
+   ★批10a:seedDemoData 桥删——批9c renderFirstRun 归位本文件后其 frDemo onclick 走模块词法、零外部消费者(死桥)。
    ★批9c:renderFirstRun 被 overview.js:6 裸全局读;showEmptyState 被 settings.js:384 内联 onclick="showEmptyState()" 消费 → **须保 window 桥**(内联属性按 window 解析)。
    ★SEED(let,reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器。 */
-window.captureSeed=captureSeed; window.syncDemoBanner=syncDemoBanner; window.setDemoMode=setDemoMode; window.seedDemoData=seedDemoData; window.renderFirstRun=renderFirstRun; window.showEmptyState=showEmptyState;
+window.captureSeed=captureSeed; window.syncDemoBanner=syncDemoBanner; window.setDemoMode=setDemoMode; window.renderFirstRun=renderFirstRun; window.showEmptyState=showEmptyState;

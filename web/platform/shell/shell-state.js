@@ -54,6 +54,7 @@ export function clearAllDataFlow(){
 }
 
 /* 过渡 window 桥:消费者(SHELL BOOT/nav.js/settings.js/profile.js/settings-jobseek.js/demo-seed.js + index.html initKeys/shellReassemble)裸全局读不变;批10 改 import 后摘。
-   ★PAGES/GROUPS 于 module-eval 即设桥(供 SHELL BOOT 急读 @1243/1244);setState/WEIGHTS/5 函数同(runtime 消费、桥就绪即可)。 */
+   ★PAGES/GROUPS 于 module-eval 即设桥(供 SHELL BOOT 急读 @1243/1244);setState/WEIGHTS/4 函数同(runtime 消费、桥就绪即可)。
+   ★批10a:clearAllCollections 桥删——唯一消费者是同文件 clearAllDataFlow(模块词法,死桥)。 */
 window.PAGES=PAGES; window.GROUPS=GROUPS; window.setState=setState; window.WEIGHTS=WEIGHTS;
-window.settingsPersistOn=settingsPersistOn; window.saveSettings=saveSettings; window.hydrateSettings=hydrateSettings; window.clearAllCollections=clearAllCollections; window.clearAllDataFlow=clearAllDataFlow;
+window.settingsPersistOn=settingsPersistOn; window.saveSettings=saveSettings; window.hydrateSettings=hydrateSettings; window.clearAllDataFlow=clearAllDataFlow;
