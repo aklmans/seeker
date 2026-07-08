@@ -297,6 +297,20 @@
     return undefined;
   }
 
+  /** 页级顶栏动作:全部启用应用为 pageId 声明的动作**并集**(每页通常归一应用;同 cards/appCommands 并集语义)。
+   *  §1 契约化(批11B):平台 nav.renderTopActions 原硬编码 jobseek 顶栏动作 map(openResumeModal/resumeGenerate/openMarketValue…),改经此契约取。 @param {string} pageId @returns {import('./types').PageAction[]} */
+  function pageActions(pageId) {
+    /** @type {import('./types').PageAction[]} */
+    const out = [];
+    enabledApps().forEach((a) => {
+      if (typeof a.pageActions === 'function') {
+        const list = a.pageActions(pageId);
+        if (Array.isArray(list)) out.push(...list);
+      }
+    });
+    return out;
+  }
+
   /** @returns {string[]} **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径(数据归属不随开关变),
    *  供「清空全部数据」等**必须完整枚举**的破坏性操作消费(§4-3:漏集合=清不干净=破坏可撤销完整性;
    *  D2 关=数据保留,由应用管理页 per-app 清数据独立承担)。非 AI 可读——后者见 aiReadableCollections(启用∩授权)。
@@ -333,6 +347,7 @@
     notifyDataCleared,
     collId,
     pageNew,
+    pageActions,
     collections,
   };
   /** @type {any} */ (window).SeekerShell = api;

@@ -214,6 +214,5 @@ export function openNewJob(editId){
   };
 }
 
-/* 过渡 window 兼容桥:jobs/copilot-actions/match(内联 onclick)/nav(惰性)/index.html 按全局名调;改 import 后摘。extractJdSkills/frameJobExtract/TECH_VOCAB 内部私有。★openNewJob 的 §4-4 转义在函数体内、逐字保留。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.openNewJob=openNewJob;
+/* ★批11B(pageActions 契约):openNewJob 桥已摘 —— nav 顶栏动作(最后一个平台裸读者)改经 SeekerShell.pageActions 契约取;
+   全部消费者已 import(jobs/match/copilot-actions/demo-seed/manifest)。extractJdSkills/frameJobExtract/TECH_VOCAB 内部私有。★openNewJob 的 §4-4 转义在函数体内、逐字保留。 */

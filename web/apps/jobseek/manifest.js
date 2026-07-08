@@ -12,7 +12,7 @@ import { renderAnalysis } from './pages/analysis.js';
 import { renderSkills } from './pages/skills.js';
 import { renderActions } from './pages/actions.js';
 import { renderMatch } from './logic/match.js';
-import { renderResumes } from './logic/resumes.js';
+import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
 import { renderInterview } from './logic/interview.js';
 import { frameQuery } from './logic/frame-query.js';
 import { copReply, aiSuggs, AGENT_CMDS, renderAgentCmds } from './logic/copilot-actions.js';
@@ -20,9 +20,13 @@ import { SEEKER_CARDS } from './cards.js';
 import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
 import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
 import { openNewJob } from './logic/intake-job.js';
+import { openResumeModal } from './logic/resume-modals.js';
+import { openMarketValue } from './logic/job-actions.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
 import { JOBS, ACTIONS } from './data.js';
 import { tt } from '../../platform/shell/i18n.js';
+import { go } from '../../platform/shell/nav.js';
+import { toast } from '../../platform/shell/toast.js';
 import { setState } from '../../platform/shell/shell-state.js';
 
 (function () {
@@ -98,6 +102,17 @@ import { setState } from '../../platform/shell/shell-state.js';
     // 无参箭头包装(契约返回 () => void;openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价)。
     // 惰性(体在调用时求值)→ manifest eval 不 eager 读 openNewJob/openNewAction、无载序前移。
     pageNew: (pageId) => ({ jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
+    // §1 契约化(批11B · pageActions):平台 nav.renderTopActions 原硬编码本应用顶栏动作 map,逐字迁入。
+    // 惰性:fn 闭包点击时求值;tt 每次 pageActions() 调用重求值(语言切换即时,与原 nav 每次 renderTopActions 重建 map 同);manifest eval 顶层零 eager 读。
+    pageActions: (pageId) => ({
+      overview: [{ t: tt('智能匹配', 'Smart match'), a: 'btn-accent', fn: () => go('match') }],
+      match: [{ t: tt('我的简历', 'My resume'), fn: () => openResumeModal() }],
+      resumes: [{ t: tt('+ 生成针对性简历', '+ Tailored resume'), a: 'btn-accent', fn: () => resumeGenerate(resumeState.jobId, renderResumes) }],
+      jobs: [{ t: tt('+ 录入岗位', '+ Add job'), a: 'btn-accent', fn: () => openNewJob() }],
+      analysis: [{ t: tt('导出报告', 'Export report'), fn: () => toast(tt('已导出分析报告 (mock)', 'Analysis report exported (mock)')) }],
+      skills: [{ t: tt('市场价值报告', 'Market value'), fn: () => openMarketValue() }],
+      actions: [{ t: tt('+ 添加行动', '+ Add action'), fn: () => openNewAction() }],
+    }[pageId] || []),
     // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
     init: () => { captureSeed(); syncDemoBanner(); },
     // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。

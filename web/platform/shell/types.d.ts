@@ -80,6 +80,16 @@ export interface CommandSpec {
   run: () => void;
 }
 
+/** 页级顶栏动作项(renderTopActions 装配成 .btn;原单体 nav 的 {t,a,fn} map 条目)。 */
+export interface PageAction {
+  /** 按钮文案(已 tt() 双语解析;每次 pageActions() 调用重求值 → 语言切换即时)。 */
+  t: string;
+  /** 额外 class(如 'btn-accent');省略为默认 .btn。 */
+  a?: string;
+  /** 点击 handler(应用自持闭包,import 解析;平台只 btn.onclick=fn)。 */
+  fn: () => void;
+}
+
 /** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI、数据保留)。 */
 export interface AppManifest {
   /** ^[a-z][a-z0-9]*$(嵌入集合前缀 / 设置键 / 钥匙串不经它)。 */
@@ -119,6 +129,8 @@ export interface AppManifest {
   collId?: (name: string, r: any) => string | undefined;
   /** 页级「新建」动作:平台快捷键(Mod+N)/新建入口按 pageId 问应用的「创建」动作;命中返回无参函数,未命中 undefined(平台兜底 toast)。选择型(同 collId)。 */
   pageNew?: (pageId: string) => (() => void) | undefined;
+  /** 页级顶栏动作:按 pageId 返回本应用为该页声明的顶栏按钮(renderTopActions 渲染);未命中返回空数组。汇总型(各应用并集,同 cards)。 */
+  pageActions?: (pageId: string) => PageAction[];
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
@@ -180,6 +192,8 @@ export interface SeekerShellApi {
   collId(name: string, r: any): string | undefined;
   /** 页级「新建」动作链:依注册序问各启用应用的 pageNew,首个返回函数生效;都未命中返回 undefined(调用方兜底 toast)。 */
   pageNew(pageId: string): (() => void) | undefined;
+  /** 页级顶栏动作:全部启用应用为该页声明的动作并集(renderTopActions 消费;每页通常归一应用,同 cards 并集语义)。 */
+  pageActions(pageId: string): PageAction[];
   /** **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径,供「清空全部数据」等须完整枚举的破坏性操作消费。
    *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];

@@ -56,20 +56,10 @@ export function go(id){
 }
 export function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
-  const map={
-    overview:[{t:tt('智能匹配','Smart match'), a:'btn-accent', fn:()=>go('match')}],
-    // 3.y:handler 一律**惰性闭包**(点击时解析),与 module 载序解耦 —— openResumeModal 等已/将 ESM 化为 deferred module bridge,
-    //       renderTopActions 在 INIT(initShell→setLang)早于 body module 载入时构建此 map,裸引用会 ReferenceError(cut2 潜伏、步1 暴露)。
-    match:[{t:tt('我的简历','My resume'), fn:()=>openResumeModal()}],
-    resumes:[{t:tt('+ 生成针对性简历','+ Tailored resume'), a:'btn-accent', fn:()=>resumeGenerate(resumeState.jobId, renderResumes)}],
-    jobs:[{t:tt('+ 录入岗位','+ Add job'), a:'btn-accent', fn:()=>openNewJob()}],   // 「筛选」按钮删除:筛选器本就常驻在页面下方(城市/状态),顶部按钮只 toast 提示=冗余
-    analysis:[{t:tt('导出报告','Export report'), fn:()=>toast(tt('已导出分析报告 (mock)','Analysis report exported (mock)'))}],
-    skills:[{t:tt('市场价值报告','Market value'), fn:()=>openMarketValue()}],
-    actions:[{t:tt('+ 添加行动','+ Add action'), fn:()=>openNewAction()}],
-    interview:[],
-    settings:[]
-  };
-  (map[id]||[]).forEach(b=>{
+  // §1 契约化(批11B · pageActions):原硬编码 jobseek 顶栏动作 map(openResumeModal/resumeGenerate/openMarketValue…)逐字迁入 manifest,
+  // 平台经 SeekerShell.pageActions(id) 取该页动作 —— 不再裸读 apps 符号。惰性闭包语义不变(fn 点击时解析、与 module 载序解耦);
+  // interview/settings 等无动作页 → 契约返回空数组(未命中 map)。
+  window.SeekerShell.pageActions(id).forEach(b=>{
     const btn=el(`<button class="btn ${b.a||''}">${b.t}</button>`); btn.onclick=b.fn; host.appendChild(btn);
   });
   // 主题切换器去除:主题已可在「数据设置 · 主题模式」+ 侧栏脚按钮(themeBtn2)+ 快捷键 Mod+Shift+D 三处切换,顶部图标冗余。

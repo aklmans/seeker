@@ -471,8 +471,6 @@ function ivVoiceDemo(){
   tick();
 }
 
-/* 过渡 window 桥:renderResumes/resumeGenerate 经 manifest/nav/cards/persistence/index.html 消费;10 个 iv* 经 interview.js 的 renderInterview 消费(循环耦合、运行时经桥、安全)。
-   resumeState mutated dual-publish(interview.js 内联 onclick 跨文件 mutate 同引用安全)。ivRec(移入)+ 大量 resume 编辑/导出内部函数私有。
+/* ★批11B(pageActions 契约):resumeState/renderResumes/resumeGenerate 桥已摘 —— nav 顶栏动作(resumeGenerate(resumeState.jobId, renderResumes))改经 SeekerShell.pageActions 契约取(最后一个平台裸读者去);
+   全部消费者已 import(manifest/cards/persistence/interview/job-actions)。resumeState mutated dual-publish → import 即同一对象(interview.js 跨文件 mutate 安全)。ivRec(移入)+ 大量 resume 编辑/导出内部函数私有。
    ★红线(在函数体、逐字保留):resumes 集合只存专业模块结构、联系方式绝不入(走独立 PROFILE 实时渲染)→ query_data(resumes) 天然无联系方式。★PROFILE 已 import from platform/shell/profile.js(批8;不上 window 桥)。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.resumeState=resumeState; window.renderResumes=renderResumes; window.resumeGenerate=resumeGenerate; 

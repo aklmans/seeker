@@ -50,6 +50,5 @@ export function openResumeUpload(){
     dz.addEventListener('drop', e=>{ if(!hasFiles(e)) return; e.preventDefault(); dz.classList.remove('dz-over'); startParse(); });
   }
 }
-/* 过渡 window 兼容桥(约束⑤延续):inline onclick(copilot-actions cBtn)/页按钮按全局名调 openResumeModal/openResumeUpload → 零回归;逐个改 import 后摘。纯函数、零模块态 → dual-publish 安全。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.openResumeModal=openResumeModal;
+/* ★批11B(pageActions 契约):openResumeModal 桥已摘 —— nav 顶栏动作改经 SeekerShell.pageActions 契约取;
+   消费者已 import(match/resumes/skills/settings-jobseek/demo-seed)。openResumeUpload 仍 export 供 copilot-actions import(本就无桥)。纯函数、零模块态。 */

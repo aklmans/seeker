@@ -264,5 +264,4 @@ export function aiRun(host, steps, resultFn, opts){
    状态符号 IV_BANK/IV_RECORDS/MASTER/RESUME_TAILORED 皆 mutated-property(引用永久稳定、hydration in-place)→ dual-publish 同引用即安全、免访问器。
    ★红线(逐字保留,在函数体内):MASTER/RESUME_TAILORED = AI 可读专业简历层、绝不含联系方式(姓名/电话/邮箱在 PROFILE 隐私层);persistMaster 只写 resumes 哨兵 r__master__、永不写 profile。
    私有不上桥:IV_STYLE/PLAN_LIB(状态)、aiGenQuestions/masterEntriesHTML/masterProjectsHTML/masterExtrasHTML(内部)。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.openNewAction=openNewAction; 
+/* ★批11B(pageActions 契约):openNewAction 桥已摘 —— nav 顶栏动作改经 SeekerShell.pageActions 契约取;消费者已 import(actions/copilot-actions/manifest)。 */

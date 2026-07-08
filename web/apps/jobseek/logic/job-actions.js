@@ -3,7 +3,7 @@
  *  dotsHTML(技能点渲染件,analysis/skills 页消费)· openMarketValue(市场价值报告模态,nav 顶栏动作/cards/copilot/analysis/skills 消费)·
  *  aiResumeForJob + goInterview(岗位→简历/面试快捷跳转,jobs/match/cards/copilot 消费)。
  *  ★ownership:openMarketValue 读 YOU_VALUE/aiRun(intake-action.js)= jobseek 业务,归 apps(先前"9b 含 openMarketValue"框定经 grep 订正);
- *    analysis:75/skills:68 经内联 onclick="openMarketValue()" 消费 → **须保 window 桥**。 */
+ *    批11A 已把 analysis/skills 的原内联 onclick 改 [data-omv] import 绑定、批11B nav 顶栏动作改 SeekerShell.pageActions 契约 → openMarketValue 桥已摘、消费者全 import。 */
 
 /* ---------- MARKET VALUE modal ---------- */
 import { JOBS } from '../data.js';
@@ -40,7 +40,5 @@ export function aiResumeForJob(id){
 }
 export function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; ivState.q=null; ivState.search=''; go('interview'); renderInterview(); }
 
-/* 过渡 window 桥:openMarketValue(nav.js:59 顶栏动作/cards:274/copilot-actions:18 + ★analysis:75/skills:68 内联 onclick 须 window)、
-   dotsHTML(analysis:18/skills:15,102 裸全局)、aiResumeForJob(jobs:114/copilot:15/match:54/cards:198 typeof 守卫)、goInterview(jobs:116/copilot:13/match:55/cards:245)——账本清空改 import 后摘(内联 onclick 两处届时一并改绑定)。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.openMarketValue=openMarketValue; 
+/* ★批11B(pageActions 契约):openMarketValue 桥已摘 —— nav 顶栏动作改经 SeekerShell.pageActions 契约取(analysis/skills 原内联 onclick 已在 11A 改 [data-omv] import 绑定)。
+   全部消费者已 import(cards/copilot-actions/skills/analysis);dotsHTML/aiResumeForJob/goInterview 亦无桥、消费者 import。 */ 
