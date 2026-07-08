@@ -1,9 +1,9 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 面试陪练(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- INTERVIEW (旗舰) ---------- */
-let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};
-let ivRec=null;
-function renderInterview(){
+export let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};  // mutated-property(仅 .k= mutate,含 resumes.js 跨文件写)→ dual-publish 免访问器;JOBS[0] 于 module-eval 读(data.js 仍 classic、全局词法就绪)
+/* ★ivRec(语音识别句柄,reassigned)所有权移入 resumes.js:其生命周期全在 resumes.js(ivToggleVoice/ivStopVoice/ivVoiceDemo),interview.js 从不引用;移后 resumes 内私有,消除跨文件 reassigned 纠缠(否则需 setter 原子翻转)。 */
+export function renderInterview(){
   // 面试岗位与目标岗位一一对应:只取活跃岗位(排除 放弃/拒绝;与岗位列表口径一致),空则引导先加岗位(修 jb.co 空崩)。
   const activeJobs=JOBS.filter(j=>!['skip','reject'].includes(j.status));
   if(!activeJobs.length){
@@ -57,3 +57,6 @@ function ivResumeRef(j){
     <div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+cEsc(j.co)+' 的简历','No resume for '+cEsc(j.co)+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('带简历面试更贴合(面试官会拿着它问)—— 没有简历也能直接训练。','Interviewing with a resume fits better (the interviewer uses it) — but you can train without one.')}</div></div>
     <button class="btn btn-accent" onclick="resumeState.jobId=${j.id};go('resumes')">${tt('去生成简历','Generate resume')} →</button></div></div>`;
 }
+
+/* 过渡 window 桥:renderInterview 经 manifest/cards/persistence/resumes/jobs 消费;ivState mutated dual-publish(resumes.js 跨文件 mutate .k= 同引用安全)。ivResumeRef 私有。ivRec 已移 resumes.js。 */
+window.renderInterview=renderInterview; window.ivState=ivState;

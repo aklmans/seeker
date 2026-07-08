@@ -1,7 +1,8 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 简历模块(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- RESUMES (独立模块) ---------- */
-let resumeState={jobId:JOBS[0].id, mode:'edit'};
+export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 内联 onclick 跨文件写)→ dual-publish 免访问器;JOBS[0] module-eval 读(data.js 仍 classic、全局词法就绪)
+let ivRec=null;  // ★从 interview.js 移入:语音识别句柄(reassigned:=new SR()/=null/='demo'),生命周期全在本文件(ivToggleVoice/ivStopVoice/ivVoiceDemo)→ 模块私有、不上桥不访问器(消除跨文件 reassigned 纠缠)
 function modLabel(m){const map={basic:['基本信息','Basic info'],summary:['个人简介','Summary'],skills:['专业能力','Skills'],work:['工作经历','Experience'],projects:['项目经历','Projects'],edu:['教育经历','Education'],honors:['荣誉奖项','Honors'],portfolio:['个人作品','Portfolio'],research:['研究经历','Research'],other:['其他经历','Other']};return map[m.key]?tt(map[m.key][0],map[m.key][1]):m.label;}
 function blockHTML(m){
   let body;
@@ -85,7 +86,7 @@ function resumePrint(){
   document.body.classList.add('printing'); window.print();
   setTimeout(()=>document.body.classList.remove('printing'),700);
 }
-function renderResumes(){
+export function renderResumes(){
   if(!JOBS.find(x=>x.id===resumeState.jobId)) resumeState.jobId=JOBS[0].id;
   const tailored=JOBS.filter(j=>RESUME_TAILORED[j.id]);
   const base=`<div class="sec"><p class="seclabel">— SOURCE</p><h2 class="sectitle">${tt('主简历','Master resume')}<span class="dot">.</span></h2>
@@ -148,7 +149,7 @@ function resumeAddModule(id){
     <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nmSave">${tt('添加','Add')}</button></div>`);
   $('#nmSave',m).onclick=()=>{const name=$('#nmName',m).value.trim();if(!name){toast('请填写模块名称');return;}resumeSync(id);r.modules.push({key:'cus_'+Date.now(), label:name, on:true, type:'text', content:'', custom:true});closeModal();renderResumes();toast('已添加模块「'+cEsc(name)+'」');};
 }
-function resumeGenerate(id, after){
+export function resumeGenerate(id, after){
   const j=JOBS.find(x=>x.id===id); const fresh=!!RESUME_TAILORED[id]; resumeState.jobId=id;
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI RESUME</p><h2 style="margin-top:5px;">${fresh?tt('重新生成','Regenerate'):tt('生成','Generate')}${tt('针对性简历',' tailored resume')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="grHost"></div></div>`);
   aiRun($('#grHost',m),[tt('读取 JD 的硬性 + 软性要求','Reading JD hard + soft requirements'),tt('匹配你的职业资产与项目证据','Matching your assets & evidence'),tt('按岗位重写概要、技能与项目亮点','Rewriting summary, skills & highlights')],
@@ -268,19 +269,19 @@ function resumeExport(id){
   [...m.querySelectorAll('[data-copysec]')].forEach(b=>b.onclick=()=>copyWithToast(exportSectionText(model.sections[+b.dataset.copysec])));
   [...m.querySelectorAll('[data-copyblk]')].forEach(b=>b.onclick=()=>{const a=b.dataset.copyblk.split('|');copyWithToast(exportBlockText(model.sections[+a[0]].blocks[+a[1]]));});
 }
-function ivBankHTML(){
+export function ivBankHTML(){
   const cats=['全部',...IV_CATS.map(c=>c[1])];
   const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-ic="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivSearch" placeholder="${tt('搜索题目…','Search questions…')}" value="${cEsc(ivState.search)}"></div>`;
   const list=IV_BANK.filter(q=>(ivState.cat==='全部'||IV_CATLABEL[q.cat]===ivState.cat));
   const rows=list.map(q=>`<div class="q-row" data-q="${q.id}"><span class="q-cat ${q.src==='AI'?'ai':''}">${IV_CATLABEL[q.cat]}</span><div><div class="q-text">${cEsc(q.text)}</div><div class="q-tags">${cEsc(q.tags.join(' · '))}${q.src!=='内置'?' · '+cEsc(q.src):''}</div></div><span class="q-go">${tt('开始练','Practice')} →</span></div>`).join('');
   return toolbar+(rows||`<p style="color:var(--ink-3);padding:24px 0;text-align:center;">${tt('没有匹配的题目','No matching questions')}</p>`);
 }
-function ivBindBank(){
+export function ivBindBank(){
   $$('#page-interview [data-ic]').forEach(b=>b.onclick=()=>{ivState.cat=b.dataset.ic;renderInterview();});
   const s=$('#ivSearch'); if(s)s.oninput=()=>{ivState.search=s.value;$$('#page-interview .q-row').forEach(r=>{const q=IV_BANK.find(x=>x.id===+r.dataset.q);r.style.display=(q&&(!s.value||q.text.includes(s.value)))?'':'none';});};
   $$('#page-interview [data-q]').forEach(r=>r.onclick=()=>{ivState.q=IV_BANK.find(q=>q.id===+r.dataset.q);renderInterview();});
 }
-function ivPractice(){
+export function ivPractice(){
   const q=ivState.q; const j=JOBS.find(x=>x.id===ivState.jobId); const stage=$('#ivStage');
   stage.innerHTML=`<button class="btn-text" id="ivBack" style="margin-bottom:14px;">← ${tt('返回题库','Back to bank')}</button>
     <div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>${tt('AI 面试官','AI interviewer')}</b>${ivState.round?` · ${tt('整轮 · 第 '+(ivState.round.idx+1)+' / '+ivState.round.qs.length+' 题','Round · '+(ivState.round.idx+1)+' / '+ivState.round.qs.length)}`:''} · ${IV_CATLABEL[q.cat]}${q.src==='AI'?' · '+tt('针对 '+cEsc(j.co),'for '+cEsc(j.co)):''}</span></div>
@@ -320,7 +321,7 @@ function ivSubmit(){
 }
 function ivNextRandom(){const pool=IV_BANK.filter(q=>q.id!==ivState.q.id);ivState.q=pool[Math.floor(Math.random()*pool.length)]||ivState.q;renderInterview();}
 /* ===== Full round ===== */
-function ivStartRound(){
+export function ivStartRound(){
   const j=JOBS.find(x=>x.id===ivState.jobId);
   let qs=genQuestionsFor(j,4);
   if(!qs.some(q=>q.cat==='behavior')){const beh=IV_BANK.filter(q=>q.cat==='behavior');if(beh.length)qs=qs.concat([beh[Math.floor(Math.random()*beh.length)]]);}
@@ -345,7 +346,7 @@ function ivFinishRound(){
   ivState.summary={rec, recs:r.recs, scores, weakest:dimNames[weakest], strongest:dimNames[strongest]};
   ivState.q=null; ivState.round=null; renderInterview();
 }
-function ivRenderSummary(){
+export function ivRenderSummary(){
   const s=ivState.summary; const stage=$('#ivStage'); const sc=s.scores;
   const dims=[[tt('结构','Structure'),sc.structure],[tt('深度','Depth'),sc.depth],[tt('量化','Quant'),sc.quant]];
   const verdict=sc.overall>=8?tt('表现稳定,可以投了','Solid — you\'re ready to apply'):(sc.overall>=7?tt('基础扎实,补强短板就更稳','Good base — shore up weak spots'):tt('多练几轮,重点打磨结构与量化','Practice more — focus on structure & quant'));
@@ -382,7 +383,7 @@ function growthChartHTML(){
     <div style="display:flex;gap:18px;margin-top:10px;font-family:var(--font-mono);font-size:10px;color:var(--ink-3);"><span style="color:var(--accent);">━ ${tt('综合','Overall')}</span><span>━ ${tt('结构','Structure')}</span><span>━ ${tt('深度','Depth')}</span><span style="margin-left:auto;">${tt('共 '+n+' 次练习',n+' sessions')}</span></div>
   </div>`;
 }
-function ivRecordsHTML(){
+export function ivRecordsHTML(){
   const cats=['全部',...IV_CATS.map(c=>c[1])];
   const toolbar=`<div class="iv-toolbar"><div class="filtergroup"><span class="fl">${tt('分类','Category')}</span>${cats.map(c=>`<button class="fopt ${ivState.cat===c?'on':''}" data-rc="${c}">${c==='全部'?tt('全部','All'):c}</button>`).join('')}</div><input class="iv-search" id="ivRSearch" placeholder="${tt('搜索题目 / 公司…','Search questions / company…')}" value="${cEsc(ivState.search)}"></div>`;
   const growth=growthChartHTML();
@@ -394,7 +395,7 @@ function ivRecordsHTML(){
   }).join('');
   return growth+toolbar+rows;
 }
-function ivBindRecords(){
+export function ivBindRecords(){
   $$('#page-interview [data-rc]').forEach(b=>b.onclick=()=>{ivState.cat=b.dataset.rc;renderInterview();});
   const s=$('#ivRSearch'); if(s)s.oninput=()=>{ivState.search=s.value;$$('#page-interview .rec-row').forEach(row=>{const r=IV_RECORDS.find(x=>x.id===+row.dataset.rec);const show=r&&(!s.value||r.qText.includes(s.value)||(r.job||'').includes(s.value));row.style.display=show?'':'none';});};
   $$('#page-interview [data-rec]').forEach(row=>row.onclick=()=>ivRecordDetail(+row.dataset.rec));
@@ -414,7 +415,7 @@ function ivRecordDetail(id){
         <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${r.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${cEsc(g)}</li>`).join('')}</ul></div>
     </div>`);
 }
-function ivGenerate(){
+export function ivGenerate(){
   const j=JOBS.find(x=>x.id===ivState.jobId);
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI</p><h2 style="margin-top:5px;">${tt('生成针对性面试题','Generate tailored questions')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="genHost"></div></div>`);
   aiRun($('#genHost',m),[tt('解析该岗位 JD 与你的针对性简历','Reading the JD & your tailored resume'),tt('定位简历里最可能被深挖的点','Finding the most probe-worthy points'),tt('生成 3 道针对性新题','Generating 3 tailored questions')],
@@ -422,7 +423,7 @@ function ivGenerate(){
       return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" onclick="closeModal()">${tt('去题库练','Practice in bank')} →</button>`;
     },{label:tt('AI 出题中…','Generating questions…')});
 }
-function ivAddQuestion(){
+export function ivAddQuestion(){
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('添加我自己的题','Add my own question')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="field"><label>${tt('题目','Question')}</label><textarea class="textarea" id="nqText" style="font-family:var(--font-sans);min-height:84px;" placeholder="${tt('粘贴或写下你想练的面试题…','Paste or write a question to practice…')}"></textarea></div>
@@ -445,7 +446,7 @@ function ivToggleVoice(){
     }catch(err){ivRec=null;ivVoiceDemo();}
   } else { ivVoiceDemo(); }
 }
-function ivStopVoice(){ if(ivRec&&ivRec!=='demo'){try{ivRec.stop();}catch(e){}} ivRec=null; const btn=$('#ivMic'),txt=$('#micTxt'); if(btn)btn.classList.remove('rec'); if(txt)txt.textContent='语音作答'; }
+export function ivStopVoice(){ if(ivRec&&ivRec!=='demo'){try{ivRec.stop();}catch(e){}} ivRec=null; const btn=$('#ivMic'),txt=$('#micTxt'); if(btn)btn.classList.remove('rec'); if(txt)txt.textContent='语音作答'; }
 function ivVoiceDemo(){
   const btn=$('#ivMic'),txt=$('#micTxt'),ta=$('#ivAns'); if(!btn)return;
   btn.classList.add('rec'); txt.textContent='聆听中(演示)…'; ivRec='demo';
@@ -454,3 +455,8 @@ function ivVoiceDemo(){
   const tick=()=>{ if(ivRec!=='demo')return; if(i<=demo.length){ta.value=(ta.dataset.base||'')+demo.slice(0,i);i+=2;setTimeout(tick,38);} else {ivStopVoice();toast('语音转写完成(演示)');} };
   tick();
 }
+
+/* 过渡 window 桥:renderResumes/resumeGenerate 经 manifest/nav/cards/persistence/index.html 消费;10 个 iv* 经 interview.js 的 renderInterview 消费(循环耦合、运行时经桥、安全)。
+   resumeState mutated dual-publish(interview.js 内联 onclick 跨文件 mutate 同引用安全)。ivRec(移入)+ 大量 resume 编辑/导出内部函数私有。
+   ★红线(在函数体、逐字保留):resumes 集合只存专业模块结构、联系方式绝不入(走独立 PROFILE 实时渲染)→ query_data(resumes) 天然无联系方式。★PROFILE 现经全局词法读 classic profile.js(批8 转 import)。 */
+window.resumeState=resumeState; window.renderResumes=renderResumes; window.resumeGenerate=resumeGenerate; window.ivAddQuestion=ivAddQuestion; window.ivBankHTML=ivBankHTML; window.ivBindBank=ivBindBank; window.ivBindRecords=ivBindRecords; window.ivGenerate=ivGenerate; window.ivPractice=ivPractice; window.ivRecordsHTML=ivRecordsHTML; window.ivRenderSummary=ivRenderSummary; window.ivStartRound=ivStartRound; window.ivStopVoice=ivStopVoice;

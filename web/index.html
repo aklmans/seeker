@@ -1049,8 +1049,8 @@ function aiResumeForJob(id){
 function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; ivState.q=null; ivState.search=''; go('interview'); renderInterview(); }
 
 </script>
-<script src="./apps/jobseek/logic/interview.js"></script>
-<script src="./apps/jobseek/logic/resumes.js"></script>
+<script type="module" src="./apps/jobseek/logic/interview.js"></script>
+<script type="module" src="./apps/jobseek/logic/resumes.js"></script>
 <script type="module" src="./apps/jobseek/logic/copilot-actions.js"></script>
 <script type="module" src="./apps/jobseek/logic/frame-query.js"></script>
 <script type="module" src="./apps/jobseek/logic/persistence.js"></script>
