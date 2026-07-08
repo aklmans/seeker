@@ -1107,3 +1107,26 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议] 已采纳(doc-staleness)**:`index.html:1225` 注释"prompts/notes 留 classic(供 manifest 全局词法读)"过时 → 改为反映批1-6 业务全局已 module(经 window 桥 runtime 解析)+ 批7 assets prompts/notes module、render 由 manifest **import 直取**(Option B、不再上 window 桥)。
 
 **批7 通过。** 下一步:批8(profile 双红线 · 链②收尾:PROFILE import-first 不上 window、flip settings/resumes 的 PROFILE→import;runtime 函数体读非时序、焦点红线;★单送 + 亲跑 preview〔净方法:平直 reload + no-store〕+ 真机金标准叠加)· 批9(index.html inline→module)· 批10(账本清空 · shell-globals tt 末条)。
+
+---
+
+### 批8(commit `65e7860`)· profile.js → module · 双红线收尾(★PROFILE 不上 window)· ⏳ 待审
+**批8 = classic 业务层 module 化收尾的隐私红线刀**。profile.js classic→module,函数体逐字节零改(PROFILE 值 + persistProfileField/hydrateProfile 体不变)。
+
+**★双红线之结构强化(本刀核心)**:PROFILE/persistProfileField `export` 但**绝不上 window**(隐私最小暴露)。消费者 settings.js/resumes.js 从「裸全局读 classic PROFILE」→ `import { PROFILE }`。
+- 效果:**window/AI 结构性不可达 PROFILE**(grep 证 0 `window.PROFILE`)——比 classic 全局时代更严(classic PROFILE 是 window 全局、理论可被任意脚本读;module import 后只有显式 importer 可达)。与红线①(rt.profile 硬隔离)、后端 QUERYABLE 不含 profile **三层叠加**。
+- 红线②(设置不可经对话改):settings.js 另 import persistProfileField,仍是唯一改 PROFILE 入口(data-pf 输入、Agent 不可达)。
+- hydrateProfile **私有**(仅本文件自注册 seeker-rt-ready 监听器、无外部消费者 → 不 export、不上桥)。
+
+**红线逐字保留**:persistProfileField 只经 `rt.profile.set`、hydrateProfile 只经 `rt.profile.getAll`(绝不串 rt.db);resumes 的 PROFILE 只在函数体渲染简历预览联系方式、persistResume 绝不入 resumes 集合。
+
+**时序(比批6 简单)**:PROFILE **无 eager module-eval 读**(settings :334/:408、resumes 8 处全在函数体 runtime)→ **无 tag-order 约束**,import 图自定序(profile.js 被 settings/resumes import → 先 eval)。profile.js module-eval 注册 rt-ready 监听器仍先于末位 dispatch(同 prompts/notes 先例)。
+
+**验证**:
+- 结构:node×3 / `tsc --noEmit` exit 0;grep 证 **0 window.PROFILE**(红线结构性)。
+- **preview(净方法)**:PROFILE off window、canonical import=`[PROFILE,persistProfileField]`、settings/resumes/interview/prompts/overview 全渲、profile tab 10 字段带值(北京/138****8888…)、**★shared-instance 证**(settings oninput 改 PROFILE.city='深圳测试' → module singleton `m.PROFILE.city` 可见 = settings/resumes/profile.js 同一实例)、**0 console error**。
+- **★真机金标准(cargo asset:// 免 HTTP 缓存)**:重编译 5.89s 重嵌、**boot 无崩**(进程稳 2.5min/RSS 134MB、窗口 "Seeker" 1880×964 visible、无 panic;唯一日志=macOS IMK 系统消息、非 app 错)——**asset:// 无缓存 → classic→module 转换在此净载 = definitive 证代码正确**(排除下述 preview 缓存陷阱)。
+
+**★方法论新发现(preview 缓存陷阱 · 批7 订正的补充)**:初次 preview 冒烟 console 报 `renderSettings/renderResumes/ivBankHTML not defined @buildPages`——判定 = **preview 代理(8123)剥离 no-store 头**(`fetch` 证 `cache-control===null`)→ 浏览器按 URL 缓存脚本;profile.js 批7 曾以 **classic** 载入缓存,批8 classic→module **同 URL 内容变、缓存未失效** → 浏览器供 stale classic(module 解释下**空 exports**)→ settings/resumes 的 `import {PROFILE}` 抛"no export named PROFILE"→ 两文件 module-eval 失败 → 其尾部 window 桥(renderSettings/renderResumes/iv*)未设。**证据链**:served 文件有 export(fetch ?raw)+ cache-busted import(`?bust=`)得 `[PROFILE,persistProfileField]` + node/tsc 净 → 代码正确、纯缓存假错。**修**=单文件定向 `fetch('/…/profile.js',{cache:'reload'})`+reload(更新该缓存条目、**非全量 force-revalidate**——避免批7 载序扰动);修后 canonical import 得 exports、全页渲、0 err。**批7 订正之补充**:no-store 净判据**前提是 no-store 头真到浏览器**;preview 代理剥离时,**classic→module 同 URL 转换会踩 stale**,需定向单文件重验;asset:// 真机无此陷阱(免 HTTP 缓存)=更可信判据。
+
+**剩**:批9(index.html inline PAGES/GROUPS/setState/WEIGHTS + inline 函数 → module)· 批10(账本清空:余 window 桥 + monolith-globals.d.ts 27 条 + shell-globals.d.ts tt 末条 → 全删)。**8123 已释放,评审可亲跑 preview**(注:若评审也遇 profile.js stale,同法定向重验、或真机 asset:// 验)。
