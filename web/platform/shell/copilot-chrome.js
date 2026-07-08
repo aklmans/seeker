@@ -2,7 +2,7 @@
 /** 平台 · Copilot 面板机制 copEl/copOpen/copClose/copToggle/copScroll/copAppend + UI 模板 cCard/cAct/cBtn/cSuggs。
  *  依赖 $/el;cSuggs onclick 调 copSend(序3-b)、cBtn onclick 字符串(运行时);jobseek 专属响应(aiSuggs/copMatch/copReply)留 index.html/apps。
  *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。
- *  ★批10c:streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag@871 晚于 ai-engine@869 → import 边零提升(裁定②)。 */
+ *  ★批10c(第42轮[应改]订正):streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag 实测 @874 晚于 ai-engine@869 → 此 import 边无提升;载序判据见 ai-engine.js 头注释(查提前区间,非比 tag 先后)。 */
 import { streamReply } from './ai-engine.js';
 
 export function copEl(){return $('#copPanel');}

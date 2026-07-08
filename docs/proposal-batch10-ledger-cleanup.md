@@ -60,7 +60,7 @@ export `extractSeekerBlock`/`streamReply`、`aiLangHint` 私有;两消费者(cop
 ### 10d · 全网 import 化(大头,可再对半拆 platform / jobseek 两 commit)
 - (b) 136:全部消费者 flip import、删桥。jobseek 内网(data 8 + data-helpers 6 + intake-action ~26 + resumes 12 + copilot-actions/match/interview/pages/…)+ platform 网(copilot-chrome 21 + data-store 6 + nav 6 + shell-state 5 + …)。import 图自定序(⚠ eager `JOBS[0]` 读者 flip data.js import 后由图定序,较批6 tag-order 更强)。
 - (c) 23:SHELL BOOT/INIT 两 module 块内加 import(含 index.html 自定义 3 桥 shellReassemble/shellPushAiReadable/openAppManager——INIT 消费,同块化或经 import)。
-- (d)+§1 残留桥就地白名单注释。
+- (d)+§1 残留桥就地白名单注释。**★(d) 白名单显式含 `go`**(第42轮[建议]①:aiErrHTML 生成串 `onclick="…copClose();go('settings')"` 是 cBtn 同类 window-解析暗道,copClose 有 typeof 守卫、go 没有——摘 go 桥则 AI 错误卡按钮静默抛错)。
 - 验:node 全量 + tsc + preview 净方法全功能冒烟 + **真机金标准**(blast radius 最大)。
 
 **送审节奏(沿既定)**:10a+10b 攒一组;10c 单送(红线);10d 单送(+真机);批9 型「先对齐后动刀」。

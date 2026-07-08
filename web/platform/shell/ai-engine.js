@@ -4,8 +4,9 @@
  *   ① streamReply 卡剥离走 SeekerShell.cards() 契约、prose 经 aiHTML(Markdown 安全/esc 回退)、AI 原始 HTML 不进 DOM、持久卡 CARDS[k].persist 过滤;
  *   ② extractSeekerBlock 提取 JSON 经 CARDS[kind].valid 校验后才 push/show(不臆造/不注入);
  *   ③ Untrusted 框定:AI 输出经解析 + valid、当数据非指令。
- *  ★载序(裁定②):本文件依赖(i18n@861/ai-render@864/shell-state@866/data-store@867)tag 皆早于本文件 @869 → import 边零提升;
- *    顶层零语句(仅函数声明)→ 零 eager 读;消费者全 runtime(copSend/agentSend/doExtract)。aiLangHint 零外部消费者 → 私有不 export。 */
+ *  ★载序(裁定② · 第42轮[应改]订正):import 边把 provider 的 module-eval 提前到 consumer 的 tag 位 ⇒ 判据 = 查「提前区间内有无 eager 读 / 被跳过的副作用」,非「依赖 tag 更早 ⇒ 无提升」。
+ *    实测 i18n@861/ai-render@864/shell-state@866 早于本文件 @869(无提升);**data-store@870 晚于 @869 → 确有一次提升**——但提升惰性:data-store 零 import、顶层仅 `let __msgSeq=0`+桥赋值、零 eager 读,且 869↔870 间只夹本文件的空 body(顶层零语句)→ 桥反而更早就绪,安全。
+ *    本文件顶层零语句(仅函数声明)→ 零 eager 读;消费者全 runtime(copSend/agentSend/doExtract)。aiLangHint 零外部消费者 → 私有不 export。 */
 import { tt } from './i18n.js';
 import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';

@@ -1227,7 +1227,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批10c(commit `c36dabe`)· ai-engine.js → module(★最后一个 classic 外链清零 · 红线刀)· ⏳ 待审
+### 批10c(commit `c36dabe`)· ai-engine.js → module(★最后一个 classic 外链清零 · 红线刀)· 🏁 第42轮通过(+1 [应改] 已修)
 **红线单送**(约束③ 加倍审)。ai-engine.js classic → type=module,函数体逐字节零改(diff 仅 2 个 export 前缀 + 头注释 + import 块):
 - export extractSeekerBlock/streamReply;**aiLangHint 私有**(零外部消费者);自身 7 裸依赖全 import(tt/setState/aiHTML/displayText/toolStatusText/aiErrHTML/persistMsg)。
 - **零 window 桥收官**:两消费者同刀 flip——copilot-chrome(streamReply)+ intake-job(extractSeekerBlock,apps→platform);ai-render 3 solo 桥随刀销(displayText/toolStatusText/aiErrHTML 唯一消费者=ai-engine;先亲验 grep 除定义/ai-engine 外零命中),aiHTML 桥留(copilot-chrome hydrateMessages 裸读、10d)。
@@ -1236,3 +1236,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★里程碑:index.html classic 外链 = 0**(活跃 JS 全 type=module;classic 时代终结)。
 - **验**:node×4/tsc 0;preview 净方法(③(b) 最高危形=classic→module 同 URL、定向 4 文件重验):0 错;**extractSeekerBlock LIVE 逐字语义**(合法块解析+剥离、broken JSON→data null+prose 不剥=第14行语义);**ai-engine off-window → `?bust=` import 安全验 exports**(裁定③ on/off-window 分野的正用);3 solo 桥 undefined+aiHTML 在;**★copSend 全链 LIVE**(点击→3 条消息=copilot-chrome import 解析成功);11 页。**★真机金标准**(cargo asset:// 免缓存):重编 6.26s、boot 无崩、零 panic = definitive。
 - **账本进度**:172 → 169 桥(3 solo 销;ai-engine 自身零桥入账)。**剩 10d**(全网 flip ~133+23,+真机,checklist ×3:AGENT_CMDS 字面量复验/真机覆盖 i18n→shell-state 载序前移/shell-state flip tt 后零 eager 互读)。**8123 已释放。**
+
+### ★ 第42轮裁定 = 通过 + 1 [应改](仅注释与推理,已即修)
+- **逐字节零改机械验**:剥头注释/import/export 前缀后 old body 3161 字节 == new body 3161 字节。
+- **红线加倍审(评审读码 + LIVE 驱动,stub SeekerRT.ai.stream 四回调、零改码)**:①onToken 注入 `<img onerror>`+`<script>` → 无元素落地、__xss=0、原文转义呈现;持久卡 persist **fail-closed**(resume-edit 无 persist 字段→排除;match-card true→入选);②valid 闸双分支(`{"garbage":1}`→拒+prose 不剥+原样转义;`{"jobId":…}`→过+剥离+卡渲染 75/100);extractSeekerBlock 逐字语义(broken→data:null+不剥);③**Untrusted 结构根据 = `for(const kind in CARDS)`:kind 来自平台组合注册表、AI 造不出卡型**;onError 注入转义+「打开数据设置」引导(设置不可经对话改)。aiLangHint 私有坐实(stub window.persistMsg 拦不到=走 import 非桥)。
+- **消费者面**:6 消失符号真实码位仅 [DEF]/[IMPORT];无同名 id=(第41轮 DOM 具名访问判据首次应用);零 cBtn 串/内联 on*;aiHTML 桥正确留(copilot-chrome:176 hydrateMessages 裸读未 import);off-window `?bust=` 正用(exports 恰 2、aiLangHint 不在);§1 零 platform→apps;桥 delta=3 精确吻合。
+- **★[应改](已修,commit 同刀)**:载序证据错误(结论对、推理错)——头注释称 data-store@867 早于 869 故「零提升」;**实测 data-store@870 晚于 869 ⇒ 确有一次提升**,安全成立但理由=**提升惰性**(data-store 零 import、顶层仅 __msgSeq+桥、零 eager 读、区间只夹空 body)。同类:copilot-chrome 注释 @871 实为 @874。**已按第41轮判据订正两处注释:import 边把 provider 的 module-eval 提前到 consumer 的 tag 位 ⇒ 查「提前区间内有无 eager 读/被跳过副作用」,非「依赖 tag 更早⇒无提升」**。定 [应改] 因这是红线文件安全背书+10d 将复用的判据本身。
+- **里程碑钉入裁定②**:classic 外链=0 + classic inline 实码=0 ⇒ **「classic 顶层 eager 消费 deferred 符号」双向扫描退化为空集;10d 起载序风险只剩 (a) tag-order 与 (b) import 边提升两种**。
+- **[建议]①(10d 地雷,已入方案)**:aiErrHTML 生成串含 `onclick="…copClose();go('settings')"` = cBtn 同类 window-解析暗道;copClose 有 typeof 守卫、**`go` 没有** ⇒ **`go` 必须入 (d) window-强制白名单**,否则摘桥后 AI 错误卡按钮静默抛错。**[建议]②**:10d 仍需一次真机(覆盖 i18n→shell-state 载序前移)。
+- node×4/tsc 真退出码 0/preview 0 console/11 页;真机 exec 自报按既往采信。
+
+**批10c 通过(172→169 桥、classic 0、d.ts 0)。** 剩 10d(全网 flip;checklist×4:AGENT_CMDS 字面量复验/真机覆盖载序前移/shell-state flip 后零 eager 互读[禁顶层 T/L]/★go 入 (d) 白名单)。
