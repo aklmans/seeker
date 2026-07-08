@@ -1,6 +1,18 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 岗位智能录入(平台化阶段3 逐页搬迁)。classic 全局语义不变(monolith-globals.d.ts 账本批10b 已整删)。 */
 import { extractSeekerBlock } from '../../../platform/shell/ai-engine.js'; // ★批10c:ai-engine 转 module、桥不设 → doExtract 改 import(apps→platform 方向)
+import { JOBS, SKILLS } from '../data.js';
+import { renderInterview } from './interview.js';
+import { nextJobId, persistJob } from './persistence.js';
+import { renderAnalysis } from '../pages/analysis.js';
+import { renderJobs } from '../pages/jobs.js';
+import { renderOverview } from '../pages/overview.js';
+import { aiChatAvailable } from '../../../platform/shell/copilot-chrome.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { closeModal, openModal } from '../../../platform/shell/modal.js';
+import { errText, toast } from '../../../platform/shell/toast.js';
 /* ---------- NEW JOB MODAL ---------- */
 // 真·JD 技能抽取(评审 P1-8):扫 JD 文本匹配已知技能词(用户 SKILLS 名 + 技术词表),反映真实 JD,非写死。
 const TECH_VOCAB=['Go','Java','Python','Rust','C++','C#','JavaScript','TypeScript','Node','React','Vue','Spring','MySQL','PostgreSQL','MongoDB','Redis','Kafka','RabbitMQ','Elasticsearch','gRPC','RPC','GraphQL','RESTful','微服务','分布式系统','分布式','高并发','性能优化','系统设计','服务治理','容量规划','DDD','缓存','消息队列','K8s','Kubernetes','Docker','云原生','中间件','稳定性','高可用','可用性','监控','CI/CD','算法','数据结构','Linux','网络','多线程','并发','存储','数据库','大数据','Hadoop','Spark','Flink'];
@@ -202,4 +214,5 @@ export function openNewJob(editId){
 }
 
 /* 过渡 window 兼容桥:jobs/copilot-actions/match(内联 onclick)/nav(惰性)/index.html 按全局名调;改 import 后摘。extractJdSkills/frameJobExtract/TECH_VOCAB 内部私有。★openNewJob 的 §4-4 转义在函数体内、逐字保留。 */
-window.aiMetaHtml=aiMetaHtml; window.openNewJob=openNewJob;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.openNewJob=openNewJob;

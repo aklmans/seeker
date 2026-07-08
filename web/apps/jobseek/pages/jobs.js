@@ -1,6 +1,23 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 目标岗位页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- JOBS ---------- */
+import { skillByName } from '../data-helpers.js';
+import { JOBS, STATUS } from '../data.js';
+import { genPlanFromGap } from '../logic/intake-action.js';
+import { aiMetaHtml, openNewJob } from '../logic/intake-job.js';
+import { renderInterview } from '../logic/interview.js';
+import { aiResumeForJob, goInterview } from '../logic/job-actions.js';
+import { persistJob } from '../logic/persistence.js';
+import { renderActions } from './actions.js';
+import { renderAnalysis } from './analysis.js';
+import { renderOverview } from './overview.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { closeModal, openModal } from '../../../platform/shell/modal.js';
+import { frontis, go, signFoot, syncNavCounts } from '../../../platform/shell/nav.js';
+import { toast } from '../../../platform/shell/toast.js';
 let jobFilter={city:'全部', status:'全部'};
 let selectedJob=null;
 export function renderJobs(){
@@ -130,4 +147,5 @@ function openJobDetail(id, row){
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderJobs() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.renderJobs=renderJobs;

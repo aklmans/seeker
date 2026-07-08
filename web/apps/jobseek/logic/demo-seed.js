@@ -6,6 +6,16 @@
 
 /* ===== 首次上手状态(评审落地:首启不静默灌演示数据,改岔路让用户选)=====
    onboarded:已做首启选择(开始我的 / 逛示例)。迁移:旧版已被种子过的用户(jh-seeded-jobs)视为已上手,不弹落地页。 */
+import { ACTIONS, JOBS, SKILLS } from '../data.js';
+import { IV_RECORDS } from './intake-action.js';
+import { openNewJob } from './intake-job.js';
+import { openResumeModal } from './resume-modals.js';
+import { renderOverview } from '../pages/overview.js';
+import { collPersistOn, markOnboarded, persistColl } from '../../../platform/shell/data-store.js';
+import { $, el } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { frontis, go, rerenderPages, signFoot } from '../../../platform/shell/nav.js';
+import { clearAllDataFlow } from '../../../platform/shell/shell-state.js';
 let SEED=null; // 演示种子快照(INIT 时趁内存还是 mock 字面量抓一份,供"先逛示例"显式播种)
 function demoMode(){ try{ return localStorage.getItem('jh-demo')==='1'; }catch(_e){ return false; } }
 export function setDemoMode(on){ try{ on?localStorage.setItem('jh-demo','1'):localStorage.removeItem('jh-demo'); }catch(_e){} }
@@ -70,4 +80,5 @@ export function showEmptyState(){ go('overview'); renderFirstRun(); }
 /* 过渡 window 桥:★批10b:captureSeed/syncDemoBanner/setDemoMode 桥删——manifest 已 import 直取(唯一外部消费者);★批10a:seedDemoData 桥删(frDemo 同文件词法)。
    ★批9c:renderFirstRun 被 overview.js:6 裸全局读(10d flip);showEmptyState 被 settings.js:384 内联 onclick="showEmptyState()" 消费 → **须保 window 桥**(内联属性按 window 解析;§1 契约化批11)。
    ★SEED(let,reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.renderFirstRun=renderFirstRun; window.showEmptyState=showEmptyState;

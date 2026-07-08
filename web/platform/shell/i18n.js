@@ -18,4 +18,4 @@ export function T(k){const e=I18N[k];return e?(setState.lang==='en'?e.en:e.zh):k
 /** @param {string} zh @param {string} en */
 export function tt(zh,en){return setState.lang==='en'?en:zh;}
 /* 过渡 window 兼容桥(约束⑤):classic 消费者(几乎全部 + INIT-module 的 tt)按全局名 tt/L/T 调不变;逐个改 import 后摘。I18N 内部私有不上桥。 */
-const _w = /** @type {any} */ (window); _w.tt=tt; _w.L=L; _w.T=T;
+const _w = /** @type {any} */ (window); 

@@ -1,6 +1,17 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 职业资产页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- SKILLS ---------- */
+import { skillByName } from '../data-helpers.js';
+import { ACCRUAL, ACTIONS, CAT_LABEL, JOBS, PRI, SKILLS } from '../data.js';
+import { IV_RECORDS, RESUME } from '../logic/intake-action.js';
+import { dotsHTML } from '../logic/job-actions.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { openModal } from '../../../platform/shell/modal.js';
+import { frontis, signFoot } from '../../../platform/shell/nav.js';
+import { setState } from '../../../platform/shell/shell-state.js';
 let skillFilter={cat:'全部', accrual:'全部'};
 function capCard(s){
   const star=(s.pri==='high'&&s.lvl<2)?'<span class="star">★</span>':'';
@@ -113,4 +124,3 @@ function openSkillDetail(name){
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderSkills() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
-window.renderSkills=renderSkills;

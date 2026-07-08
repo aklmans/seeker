@@ -1,6 +1,17 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 总览页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- OVERVIEW ---------- */
+import { calmDigest, nextStep } from '../cards.js';
+import { distinctNeedSkills, pipelineReal, topGapsReal } from '../data-helpers.js';
+import { ACTIONS, JOBS } from '../data.js';
+import { renderFirstRun } from '../logic/demo-seed.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { onboarded } from '../../../platform/shell/data-store.js';
+import { $ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { frontis, signFoot, syncNavCounts } from '../../../platform/shell/nav.js';
+import { setState } from '../../../platform/shell/shell-state.js';
 export function renderOverview(){
   syncNavCounts();
   if(!onboarded()){ renderFirstRun(); return; }   // 首启未决定 → 价值主张落地页 + 岔路(开始我的 / 逛示例)
@@ -59,4 +70,5 @@ export function renderOverview(){
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderOverview() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.renderOverview=renderOverview;

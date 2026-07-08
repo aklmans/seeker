@@ -1,6 +1,17 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 行动录入(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- NEW ACTION MODAL ---------- */
+import { skillByName } from '../data-helpers.js';
+import { ACTIONS, JOBS, SKILLS } from '../data.js';
+import { renderActions } from '../pages/actions.js';
+import { renderOverview } from '../pages/overview.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { collPersistOn, persistColl } from '../../../platform/shell/data-store.js';
+import { $ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { closeModal, openModal } from '../../../platform/shell/modal.js';
+import { toast } from '../../../platform/shell/toast.js';
 export function openNewAction(){
   const html=`
     <div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('添加行动','New action')}</h2></div><button class="x">${IC.x}</button></div>
@@ -253,4 +264,5 @@ export function aiRun(host, steps, resultFn, opts){
    状态符号 IV_BANK/IV_RECORDS/MASTER/RESUME_TAILORED 皆 mutated-property(引用永久稳定、hydration in-place)→ dual-publish 同引用即安全、免访问器。
    ★红线(逐字保留,在函数体内):MASTER/RESUME_TAILORED = AI 可读专业简历层、绝不含联系方式(姓名/电话/邮箱在 PROFILE 隐私层);persistMaster 只写 resumes 哨兵 r__master__、永不写 profile。
    私有不上桥:IV_STYLE/PLAN_LIB(状态)、aiGenQuestions/masterEntriesHTML/masterProjectsHTML/masterExtrasHTML(内部)。 */
-window.IV_BANK=IV_BANK; window.IV_RECORDS=IV_RECORDS; window.MASTER=MASTER; window.RESUME_TAILORED=RESUME_TAILORED; window.IV_CATLABEL=IV_CATLABEL; window.IV_CATS=IV_CATS; window.MOD_ICON=MOD_ICON; window.RESUME=RESUME; window.SALARY=SALARY; window.TREND=TREND; window.YOU_VALUE=YOU_VALUE; window.aiRun=aiRun; window.genPlanFromGap=genPlanFromGap; window.genQuestionsFor=genQuestionsFor; window.genRewrites=genRewrites; window.genTailoredResume=genTailoredResume; window.ivScore=ivScore; window.openNewAction=openNewAction; window.persistMaster=persistMaster; window.planFor=planFor; window.resMod=resMod; window.resProjects=resProjects; window.resSkills=resSkills; window.resSummary=resSummary; window.shorten=shorten; window.styleFor=styleFor; window.topGapsOf=topGapsOf;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.openNewAction=openNewAction; 

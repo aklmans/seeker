@@ -2,6 +2,8 @@
 //   仍 @ts-nocheck:依赖 $/el/tt 尚是 classic 全局(经共享的全局词法环境,module 内 bare 引用可解析);
 //   待 $/el/tt 也转 module 后本文件改 `import {$,el,tt}` + @ts-check、并从下方桥摘除(monolith-globals 账本逐条销)。
 /** 平台 · 模态 focusableIn/openModal/closeModal(+焦点陷阱状态)。依赖 $/el/tt(过渡态全局);overlay click 绑定留 index.html。 */
+import { $, el } from './dom.js';
+import { tt } from './i18n.js';
 export function focusableIn(m){ return [...m.querySelectorAll('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled && e.offsetParent!==null); }
 let _modalPrevFocus=null, _modalTrap=null;
 export function openModal(html, wide){
@@ -30,4 +32,5 @@ export function closeModal(){
   if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(_e){} } _modalPrevFocus=null;
 }
 /* 过渡 window 桥(抽壳约束⑤延续):classic 消费者(index.html INIT + jobseek 11 文件)按全局名调不变 → 零回归;逐个转 import 后摘桥。 */
-window.openModal=openModal; window.closeModal=closeModal;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.closeModal=closeModal;

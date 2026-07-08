@@ -7,6 +7,7 @@
 /* ---- 持久化条件 + 壳 onboarding 状态(归属:平台):jobsPersistOn(桌面+SeekerRT)+ onboarded/markOnboarded。
    ★归平台理据:hydrateColl(本引擎,通用集合)按"有数据→已上手"调 markOnboarded = **shell 级 onboarding**(非 jobseek 专属),
    留平台避免平台→apps 反向依赖('jh-seeded-jobs' 是旧版迁移键、逐字保留)。demo 态(demoMode/setDemoMode/SEED/captureSeed)= jobseek,留 apps。 ---- */
+import { isDesktop } from './shell-keys.js';
 export function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
 export function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
 export function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
@@ -51,4 +52,3 @@ export function persistMsg(surface, role, text, cards){
 }
 /* 过渡 window 兼容桥:classic 消费者(persistence/settings/copilot-chrome/cards/assets/demo-seed 等)按全局名调不变;逐个改 import 后摘。
    函数纯(仅读 localStorage/window.SeekerRT + mutate 传入 arr);__msgSeq 私有不上桥 → dual-publish 安全。 */
-window.jobsPersistOn=jobsPersistOn; window.onboarded=onboarded; window.markOnboarded=markOnboarded; window.collPersistOn=collPersistOn; window.persistColl=persistColl; window.hydrateColl=hydrateColl; window.persistMsg=persistMsg;

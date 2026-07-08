@@ -4,6 +4,13 @@
  *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。
  *  ★批10c(第42轮[应改]订正):streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag 实测 @874 晚于 ai-engine@869 → 此 import 边无提升;载序判据见 ai-engine.js 头注释(查提前区间,非比 tag 先后)。 */
 import { streamReply } from './ai-engine.js';
+import { aiHTML } from './ai-render.js';
+import { collPersistOn, persistMsg } from './data-store.js';
+import { $, $$, el } from './dom.js';
+import { T, tt } from './i18n.js';
+import { IC } from './icons.js';
+import { go } from './nav.js';
+import { isDesktop } from './shell-keys.js';
 
 export function copEl(){return $('#copPanel');}
 export function copOpen(){copEl().classList.add('open'); setTimeout(()=>$('#copInput').focus(),260);}
@@ -187,4 +194,5 @@ export async function hydrateMessages(){
 /* 过渡 window 兼容桥:classic/module 消费者(index.html INIT/keys/onclick、nav setLang、apps copReply/cards 等)按全局名调不变;逐个改 import 后摘。
    ★有状态不上桥:appMode(reassigned→getAppMode 读)、appReady(外部写→setAppReady)、cmdActive/cmdFiltered/CACT_ALLOWED(内部私有)。
    cEsc/cCard/cAct/cBtn/cAB/cSuggs = apps copReply 卡模板消费的导出(§4-4 转义纪律随迁)。 */
-window.copEl=copEl; window.copClose=copClose; window.copToggle=copToggle; window.copScroll=copScroll; window.agentSend=agentSend; window.copInit=copInit; window.copGo=copGo; window.agentChat=agentChat; window.agentCancel=agentCancel; window.aiChatAvailable=aiChatAvailable; window.renderModeSwitch=renderModeSwitch; window.setAppMode=setAppMode; window.getAppMode=getAppMode; window.agentShowCanvas=agentShowCanvas; window.agentCollapse=agentCollapse; window.setAppReady=setAppReady; window.cmdIsOpen=cmdIsOpen; window.cmdClose=cmdClose; window.agentInit=agentInit; window.updateAgentChrome=updateAgentChrome; window.updateCopChrome=updateCopChrome; window.hydrateMessages=hydrateMessages; window.cEsc=cEsc; window.cCard=cCard; window.cAct=cAct; window.cBtn=cBtn; window.cAB=cAB; window.cSuggs=cSuggs;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.copClose=copClose; window.copGo=copGo; window.agentChat=agentChat; window.agentCancel=agentCancel; 

@@ -8,6 +8,9 @@
 
 /* ===== #2 W3:widget-action 回流处理(domain)。破坏性一律过 platform/guardrail。 =====
    widgetId 由平台按端口归属传入(不信任 iframe 自报);payload 仅当数据。 */
+import { jobsPersistOn } from './data-store.js';
+import { tt } from './i18n.js';
+import { toast } from './toast.js';
 async function wgtAction(widgetId, action, payload){
   payload = payload || {};
   const destructive = /^(delete|clear|remove|reset|wipe)/i.test(String(action));

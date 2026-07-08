@@ -3,6 +3,8 @@
     纯 jobseek 数据聚合:skillByName/fmtScore + 真实聚合(jobsByStatus/distinctNeedSkills/distBy/pipelineReal/topGapsReal/keywordsReal);
     从壳 DOM 基元($/$$/el 上)与壳 PAGES(下)之间择出。引用数据(data.js)+ tt(壳 i18n · 运行时)。
     ⚠ 运行时依赖壳基元 tt —— 抽壳后 tt 归 platform/shell,此依赖将变契约调用。classic 全局语义不变;依赖见 ./monolith-globals.d.ts。 */
+import { JOBS, SKILLS, STATUS } from './data.js';
+import { tt } from '../../platform/shell/i18n.js';
 export const skillByName=(n)=>SKILLS.find(s=>s.name===n);
 const fmtScore=(v)=>`${v.toFixed(1)}<small>/10</small>`;
 
@@ -26,4 +28,3 @@ export function keywordsReal(){ const text=JOBS.map(j=>j.jd||'').join('\n');
   return SOFT_WORDS.map(w=>[w,text.split(w).length-1]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,13); }
 
 /* 过渡 window 兼容桥:pages/cards/intake-action 等按全局名调;改 import 后摘。fmtScore/jobsByStatus/SOFT_WORDS 内部私有不上桥。 */
-window.skillByName=skillByName; window.distBy=distBy; window.distinctNeedSkills=distinctNeedSkills; window.keywordsReal=keywordsReal; window.pipelineReal=pipelineReal; window.topGapsReal=topGapsReal;

@@ -1,6 +1,13 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 面试陪练(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- INTERVIEW (旗舰) ---------- */
+import { JOBS } from '../data.js';
+import { IV_BANK, IV_RECORDS, RESUME_TAILORED, resProjects, resSkills, resSummary, shorten, styleFor } from './intake-action.js';
+import { ivAddQuestion, ivBankHTML, ivBindBank, ivBindRecords, ivGenerate, ivPractice, ivRecordsHTML, ivRenderSummary, ivStartRound, ivStopVoice } from './resumes.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { frontis, signFoot } from '../../../platform/shell/nav.js';
 export let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};  // mutated-property(仅 .k= mutate,含 resumes.js 跨文件写)→ dual-publish 免访问器;JOBS[0] 于 module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1052 在其后 → 就绪)
 /* ★ivRec(语音识别句柄,reassigned)所有权移入 resumes.js:其生命周期全在 resumes.js(ivToggleVoice/ivStopVoice/ivVoiceDemo),interview.js 从不引用;移后 resumes 内私有,消除跨文件 reassigned 纠缠(否则需 setter 原子翻转)。 */
 export function renderInterview(){
@@ -59,4 +66,5 @@ function ivResumeRef(j){
 }
 
 /* 过渡 window 桥:renderInterview 经 manifest/cards/persistence/resumes/jobs 消费;ivState mutated dual-publish(resumes.js 跨文件 mutate .k= 同引用安全)。ivResumeRef 私有。ivRec 已移 resumes.js。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.renderInterview=renderInterview; window.ivState=ivState;

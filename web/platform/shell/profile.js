@@ -8,6 +8,9 @@
  *  ⚠ rt-ready 时序:批8 转 type=module(deferred)、module-eval 注册 hydrateProfile 监听器 → 仍先于末位 dispatch(批A dispatch 已拆末位;同 prompts/notes rt-ready module 先例)。
  *  ★批8 双红线之结构强化:PROFILE/persistProfileField export 但**绝不上 window**(隐私最小暴露)——消费者 settings.js/resumes.js 只能 import → window/AI 结构性不可达 PROFILE(比 classic 全局更严;红线①硬隔离叠加)。hydrateProfile 私有(仅本文件自注册监听器、无外部消费者 → 不 export)。 */
 /* 个人隐私信息 — 仅本地、来自「数据设置」,AI 不读取 / 不修改 */
+import { currentPage } from './nav.js';
+import { renderSettings } from './settings.js';
+import { settingsPersistOn } from './shell-state.js';
 export const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
 export function persistProfileField(k, v){ if(settingsPersistOn()) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
 async function hydrateProfile(){

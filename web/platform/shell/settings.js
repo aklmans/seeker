@@ -12,6 +12,14 @@
  *   ③ SET_TABS 裁剪平台 5 tab + app tabs 按契约插入同一视觉位置(basic,profile,model,[app tabs],data,about)——最终 7 tab 同序,非同一数组字面量;
  *   ④ data-tc(训练计入能力成长)wiring 的 renderSkills() → rerenderPages()(通用重渲,平台已有机制,避免平台具名调 jobseek 渲染器)。 */
 import { PROFILE, persistProfileField } from './profile.js'; // ★批8:profile 转 module,PROFILE/persistProfileField 改 import(profile.js 不上 window 桥、隐私最小暴露);本文件仍是唯一改 PROFILE 入口(data-pf 输入、Agent 不可达)。
+import { $, $$, el } from './dom.js';
+import { tt } from './i18n.js';
+import { IC } from './icons.js';
+import { openModal } from './modal.js';
+import { currentPage, frontis, go, renderTopActions, rerenderPages, signFoot } from './nav.js';
+import { isDesktop } from './shell-keys.js';
+import { clearAllDataFlow, saveSettings, setState, settingsPersistOn } from './shell-state.js';
+import { errText, toast, toastUndo } from './toast.js';
 let settingsState={tab:'basic'};
 const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
@@ -529,4 +537,3 @@ async function wireModelConfigDesktop(){
 /* 过渡 window 桥:renderSettings 经 SeekerShell.setShell 的 render 箭头 + profile/persistence/settings-jobseek/index.html 消费(全 runtime);改 import 后摘。
    其余(MODEL/settingsState/SET_TABS_SHELL 状态 + 各 manager/model-UI/wireDataIO 函数)零外部消费 → module-private。
    ★批8 已落:profile 转 module,本文件读 PROFILE + persistProfileField 经顶部 import(profile.js 不上 window 桥、隐私最小暴露)。 */
-window.renderSettings=renderSettings;

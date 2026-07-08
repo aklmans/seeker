@@ -6,6 +6,14 @@
  *  §1 归属债(pre-existing,随 CACT_ALLOWED 契约化账一并清):contextNew 硬编码 jobseek openNewJob/openNewAction——未来经 manifest 契约声明 per-page「新建」动作。 */
 
 /* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
+import { agentCollapse, cmdClose, cmdIsOpen, copClose, copEl, copToggle, getAppMode, setAppMode } from './copilot-chrome.js';
+import { $ } from './dom.js';
+import { tt } from './i18n.js';
+import { IC } from './icons.js';
+import { closeModal, openModal } from './modal.js';
+import { currentPage, go, toggleTheme } from './nav.js';
+import { PAGES } from './shell-state.js';
+import { runLastUndo, toast } from './toast.js';
 export function syncSbToggleTitle(){ const col=$('#sbCollapse'); if(col) col.title=(document.body.dataset.sidebar==='rail')?tt('展开侧栏','Expand sidebar'):tt('收起侧栏','Collapse sidebar'); }
 export function toggleSidebar(){
   const r=document.body.dataset.sidebar==='rail';
@@ -66,4 +74,3 @@ export function initKeys(){
 }
 
 /* 过渡 window 桥:initKeys(INIT-module 运行时调)/ toggleSidebar(shell-boot.initShell 接线 #sbCollapse)/ syncSbToggleTitle(nav.setLang typeof 守卫)/ isDesktop(shell-state/data-store/settings/copilot-chrome typeof 守卫)——批10 改 import 后摘。pageSearchInput/contextNew/keysHelpHTML 私有。 */
-window.initKeys=initKeys; window.toggleSidebar=toggleSidebar; window.syncSbToggleTitle=syncSbToggleTitle; window.isDesktop=isDesktop;

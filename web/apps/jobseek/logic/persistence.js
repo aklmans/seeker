@@ -7,6 +7,19 @@
  *  ★red-line(逐字保留):resumes 集合只存专业模块结构、**联系方式绝不入 resumes**(走独立 profile 实时渲染)→ query_data('resumes') 天然不含联系方式。 */
 
 /* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
+import { ACTIONS, JOBS, SKILLS } from '../data.js';
+import { IV_RECORDS, MASTER, RESUME_TAILORED } from './intake-action.js';
+import { renderInterview } from './interview.js';
+import { renderResumes } from './resumes.js';
+import { renderAnalysis } from '../pages/analysis.js';
+import { renderJobs } from '../pages/jobs.js';
+import { renderOverview } from '../pages/overview.js';
+import { hydrateMessages } from '../../../platform/shell/copilot-chrome.js';
+import { collPersistOn, hydrateColl, jobsPersistOn, markOnboarded } from '../../../platform/shell/data-store.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { currentPage, rerenderPages } from '../../../platform/shell/nav.js';
+import { renderSettings } from '../../../platform/shell/settings.js';
+import { toast } from '../../../platform/shell/toast.js';
 export function nextJobId(){ return Math.max(0, ...JOBS.map(j=>+j.id||0)) + 1; }
 export function persistJob(job){ if(jobsPersistOn()) window.SeekerRT.db.upsert('jobs', job).catch(e=>console.error('[data] upsert job', e)); }
 export async function hydrateJobs(){
@@ -18,6 +31,7 @@ export async function hydrateJobs(){
     [renderOverview, renderJobs, renderAnalysis].forEach(f=>{try{f();}catch(_e){}});
   }catch(e){ console.error('[data] jobs 水合失败', e); }
 }
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.addEventListener('seeker-rt-ready', hydrateJobs);
 
 /* resumes 红线安全持久化:只存专业模块结构(modules 含 basic/locked 标记但**无 PROFILE 内容**);
@@ -71,6 +85,8 @@ export async function hydrateBizColls(){
   await hydrateMessages();
   try{ rerenderPages(); }catch(_e){}
 }
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
 /* 过渡 window 兼容桥:classic 消费者(jobs/cards/resumes/intake/settings 等)按全局名调不变;逐个改 import 后摘。均纯函数(无模块态)→ dual-publish 安全。 */
-window.nextJobId=nextJobId; window.persistJob=persistJob; window.hydrateJobs=hydrateJobs; window.persistResume=persistResume; window.removeResume=removeResume; window.clearAllTailoredResumes=clearAllTailoredResumes;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.hydrateJobs=hydrateJobs; 

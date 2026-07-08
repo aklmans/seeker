@@ -7,6 +7,12 @@
  *  依赖:setState/WEIGHTS/RESUME/MASTER(jobseek data.js/intake-action.js)、tt/toast/$/$$(平台)、
  *  saveSettings/renderSettings(壳,index.html/platform 过渡全局)、persistMaster/openResumeModal(jobseek)。 */
 
+import { MASTER, RESUME, persistMaster } from './intake-action.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { renderSettings } from '../../../platform/shell/settings.js';
+import { WEIGHTS, saveSettings, setState } from '../../../platform/shell/shell-state.js';
+import { toast } from '../../../platform/shell/toast.js';
 export function goalsSectionHTML(){
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
   return `<p class="seclabel">— GOALS</p><h2 class="sectitle">${tt('求职目标','Job-hunt goals')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:560px;">

@@ -1056,6 +1056,14 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script type="module" src="./apps/assets/pages/notes.js"></script>
 <script type="module" src="./apps/assets/manifest.js"></script>
 <script type="module">
+import { $, el } from './platform/shell/dom.js';
+import { tt } from './platform/shell/i18n.js';
+import { IC } from './platform/shell/icons.js';
+import { openModal } from './platform/shell/modal.js';
+import { buildNav, currentPage, go } from './platform/shell/nav.js';
+import { renderSettings } from './platform/shell/settings.js';
+import { GROUPS, PAGES } from './platform/shell/shell-state.js';
+import { toast } from './platform/shell/toast.js';
 /* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)· 3.y 注册链 module 化 ============ */
 /* 载序:registry@858(module)+ manifest×2(module)均已 deferred 先跑 → window.SeekerShell 就绪、apps 已注册;
    本 module setShell/PAGES.push(pages())/GROUPS 在此 deferred 执行(不再 parse-time),下方 INIT-module 再消费填好的 PAGES。 */
@@ -1151,6 +1159,12 @@ function openAppManager(){
 window.shellReassemble=shellReassemble; window.shellPushAiReadable=shellPushAiReadable; window.openAppManager=openAppManager;
 </script>
 <script type="module">
+import { agentInit, copInit, setAppReady } from './platform/shell/copilot-chrome.js';
+import { $ } from './platform/shell/dom.js';
+import { IC } from './platform/shell/icons.js';
+import { buildNav, buildPages, go, toggleTheme, wireOverlay } from './platform/shell/nav.js';
+import { initShell } from './platform/shell/shell-boot.js';
+import { initKeys } from './platform/shell/shell-keys.js';
   /* ---------- INIT 启动执行序(3.y 注册链 module 化:从 head@原873 迁至此)----------
      ★载序命门:本 module 晚于 SHELL BOOT module(其 setShell/PAGES.push 已跑、PAGES 填好、shellReassemble/openAppManager 已上桥),
      且早于末位 dispatch('seeker-rt-ready') → 「渲空壳(INIT)→ rt-ready 水合」序不变式仍守。引用经全局词法/window runtime 解析。 */

@@ -2,8 +2,13 @@
 //   其余依赖($/el/tt/IC/cEsc/RESUME/aiRun/go)过渡仍 classic 全局,故暂留 @ts-nocheck;待其转 module 后接 import + @ts-check。
 /** jobseek · 简历弹窗。openModal 经 import(3.y 首个消费者迁移);closeModal 只出现在内联 onclick 串→仍走 window 兼容桥。 */
 import { openModal } from '../../../platform/shell/modal.js'; // ← 3.y:modal.js 已 ESM 化,首个消费者改 import(证 import 方向、纯函数 dual-publish 安全)
+import { RESUME, aiRun } from './intake-action.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
 /* ---------- RESUME modals ---------- */
-function openResumeModal(){
+export function openResumeModal(){
   const html=`<div class="modal-head"><div><p class="eyebrow">— RESUME</p><h2 style="margin-top:5px;">${tt('我的简历','My resume')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="resume-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
@@ -19,7 +24,7 @@ function openResumeModal(){
   const m=openModal(html);
   $('#reupload',m).onclick=openResumeUpload;
 }
-function openResumeUpload(){
+export function openResumeUpload(){
   const html=`<div class="modal-head"><div><p class="eyebrow">— UPLOAD</p><h2 style="margin-top:5px;">${tt('上传简历,AI 自动建档','Upload resume, AI auto-builds')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body"><div id="upZone"><div class="dropzone" id="dz"><p class="di" style="margin:0;font-size:14px;">${tt('点击或拖拽简历到此','Click or drag your resume here')}<br><span style="font-size:12px;">${tt('支持 PDF / Word / 纯文本','PDF / Word / plain text')}</span></p></div>
       <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">${tt('无需手动录入技能。AI 会从简历里识别你的能力、年限与项目证据,自动建好档案。','No manual entry. AI reads your skills, years, and project evidence from the resume and builds your profile automatically.')}</p></div></div>`;
@@ -46,4 +51,5 @@ function openResumeUpload(){
   }
 }
 /* 过渡 window 兼容桥(约束⑤延续):inline onclick(copilot-actions cBtn)/页按钮按全局名调 openResumeModal/openResumeUpload → 零回归;逐个改 import 后摘。纯函数、零模块态 → dual-publish 安全。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.openResumeModal=openResumeModal; window.openResumeUpload=openResumeUpload;

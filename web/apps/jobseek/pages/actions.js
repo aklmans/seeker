@@ -6,6 +6,16 @@
  * 加载序:在主脚本(定义 ACTIONS/壳基元)之后、manifest/BOOT 之前。
  */
 /* ---------- ACTIONS ---------- */
+import { ACTIONS, PRI } from '../data.js';
+import { renderOverview } from './overview.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { persistColl } from '../../../platform/shell/data-store.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { openModal } from '../../../platform/shell/modal.js';
+import { frontis, signFoot, syncNavCounts } from '../../../platform/shell/nav.js';
+import { toast } from '../../../platform/shell/toast.js';
 let actTab='全部';
 function sessMins(a){return (a.sessions||[]).reduce((x,s)=>x+s.mins,0);}
 export function renderActions(){
@@ -125,4 +135,3 @@ function openActionDetail(id){
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderActions() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
-window.renderActions=renderActions;

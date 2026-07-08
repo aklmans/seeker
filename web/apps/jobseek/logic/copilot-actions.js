@@ -3,6 +3,23 @@
  *  从 COPILOT 段的 chrome(copGo/agentChat/agentCancel/copSend,留 index.html)间择出;copSend(chrome)运行时调 copReply(本文件)
  *  —— 过渡态跨全局,契约化(copSend 经 SeekerShell 调应用回复)留新轮。classic 全局;依赖见 ../monolith-globals.d.ts。 */
 // 开场建议随数据态(评审 P0-6):零数据 → 引导上手(原"我和字节匹配吗"对新用户是死链);有数据 → 真实可用查询。EN 避撇号(cSuggs 内联 onclick)。
+import { skillByName } from '../data-helpers.js';
+import { ACTIONS, JOBS, TOP_GAPS, SKILLS } from '../data.js';
+import { TREND, YOU_VALUE, genPlanFromGap, openNewAction, planFor, topGapsOf } from './intake-action.js';
+import { openNewJob } from './intake-job.js';
+import { aiResumeForJob, goInterview, openMarketValue } from './job-actions.js';
+import { matchState, renderMatch, runMatch } from './match.js';
+import { renderActions } from '../pages/actions.js';
+import { renderAnalysis } from '../pages/analysis.js';
+import { renderJobs } from '../pages/jobs.js';
+import { renderOverview } from '../pages/overview.js';
+import { agentChat, agentSend, cAB, cAct, cBtn, cCard, cEsc, cSuggs, copClose, copGo, copScroll } from '../../../platform/shell/copilot-chrome.js';
+import { jobsPersistOn } from '../../../platform/shell/data-store.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { go } from '../../../platform/shell/nav.js';
+import { PAGES } from '../../../platform/shell/shell-state.js';
+import { toast, toastUndo } from '../../../platform/shell/toast.js';
 export function aiSuggs(){
   return JOBS.length
     ? [tt('我最该投哪个岗位?','Which job fits me best?'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?'), tt('帮我改简历','Help me tune my resume'), tt('我现在最该做什么?','What should I do next?')]
@@ -160,4 +177,5 @@ export const AGENT_CMDS=[
 
 /* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;

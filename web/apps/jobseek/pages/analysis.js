@@ -1,6 +1,14 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 岗位分析页(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../../monolith-globals.d.ts。 */
 /* ---------- ANALYSIS ---------- */
+import { distBy, distinctNeedSkills, keywordsReal, skillByName } from '../data-helpers.js';
+import { JOBS, SKILLS } from '../data.js';
+import { SALARY, TREND, YOU_VALUE } from '../logic/intake-action.js';
+import { dotsHTML } from '../logic/job-actions.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { frontis, signFoot } from '../../../platform/shell/nav.js';
 export function renderAnalysis(){
   if(!JOBS.length){   // 空态教学(评审 P1-9):无岗位 → 讲清这页干嘛 + 指回录入
     $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+
@@ -81,4 +89,3 @@ export function renderAnalysis(){
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderAnalysis() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
-window.renderAnalysis=renderAnalysis;

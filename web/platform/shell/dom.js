@@ -8,4 +8,4 @@ export const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 /** @param {string} h @returns {Element|null} */
 export const el=(h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
 /* 过渡 window 兼容桥(约束⑤):classic 消费者(几乎全部文件 + INIT-module)按全局名 $/$$/el 调不变;逐个改 import 后摘。纯函数、同引用 dual-publish 安全。 */
-const _w = /** @type {any} */ (window); _w.$=$; _w.$$=$$; _w.el=el;
+const _w = /** @type {any} */ (window); 

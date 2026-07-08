@@ -3,6 +3,7 @@
 //   消费者(ai-engine/copilot-chrome/cards,均 @ts-nocheck)按全局名调不变 → 逐字节零回归;待其转 module 后改 import + @ts-check。
 /** 平台 · AI 渲染 helper aiHTML/displayText/toolStatusText/aiErrHTML(均无模块态=纯函数,dual-publish 安全)。
  *  aiHTML:不可信模型输出 → SeekerMarkdown 安全渲染,缺失则 fallback esc 转义(防注入,安全属性逐字保留)。 */
+import { tt } from './i18n.js';
 export function aiHTML(text){
   if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
   return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -31,4 +32,3 @@ export function aiErrHTML(err){
 }
 /* 过渡 window 兼容桥:aiHTML 尚被 copilot-chrome(hydrateMessages AI 历史渲染)裸全局读 → 桥留待 10d flip。
    ★批10c:displayText/toolStatusText/aiErrHTML 桥删——唯一消费者 ai-engine.js 已转 module 改 import(solo 桥随刀销)。纯函数、零模块态。 */
-window.aiHTML=aiHTML;

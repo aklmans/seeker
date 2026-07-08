@@ -1,6 +1,17 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 智能匹配(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- SMART MATCH (旗舰) ---------- */
+import { skillByName } from '../data-helpers.js';
+import { JOBS } from '../data.js';
+import { RESUME, aiRun, genPlanFromGap, genRewrites, planFor, topGapsOf } from './intake-action.js';
+import { aiResumeForJob, goInterview } from './job-actions.js';
+import { renderActions } from '../pages/actions.js';
+import { renderOverview } from '../pages/overview.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { frontis, go, signFoot } from '../../../platform/shell/nav.js';
+import { toast } from '../../../platform/shell/toast.js';
 export let matchState={jobId:JOBS[0].id, done:false};
 export function renderMatch(){
   const resumeBar=`<div class="sec" style="padding-bottom:18px;"><div class="ai-bar" style="border:0.5px solid var(--border);">
@@ -57,4 +68,5 @@ function bindReadout(j){
 
 /* 过渡 window 桥:renderMatch 经 manifest/cards/copilot-actions 消费;runMatch 经 copilot-actions setTimeout + 内联 onclick;matchState mutated dual-publish(cards/copilot-actions 跨文件 .k= 同引用安全)。matchReadout/bindReadout 私有。
    ★matchState={jobId:JOBS[0].id} module-eval 急读 window.JOBS(data.js@929 先 eval);★红线逐字保留(函数体):RESUME.filename/derivedSkills 元数据、无联系方式。 */
-window.matchState=matchState; window.renderMatch=renderMatch; window.runMatch=runMatch;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.runMatch=runMatch;

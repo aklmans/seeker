@@ -6,6 +6,15 @@
  *    analysis:75/skills:68 经内联 onclick="openMarketValue()" 消费 → **须保 window 桥**。 */
 
 /* ---------- MARKET VALUE modal ---------- */
+import { JOBS } from '../data.js';
+import { YOU_VALUE, aiRun } from './intake-action.js';
+import { ivState, renderInterview } from './interview.js';
+import { renderResumes, resumeGenerate } from './resumes.js';
+import { $ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { closeModal, openModal } from '../../../platform/shell/modal.js';
+import { go } from '../../../platform/shell/nav.js';
 export function openMarketValue(){
   const html=`<div class="modal-head"><div><p class="eyebrow">— MARKET VALUE</p><h2 style="margin-top:5px;">${tt('你的市场价值报告','Your market-value report')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body"><div id="mvHost"></div></div>`;
@@ -33,4 +42,5 @@ export function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='ba
 
 /* 过渡 window 桥:openMarketValue(nav.js:59 顶栏动作/cards:274/copilot-actions:18 + ★analysis:75/skills:68 内联 onclick 须 window)、
    dotsHTML(analysis:18/skills:15,102 裸全局)、aiResumeForJob(jobs:114/copilot:15/match:54/cards:198 typeof 守卫)、goInterview(jobs:116/copilot:13/match:55/cards:245)——账本清空改 import 后摘(内联 onclick 两处届时一并改绑定)。 */
-window.openMarketValue=openMarketValue; window.dotsHTML=dotsHTML; window.aiResumeForJob=aiResumeForJob; window.goInterview=goInterview;
+/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
+window.openMarketValue=openMarketValue; 

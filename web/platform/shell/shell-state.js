@@ -7,6 +7,10 @@
 
 /* ============ NAV STATE ============ */
 /* 多应用平台(阶段1):导航项/分组由壳组合 —— apps/jobseek/manifest.js 注册业务页、壳自持设置页(SHELL BOOT setShell + 填充)。PAGES/GROUPS 保名空置,消费方(buildNav/buildPages/go/initKeys/setLang/rerenderPages)零改动。 */
+import { markOnboarded } from './data-store.js';
+import { tt } from './i18n.js';
+import { isDesktop } from './shell-keys.js';
+import { toast } from './toast.js';
 export const PAGES=[];
 export const GROUPS={};
 
@@ -56,5 +60,3 @@ export function clearAllDataFlow(){
 /* 过渡 window 桥:消费者(SHELL BOOT/nav.js/settings.js/profile.js/settings-jobseek.js/demo-seed.js + index.html initKeys/shellReassemble)裸全局读不变;批10 改 import 后摘。
    ★PAGES/GROUPS 于 module-eval 即设桥(供 SHELL BOOT 急读 @1243/1244);setState/WEIGHTS/4 函数同(runtime 消费、桥就绪即可)。
    ★批10a:clearAllCollections 桥删——唯一消费者是同文件 clearAllDataFlow(模块词法,死桥)。 */
-window.PAGES=PAGES; window.GROUPS=GROUPS; window.setState=setState; window.WEIGHTS=WEIGHTS;
-window.settingsPersistOn=settingsPersistOn; window.saveSettings=saveSettings; window.hydrateSettings=hydrateSettings; window.clearAllDataFlow=clearAllDataFlow;

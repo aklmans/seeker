@@ -4,6 +4,24 @@
     + 卡数据 helper(matchRadarSVG/topGapsAcrossJobs/calmDigest…)+ SEEKER_CARDS 注册表定义;
     经 manifest.cards 契约化贡献给壳。从壳基元(extractSeekerBlock 上 / aiHTML·streamReply 下)之间择出;
     那些渲染引擎是壳基元、留 index.html 待抽壳到 platform/shell/。classic 全局语义不变;依赖见 ./monolith-globals.d.ts。 */
+import { skillByName } from './data-helpers.js';
+import { ACTIONS, JOBS, STATUS } from './data.js';
+import { copInterview, copMarket, copMatch, copPlan, copResume } from './logic/copilot-actions.js';
+import { RESUME_TAILORED, YOU_VALUE, genPlanFromGap, genQuestionsFor, planFor, topGapsOf } from './logic/intake-action.js';
+import { renderInterview } from './logic/interview.js';
+import { aiResumeForJob, goInterview, openMarketValue } from './logic/job-actions.js';
+import { matchState, renderMatch } from './logic/match.js';
+import { nextJobId, persistJob, persistResume } from './logic/persistence.js';
+import { renderResumes, resumeState } from './logic/resumes.js';
+import { renderActions } from './pages/actions.js';
+import { renderAnalysis } from './pages/analysis.js';
+import { renderJobs } from './pages/jobs.js';
+import { renderOverview } from './pages/overview.js';
+import { copGo } from '../../platform/shell/copilot-chrome.js';
+import { $, el } from '../../platform/shell/dom.js';
+import { tt } from '../../platform/shell/i18n.js';
+import { go } from '../../platform/shell/nav.js';
+import { errText, toast } from '../../platform/shell/toast.js';
 function showResumeProposal(bubble, edit, who){
   // 定位简历:edit.jobId → 当前打开的简历 → 仅有一份时取之
   let jid = edit.jobId;
@@ -410,4 +428,3 @@ export const SEEKER_CARDS = {
 };
 
 /* 过渡 window 兼容桥:SEEKER_CARDS 被 manifest.js:61 module-eval 急读(cards@1059 早于 manifest@1226 → 桥就绪)+ nextStep/calmDigest 被 overview 调;改 import 后摘。其余 show/render 卡函数 + jobLabel 经 SEEKER_CARDS 表内部互调、私有。★简历红线/外链转义在函数体、逐字保留。 */
-window.nextStep=nextStep; window.calmDigest=calmDigest;
