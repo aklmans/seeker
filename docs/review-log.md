@@ -1274,3 +1274,16 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - node×35/tsc 真 0/11 页/Mod+B·Mod+/·Esc·模态·copSend 全链(回匹配卡 75/100);真机按留痕采信。
 
 **★批10 全落(方案+10a/b/c/d,第41/42/43轮全过)。账本终态:169 → 35 必要白名单桥(+3 HTML 跨块);classic 0;d.ts 0;活跃 JS 全 module 全 import 化 —— 3.y「账本清空」收官。** 剩批11(绑定改造 [data-close]/[data-go] + §1 契约化四处 + CACT 并集,先出方案)。
+
+---
+
+### 批11A(commit `2cb3491`)· 绑定改造收官 —— ★字面 onclick 清零 · 桥 35→28 · ⏳ 待审
+**批11 方案已批(4ee75f6 后 6a58f81;①纯机械留批11 ②运行时环已接受)之 11A(行为面,零契约)**。改绑不改逻辑,每站点语义逐字等价:
+- **两委派清大头**:modal `[data-close]`(14 站点)+ nav `[data-go]`(9 站点+复合钮双属性,modal tag 先注册→先关后跳同原序;page id 全静态、未知 id 行为同旧 throw)。
+- **散点程序绑定**:toast mock ×4 / openResumeModal ×4(含 settings-jobseek 经 **manifest extend.data.wire=wireDataResumeRow**,settings 框架既有全调机制 :446)/ openMarketValue ×2 / openNewJob+runMatch / showEmptyState(§1:平台 window+typeof 守卫读=现状保持,契约化 11B)。
+- **[建议]③ 状态写 handler 单列**:interview data-goresume(resumeState.jobId 经 import 词法写)+ resumes #ivToRecords(ivState 三写+renderInterview 经 import,原 after 回调加绑)——window 途径全消。
+- **cBtn→cAB ×18 + 模板删**:全部 oc-串改白名单委派;复合串→copResumeUpload() 包装;**CACT_ALLOWED 6→13**(chrome 自有 3 + jobseek 4,§1 名单债 11B cActions 清);**cBtn 模板删**(零消费者);**aiErrHTML onclick 串→cAB('copGo',['settings'])**(第42轮[建议]① go 暗道清除;语义=copGo 第42轮评审注;按钮 6px 内联边距随模板略去=视觉近似,如需可后补)。
+- **桥 35→28**:删 8(closeModal/go/toast/runMatch/ivState/renderInterview/copClose/openResumeUpload)+加 1(copResumeUpload);新 import 边(ai-render⇄copilot-chrome 成环)按第43轮 SCC 不变式核=双侧顶层零急读 ✓。
+- **验**:node 全量/tsc 0;preview 净方法 0 console、**★DOM [onclick] 属性=0**、11 页、删桥/白名单核;**全链 LIVE**:data-close 开关模态/data-go 跳页/data-goresume 状态写+跳/cAB copGo 关面板+跳 settings/**负向 data-cact="alert" 仍被挡(__evil=0)**/data-omv 市场价值模态/data-orm 简历模态/mocktoast/setDemoEmpty 落地页;真机 asset:// 无崩。**8123 已释放。**
+
+**剩批11B(§1 契约化四契约:pageActions/pageNew/widgetActions/cActions + settings 残留;完成态 0 业务桥)——每契约一 commit、一轮送审。**
