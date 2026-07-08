@@ -8,7 +8,7 @@ import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { frontis, go, signFoot } from '../../../platform/shell/nav.js';
-export let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};  // mutated-property(仅 .k= mutate,含 resumes.js 跨文件写)→ dual-publish 免访问器;JOBS[0] 于 module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1052 在其后 → 就绪)
+export let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};  // mutated-property(仅 .k= mutate,含 resumes.js 跨文件写)→ import 即同一对象、免访问器;JOBS[0] 于 module-eval 急读 **import 绑定**(★第43轮:载序由 import 图自定序,data.js 在 SCC 之外 → 先求值、JOBS 就绪;批11B 后已无 window.JOBS 桥)
 /* ★ivRec(语音识别句柄,reassigned)所有权移入 resumes.js:其生命周期全在 resumes.js(ivToggleVoice/ivStopVoice/ivVoiceDemo),interview.js 从不引用;移后 resumes 内私有,消除跨文件 reassigned 纠缠(否则需 setter 原子翻转)。 */
 export function renderInterview(){
   // 面试岗位与目标岗位一一对应:只取活跃岗位(排除 放弃/拒绝;与岗位列表口径一致),空则引导先加岗位(修 jb.co 空崩)。

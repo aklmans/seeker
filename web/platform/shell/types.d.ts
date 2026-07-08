@@ -90,6 +90,26 @@ export interface PageAction {
   fn: () => void;
 }
 
+/**
+ * 应用为某个 widget 破坏性动作声明的 **confirmDestructive 规格**(platform/guardrail 的 opts 子集)。
+ *
+ * ★红线(§4-3/§4-4):契约只收「规格数据」、**不收「已执行」** —— 破坏性执行一律由平台调 guardrail 的
+ * `confirmDestructive`(预览 + 确认 + 可撤销)驱动,应用无法绕过。
+ * **故意不含 `source`**:来源由平台按端口归属的 widgetId 生成(不信任 iframe 自报),应用不得声明/覆盖。
+ */
+export interface WidgetActionSpec {
+  title?: string;
+  detail?: string;
+  confirmLabel?: string;
+  /** 结构化「前→后」预览(guardrail 一律 textContent 渲染,不可信内容无法注入)。 */
+  changes?: { label?: string; before?: string; after?: string }[];
+  /** 用户确认后才执行(必填;registry 以 `typeof onConfirm==='function'` 守卫,缺失则视为未认领)。 */
+  onConfirm: () => void | Promise<void>;
+  onUndo?: () => void | Promise<void>;
+  undoText?: string;
+  undoMs?: number;
+}
+
 /** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI、数据保留)。 */
 export interface AppManifest {
   /** ^[a-z][a-z0-9]*$(嵌入集合前缀 / 设置键 / 钥匙串不经它)。 */
@@ -131,6 +151,11 @@ export interface AppManifest {
   pageNew?: (pageId: string) => (() => void) | undefined;
   /** 页级顶栏动作:按 pageId 返回本应用为该页声明的顶栏按钮(renderTopActions 渲染);未命中返回空数组。汇总型(各应用并集,同 cards)。 */
   pageActions?: (pageId: string) => PageAction[];
+  /**
+   * widget 破坏性动作认领:按 action 返回本应用的 confirmDestructive 规格;不认领返回 undefined(平台走通用破坏性分支)。选择型(同 pageNew)。
+   * `action`/`payload` 来自**不可信 iframe**(§4-4),应用须当纯数据处理;执行由平台的 guardrail 驱动,应用只描述「要做什么/怎么撤销」。
+   */
+  widgetActions?: (action: string, payload: any) => WidgetActionSpec | undefined;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
@@ -194,6 +219,9 @@ export interface SeekerShellApi {
   pageNew(pageId: string): (() => void) | undefined;
   /** 页级顶栏动作:全部启用应用为该页声明的动作并集(renderTopActions 消费;每页通常归一应用,同 cards 并集语义)。 */
   pageActions(pageId: string): PageAction[];
+  /** widget 破坏性动作规格:依注册序问各启用应用,首个认领该 action 者生效;都未认领返回 undefined(平台走通用破坏性分支)。
+   *  平台拿到规格后**自己**调 guardrail.confirmDestructive 并强制注入 `source`(widgetId)——应用既不执行、也不能伪造来源。 */
+  widgetActions(action: string, payload: any): WidgetActionSpec | undefined;
   /** **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径,供「清空全部数据」等须完整枚举的破坏性操作消费。
    *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];

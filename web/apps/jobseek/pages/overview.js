@@ -69,6 +69,5 @@ export function renderOverview(){
   $('#page-overview').innerHTML=frontis('OVERVIEW',tt('总览','Overview'))+hero+digestHtml+stats+two+pipe+signFoot();
 }
 
-/* 过渡 window 兼容桥:manifest 箭头 render:()=>renderOverview() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.renderOverview=renderOverview;
+/* ★批11B(widgetActions 契约):renderOverview 桥已摘 —— 最后一个裸读者(platform/shell/widget-actions.js 的 delete-job 分支)已整段回迁 jobseek;
+   全部消费者已 import(manifest/cards/persistence/其他页/match/demo-seed/widget-actions-jobseek)。状态符号(文件本地)私有。 */

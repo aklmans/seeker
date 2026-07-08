@@ -297,6 +297,22 @@
     return undefined;
   }
 
+  /** widget 破坏性动作规格:依注册序问启用应用,首个认领该 action 者生效,否则 undefined(平台走通用破坏性分支)。选择型(同 pageNew)。
+   *  §1 契约化(批11B):平台 wgtAction 原硬编码 jobseek delete-job 分支(JOBS/renderJobs/renderOverview),改经此契约声明。
+   *  ★红线(§4-3/§4-4):只收**规格数据**不收「已执行」——破坏性执行一律由平台调 guardrail.confirmDestructive 驱动;
+   *  `source` 由平台按端口归属的 widgetId 注入(应用不得声明/覆盖);action/payload 来自不可信 iframe,应用当数据处理。
+   *  `typeof spec.onConfirm==='function'` 守卫:缺执行体的规格视为未认领(fail-safe → 落通用分支,仍过护栏)。
+   *  @param {string} action @param {any} payload @returns {import('./types').WidgetActionSpec | undefined} */
+  function widgetActions(action, payload) {
+    for (const a of enabledApps()) {
+      if (typeof a.widgetActions === 'function') {
+        const spec = a.widgetActions(action, payload);
+        if (spec && typeof spec.onConfirm === 'function') return spec;
+      }
+    }
+    return undefined;
+  }
+
   /** 页级顶栏动作:全部启用应用为 pageId 声明的动作**并集**(每页通常归一应用;同 cards/appCommands 并集语义)。
    *  §1 契约化(批11B):平台 nav.renderTopActions 原硬编码 jobseek 顶栏动作 map(openResumeModal/resumeGenerate/openMarketValue…),改经此契约取。 @param {string} pageId @returns {import('./types').PageAction[]} */
   function pageActions(pageId) {
@@ -348,6 +364,7 @@
     collId,
     pageNew,
     pageActions,
+    widgetActions,
     collections,
   };
   /** @type {any} */ (window).SeekerShell = api;

@@ -203,9 +203,8 @@ export const PIPELINE = [
 const CITY_DIST = [['北京',6],['杭州',4],['上海',2],['深圳',1]];
 const KIND_DIST = [['一线大厂',8],['独角兽/二线',2],['外企',1],['创业公司',0]];
 
-/* 过渡 window 兼容桥:全业务层按全局名调 JOBS/SKILLS/ACTIONS 等;改 import 后摘。
-   JOBS/SKILLS/ACTIONS 皆 mutated-property(.push/.length=0/.splice、hydration in-place)→ dual-publish 同引用即安全、免访问器;其余 const 只读。
-   ★载序命门(批6 核心):data.js module@929 须早于 match@1041/interview@1052/resumes@1053 —— 它们顶层 let state={jobId:JOBS[0].id} 于 module-eval 急读 window.JOBS;doc 序 929<1041<1052<1053 保障 data 先 eval、JOBS 桥就绪(JOBS[0] 非空由 mock 12 保证)。
-   CITY_DIST/KIND_DIST/TECH_META 私有不上桥。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.JOBS=JOBS; 
+/* ★批11B(widgetActions 契约):JOBS 桥已摘 —— 最后一个裸读者(platform/shell/widget-actions.js 的 delete-job 分支)已整段回迁 jobseek;全部消费者已 import。
+   JOBS/SKILLS/ACTIONS 皆 mutated-property(.push/.length=0/.splice、hydration in-place)→ import 绑定即同一对象,跨文件 mutate 安全、免访问器;其余 const 只读。
+   ★载序(第43轮判据:tag-order → **import 图自定序**):match/interview/resumes 顶层 `let state={jobId:JOBS[0].id}` 于 module-eval **急读 import 绑定**(不再是 window.JOBS 桥);
+   data.js 位于 SCC 之外 ⇒ import 图保证其先求值、JOBS 就绪(JOBS[0] 非空由 mock 12 保证)。
+   CITY_DIST/KIND_DIST/TECH_META 私有。 */

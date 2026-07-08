@@ -71,5 +71,5 @@ function bindReadout(j){
 }
 
 /* 过渡 window 桥:renderMatch 经 manifest/cards/copilot-actions 消费;runMatch 经 copilot-actions setTimeout + 内联 onclick;matchState mutated dual-publish(cards/copilot-actions 跨文件 .k= 同引用安全)。matchReadout/bindReadout 私有。
-   ★matchState={jobId:JOBS[0].id} module-eval 急读 window.JOBS(data.js@929 先 eval);★红线逐字保留(函数体):RESUME.filename/derivedSkills 元数据、无联系方式。 */
+   ★matchState={jobId:JOBS[0].id} module-eval 急读 **import 绑定**(第43轮:载序由 import 图自定序、data.js 在 SCC 之外先求值;批11B 后已无 window.JOBS 桥);★红线逐字保留(函数体):RESUME.filename/derivedSkills 元数据、无联系方式。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */

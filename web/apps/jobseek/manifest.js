@@ -22,6 +22,7 @@ import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
 import { openNewJob } from './logic/intake-job.js';
 import { openResumeModal } from './logic/resume-modals.js';
 import { openMarketValue } from './logic/job-actions.js';
+import { jobseekWidgetAction } from './logic/widget-actions-jobseek.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
 import { JOBS, ACTIONS } from './data.js';
 import { tt } from '../../platform/shell/i18n.js';
@@ -113,6 +114,9 @@ import { setState } from '../../platform/shell/shell-state.js';
       skills: [{ t: tt('市场价值报告', 'Market value'), fn: () => openMarketValue() }],
       actions: [{ t: tt('+ 添加行动', '+ Add action'), fn: () => openNewAction() }],
     }[pageId] || []),
+    // §1 契约化(批11B · widgetActions):不可信 widget 的破坏性动作 —— 本应用只**声明规格**(delete-job),
+    // 执行由平台经 platform/guardrail 驱动(预览+确认+可撤销)、source 由平台注入;不认领则平台落通用破坏性分支。
+    widgetActions: (action, payload) => jobseekWidgetAction(action, payload),
     // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
     init: () => { captureSeed(); syncDemoBanner(); },
     // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。

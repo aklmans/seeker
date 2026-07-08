@@ -15,7 +15,7 @@ import { closeModal, openModal } from '../../../platform/shell/modal.js';
 import { frontis, signFoot } from '../../../platform/shell/nav.js';
 import { errText, toast, toastUndo } from '../../../platform/shell/toast.js';
 /* ---------- RESUMES (独立模块) ---------- */
-export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 内联 onclick 跨文件写)→ dual-publish 免访问器;JOBS[0] module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1053 在其后 → 就绪)
+export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 经 import 绑定跨文件写)→ import 即同一对象、免访问器;JOBS[0] 于 module-eval 急读 **import 绑定**(★第43轮:载序由 import 图自定序,data.js 在 SCC 之外 → 先求值、JOBS 就绪;批11B 后已无 window.JOBS 桥)
 let ivRec=null;  // ★从 interview.js 移入:语音识别句柄(reassigned:=new SR()/=null/='demo'),生命周期全在本文件(ivToggleVoice/ivStopVoice/ivVoiceDemo)→ 模块私有、不上桥不访问器(消除跨文件 reassigned 纠缠)
 function modLabel(m){const map={basic:['基本信息','Basic info'],summary:['个人简介','Summary'],skills:['专业能力','Skills'],work:['工作经历','Experience'],projects:['项目经历','Projects'],edu:['教育经历','Education'],honors:['荣誉奖项','Honors'],portfolio:['个人作品','Portfolio'],research:['研究经历','Research'],other:['其他经历','Other']};return map[m.key]?tt(map[m.key][0],map[m.key][1]):m.label;}
 function blockHTML(m){
