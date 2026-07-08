@@ -3,8 +3,12 @@
  * assets(数据资产管理)· 阶段4 第二应用 manifest —— 平台化前提的最终验证:
  * 新增一个应用 = 本 manifest + pages/(prompts/notes)+ 后端集合白名单三处追加(阶段4-1),平台/壳 JS 零改动。
  * 集合按 D1 以 <appId>_ 前缀声明;AI 可读走 D3 三层闸(启用 ∩ 下方 aiReadable 默认 ∩ 用户 per-app 授权)。
- * 加载时机:classic、置于 pages/*.js 之后、壳 BOOT 之前(同 jobseek 先例)。
+ * 加载时机:type=module、置于 pages/*.js 之后、壳 BOOT 之前(同 jobseek 先例)。
+ * 批7:页 render 由 import 直取(不再依赖 window 全局)——同 app 内 pages↔manifest 走 import,跨层仅 window.SeekerShell 契约保持全局。
  */
+import { renderPrompts } from './pages/prompts.js';
+import { renderNotes } from './pages/notes.js';
+
 (function () {
   'use strict';
   // rail 态导航图标(细线 1.5px 圆角端,同设计语言)。

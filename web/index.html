@@ -866,7 +866,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 <script src="./platform/shell/ai-engine.js"></script>
 <script type="module" src="./platform/shell/data-store.js"></script>
 <script src="./platform/shell/profile.js"></script>
-<script src="./platform/shell/settings.js"></script>
+<script type="module" src="./platform/shell/settings.js"></script>
 <script type="module" src="./platform/shell/shell-boot.js"></script>
 <script type="module" src="./platform/shell/copilot-chrome.js"></script>
 <!-- 运行时适配层桥接:把 ESM 的 rt 暴露给经典内联脚本(window.SeekerRT)。桌面=Tauri,网页=降级 -->
@@ -1224,8 +1224,8 @@ function initKeys(){
 </script>
 <!-- 小应用注册;3.y 注册链 module 化:manifest 转 module(deferred,晚于 registry@858 module → SeekerShell 就绪);IIFE 内 register。业务全局(SEEKER_CARDS/render*)经全局词法环境 runtime 解析(定义方仍 classic parse-time)。prompts/notes 留 classic(定义 renderPrompts/renderNotes 供 assets manifest 全局词法读)。 -->
 <script type="module" src="./apps/jobseek/manifest.js"></script>
-<script src="./apps/assets/pages/prompts.js"></script>
-<script src="./apps/assets/pages/notes.js"></script>
+<script type="module" src="./apps/assets/pages/prompts.js"></script>
+<script type="module" src="./apps/assets/pages/notes.js"></script>
 <script type="module" src="./apps/assets/manifest.js"></script>
 <script type="module">
 /* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)· 3.y 注册链 module 化 ============ */

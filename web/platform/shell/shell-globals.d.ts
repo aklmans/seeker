@@ -1,33 +1,19 @@
 /**
- * 3.y 类型化 · 平台侧过渡账本(tsc 桥)。
+ * 3.y 类型化 · 平台侧过渡账本(tsc 桥)—— 收敛中。
  *
- * 已转 ES module 的壳基元,其 **@ts-check 消费者**(apps 等,仍按全局名引用、尚未改 import)
- * 在此声明为 ambient —— 与该模块尾部的**运行时 window 桥**配对,让 tsc 零回归。
- * 消费者逐个改 `import { ... } from '../../platform/shell/<模块>.js'` 后,从此**逐条销**;
- * 清空即删(同 apps/jobseek/monolith-globals.d.ts 账本收敛)。
+ * 已转 ES module 的壳基元,其**尚未改 import 的 @ts-check 消费者**(仍按全局名引用)
+ * 在此声明为 ambient —— 与该模块尾部运行时 window 桥配对,让 tsc 零回归。
+ * 消费者改 `import { ... } from '../../platform/shell/<模块>.js'` 后**逐条销**;清空即删
+ * (同 apps/jobseek/monolith-globals.d.ts 账本收敛)。
  *
- * 当前条目:
- *   modal.js(3.y 首刀)→ openModal / closeModal(消费者:apps/assets/pages/{prompts,notes}.js)
- *   toast.js(3.y 有状态刀)→ toast / toastUndo(消费者同上;errText/runLastUndo 无 @ts-check 消费者、lastUndo 不外露→均不入桥)
- *   dom.js(3.y 步3 base)→ $ / $$ / el(消费者:assets/pages/{prompts,notes}.js;类型同 dom.js JSDoc)
- *   i18n.js(3.y 步3 base)→ tt(消费者同上;L/T 无 @ts-check 消费者、I18N 内部私有 → 不入桥)
- *   icons.js(3.y 步3 base)→ IC(消费者 assets/pages/{prompts,notes}.js 的 IC.x)
- *   data-store.js(3.y 步3 中层)→ persistColl / collPersistOn / hydrateColl(消费者同上;其余导出无 @ts-check 消费者)
- *   nav.js(3.y 步3 中层)→ currentPage(★有状态 current 访问器)+ frontis / signFoot(页首/页脚模板;消费者 assets/pages/{prompts,notes}.js;go/buildNav 等其余导出无 @ts-check 消费者)
+ * 批7(2026-07-07)收敛:assets/pages/{prompts,notes}.js 已全部改 import,其消费的
+ *   $ / $$ / IC / openModal / closeModal / toast / toastUndo / persistColl / collPersistOn /
+ *   hydrateColl / currentPage / frontis / signFoot(13 条;el 从无消费者)逐条销;
+ *   renderPrompts/renderNotes 由 assets/manifest.js import 直取、不再上 window 桥。
+ *
+ * 仅存条目:
+ *   i18n.js → tt —— 消费者 jobseek/manifest.js(裸全局引用;该 manifest 尚未改 import)。
+ *   待其改 import(账本清空 · 批10),本文件整删。
  */
 
-declare function openModal(html: string, wide?: boolean): Element;
-declare function closeModal(): void;
-declare function toast(msg: string): void;
-declare function toastUndo(msg: string, restoreFn: () => void): void;
-declare const $: (s: string, r?: ParentNode) => Element | null;
-declare const $$: (s: string, r?: ParentNode) => Element[];
-declare const el: (h: string) => Element | null;
 declare function tt(zh: string, en: string): string;
-declare const IC: Record<string, string>;
-declare function persistColl(name: string, arr: any[]): void;
-declare function collPersistOn(): boolean;
-declare function hydrateColl(name: string, arr: any[]): Promise<void>;
-declare function currentPage(): string;
-declare function frontis(eyebrow: string, title: string): string;
-declare function signFoot(): string;

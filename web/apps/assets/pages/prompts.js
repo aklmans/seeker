@@ -2,7 +2,18 @@
 /** assets(数据资产)· Prompt 库页(阶段4 第二应用 · 新代码依 C5 直接 @ts-check)。
  *  数据:ASSETS_PROMPTS(空启动,无静默演示数据 —— 同首启落地页哲学);持久化走平台通用引擎
  *  persistColl/hydrateColl('assets_prompts')+ rt.db.remove;水合经 seeker-rt-ready(classic 解析期注册,同第5轮时序法)。
- *  红线:用户输入(标题/内容)进 DOM 前一律 apEsc 转义;删除走 toastUndo 可撤销(§4-3 反焦虑)。 */
+ *  红线:用户输入(标题/内容)进 DOM 前一律 apEsc 转义;删除走 toastUndo 可撤销(§4-3 反焦虑)。
+ *  ★批7:平台基元(dom/i18n/icons/toast/modal/data-store/nav)改 import,不再依赖 window ambient;
+ *    renderPrompts 由 assets/manifest.js import 消费(经 grep 证唯一外部消费者)→ 不再上 window 桥。
+ *    (内联 onclick "closeModal()" 仍按 window 解析——modal.js 运行时桥仍在;import 供页内直调 + tsc。)
+ *    shell-globals.d.ts 未删:仍服务 jobseek/assets 两 manifest 的 tt 等 ambient(tsc 已证)→ 留待账本清空(批10)整销。 */
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { toast, toastUndo } from '../../../platform/shell/toast.js';
+import { openModal, closeModal } from '../../../platform/shell/modal.js';
+import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
+import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
 
 /** @type {Array<{id:string, title:string, text:string, updated:number}>} */
 const ASSETS_PROMPTS = [];
@@ -12,7 +23,7 @@ function apEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</
 
 function persistPrompts(){ persistColl('assets_prompts', ASSETS_PROMPTS); }
 
-function renderPrompts(){
+export function renderPrompts(){
   const host=$('#page-prompts'); if(!host) return;
   const rows=ASSETS_PROMPTS.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   const list=rows.length

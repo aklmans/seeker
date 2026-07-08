@@ -312,7 +312,7 @@ async function openMcpManager(){
   };
 }
 
-function renderSettings(){
+export function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
@@ -525,3 +525,7 @@ async function wireModelConfigDesktop(){
       .catch(e=>toast(tt('连接失败:','Failed: ')+errText(e)))
       .finally(()=>{ test.disabled=false; test.textContent=old; }); };
 }
+/* 过渡 window 桥:renderSettings 经 SeekerShell.setShell 的 render 箭头 + profile/persistence/settings-jobseek/index.html 消费(全 runtime);改 import 后摘。
+   其余(MODEL/settingsState/SET_TABS_SHELL 状态 + 各 manager/model-UI/wireDataIO 函数)零外部消费 → module-private。
+   ★settings.js 是批8 前置:profile 转 module 后本文件读 PROFILE(:333/:407)须改 import(现经全局词法读 classic profile.js)。 */
+window.renderSettings=renderSettings;

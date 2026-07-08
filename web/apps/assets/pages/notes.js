@@ -2,7 +2,16 @@
 /** assets(数据资产)· 笔记页(阶段4 第二应用 · 新代码依 C5 直接 @ts-check)。
  *  数据:ASSETS_NOTES(空启动);持久化走平台通用引擎 persistColl/hydrateColl('assets_notes')+ rt.db.remove;
  *  水合经 seeker-rt-ready(classic 解析期注册,同第5轮时序法)。
- *  红线:用户输入进 DOM 前一律 anEsc 转义;删除走 toastUndo 可撤销(§4-3 反焦虑)。 */
+ *  红线:用户输入进 DOM 前一律 anEsc 转义;删除走 toastUndo 可撤销(§4-3 反焦虑)。
+ *  ★批7:平台基元改 import;renderNotes 由 assets/manifest.js import 消费(唯一外部消费者)→ 不再上 window 桥。
+ *    (内联 onclick "closeModal()" 仍按 window 解析——modal.js 运行时桥仍在。shell-globals.d.ts 仍服务两 manifest 的 tt 等 ambient,留待账本清空批10。) */
+import { $, $$ } from '../../../platform/shell/dom.js';
+import { tt } from '../../../platform/shell/i18n.js';
+import { IC } from '../../../platform/shell/icons.js';
+import { toast, toastUndo } from '../../../platform/shell/toast.js';
+import { openModal, closeModal } from '../../../platform/shell/modal.js';
+import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
+import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
 
 /** @type {Array<{id:string, text:string, updated:number}>} */
 const ASSETS_NOTES = [];
@@ -12,7 +21,7 @@ function anEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</
 
 function persistNotes(){ persistColl('assets_notes', ASSETS_NOTES); }
 
-function renderNotes(){
+export function renderNotes(){
   const host=$('#page-notes'); if(!host) return;
   const rows=ASSETS_NOTES.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   const list=rows.length
