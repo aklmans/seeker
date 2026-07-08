@@ -1300,12 +1300,22 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批11B · pageNew 契约(§1 契约化 1/4,commit `f1eb02b`)· ⏳ 待审
+### 批11B · pageNew 契约(§1 契约化 1/4,commit `f1eb02b`)· 🏁 第45轮通过(无阻断/应改)
 **批11B 四契约首刀**(每契约一 commit、一轮送审;约束② SeekerShell 扩展必审)。消除平台 `shell-keys.contextNew` 对 jobseek 符号(openNewJob/openNewAction)的裸全局读,改经新增 `SeekerShell.pageNew` 契约(**镜像既有 collId 选择型**)。**排序理由**:pageNew 最小面(2 符号 / keys 层 / 零红线 / 零桥删)→ 先立可复用「manifest 声明 per-page 动作 → 平台经契约取」模式,pageActions/widgetActions/cActions 承之(cActions 依赖 11A cBtn→cAB、殿后)。
 - **契约扩展(约束②)**:registry.js `pageNew(pageId)` 选择型——`enabledApps()` 依序、首个 `a.pageNew(pageId)` 返回函数生效、否则 undefined(与 collId 逐字同构)+ api 注册;types.d.ts 双声明(`AppManifest.pageNew?` 应用面 + `SeekerShellApi.pageNew` 消费面)。
 - **应用声明**:manifest.js +import openNewJob/openNewAction + `pageNew:(pageId)=>({jobs:()=>openNewJob(),actions:()=>openNewAction()}[pageId])`。**无参箭头包装**=契约 `()=>void`(openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价;@ts-check 下 `(editId)=>void` 不能直接充当 `()=>void`,故包装——这是唯一的形变、零行为)。**惰性**(体在调用时求值)→ manifest eval 不 eager 读→无载序前移(区别 cards:SEEKER_CARDS eager)。
 - **平台改绑**:contextNew `{jobs:openNewJob,actions:openNewAction}[currentPage()]` → `SeekerShell.pageNew(currentPage())`,命中 fn()/未命中 toast 逐字等价;§1 债注释更新为「已清」。
 - **桥/账**:桥数**不变**——openNewJob/openNewAction 的 window 桥仍由 nav.renderTopActions 消费(唯二全局消费者已核实:shell-keys[本刀清] + nav[pageActions 2/4 清]),故 pageActions 时才删这 2 桥。§1 债:shell-keys 2 处清零(14 处/12 符号 → 12 处剩)。
 - **验**:node×3 / **tsc 真退出码 0**(pageNew 类型在 @ts-check 的 registry/manifest 面通过、包装消形变);preview 净方法(③(b) 定向重验三改文件+reload,先遇 classic registry.js 同 URL 缓存假象=pageNew 未定义→定向 fetch{cache:reload} 后正):**契约面**(pageNew 是函数、('jobs')/('actions')→函数、('overview')/('interview')/('nope')→undefined)+**功能端到端**(pageNew('jobs')()→录入岗位模态、('actions')()→添加行动模态、overview→undefined→toast 兜底)+**★金标准驱动改动函数本身**(stub __TAURI__ 过 when:isDesktop → 真 [data-go] 委派导航 jobs → 真实 Mod+N keydown → SeekerKeys → contextNew → 新岗位模态开;__TAURI__ 复原);0 console/11 页/截图 clean/桥仍在;**真机 asset:// boot 重编 5.87s、进程存活、零 panic**(新 manifest→intake-job import 边定序无碍)。
+
+### ★ 第45轮裁定 = 通过(无 [阻断]、无 [应改];四契约可复用模式立住)
+- **① 契约同构(约束②)**:registry `pageNew` 与选择型基准 `collId` **结构逐字同构**(同 `for(a of enabledApps())` 依序、首个命中返回、否则 undefined);唯一差异判据 `typeof fn==='function'`(vs collId `id!=null`)= 对「函数返回 vs 字符串返回」的正确适配、非偏差。types.d.ts 双声明齐备。
+- **② §1 方向铁证**:shell-keys **剥注释后零 openNewJob/openNewAction 引用**(grep 命中全是解释性注释),平台跨层只读 `SeekerKeys`/`SeekerShell` 两契约全局;contextNew 裸读被契约取代。
+- **③ 桥账独立核实(不采信送审词)**:逐文件判 import-vs-裸读 → openNewJob/openNewAction 的 window 桥**唯一剩余裸读者=nav.js**(`fn:()=>openNewJob()` 未 import),match/demo-seed/copilot-actions/manifest 全 `import+调用`(非桥消费者)⇒ 本刀前 shell-keys+nav 两裸读、现只剩 nav、**桥数正确不变**、§1 债 14→12 处。账对。
+- **④ 无参包装零顾虑**:`openNewJob(editId)` 的 `editId!=null?编辑:新建`;旧 contextNew 本就无参调 `openNewJob()`(=新建),新包装 `()=>openNewJob()` 同样 `openNewJob()` ⇒ 逐字等价、**editId 顾虑其实多余**;惰性 + provider `export function`(hoisted、TDZ 安全)、新 import 未引入新环。
+- **⑤ 金标准(评审亲验驱动改动函数本身)**:导航 jobs 页 → 真实 Mod+N keydown → SeekerKeys → contextNew → currentPage='jobs' → 契约 → fn() → 新岗位模态开;overview 页 Mod+N → undefined → toast 兜底不抛、无模态。0 console/11 页/字面 onclick 仍 0/桥仍在;契约面 pageNew 新增而 collId/cards/appCommands 不变;node×3/tsc 真 0;真机按我留痕采信(未独立复现)。
+- **评审诚实记录**:一次探针假象(`fresh_shellkeys_no_bareread` 把注释里"原硬编码 `{jobs:openNewJob`"当代码命中),剥注释复核后确认代码净——与我送审的 ③(b) 缓存假象同类「先假象后查清」。
+
+**pageNew 通过(第45轮;§1 契约化 1/4;桥不变 28、§1 债 14→12 处;契约面 +pageNew)。** 下一刀 = pageActions(2/4)。
 
 **下一刀:pageActions(§1 契约化 2/4)** —— nav.renderTopActions 7 符号(openResumeModal/resumeGenerate/resumeState/renderResumes/openNewJob/openMarketValue/openNewAction)→ 汇总型 per-page 顶栏动作契约;此刀删 openNewJob/openNewAction 2 桥(最后全局消费者去)。
