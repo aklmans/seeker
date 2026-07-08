@@ -4,7 +4,8 @@
 import { skillByName } from '../data-helpers.js';
 import { ACCRUAL, ACTIONS, CAT_LABEL, JOBS, PRI, SKILLS } from '../data.js';
 import { IV_RECORDS, RESUME } from '../logic/intake-action.js';
-import { dotsHTML } from '../logic/job-actions.js';
+import { dotsHTML, openMarketValue } from '../logic/job-actions.js';
+import { openResumeModal } from '../logic/resume-modals.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
@@ -73,14 +74,16 @@ export function renderSkills(){
   });
   if(!sections) sections = SKILLS.length
     ? `<div class="sec"><p style="color:var(--ink-3);padding:20px 0;text-align:center;">${tt('没有符合筛选的能力','No abilities match the filter')}</p></div>`
-    : `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('你的能力档案来自简历','Your career assets come from your resume')}</h3><p style="max-width:600px;">${tt('在「我的简历」上传简历后,AI 自动把你的技能、年限、经历建成"职业资产"档案(复利型 / 积累型 / 易折旧),并和岗位需求对照。本地处理、联系方式不参与。','Upload your resume in "My resume" and AI builds your skills, years and experience into a career-asset profile (compounding / accumulating / depreciating), matched against job demand. Local-only; contact details excluded.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="openResumeModal()">${tt('上传 / 管理简历','Upload / manage resume')} →</button></div></div></div>`;
+    : `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('你的能力档案来自简历','Your career assets come from your resume')}</h3><p style="max-width:600px;">${tt('在「我的简历」上传简历后,AI 自动把你的技能、年限、经历建成"职业资产"档案(复利型 / 积累型 / 易折旧),并和岗位需求对照。本地处理、联系方式不参与。','Upload your resume in "My resume" and AI builds your skills, years and experience into a career-asset profile (compounding / accumulating / depreciating), matched against job demand. Local-only; contact details excluded.')}</p><button class="btn btn-accent" style="margin-top:14px;" data-orm>${tt('上传 / 管理简历','Upload / manage resume')} →</button></div></div></div>`;
   const assetIntro=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="ai-bar" style="border:0.5px solid var(--border);">
     <span class="dot"></span><span class="lbl">${tt('由简历 <b>'+cEsc(RESUME.filename)+'</b> 自动建档 · 这是你贯穿职业生涯的长期资产,在职时也值得每季度盘点','Auto-built from <b>'+cEsc(RESUME.filename)+'</b> · a long-term career asset worth reviewing quarterly, even while employed')}</span>
-    <button class="btn-text" style="margin-left:auto;" onclick="openMarketValue()">${tt('市场价值报告','Market value report')} →</button></div></div>`;
+    <button class="btn-text" style="margin-left:auto;" data-omv>${tt('市场价值报告','Market value report')} →</button></div></div>`;
   $('#page-skills').innerHTML=frontis('CAREER ASSETS',tt('职业资产','Career assets'))+assetIntro+lens+bar+sections+signFoot();
   $$('#page-skills [data-sc]').forEach(b=>b.onclick=()=>{skillFilter.cat=b.dataset.sc;renderSkills();});
   $$('#page-skills [data-sa]').forEach(b=>b.onclick=()=>{skillFilter.accrual=b.dataset.sa;renderSkills();});
   $$('#page-skills [data-skill]').forEach(c=>c.onclick=(e)=>{e.stopPropagation();openSkillDetail(c.dataset.skill);});
+  $$('#page-skills [data-orm]').forEach(b=>b.onclick=()=>openResumeModal());   // ★批11A:原内联 onclick="openResumeModal()"
+  $$('#page-skills [data-omv]').forEach(b=>b.onclick=()=>openMarketValue());   // ★批11A:原内联 onclick="openMarketValue()"
 }
 
 function openSkillDetail(name){

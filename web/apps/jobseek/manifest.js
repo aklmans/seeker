@@ -17,7 +17,7 @@ import { renderInterview } from './logic/interview.js';
 import { frameQuery } from './logic/frame-query.js';
 import { copReply, aiSuggs, AGENT_CMDS, renderAgentCmds } from './logic/copilot-actions.js';
 import { SEEKER_CARDS } from './cards.js';
-import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML } from './logic/settings-jobseek.js';
+import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
 import { masterSectionHTML } from './logic/intake-action.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
 import { JOBS, ACTIONS } from './data.js';
@@ -89,7 +89,7 @@ import { setState } from '../../platform/shell/shell-state.js';
       ],
       extend: {
         profile: { render: masterSectionHTML, wire: wireMasterSection },
-        data: { render: dataResumeRowHTML },
+        data: { render: dataResumeRowHTML, wire: wireDataResumeRow },
       },
     }),
     collId: (name, r) => (name === 'skills' ? r.name : undefined),

@@ -54,7 +54,7 @@ function openNoteModal(id){
   const n=ASSETS_NOTES.find(x=>x.id===id);
   openModal(`<div class="modal-head"><div><p class="eyebrow">— NOTE</p><h2 style="margin-top:5px;">${n?tt('编辑笔记','Edit note'):tt('新建笔记','New note')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body"><textarea class="input" id="anText" rows="8" style="width:100%;font-size:13.5px;line-height:1.8;" placeholder="${tt('写点什么…','Write something…')}">${anEsc(n?n.text:'')}</textarea></div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="anSave">${tt('保存','Save')}</button></div>`);
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="anSave">${tt('保存','Save')}</button></div>`);
   const save=$('#anSave'); if(save) /** @type {HTMLElement} */(save).onclick=()=>{
     const text=(/** @type {HTMLTextAreaElement|null} */($('#anText'))||{value:''}).value;
     if(!text.trim()){ toast(tt('写点内容再保存','Add some content first')); return; }

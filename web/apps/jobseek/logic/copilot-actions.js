@@ -7,13 +7,14 @@ import { skillByName } from '../data-helpers.js';
 import { ACTIONS, JOBS, TOP_GAPS, SKILLS } from '../data.js';
 import { TREND, YOU_VALUE, genPlanFromGap, openNewAction, planFor, topGapsOf } from './intake-action.js';
 import { openNewJob } from './intake-job.js';
+import { openResumeUpload } from './resume-modals.js';
 import { aiResumeForJob, goInterview, openMarketValue } from './job-actions.js';
 import { matchState, renderMatch, runMatch } from './match.js';
 import { renderActions } from '../pages/actions.js';
 import { renderAnalysis } from '../pages/analysis.js';
 import { renderJobs } from '../pages/jobs.js';
 import { renderOverview } from '../pages/overview.js';
-import { agentChat, agentSend, cAB, cAct, cBtn, cCard, cEsc, cSuggs, copClose, copGo, copScroll } from '../../../platform/shell/copilot-chrome.js';
+import { agentChat, agentSend, cAB, cAct, cCard, cEsc, cSuggs, copClose, copGo, copScroll } from '../../../platform/shell/copilot-chrome.js';
 import { jobsPersistOn } from '../../../platform/shell/data-store.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
@@ -33,6 +34,7 @@ export function copResume(jobId){copClose();aiResumeForJob(jobId);}
 export function copNewJob(){copClose();openNewJob();}
 export function copNewAction(){copClose();openNewAction();}
 export function copMarket(){copClose();openMarketValue();}
+export function copResumeUpload(){copClose();openResumeUpload();}  // ★批11A:原 cBtn 复合串 'copClose();openResumeUpload()' 的包装(cAB 白名单按名调)
 export function copDoneAct(id){const a=ACTIONS.find(x=>x.id===id);if(a){const prev={state:a.state,progress:a.progress};a.state='done';a.progress=100;renderActions();renderOverview();toastUndo('已标记完成 ✓',()=>{a.state=prev.state;a.progress=prev.progress;renderActions();renderOverview();});}copScroll();}
 
 export function agentDeleteJob(id){
@@ -59,19 +61,19 @@ export function copReply(t){
   const j=findJob(t), sk=findSkill(t);
   // 0. destructive → preview + confirm (anti-anxiety guardrail)
   if(has('删除','删掉','移除','去掉')&&j&&has('岗位','公司','它','这个','删'))
-    return `确认删除岗位 <b>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</b>?它会从列表移除 —— 这一步可撤销,不会真正丢失。`+cAct([cAB('确认删除','agentDeleteJob',[j.id],true), cBtn('取消','agentCancel()')]);
+    return `确认删除岗位 <b>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</b>?它会从列表移除 —— 这一步可撤销,不会真正丢失。`+cAct([cAB('确认删除','agentDeleteJob',[j.id],true), cAB('取消','agentCancel',[])]);
   if(has('清空','清除所有','重置全部','删光','全部删'))
-    return `你要清空<b>所有数据</b>(岗位 / 简历 / 记录)?这是个大动作。建议先在「数据设置 → DATA」导出备份再操作。`+cAct([cBtn('我已备份,继续','agentChat(\'(演示)清空已拦截 —— 真实版本会在此二次确认并支持撤销。\')'), cBtn('取消','agentCancel()')]);
+    return `你要清空<b>所有数据</b>(岗位 / 简历 / 记录)?这是个大动作。建议先在「数据设置 → DATA」导出备份再操作。`+cAct([cAB('我已备份,继续','agentChat',['(演示)清空已拦截 —— 真实版本会在此二次确认并支持撤销。']), cAB('取消','agentCancel',[])]);
   // 0b. settings changes are NOT allowed via chat (privacy/security) — only open
   const tlow=t.toLowerCase();
   if(has('改','设为','调成','修改','调整','设成','换成','配置成')&&(has('设置','主题','字号','模型配置','隐私','权重','偏好','界面语言','密度','钥匙','密钥','接口','协议','base')||tlow.includes('api')||tlow.includes('key')||tlow.includes('token')||tlow.includes('url')))
-    return '出于隐私与安全,设置不能通过对话修改 —— 这类信息(尤其 API Key、隐私字段)只在「数据设置」里手动改。我可以帮你打开那个页面。'+cAct([cBtn('打开数据设置','copGo(\'settings\')',true)]);
+    return '出于隐私与安全,设置不能通过对话修改 —— 这类信息(尤其 API Key、隐私字段)只在「数据设置」里手动改。我可以帮你打开那个页面。'+cAct([cAB('打开数据设置','copGo',['settings'],true)]);
   // 1. resume upload / build
-  if(has('上传简历','建档','解析简历')) return '好,简历是整个产品的输入源。'+cAct([cBtn('上传简历,AI 自动建档','copClose();openResumeUpload()',true)]);
+  if(has('上传简历','建档','解析简历')) return '好,简历是整个产品的输入源。'+cAct([cAB('上传简历,AI 自动建档','copResumeUpload',[],true)]);
   // 2. resume rewrite
   if(has('简历')&&has('改','定制','优化','改写','重写')){
     if(j) return `我用 <b>${cEsc(j.co)}</b> 这个岗位的 JD 给你定制简历,把"做过什么"改成"拿到什么结果"。`+cAct([cAB('生成定制简历','copResume',[j.id],true)]);
-    return '想针对哪个岗位改简历?告诉我公司名,比如"帮我改字节那个岗位的简历"。'+cAct([cBtn('打开智能匹配','copGo(\'match\')')]);
+    return '想针对哪个岗位改简历?告诉我公司名,比如"帮我改字节那个岗位的简历"。'+cAct([cAB('打开智能匹配','copGo',['match'])]);
   }
   // 3. match
   if(has('匹配','合适','对得上','配得上','能投','行不行')&&j){
@@ -83,31 +85,31 @@ export function copReply(t){
   // 4. interview
   if(has('面试','模拟','练题','陪练')){
     if(j) return `用 <b>${cEsc(j.co)}</b> 的 JD 关键词陪你练,出题 + 评分 + 反馈。`+cAct([cAB('开始模拟面试','copInterview',[j.id],true)]);
-    return '选个岗位来练吧,我用它的真实 JD 出题。'+cAct([cBtn('打开面试陪练','copGo(\'interview\')',true)]);
+    return '选个岗位来练吧,我用它的真实 JD 出题。'+cAct([cAB('打开面试陪练','copGo',['interview'],true)]);
   }
   // 5. add job
-  if(has('加','添加','录入','新增','收集')&&has('岗位','公司','职位')) return '好,录入新岗位 —— 粘贴 JD 后 AI 会自动抽取要求并算匹配度。'+cAct([cBtn('录入岗位','copNewJob()',true)]);
+  if(has('加','添加','录入','新增','收集')&&has('岗位','公司','职位')) return '好,录入新岗位 —— 粘贴 JD 后 AI 会自动抽取要求并算匹配度。'+cAct([cAB('录入岗位','copNewJob',[],true)]);
   // 6. training plan / 补技能
   if((has('训练计划','学习计划','怎么补','怎么练','补齐','计划')&&sk)||(has('补')&&sk)){
     const p=planFor(sk.name);
     return `给你排了「${cEsc(sk.name)}」的训练计划:约 ${p.weeks} 周、${p.ms.length} 个里程碑。推荐资源:${p.res.slice(0,2).map(cEsc).join(' · ')}。`+cAct([cAB('加入行动清单','copPlan',[sk.name,''],true)]);
   }
   // 7. add action
-  if(has('加','添加','新建')&&has('行动','任务','待办')) return '好,添加一个行动 —— 建议带上目标和里程碑,方便刻意练习。'+cAct([cBtn('添加行动','copNewAction()',true)]);
+  if(has('加','添加','新建')&&has('行动','任务','待办')) return '好,添加一个行动 —— 建议带上目标和里程碑,方便刻意练习。'+cAct([cAB('添加行动','copNewAction',[],true)]);
   // 8. mark done
   if(has('完成','搞定','做完','标记')){
     const a=findAction(t);
-    if(a) return `把「${cEsc(a.title)}」标记为已完成?`+cAct([cAB('确认完成','copDoneAct',[a.id],true), cBtn('打开行动清单','copGo(\'actions\')')]);
+    if(a) return `把「${cEsc(a.title)}」标记为已完成?`+cAct([cAB('确认完成','copDoneAct',[a.id],true), cAB('打开行动清单','copGo',['actions'])]);
   }
   // 9. questions — gaps
   if(has('缺口','短板','差什么','差哪','该补','弱项')){
     const rows=TOP_GAPS.map(g=>`${g.rank} ${cEsc(g.name)} · ${g.jobs} 个岗位需要`).join('<br>');
-    return '你当前最高优先级的能力缺口:'+cCard('Top 3 缺口', rows)+cAct([cBtn('一键补 Rust','copPlan(\'Rust\',\'\')',true), cBtn('看缺口矩阵','copGo(\'analysis\')')]);
+    return '你当前最高优先级的能力缺口:'+cCard('Top 3 缺口', rows)+cAct([cAB('一键补 Rust','copPlan',['Rust',''],true), cAB('看缺口矩阵','copGo',['analysis'])]);
   }
   // 10. what to do next
   if(has('该做','下一步','现在做','干什么','做什么','怎么开始')){
     const a=ACTIONS.filter(x=>x.state==='doing')[0]||ACTIONS.find(x=>x.state==='todo');
-    return `下一步最该做的一件事:<b>${cEsc(a.title)}</b>。${cEsc(a.goal||'')}`+cAct([cBtn('去完成','copGo(\'actions\')',true), cBtn('智能匹配新岗位','copGo(\'match\')')]);
+    return `下一步最该做的一件事:<b>${cEsc(a.title)}</b>。${cEsc(a.goal||'')}`+cAct([cAB('去完成','copGo',['actions'],true), cAB('智能匹配新岗位','copGo',['match'])]);
   }
   // 11. best match
   if(has('最匹配','最适合','最该投','匹配最高','最有戏','优先投')){
@@ -115,22 +117,22 @@ export function copReply(t){
     return `按匹配度,<b>${cEsc(best.co)} · ${cEsc(best.role.split('·')[0].trim())}</b> 最该优先(匹配 ${best.match.toFixed(1)}/10)。`+cAct([cAB('查看完整匹配','copMatch',[best.id],true)]);
   }
   // 12. market value / salary
-  if(has('值多少','市场价值','身价','薪资','工资','值钱','行情')) return `按你的能力档案和 12 份目标 JD 估算,你的市场价值约 <b>${YOU_VALUE} 万/年</b>,在「后端·高级」带中上沿。`+cAct([cBtn('看完整市场价值报告','copMarket()',true), cBtn('看市场情报','copGo(\'analysis\')')]);
+  if(has('值多少','市场价值','身价','薪资','工资','值钱','行情')) return `按你的能力档案和 12 份目标 JD 估算,你的市场价值约 <b>${YOU_VALUE} 万/年</b>,在「后端·高级」带中上沿。`+cAct([cAB('看完整市场价值报告','copMarket',[],true), cAB('看市场情报','copGo',['analysis'])]);
   // 13. trend
   if(has('趋势','在涨','在跌','热门','什么火','前景','值得学')){
     const up=TREND.filter(x=>x.dir==='up').slice(0,4).map(x=>`${x.skill} +${x.pct}%`).join(' · ');
-    return `近 6 个月需求上行最快:${up}。Rust 稀缺且涨势最猛,差异化价值最高。`+cAct([cBtn('看市场情报','copGo(\'analysis\')',true)]);
+    return `近 6 个月需求上行最快:${up}。Rust 稀缺且涨势最猛,差异化价值最高。`+cAct([cAB('看市场情报','copGo',['analysis'],true)]);
   }
   // 14. progress
   if(has('进度','做到哪','练了多少','投入多少','状态')){
     const mins=ACTIONS.reduce((x,a)=>x+(a.sessions||[]).reduce((y,s)=>y+s.mins,0),0);
     const doing=ACTIONS.filter(a=>a.state==='doing').length;
-    return `你已累计训练 <b>${(mins/60).toFixed(1)} 小时</b>,${doing} 项进行中,12 个岗位在跟进。稳步推进中 —— 你没有落后。`+cAct([cBtn('打开行动清单','copGo(\'actions\')',true)]);
+    return `你已累计训练 <b>${(mins/60).toFixed(1)} 小时</b>,${doing} 项进行中,12 个岗位在跟进。稳步推进中 —— 你没有落后。`+cAct([cAB('打开行动清单','copGo',['actions'],true)]);
   }
   // 15. navigation
   const navMap=[['总览','overview'],['智能匹配','match'],['匹配','match'],['简历','resumes'],['目标岗位','jobs'],['岗位','jobs'],['分析','analysis'],['市场','analysis'],['职业资产','skills'],['能力','skills'],['技能','skills'],['行动','actions'],['任务','actions'],['面试','interview'],['设置','settings']];
   if(has('打开','去','跳转','切换','看看','进入','查看','到')){
-    for(const [k,id] of navMap){ if(t.includes(k)){ const p=PAGES.find(x=>x.id===id); return `好,带你去「${p.label}」。`+cAct([cBtn('打开 '+p.label,'copGo(\''+id+'\')',true)]); } }
+    for(const [k,id] of navMap){ if(t.includes(k)){ const p=PAGES.find(x=>x.id===id); return `好,带你去「${p.label}」。`+cAct([cAB('打开 '+p.label,'copGo',[id],true)]); } }
   }
   // 16. help
   if(has('能做什么','帮助','怎么用','你会','功能','能干嘛')) return '我可以用一句话帮你做这些:'+cSuggs(['我和腾讯那个岗位匹配吗?','帮我改美团那个岗位的简历','给我排一个 Rust 训练计划','我的市场价值值多少?','现在最该做什么?']);
@@ -178,4 +180,4 @@ export const AGENT_CMDS=[
 /* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;
+window.copResumeUpload=copResumeUpload; window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;

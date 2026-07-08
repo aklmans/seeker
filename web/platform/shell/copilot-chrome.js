@@ -24,8 +24,7 @@ export const cEsc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 // cCard/cAct 是纯模板(内容拼装);调用方须先 cEsc 外部数据(见 copReply)。
 export const cCard=(t,m)=>`<div class="cop-card"><div class="cct">${t}</div>${m?`<div class="ccm">${m}</div>`:''}</div>`;
 export const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</div>`:'';
-// ⚠ cBtn 的 oc 是内联 onclick JS 串,**只可传静态串(零外部数据)**;带外部数据用 cAB(下),否则 ' 或 " breakout → 任意 JS。label 由调用方保证静态。
-export const cBtn=(l,oc,acc)=>`<button class="btn ${acc?'btn-accent':''}" onclick="${oc}">${l}</button>`;
+/* ★批11A:cBtn(内联 onclick JS 串模板)已删——18 处调用全部迁 cAB(白名单委派、外部数据永不拼进 JS 串);此后新增按钮一律 cAB。 */
 // cAB(action-button · P1 结构性修):fn=window 上函数名(静态、开发者控制),args=参数数组(可含外部数据)→ JSON 存 data-cargs、
 // 点击时经委派**按值传参**调用,外部数据**永不拼进 JS/HTML 串** → 从根消除 onclick 注入类(优于脆弱引号转义)。label 经 cEsc。
 export const cAB=(l,fn,args,acc)=>`<button class="btn ${acc?'btn-accent':''}" data-cact="${cEsc(fn)}" data-cargs="${cEsc(JSON.stringify(args||[]))}">${cEsc(l)}</button>`;
@@ -34,7 +33,8 @@ export const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csu
 // 任一未修 HTML 注入面若能落 <button data-cact="…">,不设防时可派发任意 window 函数,把 HTML 注入升级为 JS 执行 / 二次 innerHTML
 // (★注意 copAppend/agentAppend 本身即 innerHTML sink、eval/Function 等更甚 → 前缀判定不够,必须精确白名单)。此表堵住升级面。
 // ⚠ 新增 cAB 处理器时须在此登记(与 copReply 的 cAB('…',fn,…) 一一对应)。
-const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume']);
+// ★批11A:cBtn→cAB 迁移新增 7 名(agentCancel/agentChat/copGo=chrome 自有;copNewJob/copNewAction/copMarket/copResumeUpload=jobseek,§1 名单债随批11B cActions 契约化清)。
+const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume','agentCancel','agentChat','copGo','copNewJob','copNewAction','copMarket','copResumeUpload']);
 // 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 过白名单、args/值按值传 → onclick/copSend 注入类从根消除。
 document.addEventListener('click', (e)=>{
   const t=e.target; if(!t || !t.closest) return;
@@ -195,4 +195,4 @@ export async function hydrateMessages(){
    ★有状态不上桥:appMode(reassigned→getAppMode 读)、appReady(外部写→setAppReady)、cmdActive/cmdFiltered/CACT_ALLOWED(内部私有)。
    cEsc/cCard/cAct/cBtn/cAB/cSuggs = apps copReply 卡模板消费的导出(§4-4 转义纪律随迁)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.copClose=copClose; window.copGo=copGo; window.agentChat=agentChat; window.agentCancel=agentCancel; 
+window.copGo=copGo; window.agentChat=agentChat; window.agentCancel=agentCancel; 

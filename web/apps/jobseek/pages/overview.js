@@ -41,12 +41,12 @@ export function renderOverview(){
     <div>
       <p class="seclabel">— TOP GAPS</p><h2 class="sectitle">${tt('最高优先级缺口','Top priority gaps')}<span class="dot">.</span></h2>
       <div style="margin-top:16px;">${gaps}</div>
-      <button class="btn-text" style="margin-top:16px;" onclick="go('analysis')">${tt('查看完整缺口矩阵','View full gap matrix')} →</button>
+      <button class="btn-text" style="margin-top:16px;" data-go="analysis">${tt('查看完整缺口矩阵','View full gap matrix')} →</button>
     </div>
     <div>
       <p class="seclabel">— RECENT ACTIONS</p><h2 class="sectitle">${tt('近期行动清单','Recent actions')}<span class="dot">.</span></h2>
       <div style="margin-top:10px;">${recent}</div>
-      <button class="btn-text" style="margin-top:16px;" onclick="go('actions')">${tt('查看全部','View all')} →</button>
+      <button class="btn-text" style="margin-top:16px;" data-go="actions">${tt('查看全部','View all')} →</button>
     </div>
   </div></div>`;
   const pipe=`<div class="sec" style="border-bottom:none;">
@@ -62,7 +62,7 @@ export function renderOverview(){
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;">
       <div><h3 style="font-size:19px;color:var(--ink);margin:0;font-weight:600;">${cEsc(ns.title)}</h3>
         <p style="font-size:13px;color:var(--ink-2);margin:7px 0 0;max-width:540px;line-height:1.65;">${cEsc(ns.desc)}</p></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" onclick="go('${ns.ctaGo}')">${ns.ctaLabel} →</button><button class="btn" onclick="go('match')">${tt('智能匹配新岗位','Match a new job')}</button></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-accent" data-go="${ns.ctaGo}">${ns.ctaLabel} →</button><button class="btn" data-go="match">${tt('智能匹配新岗位','Match a new job')}</button></div>
     </div></div></div></div>`;
   const dg=calmDigest();
   const digestHtml=dg?`<div class="sec" style="border-bottom:none;padding:2px 0 0;"><p style="font-size:12px;color:var(--ink-3);font-family:var(--font-mono);letter-spacing:0.04em;">${dg}</p></div>`:'';

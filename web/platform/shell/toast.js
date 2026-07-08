@@ -27,4 +27,3 @@ export function errText(e){ return String((e&&e.message)||e).replace(/&/g,'&amp;
 /* 过渡 window 兼容桥:toast/toastUndo/errText/runLastUndo 纯函数(runLastUndo 只调不外露 lastUndo)→ dual-publish 安全;
    classic 消费者(index.html Mod+Z 已同刀翻 runLastUndo + 15 文件 toast 等)按全局名调不变。★lastUndo 本身不上桥(有状态,防分裂)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.toast=toast; 

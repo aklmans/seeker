@@ -32,7 +32,7 @@ async function openHistoryManager(){
   const rt=window.SeekerRT, G=window.SeekerGuardrail;
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('会话历史','Chat history')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body" id="histBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
-    <div class="modal-foot"><button class="btn" id="histClear">${tt('清除全部会话历史','Clear all history')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn" id="histClear">${tt('清除全部会话历史','Clear all history')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
   const render=async()=>{
     let rows=[]; try{ rows=await rt.db.list('messages'); }catch(_e){}
     rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
@@ -63,7 +63,7 @@ async function openMemoryManager(){
   const rt=window.SeekerRT, G=window.SeekerGuardrail;
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('长期记忆','Long-term memory')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body" id="memBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
-    <div class="modal-foot"><button class="btn" id="memClear">${tt('清除全部记忆','Clear all memory')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn" id="memClear">${tt('清除全部记忆','Clear all memory')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
   const render=async()=>{
     let rows=[]; try{ rows=await rt.memory.list(); }catch(_e){}
     const body=m.querySelector('#memBody'); if(!body) return;
@@ -102,7 +102,7 @@ async function openDocsManager(){
       </div>
       <div id="docList">${tt('加载中…','Loading…')}</div>
     </div>
-    <div class="modal-foot"><button class="btn" id="docClear">${tt('清空全部','Clear all')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn" id="docClear">${tt('清空全部','Clear all')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
   const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtTs=ts=>{try{return new Date(+ts||0).toLocaleString();}catch(_e){return '';}};
   const render=async()=>{
@@ -173,7 +173,7 @@ async function openMcpManager(){
       <div class="lock-note" style="margin:2px 0 14px;"><span class="li">🧩</span><span>${tt('本地 = 在本机运行该程序;远程 = 连接你填的 HTTP 端点。只加你信任的来源;令牌只存系统钥匙串、绝不外发;AI 调用其工具时每次都会先问你,返回内容当作数据(不可信、防注入)。','Local runs the program on your machine; Remote connects to the HTTP endpoint you enter. Only add trusted sources; tokens live only in the system keychain and never leave it; the AI asks before each tool call and treats returned content as untrusted data.')}</span></div>
       <div id="mcpList">${tt('加载中…','Loading…')}</div>
     </div>
-    <div class="modal-foot"><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
   const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const escA=s=>esc(s).replace(/"/g,'&quot;');
   const parseArgs=s=>String(s||'').trim().split(/\s+/).filter(Boolean);
@@ -374,7 +374,7 @@ export function renderSettings(){
     <div style="display:flex;gap:22px;margin:16px 0 0;flex-wrap:wrap;">
       ${[['¥39',tt('/ 月 · 基础','/ mo · Basic')],['¥99',tt('/ 月 · 专业 · 含语音通话','/ mo · Pro · voice calls')]].map(x=>`<div><span style="font-family:var(--font-serif);font-size:24px;color:var(--ink);font-weight:500;">${x[0]}</span><span style="font-size:12px;color:var(--ink-3);margin-left:6px;">${x[1]}</span></div>`).join('')}
     </div>
-    <button class="btn btn-accent" style="margin-top:16px;" onclick="toast('订阅页面 (mock)')">${tt('了解订阅','Learn more')} →</button>
+    <button class="btn btn-accent" style="margin-top:16px;" data-mocktoast="订阅页面 (mock)">${tt('了解订阅','Learn more')} →</button>
   </div></div>`;
   sections.model=`<p class="seclabel">— MODEL</p><h2 class="sectitle">${tt('AI 接入方式','AI access')}<span class="dot">.</span></h2>
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 14px;max-width:640px;line-height:1.7;">${tt('两种方式任选:<b>自带模型</b>(填你自己的 base_url / api_key / model / 协议,最省钱、最可控)或 <b>订阅托管</b>(我们包办整条链路,免配置)。','Two ways: <b>bring your own model</b> (your base_url / api_key / model / protocol — cheapest, most control) or <b>managed subscription</b> (we handle the whole pipeline, zero config).')}</p>
@@ -389,7 +389,7 @@ export function renderSettings(){
     ${row(tt('自动备份','Auto backup'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.autobackup,'ab'))}
     ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
     ${row(tt('上次备份','Last backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">2026.05.18 14:30</span>`)}
-    ${row(tt('演示空状态','Demo empty state'),`<button class="btn" onclick="showEmptyState()">${tt('查看引导态','View onboarding')}</button>`)}
+    ${row(tt('演示空状态','Demo empty state'),`<button class="btn" id="setDemoEmpty">${tt('查看引导态','View onboarding')}</button>`)}
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
     ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
     ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
@@ -405,7 +405,7 @@ export function renderSettings(){
       <div style="font-weight:600;color:var(--ink);">${tt('JobHunt · 求职岗位研究工作台','Seeker · Job Research Workbench')}</div>
       <div class="mono" style="font-size:12px;color:var(--ink-3);margin:4px 0;">v 0.1.0 · 2026 · ${tt('本地优先','Local-first')}</div>
       <div style="color:var(--ink-3);max-width:600px;">${tt('一个本地优先的「目标岗位收集 + JD 解析 + 能力缺口分析 + 简历 + 面试陪练」工作台。所有数据存于本地,隐私信息不参与 AI 处理。','A local-first workbench for collecting target jobs, parsing JDs, analyzing skill gaps, resumes, and interview prep. All data stays local; private info never goes through AI.')}</div>
-      <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" onclick="toast('已是最新版本')">${tt('检查更新','Check updates')}</button><button class="btn" onclick="toast('感谢反馈 (mock)')">${tt('反馈问题','Send feedback')}</button></div>
+      <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-mocktoast="已是最新版本">${tt('检查更新','Check updates')}</button><button class="btn" data-mocktoast="感谢反馈 (mock)">${tt('反馈问题','Send feedback')}</button></div>
     </div>`;
   const tabDefs=[SET_TABS_SHELL[0],SET_TABS_SHELL[1],SET_TABS_SHELL[2]]
     .concat(appTabs.map(t=>[t.id,[t.label.zh,t.label.en]]))
@@ -441,6 +441,9 @@ export function renderSettings(){
   const mtv=$('#mdTtsVoice'); if(mtv) mtv.oninput=()=>{MODEL.ttsVoice=mtv.value;};
   wireModelConfigDesktop();
   wireDataIO();
+  // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)+ 演示空状态(showEmptyState=jobseek 符号,§1:平台经 window 读、typeof 守卫,契约化批11B)。
+  $$('#page-settings [data-mocktoast]').forEach(b=>{ b.onclick=()=>toast(b.dataset.mocktoast); });
+  { const de=$('#setDemoEmpty'); if(de) de.onclick=()=>{ if(typeof window.showEmptyState==='function') window.showEmptyState(); }; }
   // ②契约驱动 tab/extend 接线:全调(同原逻辑"$$ 选择器对非当前 tab 内容 no-op"的无条件风格),不做条件判断。
   appTabs.forEach(t=>{ if(typeof t.wire==='function') t.wire(); });
   appSpecs.forEach(s=>{ if(s.extend) Object.keys(s.extend).forEach(k=>{ const e=s.extend[k]; if(e&&typeof e.wire==='function') e.wire(); }); });

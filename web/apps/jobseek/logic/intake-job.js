@@ -91,7 +91,7 @@ export function openNewJob(editId){
       </div></div>
       </div>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="toast('已保存草稿')">${tt('保存草稿','Save draft')}</button><button class="btn btn-accent" id="saveJob">${tt('完成录入','Save job')}</button></div>`;
+    <div class="modal-foot"><button class="btn" id="njDraft">${tt('保存草稿','Save draft')}</button><button class="btn btn-accent" id="saveJob">${tt('完成录入','Save job')}</button></div>`;
   const m=openModal(html, true);
   $$('[data-dots]',m).forEach(row=>{
     const key=row.dataset.dots;
@@ -191,6 +191,7 @@ export function openNewJob(editId){
     aiDrop.addEventListener('dragleave', e=>{ if(!aiDrop.contains(e.relatedTarget)) aiDrop.classList.remove('ai-dragover'); });
     aiDrop.addEventListener('drop', e=>{ if(!hasFiles(e)) return; e.preventDefault(); aiDrop.classList.remove('ai-dragover'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) ingestFile(f); });
   }
+  { const dr=$('#njDraft',m); if(dr) dr.onclick=()=>toast('已保存草稿'); }  // ★批11A:原内联 onclick="toast('已保存草稿')"
   $('#saveJob',m).onclick=()=>{
     const co=(($('#njCo',m)||{}).value||'').trim();
     const role=(($('#njRole',m)||{}).value||'').trim();

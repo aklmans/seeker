@@ -4,6 +4,7 @@
 /** 平台 · AI 渲染 helper aiHTML/displayText/toolStatusText/aiErrHTML(均无模块态=纯函数,dual-publish 安全)。
  *  aiHTML:不可信模型输出 → SeekerMarkdown 安全渲染,缺失则 fallback esc 转义(防注入,安全属性逐字保留)。 */
 import { tt } from './i18n.js';
+import { cAB } from './copilot-chrome.js'; // ★批11A:aiErrHTML 的 onclick 串改 cAB(§4-4 委派;ai-render⇄copilot-chrome 环=双侧顶层零急读,SCC 不变式过)
 export function aiHTML(text){
   if(window.SeekerMarkdown && window.SeekerMarkdown.render) return window.SeekerMarkdown.render(text);
   return String(text==null?'':text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -28,7 +29,7 @@ export function toolStatusText(info){
 export function aiErrHTML(err){
   const m=String((err&&err.message)||err).replace(/</g,'&lt;');
   /* 配置类错误 → 引导去「数据设置」(密钥不可对话改) */
-  return '<span style="color:var(--ink-2);">'+m+'</span> <button class="btn" style="margin-left:6px;" onclick="if(typeof copClose===\'function\')copClose();go(\'settings\')">'+tt('打开数据设置','Open settings')+'</button>';
+  return '<span style="color:var(--ink-2);">'+m+'</span> '+cAB(tt('打开数据设置','Open settings'),'copGo',['settings']); // ★批11A:原 onclick 串(copClose+go)语义=copGo('settings')(第42轮评审注),改 cAB 白名单委派(第42轮[建议]① go 暗道清除)
 }
 /* 过渡 window 兼容桥:aiHTML 尚被 copilot-chrome(hydrateMessages AI 历史渲染)裸全局读 → 桥留待 10d flip。
    ★批10c:displayText/toolStatusText/aiErrHTML 桥删——唯一消费者 ai-engine.js 已转 module 改 import(solo 桥随刀销)。纯函数、零模块态。 */

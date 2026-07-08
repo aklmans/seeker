@@ -3,11 +3,11 @@
 /* ---------- INTERVIEW (旗舰) ---------- */
 import { JOBS } from '../data.js';
 import { IV_BANK, IV_RECORDS, RESUME_TAILORED, resProjects, resSkills, resSummary, shorten, styleFor } from './intake-action.js';
-import { ivAddQuestion, ivBankHTML, ivBindBank, ivBindRecords, ivGenerate, ivPractice, ivRecordsHTML, ivRenderSummary, ivStartRound, ivStopVoice } from './resumes.js';
+import { ivAddQuestion, ivBankHTML, ivBindBank, ivBindRecords, ivGenerate, ivPractice, ivRecordsHTML, ivRenderSummary, ivStartRound, ivStopVoice, resumeState } from './resumes.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
-import { frontis, signFoot } from '../../../platform/shell/nav.js';
+import { frontis, go, signFoot } from '../../../platform/shell/nav.js';
 export let ivState={jobId:JOBS[0].id, tab:'bank', cat:'全部', search:'', q:null, round:null, summary:null};  // mutated-property(仅 .k= mutate,含 resumes.js 跨文件写)→ dual-publish 免访问器;JOBS[0] 于 module-eval 急读 window.JOBS(★批6:data.js 已 module@929、tag-order 先 eval 设 JOBS 桥;本 module@1052 在其后 → 就绪)
 /* ★ivRec(语音识别句柄,reassigned)所有权移入 resumes.js:其生命周期全在 resumes.js(ivToggleVoice/ivStopVoice/ivVoiceDemo),interview.js 从不引用;移后 resumes 内私有,消除跨文件 reassigned 纠缠(否则需 setter 原子翻转)。 */
 export function renderInterview(){
@@ -15,7 +15,7 @@ export function renderInterview(){
   const activeJobs=JOBS.filter(j=>!['skip','reject'].includes(j.status));
   if(!activeJobs.length){
     $('#page-interview').innerHTML=frontis('INTERVIEW',tt('面试陪练','Interview prep'))+
-      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位后开始针对性练习','Add a target job to start tailored practice')}</h3><p style="max-width:600px;">${tt('面试陪练围绕你的目标岗位 + 简历展开,各公司风格不同。先添加一个岗位(放弃 / 拒绝的不计),再来这里针对性练。','Interview prep revolves around your target jobs + resume; each company differs. Add a job (skipped / rejected ones excluded), then come back for tailored practice.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
+      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位后开始针对性练习','Add a target job to start tailored practice')}</h3><p style="max-width:600px;">${tt('面试陪练围绕你的目标岗位 + 简历展开,各公司风格不同。先添加一个岗位(放弃 / 拒绝的不计),再来这里针对性练。','Interview prep revolves around your target jobs + resume; each company differs. Add a job (skipped / rejected ones excluded), then come back for tailored practice.')}</p><button class="btn btn-accent" style="margin-top:14px;" data-go="jobs">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
     return;
   }
   const jobPills=activeJobs.map(x=>`<button class="pill ${x.id===ivState.jobId?'on':''}" data-ij="${x.id}">${cEsc(x.co)} · ${cEsc(x.role.split('·')[0].trim())}</button>`).join('');
@@ -40,6 +40,7 @@ export function renderInterview(){
   $('#page-interview').innerHTML=frontis('INTERVIEW',tt('面试陪练','Interview prep'))+inner+signFoot();
   $$('#page-interview [data-ij]').forEach(b=>b.onclick=()=>{ivStopVoice();ivState.jobId=+b.dataset.ij;renderInterview();});
   $$('#page-interview [data-it]').forEach(b=>b.onclick=()=>{ivState.tab=b.dataset.it;ivState.search='';renderInterview();});
+  $$('#page-interview [data-goresume]').forEach(b=>b.onclick=()=>{resumeState.jobId=+b.dataset.goresume;go('resumes');});  // ★批11A:原内联状态写 handler([建议]③)改 import 绑定词法写
   const g=$('#ivGen'); if(g)g.onclick=ivGenerate;
   const a=$('#ivAdd'); if(a)a.onclick=ivAddQuestion;
   const rd=$('#ivRound'); if(rd)rd.onclick=ivStartRound;
@@ -57,14 +58,13 @@ function ivResumeRef(j){
       <div style="flex:1;min-width:220px;"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="acbadge ac-compound">${tt('已绑定简历','Resume bound')}</span><span style="font-size:13px;color:var(--ink-2);">${tt('针对 '+cEsc(j.co),'for '+cEsc(j.co))}</span></div>
         <p style="font-size:13px;color:var(--ink-2);margin:10px 0 0;line-height:1.65;">${cEsc(shorten(resSummary(r),76))}</p>
         <p style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin:8px 0 0;">${tt(onCount+' 个模块 · '+skills.length+' 项技能 · '+starN+' 个 ★ 擅长',onCount+' modules · '+skills.length+' skills · '+starN+' ★ strengths')}</p></div>
-      <button class="btn" onclick="resumeState.jobId=${j.id};go('resumes')">${tt('编辑简历','Edit resume')} →</button></div>
+      <button class="btn" data-goresume="${j.id}">${tt('编辑简历','Edit resume')} →</button></div>
       <p style="font-size:12px;color:var(--ink-mute);margin:12px 0 0;line-height:1.6;">${tt('面试将围绕这份简历与 JD 提问 —— ★ 擅长会被重点深挖。简历在「简历」模块统一管理。','The interview revolves around this resume + JD — ★ strengths get probed. Manage resumes in the Resume module.')}</p></div>`;
   }
   return `<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
     <div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+cEsc(j.co)+' 的简历','No resume for '+cEsc(j.co)+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('带简历面试更贴合(面试官会拿着它问)—— 没有简历也能直接训练。','Interviewing with a resume fits better (the interviewer uses it) — but you can train without one.')}</div></div>
-    <button class="btn btn-accent" onclick="resumeState.jobId=${j.id};go('resumes')">${tt('去生成简历','Generate resume')} →</button></div></div>`;
+    <button class="btn btn-accent" data-goresume="${j.id}">${tt('去生成简历','Generate resume')} →</button></div></div>`;
 }
 
 /* 过渡 window 桥:renderInterview 经 manifest/cards/persistence/resumes/jobs 消费;ivState mutated dual-publish(resumes.js 跨文件 mutate .k= 同引用安全)。ivResumeRef 私有。ivRec 已移 resumes.js。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.renderInterview=renderInterview; window.ivState=ivState;

@@ -10,22 +10,26 @@ import { renderOverview } from '../pages/overview.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
+import { openResumeModal } from './resume-modals.js';
+import { openNewJob } from './intake-job.js';
 import { frontis, go, signFoot } from '../../../platform/shell/nav.js';
 import { toast } from '../../../platform/shell/toast.js';
 export let matchState={jobId:JOBS[0].id, done:false};
 export function renderMatch(){
   const resumeBar=`<div class="sec" style="padding-bottom:18px;"><div class="ai-bar" style="border:0.5px solid var(--border);">
     <span class="dot"></span><span class="lbl">已基于简历 · <b>${cEsc(RESUME.filename)}</b> · 自动识别 ${RESUME.derivedSkills} 项能力 / ${RESUME.derivedEvidence} 段证据</span>
-    <button class="btn-text" style="margin-left:auto;" onclick="openResumeModal()">更换简历 →</button></div></div>`;
+    <button class="btn-text" style="margin-left:auto;" data-orm>更换简历 →</button></div></div>`;
   const jobPills=JOBS.map(x=>`<button class="pill ${x.id===matchState.jobId?'on':''}" data-mj="${x.id}">${cEsc(x.co)} · ${cEsc(x.role.split('·')[0].trim())}</button>`).join('');
   const input=`<div class="sec">
     <p class="seclabel">— STEP · SELECT JOB</p><h2 class="sectitle">想匹配哪个岗位?<span class="dot">.</span></h2>
-    <p style="font-size:13px;color:var(--ink-3);margin:6px 0 0;max-width:640px;line-height:1.7;">从目标岗位里挑一个,或 <button class="btn-text" onclick="openNewJob()">粘贴一段新 JD</button>。AI 会在几秒内给出匹配度、能力缺口、针对性简历改写和训练计划 —— 这是产品的核心一屏。</p>
+    <p style="font-size:13px;color:var(--ink-3);margin:6px 0 0;max-width:640px;line-height:1.7;">从目标岗位里挑一个,或 <button class="btn-text" id="mNewJob">粘贴一段新 JD</button>。AI 会在几秒内给出匹配度、能力缺口、针对性简历改写和训练计划 —— 这是产品的核心一屏。</p>
     <div class="pillrow" style="margin-top:16px;">${jobPills}</div>
-    <button class="btn btn-accent" style="margin-top:20px;" onclick="runMatch()">开始智能匹配 →</button>
+    <button class="btn btn-accent" style="margin-top:20px;" id="mRun">开始智能匹配 →</button>
   </div>`;
   $('#page-match').innerHTML=frontis('SMART MATCH',tt('智能匹配','Smart match'))+resumeBar+input+`<div class="sec" style="border-bottom:none;" id="matchResultSec"><div id="matchResult"></div></div>`+signFoot();
   $$('#page-match [data-mj]').forEach(b=>b.onclick=()=>{matchState.jobId=+b.dataset.mj;matchState.done=false;renderMatch();});
+  $$('#page-match [data-orm]').forEach(b=>b.onclick=()=>openResumeModal());  // ★批11A:原内联 onclick="openResumeModal()" 改程序绑定
+  { const nj=$('#mNewJob'); if(nj)nj.onclick=()=>openNewJob(); const mr=$('#mRun'); if(mr)mr.onclick=()=>runMatch(); }  // ★批11A:原内联 openNewJob()/runMatch()
   if(matchState.done){const j=JOBS.find(x=>x.id===matchState.jobId);$('#matchResult').innerHTML=`<div class="ai-panel"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>AI</b> 匹配结果</span></div><div style="padding:22px 22px 24px;">${matchReadout(j)}</div></div>`;bindReadout(j);}
 }
 export function runMatch(){
@@ -69,4 +73,3 @@ function bindReadout(j){
 /* 过渡 window 桥:renderMatch 经 manifest/cards/copilot-actions 消费;runMatch 经 copilot-actions setTimeout + 内联 onclick;matchState mutated dual-publish(cards/copilot-actions 跨文件 .k= 同引用安全)。matchReadout/bindReadout 私有。
    ★matchState={jobId:JOBS[0].id} module-eval 急读 window.JOBS(data.js@929 先 eval);★红线逐字保留(函数体):RESUME.filename/derivedSkills 元数据、无联系方式。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.runMatch=runMatch;

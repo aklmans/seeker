@@ -20,7 +20,7 @@ export function openResumeModal(){
       </div>
       <p style="font-size:12.5px;color:var(--ink-3);margin:16px 0 0;line-height:1.7;">${tt('简历是整个产品的输入源 —— 上传一次,AI 自动建好你的能力档案、匹配所有岗位、生成改写与计划。你不用手填 23 项技能。','The resume is the product\'s input source — upload once and AI builds your assets, matches every job, and generates rewrites & plans. No manually entering 23 skills.')}</p>
     </div>
-    <div class="modal-foot"><button class="btn" id="reupload">${tt('重新上传','Re-upload')}</button><button class="btn btn-accent" onclick="closeModal()">${tt('完成','Done')}</button></div>`;
+    <div class="modal-foot"><button class="btn" id="reupload">${tt('重新上传','Re-upload')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`;
   const m=openModal(html);
   $('#reupload',m).onclick=openResumeUpload;
 }
@@ -38,7 +38,7 @@ export function openResumeUpload(){
       ()=>`<div style="padding:20px 18px 22px;"><p style="font-size:14px;color:var(--ink);margin:0 0 12px;font-weight:500;">${tt('解析完成 ✓','Parsing complete ✓')}</p>
         <div style="display:flex;gap:30px;">${[[tt('识别能力','Skills'),23],[tt('项目证据','Evidence'),15],[tt('工作年限','Years'),8]].map(x=>`<div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:0;">${x[0]}</p><p style="font-family:var(--font-serif);font-size:24px;color:var(--accent);margin:4px 0 0;font-weight:500;">${x[1]}</p></div>`).join('')}</div>
         <p style="font-size:12.5px;color:var(--ink-3);margin:16px 0 0;line-height:1.7;">${tt('已自动写入「职业资产」。你现在可以直接去智能匹配任何岗位 —— 全程零手动录入。','Written into Career Assets. You can now match any job directly — zero manual entry.')}</p>
-        <button class="btn btn-accent" style="margin-top:16px;" onclick="closeModal();go('match')">${tt('去智能匹配','Go to Smart Match')} →</button></div>`,
+        <button class="btn btn-accent" style="margin-top:16px;" data-close data-go="match">${tt('去智能匹配','Go to Smart Match')} →</button></div>`,
       {label:tt('解析简历中…','Parsing resume…')});
   };
   if(dz){
@@ -52,4 +52,4 @@ export function openResumeUpload(){
 }
 /* 过渡 window 兼容桥(约束⑤延续):inline onclick(copilot-actions cBtn)/页按钮按全局名调 openResumeModal/openResumeUpload → 零回归;逐个改 import 后摘。纯函数、零模块态 → dual-publish 安全。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.openResumeModal=openResumeModal; window.openResumeUpload=openResumeUpload;
+window.openResumeModal=openResumeModal;

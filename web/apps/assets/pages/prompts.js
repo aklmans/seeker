@@ -65,7 +65,7 @@ function openPromptModal(id){
       <div class="set-row"><span class="sk">${tt('标题','Title')}</span><input class="input" id="apTitle" value="${apEsc(p?p.title:'')}" placeholder="${tt('如:代码评审提示词','e.g. code-review prompt')}"></div>
       <textarea class="input" id="apText" rows="10" style="width:100%;margin-top:10px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('Prompt 正文…','Prompt body…')}">${apEsc(p?p.text:'')}</textarea>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="apSave">${tt('保存','Save')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="apSave">${tt('保存','Save')}</button></div>`, true);
   const save=$('#apSave'); if(save) /** @type {HTMLElement} */(save).onclick=()=>{
     const title=(/** @type {HTMLInputElement|null} */($('#apTitle'))||{value:''}).value.trim();
     const text=(/** @type {HTMLTextAreaElement|null} */($('#apText'))||{value:''}).value;

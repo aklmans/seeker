@@ -4,6 +4,7 @@ import { PROFILE } from '../../../platform/shell/profile.js'; // ★批8:PROFILE
 import { JOBS } from '../data.js';
 import { IV_BANK, IV_CATLABEL, IV_CATS, IV_RECORDS, MOD_ICON, RESUME, RESUME_TAILORED, aiRun, genQuestionsFor, genTailoredResume, ivScore, resMod, resSkills, resSummary } from './intake-action.js';
 import { ivState, renderInterview } from './interview.js';
+import { openResumeModal } from './resume-modals.js';
 import { clearAllTailoredResumes, persistResume, removeResume } from './persistence.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { persistColl } from '../../../platform/shell/data-store.js';
@@ -105,7 +106,7 @@ export function renderResumes(){
   const base=`<div class="sec"><p class="seclabel">— SOURCE</p><h2 class="sectitle">${tt('主简历','Master resume')}<span class="dot">.</span></h2>
     <div class="rb-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
       <div style="flex:1;min-width:240px;"><div style="font-size:15px;font-weight:600;color:var(--ink);">${cEsc(RESUME.filename)}</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:5px;">${tt('上传于 '+cEsc(RESUME.uploaded)+' · 已解析为职业资产','Uploaded '+cEsc(RESUME.uploaded)+' · parsed into career assets')}</div><p style="font-size:13px;color:var(--ink-2);margin:12px 0 0;line-height:1.7;">${cEsc(RESUME.summary)}</p></div>
-      <button class="btn" onclick="openResumeModal()">${tt('管理主简历','Manage master')}</button></div>
+      <button class="btn" data-orm>${tt('管理主简历','Manage master')}</button></div>
     <p style="font-size:12px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('主简历是「源」。针对每个目标岗位,可从它派生一份「针对性简历」—— 对齐该 JD 的高频词、突出最契合的经历。','The master resume is the source. For each target job you can derive a tailored version — aligned to that JD\'s keywords, surfacing your most relevant experience.')}</p></div>`;
   const pills=JOBS.map(j=>`<button class="pill ${j.id===resumeState.jobId?'on':''}" data-rj="${j.id}">${RESUME_TAILORED[j.id]?'● ':''}${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</button>`).join('');
   const j=JOBS.find(x=>x.id===resumeState.jobId);
@@ -131,6 +132,7 @@ function resumeSync(id){
 function resumeBind(){
   const id=resumeState.jobId; const root=$('#page-resumes'); const r=RESUME_TAILORED[id];
   $$('#page-resumes [data-rj]').forEach(b=>b.onclick=()=>{resumeState.jobId=+b.dataset.rj;renderResumes();});
+  $$('#page-resumes [data-orm]').forEach(b=>b.onclick=()=>openResumeModal());  // ★批11A:原内联 onclick="openResumeModal()"
   const gen=$('#rbGen',root); if(gen)gen.onclick=()=>resumeGenerate(id,renderResumes);
   const clr=$('#rbClearAll',root); if(clr)clr.onclick=clearAllTailoredResumes;   // 清空所有针对性简历(走 guardrail,主简历资料不受影响)
   if(!r)return;
@@ -159,7 +161,7 @@ function resumeAddModule(id){
   const r=RESUME_TAILORED[id];
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— MODULE</p><h2 style="margin-top:5px;">${tt('添加模块','Add module')}</h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body"><div class="field"><label>${tt('模块名称','Module name')}</label><input class="input" id="nmName" placeholder="${tt('如 · 开源贡献 / 证书 / 志愿经历','e.g. Open source / Certs / Volunteering')}"></div><p style="font-size:12px;color:var(--ink-3);margin:4px 0 0;">${tt('添加后出现在右侧,可填写内容、随时开关。','Appears on the right; fill content and toggle anytime.')}</p></div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nmSave">${tt('添加','Add')}</button></div>`);
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nmSave">${tt('添加','Add')}</button></div>`);
   $('#nmSave',m).onclick=()=>{const name=$('#nmName',m).value.trim();if(!name){toast('请填写模块名称');return;}resumeSync(id);r.modules.push({key:'cus_'+Date.now(), label:name, on:true, type:'text', content:'', custom:true});closeModal();renderResumes();toast('已添加模块「'+cEsc(name)+'」');};
 }
 export function resumeGenerate(id, after){
@@ -169,7 +171,7 @@ export function resumeGenerate(id, after){
     ()=>{RESUME_TAILORED[id]=genTailoredResume(j); persistResume(id); setTimeout(()=>{(after||renderResumes)();renderInterview();},30); const r=RESUME_TAILORED[id];
       return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成针对 <b>'+cEsc(j.co)+'</b> 的简历 ✓ 在「简历」模块可按模块开关、编辑、标擅长、导出。','Generated a resume for <b>'+cEsc(j.co)+'</b> ✓ Toggle modules, edit, mark strengths, and export in the Resume module.')}</p>
         <div style="border:0.5px solid var(--border);padding:14px;background:var(--bg-subtle);"><p style="font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 10px;">${cEsc(resSummary(r))}</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${resSkills(r).map(s=>`<span class="chip">${cEsc(s)}</span>`).join('')}</div></div>
-        <button class="btn btn-accent" style="margin-top:14px;" onclick="closeModal();go('resumes')">${tt('去编辑','Go edit')} →</button>`;
+        <button class="btn btn-accent" style="margin-top:14px;" data-close data-go="resumes">${tt('去编辑','Go edit')} →</button>`;
     },{label:tt('AI 生成简历中…','Generating resume…')});
 }
 // ── 导出工具(纯本地:真剪贴板 + Blob 下载;不出网)─────────────────
@@ -275,7 +277,7 @@ function resumeExport(id){
       <p style="font-size:12px;color:var(--ink-3);margin:0 0 8px;line-height:1.6;">${tt('在招聘网站表单里逐字段填写时,点每段/每条经历的「复制」最省力;Markdown 便于整份保存或再编辑。<b>所有导出纯本地,不出网。</b>','Filling a job-site form field by field? Hit “Copy” on each section or role. Markdown is for saving or further editing. <b>All exports are local — nothing leaves your machine.</b>')}</p>
       ${sectionsHTML}
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('关闭','Close')}</button></div>`, true);
+    <div class="modal-foot"><button class="btn" data-close>${tt('关闭','Close')}</button></div>`, true);
   $('#exCopyMd',m).onclick=()=>copyWithToast(md);
   $('#exDlMd',m).onclick=()=>{ if(downloadText(fname+'.md',md,'text/markdown')) toast(tt('已下载 .md','Downloaded .md')); };
   const dx=$('#exDlDocx',m); if(dx) dx.onclick=()=>exportDocx(fname,model);
@@ -329,8 +331,8 @@ function ivSubmit(){
       IV_RECORDS.unshift({id:Date.now(), type:'single', qText:q.text, cat:q.cat, date:'2026.06.02', job:j.co, tags:q.tags, answer:(ans&&ans.trim()?ans.trim():'(语音作答 / 未保存文字)').slice(0,90)+(ans.length>90?'…':''), scores:f.scores, good:f.good, improve:f.improve});
       persistColl('iv_records', IV_RECORDS);
       return `<div style="padding:18px 18px 20px;">${fbBody}<p style="font-size:12px;color:var(--ink-mute);margin:14px 0 0;">${tt('已存入练习记录 ✓','Saved to practice records ✓')}</p>
-        <div style="display:flex;gap:10px;margin-top:13px;flex-wrap:wrap;"><button class="btn btn-accent" id="ivNextQ">${tt('换一题继续','Another question')} →</button><button class="btn" onclick="ivState.q=null;ivState.tab='records';ivState.search='';renderInterview();">${tt('查看练习记录','View records')} →</button></div></div>`;
-    },{label:tt('评估你的回答中…','Evaluating your answer…'), after:()=>{const nq=$('#ivNextQ'); if(nq)nq.onclick=ivNextRandom; const rn=$('#ivRoundNext'); if(rn)rn.onclick=ivRoundNext;}});
+        <div style="display:flex;gap:10px;margin-top:13px;flex-wrap:wrap;"><button class="btn btn-accent" id="ivNextQ">${tt('换一题继续','Another question')} →</button><button class="btn" id="ivToRecords">${tt('查看练习记录','View records')} →</button></div></div>`;
+    },{label:tt('评估你的回答中…','Evaluating your answer…'), after:()=>{const nq=$('#ivNextQ'); if(nq)nq.onclick=ivNextRandom; const rn=$('#ivRoundNext'); if(rn)rn.onclick=ivRoundNext; const tr=$('#ivToRecords'); if(tr)tr.onclick=()=>{ivState.q=null;ivState.tab='records';ivState.search='';renderInterview();};}});  // ★批11A:原内联状态写 handler([建议]③)改 import 绑定词法写
 }
 function ivNextRandom(){const pool=IV_BANK.filter(q=>q.id!==ivState.q.id);ivState.q=pool[Math.floor(Math.random()*pool.length)]||ivState.q;renderInterview();}
 /* ===== Full round ===== */
@@ -433,7 +435,7 @@ export function ivGenerate(){
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI</p><h2 style="margin-top:5px;">${tt('生成针对性面试题','Generate tailored questions')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="genHost"></div></div>`);
   aiRun($('#genHost',m),[tt('解析该岗位 JD 与你的针对性简历','Reading the JD & your tailored resume'),tt('定位简历里最可能被深挖的点','Finding the most probe-worthy points'),tt('生成 3 道针对性新题','Generating 3 tailored questions')],
     ()=>{const qs=genQuestionsFor(j,3); qs.forEach(q=>IV_BANK.unshift(q)); ivState.tab='bank'; setTimeout(renderInterview,30);
-      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" onclick="closeModal()">${tt('去题库练','Practice in bank')} →</button>`;
+      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" data-close>${tt('去题库练','Practice in bank')} →</button>`;
     },{label:tt('AI 出题中…','Generating questions…')});
 }
 export function ivAddQuestion(){
@@ -442,7 +444,7 @@ export function ivAddQuestion(){
       <div class="field"><label>${tt('题目','Question')}</label><textarea class="textarea" id="nqText" style="font-family:var(--font-sans);min-height:84px;" placeholder="${tt('粘贴或写下你想练的面试题…','Paste or write a question to practice…')}"></textarea></div>
       <div class="field-row"><div class="field"><label>${tt('分类','Category')}</label><select class="select" id="nqCat">${IV_CATS.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select></div><div class="field"><label>${tt('关联技能(可选)','Linked skills (optional)')}</label><input class="input" id="nqTags" placeholder="${tt('如 · Redis 高并发','e.g. Redis scale')}"></div></div>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nqSave">${tt('添加到题库','Add to bank')}</button></div>`);
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="nqSave">${tt('添加到题库','Add to bank')}</button></div>`);
   $('#nqSave',m).onclick=()=>{const text=$('#nqText',m).value.trim(); if(!text){toast('请先写题目');return;} const cat=$('#nqCat',m).value; const tags=$('#nqTags',m).value.trim().split(/\s+/).filter(Boolean); IV_BANK.unshift({id:Date.now(),cat,text,tags:tags.length?tags:['自建'],src:'自建'}); closeModal(); ivState.tab='bank'; renderInterview(); toast('已添加到题库');};
 }
 function ivToggleVoice(){

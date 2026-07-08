@@ -4,15 +4,15 @@
 import { distBy, distinctNeedSkills, keywordsReal, skillByName } from '../data-helpers.js';
 import { JOBS, SKILLS } from '../data.js';
 import { SALARY, TREND, YOU_VALUE } from '../logic/intake-action.js';
-import { dotsHTML } from '../logic/job-actions.js';
+import { dotsHTML, openMarketValue } from '../logic/job-actions.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
-import { $ } from '../../../platform/shell/dom.js';
+import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { frontis, signFoot } from '../../../platform/shell/nav.js';
 export function renderAnalysis(){
   if(!JOBS.length){   // 空态教学(评审 P1-9):无岗位 → 讲清这页干嘛 + 指回录入
     $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+
-      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位,这页就活了','Add target jobs and this comes alive')}</h3><p style="max-width:600px;">${tt('录入岗位后,这里从你的 JD 聚合:高频技能、能力缺口、城市 / 公司类型分布、JD 关键词 —— 你的私人市场地图,只有持续收集才攒得出。','Once you add jobs, this aggregates from your JDs: high-frequency skills, skill gaps, city / company-type distribution, and JD keywords — your private market map, built only by collecting over time.')}</p><button class="btn btn-accent" style="margin-top:14px;" onclick="go('jobs')">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
+      `<div class="sec" style="border-bottom:none;"><div class="guide-step" style="border-bottom:none;"><span class="gnum">— ${tt('空','EMPTY')}</span><div><h3>${tt('添加目标岗位,这页就活了','Add target jobs and this comes alive')}</h3><p style="max-width:600px;">${tt('录入岗位后,这里从你的 JD 聚合:高频技能、能力缺口、城市 / 公司类型分布、JD 关键词 —— 你的私人市场地图,只有持续收集才攒得出。','Once you add jobs, this aggregates from your JDs: high-frequency skills, skill gaps, city / company-type distribution, and JD keywords — your private market map, built only by collecting over time.')}</p><button class="btn btn-accent" style="margin-top:14px;" data-go="jobs">${tt('+ 录入岗位','+ Add a job')}</button></div></div></div>`+signFoot();
     return;
   }
   const top=[...SKILLS].filter(s=>s.cat==='tech').sort((a,b)=>b.demand-a.demand).slice(0,10);
@@ -80,12 +80,13 @@ export function renderAnalysis(){
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">技能需求趋势 · 近 6 个月</p>${trendRows}
       <p style="font-size:11px;color:var(--ink-mute);margin:12px 0 0;">绿 = 需求上行 · 灰 = 平稳/回落</p></div>
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">薪资 benchmark · <span style="color:var(--accent);">│</span> 为你的估算位</p>${salRows}
-      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">你的估算位约 <b style="color:var(--accent);">${YOU_VALUE} 万</b>,处「高级」带中上沿。<button class="btn-text" onclick="openMarketValue()">看完整市场价值报告 →</button></p></div>
+      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">你的估算位约 <b style="color:var(--accent);">${YOU_VALUE} 万</b>,处「高级」带中上沿。<button class="btn-text" data-omv>看完整市场价值报告 →</button></p></div>
     </div></div>`;
   // 私人市场地图(评审 P2-12 护城河前置 + P2-11 研究资产定位):把"持续收集才攒得出"提到显眼处。
   const marketMap=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="ai-bar" style="border:0.5px solid var(--border);">
     <span class="dot"></span><span class="lbl">${tt('你的私人市场地图 · 已从 '+JOBS.length+' 份 JD 聚合出 '+distinctNeedSkills()+' 个高频技能 —— 持续收集,地图越长越值钱(只有你才有的研究资产)。','Your private market map · '+distinctNeedSkills()+' high-frequency skills from '+JOBS.length+' JDs — the more you collect, the more valuable it gets (a research asset only you have).')}</span></div></div>`;
   $('#page-analysis').innerHTML=frontis('ANALYSIS',tt('岗位分析','Analysis'))+marketMap+skillTable+matrix+dist+market+cloud+signFoot();
+  $$('#page-analysis [data-omv]').forEach(b=>b.onclick=()=>openMarketValue()); // ★批11A:原内联 onclick="openMarketValue()"
 }
 
 /* 过渡 window 兼容桥:manifest 箭头 render:()=>renderAnalysis() + 运行时消费者(cards/persistence/其他页/index.html)按全局名调;改 import 后摘。状态符号(文件本地)不上桥。 */

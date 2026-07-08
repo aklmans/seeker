@@ -31,6 +31,8 @@ export function closeModal(){
   if(_modalTrap){ document.removeEventListener('keydown', _modalTrap, true); _modalTrap=null; }
   if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(_e){} } _modalPrevFocus=null;
 }
-/* 过渡 window 桥(抽壳约束⑤延续):classic 消费者(index.html INIT + jobseek 11 文件)按全局名调不变 → 零回归;逐个转 import 后摘桥。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.closeModal=closeModal;
+/* ★批11A:`[data-close]` 文档级委派 —— 替代 14 处内联 onclick="closeModal()"(内联属性按 window 解析=账本残留因)。
+   语义逐字等价:点击关模态;复合钮(data-close + data-go)由本委派与 nav 的 data-go 委派各自触发
+   (modal tag@863 早于 nav@865 → 监听先注册先跑 = 先关后跳,同原 closeModal();go(...) 序)。 */
+document.addEventListener('click', e => { const t = e.target && e.target.closest ? e.target.closest('[data-close]') : null; if (t) closeModal(); });
+/* ★批11A:closeModal 桥删——14 处内联 onclick 全改 [data-close] 委派、零 window 消费者(INIT/jobseek 消费者 10d 已 import)。 */

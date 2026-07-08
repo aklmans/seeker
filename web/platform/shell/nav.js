@@ -113,7 +113,8 @@ export function buildPages(){
   // 首渲:按注册页循环(app 贡献 render;单页失败不拖垮其他应用的页)。
   PAGES.forEach(p=>{ try{ if(p.render) p.render(); }catch(e){ console.error('[shell] render '+p.id, e); } });
 }
+/* ★批11A:`[data-go]` 文档级委派 —— 替代 9 处内联 onclick="go('x')" + 复合钮(data-close data-go)。page id 全静态 dev 值,未知 id 行为同旧内联(throw)。 */
+document.addEventListener('click', e => { const t = e.target && e.target.closest ? e.target.closest('[data-go]') : null; if (t) go(t.dataset.go); });
 /* 过渡 window 兼容桥:classic/module 消费者(index.html INIT/shell-boot/settings/apps 等)按全局名调不变;逐个改 import 后摘。
    ★current 不上桥(有状态,dual-publish 分裂快照)—— 外部经 currentPage() 访问器读。initTheme 是 IIFE(自执行、无导出)。 */
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.go=go; 
