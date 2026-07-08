@@ -297,6 +297,30 @@
     return undefined;
   }
 
+  /** cAB 处理器注册表:全部启用应用登记的 `{名 → 处理器}` **并集**(同 cards 的并集语义)。
+   *  §1 契约化(批11B):CACT_ALLOWED 里的 jobseek 名原由平台硬编码,改为各应用 manifest 声明。
+   *  ★红线(§4-4)——**注册表即白名单**:委派只能调已登记名、不再 `window[name]`
+   *  (杜绝把 HTML 注入升级为任意全局函数调用的 gadget;并免疫 DOM 具名访问遮蔽 —— `id="copMatch"` 的元素再也无法顶替处理器)。
+   *  防原型污染面:累加器用 **`Object.create(null)`**,且只收 own-enumerable、**值为 function** 的键
+   *  ⇒ `data-cact="toString"` / `"constructor"` / `"valueOf"` 一律取不到东西。
+   *  ⚠ 应用登记处理器前自检:其任一参数是否会流进 innerHTML / eval / Function / setTimeout(串)?是 → 改无参包装或先转义。
+   *  @returns {Record<string, (...a: any[]) => void>} */
+  function cActions() {
+    /** @type {any} */
+    const out = Object.create(null);
+    enabledApps().forEach((a) => {
+      if (typeof a.cActions === 'function') {
+        const m = a.cActions();
+        if (m && typeof m === 'object') {
+          Object.keys(m).forEach((k) => {
+            if (typeof m[k] === 'function') out[k] = m[k];
+          });
+        }
+      }
+    });
+    return out;
+  }
+
   /** widget 破坏性动作规格:依注册序问启用应用,首个认领该 action 者生效,否则 undefined(平台走通用破坏性分支)。选择型(同 pageNew)。
    *  §1 契约化(批11B):平台 wgtAction 原硬编码 jobseek delete-job 分支(JOBS/renderJobs/renderOverview),改经此契约声明。
    *  ★红线(§4-3/§4-4):只收**规格数据**不收「已执行」——破坏性执行一律由平台调 guardrail.confirmDestructive 驱动;
@@ -365,6 +389,7 @@
     pageNew,
     pageActions,
     widgetActions,
+    cActions,
     collections,
   };
   /** @type {any} */ (window).SeekerShell = api;

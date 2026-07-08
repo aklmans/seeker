@@ -156,6 +156,14 @@ export interface AppManifest {
    * `action`/`payload` 来自**不可信 iframe**(§4-4),应用须当纯数据处理;执行由平台的 guardrail 驱动,应用只描述「要做什么/怎么撤销」。
    */
   widgetActions?: (action: string, payload: any) => WidgetActionSpec | undefined;
+  /**
+   * cAB 处理器登记:`{名 → 处理器}`,供 Copilot 的 `[data-cact]` 文档级委派**按名**调用(args 来自 `data-cargs`,按值传)。汇总型(各应用并集,同 cards)。
+   *
+   * ★红线(§4-4)—— **注册表即白名单**:委派只能调已登记名,不再 `window[name]`(杜绝把 HTML 注入升级为任意全局函数调用的 gadget)。
+   * ⚠ 登记前自检:该处理器的**任一参数**是否会流进 `innerHTML` / `eval` / `Function` / `setTimeout(串)`?
+   *   是 → 改无参包装(先例:`agentBackupContinue`)或先转义。**反例:`agentChat(html)` 是不转义的 innerHTML sink,绝不可登记**(第44轮 PoC)。
+   */
+  cActions?: () => Record<string, (...args: any[]) => void>;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
@@ -222,6 +230,9 @@ export interface SeekerShellApi {
   /** widget 破坏性动作规格:依注册序问各启用应用,首个认领该 action 者生效;都未认领返回 undefined(平台走通用破坏性分支)。
    *  平台拿到规格后**自己**调 guardrail.confirmDestructive 并强制注入 `source`(widgetId)——应用既不执行、也不能伪造来源。 */
   widgetActions(action: string, payload: any): WidgetActionSpec | undefined;
+  /** cAB 处理器注册表:全部启用应用登记的 `{名 → 处理器}` **并集**(Copilot `[data-cact]` 委派消费;每次点击重取 ⇒ 应用开关即时生效)。
+   *  返回 **null 原型**对象 ⇒ `toString`/`constructor`/`valueOf` 等原型链成员**不可达**,委派不会误调。 */
+  cActions(): Record<string, (...args: any[]) => void>;
   /** **全部已注册应用**(含禁用)+ 壳声明的集合并集 —— 存在性口径,供「清空全部数据」等须完整枚举的破坏性操作消费。
    *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];

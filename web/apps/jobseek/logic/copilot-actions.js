@@ -180,7 +180,7 @@ export const AGENT_CMDS=[
   {cmd:'/settings', label:['数据设置','Settings'], desc:['仅打开 · 不可改','Open only · read-only'], run:()=>copGo('settings')}
 ];
 
-/* 过渡 window 桥:aiSuggs/copReply/renderAgentCmds 经 manifest 契约;CACT_ALLOWED 6(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)硬上 window(cAB dispatcher window[name]);copNewJob/copNewAction 是内联 onclick 目标(cBtn 串、按 window 解析)故上桥;AGENT_CMDS 经 manifest.appCommands。findJob/findSkill/findAction 私有。
+/* ★批11B(cActions 契约):11 个 cAB 处理器桥已摘 —— 平台委派不再 window[name],改经 manifest.cActions 登记表按名查调。
+   本文件 window 桥清零。aiSuggs/copReply/renderAgentCmds/AGENT_CMDS 经 manifest 契约;copMatch 等亦被 cards.js import 直调。findJob/findSkill/findAction 私有。
+   ★登记表不变式(§4-4):登记项的任一参数不得流进 innerHTML/eval/Function/setTimeout(串) —— agentChat 是不转义 innerHTML sink,**不登记**;其固定串调用点走无参包装 agentBackupContinue(第44轮)。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.copResumeUpload=copResumeUpload; window.agentBackupContinue=agentBackupContinue; window.agentDeleteJob=agentDeleteJob; window.copDoneAct=copDoneAct; window.copInterview=copInterview; window.copMarket=copMarket; window.copMatch=copMatch; window.copNewAction=copNewAction; window.copNewJob=copNewJob; window.copPlan=copPlan; window.copResume=copResume;

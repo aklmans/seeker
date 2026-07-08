@@ -15,7 +15,12 @@ import { renderMatch } from './logic/match.js';
 import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
 import { renderInterview } from './logic/interview.js';
 import { frameQuery } from './logic/frame-query.js';
-import { copReply, aiSuggs, AGENT_CMDS, renderAgentCmds } from './logic/copilot-actions.js';
+import {
+  copReply, aiSuggs, AGENT_CMDS, renderAgentCmds,
+  // cAB 处理器(批11B · cActions 契约:平台委派按名调,不再 window[name])
+  agentDeleteJob, agentBackupContinue, copDoneAct, copInterview, copMatch, copPlan, copResume,
+  copNewJob, copNewAction, copMarket, copResumeUpload,
+} from './logic/copilot-actions.js';
 import { SEEKER_CARDS } from './cards.js';
 import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
 import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
@@ -117,6 +122,13 @@ import { setState } from '../../platform/shell/shell-state.js';
     // §1 契约化(批11B · widgetActions):不可信 widget 的破坏性动作 —— 本应用只**声明规格**(delete-job),
     // 执行由平台经 platform/guardrail 驱动(预览+确认+可撤销)、source 由平台注入;不认领则平台落通用破坏性分支。
     widgetActions: (action, payload) => jobseekWidgetAction(action, payload),
+    // §1 契约化(批11B · cActions):本应用的 cAB 处理器登记 —— 平台委派按名查表调用(不再 window[name]),
+    // 注册表即白名单。★不变式:登记项的任一参数不得流进 innerHTML/eval/Function/setTimeout(串)
+    // (故 agentChat 这类不转义 innerHTML sink 绝不登记;固定串走无参包装 agentBackupContinue)。
+    cActions: () => ({
+      agentDeleteJob, agentBackupContinue, copDoneAct, copInterview, copMatch, copPlan, copResume,
+      copNewJob, copNewAction, copMarket, copResumeUpload,
+    }),
     // 应用启动:抓演示种子(趁内存还是 mock 字面量;seedDemoData 供落地页显式播种)+ 挂示例提示条(演示模式时)。
     init: () => { captureSeed(); syncDemoBanner(); },
     // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。

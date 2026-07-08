@@ -29,21 +29,31 @@ export const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</d
 // 点击时经委派**按值传参**调用,外部数据**永不拼进 JS/HTML 串** → 从根消除 onclick 注入类(优于脆弱引号转义)。label 经 cEsc。
 export const cAB=(l,fn,args,acc)=>`<button class="btn ${acc?'btn-accent':''}" data-cact="${cEsc(fn)}" data-cargs="${cEsc(JSON.stringify(args||[]))}">${cEsc(l)}</button>`;
 export const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csugg="${cEsc(s)}">${cEsc(s)}</button>`).join('')}</div>`;
-// 委派白名单(P2 · 关放大器):data-cact 只允许派发**已登记的 cAB 处理器名**。委派 window[name](...) 本身是 gadget ——
-// 任一未修 HTML 注入面若能落 <button data-cact="…">,不设防时可派发任意 window 函数,把 HTML 注入升级为 JS 执行 / 二次 innerHTML
-// (★注意 copAppend/agentAppend 本身即 innerHTML sink、eval/Function 等更甚 → 前缀判定不够,必须精确白名单)。此表堵住升级面。
-// ⚠ 新增 cAB 处理器时须在此登记(与 copReply 的 cAB('…',fn,…) 一一对应)。
-// ★批11A:cBtn→cAB 迁移新增名(agentCancel/copGo=chrome 自有;copNewJob/copNewAction/copMarket/copResumeUpload/agentBackupContinue=jobseek,§1 名单债随批11B cActions 契约化清)。
-// ★★第44轮[应改]修 · 不变式:**白名单里不得有任何处理器把 data-cargs 参数反射进 innerHTML**——`agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),
-//   入白名单则委派按值把 data-cargs 传进 sink = 重开上方注释点名要防的「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行)。
-//   故 agentChat **不入白名单**;其唯一 cAB 调用点(固定串)改走无参包装 agentBackupContinue(同 agentCancel 先例)。
-//   ⚠ 新增白名单项前自检:该处理器的任一参数是否会流进 innerHTML / eval / Function / setTimeout(串)?是 → 改无参包装或先转义。
-const CACT_ALLOWED=new Set(['agentDeleteJob','copDoneAct','copInterview','copMatch','copPlan','copResume','agentCancel','agentBackupContinue','copGo','copNewJob','copNewAction','copMarket','copResumeUpload']);
-// 事件委派(P1):[data-cact]→window[fn](...JSON args)、[data-csugg]→copSend(值)。fn 过白名单、args/值按值传 → onclick/copSend 注入类从根消除。
+// 委派处理器解析(P2 · 关放大器 → 批11B cActions 契约化收官)。
+// 原先是「CACT_ALLOWED 名单 Set + window[name] 取函数」;现在**注册表即白名单**:
+//   平台自有 = CACT_OWN(chrome 的 copGo/agentCancel);应用的 = SeekerShell.cActions()(各 manifest 声明之并集,§1 不再硬编码 jobseek 名)。
+// ★委派不再 window[name] —— 这消除两个隐患:
+//   ① gadget 面:任一未修 HTML 注入面若能落 <button data-cact="…">,旧路径可派发任意 window 函数(把 HTML 注入升级为 JS 执行 / 二次 innerHTML);
+//      现在只能命中**已登记处理器**(copAppend/agentAppend 本身即 innerHTML sink、eval/Function 更甚 → 前缀判定不够,必须精确登记表)。
+//   ② DOM 具名访问遮蔽(第41轮判据):`id="copMatch"` 的元素会让 window.copMatch 变成元素、处理器静默不触发;查表无此问题。
+// 防原型污染:CACT_OWN 与 cActions() 均为 **null 原型** ⇒ data-cact="toString"/"constructor"/"valueOf" 取不到东西。
+// ★★不变式(第44轮[应改]修,随契约搬到契约面 types.d.ts / registry.cActions):
+//   **登记表里不得有任何处理器把 data-cargs 参数反射进 innerHTML / eval / Function / setTimeout(串)**——
+//   `agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),登记即重开「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行);
+//   故 agentChat **不登记**;其唯一 cAB 调用点(固定串)走无参包装 agentBackupContinue(同 agentCancel 先例)。
+//   ⚠ 新增登记项前自检:该处理器的任一参数是否会流进上述 sink?是 → 改无参包装或先转义。
+const CACT_OWN=Object.assign(Object.create(null),{copGo, agentCancel});   // 平台自有(hoisted 函数声明);应用的经契约取
+function cactHandler(name){
+  if(typeof name!=='string' || !name) return undefined;
+  const own=CACT_OWN[name]; if(typeof own==='function') return own;
+  const fn=window.SeekerShell.cActions()[name];   // 每次点击重取 → 应用开关/排序即时生效
+  return typeof fn==='function' ? fn : undefined;
+}
+// 事件委派(P1):[data-cact]→已登记处理器(...JSON args)、[data-csugg]→copSend(值)。名过登记表、args/值按值传 → onclick/copSend 注入类从根消除。
 document.addEventListener('click', (e)=>{
   const t=e.target; if(!t || !t.closest) return;
   const ab=t.closest('[data-cact]');
-  if(ab){ const name=ab.getAttribute('data-cact'); if(CACT_ALLOWED.has(name)){ let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} const fn=window[name]; if(typeof fn==='function') fn(...args); } return; }
+  if(ab){ const fn=cactHandler(ab.getAttribute('data-cact')); if(fn){ let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} fn(...args); } return; }
   const sg=t.closest('[data-csugg]');
   if(sg) copSend(sg.getAttribute('data-csugg'));
 });
@@ -195,8 +205,7 @@ export async function hydrateMessages(){
     if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
   }catch(e){ console.error('[data] hydrate messages', e); }
 }
-/* 过渡 window 兼容桥:classic/module 消费者(index.html INIT/keys/onclick、nav setLang、apps copReply/cards 等)按全局名调不变;逐个改 import 后摘。
-   ★有状态不上桥:appMode(reassigned→getAppMode 读)、appReady(外部写→setAppReady)、cmdActive/cmdFiltered/CACT_ALLOWED(内部私有)。
-   cEsc/cCard/cAct/cBtn/cAB/cSuggs = apps copReply 卡模板消费的导出(§4-4 转义纪律随迁)。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.copGo=copGo; window.agentCancel=agentCancel; 
+/* ★批11B(cActions 契约):copGo/agentCancel 桥已摘 —— 委派不再 window[name],改查 CACT_OWN(平台自有)∪ SeekerShell.cActions()(应用并集)。
+   本文件 window 桥清零;copGo 的其余消费者(cards/copilot-actions)走 import,agentCancel 仅经 cAB 名到达。
+   ★有状态不上桥:appMode(reassigned→getAppMode 读)、appReady(外部写→setAppReady)、cmdActive/cmdFiltered/CACT_OWN(内部私有)。
+   cEsc/cCard/cAct/cAB/cSuggs = apps copReply 卡模板消费的导出(§4-4 转义纪律随迁)。 */
