@@ -1165,3 +1165,21 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **真机金标准采信**:cargo asset:// 重编 5.96s + boot 无崩(窗口 Seeker 1880×964 visible、RSS 141MB、无 panic)= shell-state module + SHELL BOOT 急读不崩 boot。
 
 **批9a 通过。** 剩 9b(键盘系统 + widget wgtAction + openMarketValue)· 9c(jobseek 业务 renderFirstRun 等)· 批10(账本清空)。9b/9c 继续亲跑净方法 + 真机叠加。
+
+---
+
+### 批9b(commit `0519667`)· 键盘系统 + widget-action 回流 → shell-keys.js / widget-actions.js · ⏳ 待审
+批9 第二刀,逐字节零改抽出两个新 platform/shell module:
+- **shell-keys.js**(壳键盘注册 A 层 + 侧栏 chrome):export+桥 ×4 = initKeys(INIT-module 运行时调)/toggleSidebar(shell-boot 接线 #sbCollapse)/syncSbToggleTitle(nav.setLang typeof 守卫)/**isDesktop**(shell-state/data-store/settings/copilot-chrome 4 模块 typeof 守卫读);私有 ×3 = pageSearchInput/contextNew/keysHelpHTML(grep 证仅 initKeys 内消费)。**§1 归属债标注**(pre-existing):contextNew 硬编码 jobseek openNewJob/openNewAction → 随 CACT_ALLOWED 契约化账清。
+- **widget-actions.js**(#2 W3):wgtAction + rt-ready 挂 SeekerWidgets.onAction。**零外部消费者(grep 证)→ 全 module-private 自注册、不 export 不上桥**(同 hydrateProfile 先例)。红线逐字:widgetId 平台传入不信任 iframe、破坏性一律 guardrail 预览+确认+可撤销、toast 前 action `<` 转义。**§1 归属债标注**:delete-job 分支硬编码 jobseek 符号。
+- **验**:node×2/tsc 0;preview 净方法 0 错——initKeys LIVE(SeekerKeys **5 组 24 项**)、**★真实 KeyboardEvent Mod+B 切侧栏**(''→rail 经抽出链)、**Mod+/ 开快捷键帮助**(私有 keysHelpHTML LIVE)+ **Esc 逐层链关模态**、wgtAction 挂上 onAction(function)且 window.wgtAction===undefined(私有)、isDesktop 桥 false(web 正确)。
+
+### 批9c(commit `8e02fd7`)· jobseek 业务 inline 归位(★index.html classic inline 实码清零)· ⏳ 待审
+批9 第三刀,6 符号逐字节零改归位 apps/jobseek:
+- **logic/job-actions.js(新)**:openMarketValue + dotsHTML + aiResumeForJob/goInterview。**★ownership 订正**(偏离"9b 含 openMarketValue"框定、grep 证据落地):openMarketValue 读 YOU_VALUE/aiRun(皆 intake-action.js)= jobseek 业务归 apps;analysis:75/skills:68 **内联 onclick 消费 → 保 window 桥**。
+- **logic/demo-seed.js(追加)**:renderFirstRun + showEmptyState(首启落地页;首启/演示同 surface、frDemo 直调同文件 seedDemoData);showEmptyState 被 settings.js:384 内联 onclick 消费 → 保 window 桥。
+- **★里程碑:index.html classic inline 块实码清零**(仅注释存根;活跃 JS = 4 个 module 块:head rt桥/SHELL BOOT/INIT/末位 dispatch)。1330(批9 前)→ **1181** 行。
+- **验**:node×2/tsc 0;preview 净方法 0 错——6 桥 function、showEmptyState() LIVE 渲首启落地、analysis dotsHTML×10、openMarketValue() LIVE 开 MARKET VALUE 模态。**★裁定③(b) 二次实证**:demo-seed.js 同 URL 内容变 → stale(showEmptyState not a function)、served 文件证有 export → **定向单文件 fetch(cache:reload)+reload** → 全通(按裁定修、非全量)。
+- **真机金标准(9b+9c 合并跑)**:见下批注。**8123 已释放,评审可亲跑 preview**(若遇 demo-seed/shell-keys stale,同③(b) 定向重验)。
+
+**批9b+9c 真机金标准(合并跑,cargo asset:// 免 HTTP 缓存)**:重编译 6.58s 重嵌、boot 无崩(窗口 Seeker 1880×964 visible、无 panic)——shell-keys/widget-actions/job-actions/demo-seed 追加全部 module-eval 不崩 boot;asset:// 无缓存陷阱 = definitive。
