@@ -303,14 +303,14 @@ function recommendNextAction(){
   return ACTIONS.filter(a=>a.state==='doing').sort((a,b)=>pr[a.pri]-pr[b.pri])[0] || ACTIONS.find(a=>a.state==='todo') || ACTIONS[0] || null;
 }
 /** 总览「下一步」阶段自适应(评审 P0-4):有行动→最该做的;无行动且无岗位→录岗位;有岗位无行动→做匹配找缺口。 */
-function nextStep(){
+export function nextStep(){
   const a=recommendNextAction();
   if(a) return { title:a.title, desc:(a.cap?(tt('练 ','Train ')+a.cap+' · '):'')+(a.goal||tt('持续推进,保持节奏。','Keep the momentum.')), ctaLabel:tt('去完成','Go do it'), ctaGo:'actions' };
   if(!JOBS.length) return { title:tt('从添加一个目标岗位开始','Start by adding a target job'), desc:tt('录入岗位 → 分析缺口 → AI 给你下一步该做的事。','Add a job → analyze gaps → the AI suggests your next move.'), ctaLabel:tt('添加岗位','Add a job'), ctaGo:'jobs' };
   return { title:tt('做一次智能匹配,看清你的缺口','Run a smart match to see your gaps'), desc:tt('挑一个岗位,AI 算出匹配度与该补的能力,再一键排进行动。','Pick a job; AI computes your fit and what to build, then turn it into actions.'), ctaLabel:tt('智能匹配','Smart match'), ctaGo:'match' };
 }
 /** 回访 calm 摘要(评审 P1-10):平静呈现当前推进(无红 / 无倒计时 / 不施压);无活动则空。 */
-function calmDigest(){
+export function calmDigest(){
   if(!JOBS.length) return '';
   const inPlay=JOBS.filter(j=>['fav','todo','sent','interview'].includes(j.status)).length;
   const doing=ACTIONS.filter(a=>a.state==='doing').length;
@@ -393,7 +393,7 @@ async function verifyJobSources(card, data){
 }
 /** 卡注册表(jobseek 的卡实现束):AI 出 ```seeker:<kind> 块 → 用真实数据渲染。**新增卡只在此登记一行 + frameQuery 加指令**。
  *  多应用平台(阶段1):经 apps/jobseek/manifest.js 贡献给壳;消费方(streamReply/hydrateMessages)走 window.SeekerShell.cards() 组合。 */
-const SEEKER_CARDS = {
+export const SEEKER_CARDS = {
   // persist=true 的「视图卡」会随消息存指令、重启后用实时数据重渲;resume-edit 是一次性护栏提案,不持久(否则重渲会重复提议)。
   'resume-edit':    { valid: d=>Array.isArray(d.edits) && d.edits.length>0, show: showResumeProposal },
   'match-card':     { valid: d=>d.jobId!=null, show: showMatchCard,     persist:true },
@@ -408,3 +408,6 @@ const SEEKER_CARDS = {
   'job-update':     { valid: d=>!!(d && d.id!=null && Array.isArray(d.changes) && d.changes.length), show: showJobUpdateProposal },
   'job-delete':     { valid: d=>!!(d && d.id!=null),                                       show: showJobDeleteProposal },
 };
+
+/* 过渡 window 兼容桥:SEEKER_CARDS 被 manifest.js:61 module-eval 急读(cards@1059 早于 manifest@1226 → 桥就绪)+ nextStep/calmDigest 被 overview 调;改 import 后摘。其余 show/render 卡函数 + jobLabel 经 SEEKER_CARDS 表内部互调、私有。★简历红线/外链转义在函数体、逐字保留。 */
+window.SEEKER_CARDS=SEEKER_CARDS; window.nextStep=nextStep; window.calmDigest=calmDigest;

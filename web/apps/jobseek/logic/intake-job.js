@@ -23,7 +23,7 @@ function frameJobExtract(blob, fromImage){
     +'缺失字段留空字符串或空数组,可据内容合理归纳推断。不要调用任何工具,不要输出代码块以外的任何文字。';
   return head + schema + (fromImage ? '' : '\n\n招聘内容:\n"""\n'+blob+'\n"""');
 }
-function aiMetaHtml(mt){
+export function aiMetaHtml(mt){
   if(!mt || (!mt.summary && !mt.seniority && !mt.workMode && !mt.kind && !(mt.highlights&&mt.highlights.length))) return '';
   const e=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const tags=[mt.seniority,mt.workMode,mt.kind].filter(Boolean).map(t=>`<span class="chip">${e(t)}</span>`).join(' ');
@@ -34,7 +34,7 @@ function aiMetaHtml(mt){
     ${tags?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 0;">${tags}</div>`:''}
     ${hl?`<ul style="margin:8px 0 0;padding-left:16px;font-size:12.5px;color:var(--ink-2);line-height:1.7;">${hl}</ul>`:''}</div>`;
 }
-function openNewJob(editId){
+export function openNewJob(editId){
   const editing = (editId!=null) ? JOBS.find(j=>String(j.id)===String(editId)) : null;  // 编辑模式:预填 + 更新(否则新建)
   let aiMeta = editing ? {summary:editing.summary||'',seniority:editing.seniority||'',workMode:editing.workMode||'',highlights:Array.isArray(editing.highlights)?editing.highlights.slice():[],kind:editing.kind||''} : {summary:'',seniority:'',workMode:'',highlights:[],kind:''};
   const av=s=>String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;');           // 属性值转义(预填)
@@ -199,3 +199,6 @@ function openNewJob(editId){
     toast(editing?tt('岗位已更新','Job updated'):tt('岗位已录入','Job added'));
   };
 }
+
+/* 过渡 window 兼容桥:jobs/copilot-actions/match(内联 onclick)/nav(惰性)/index.html 按全局名调;改 import 后摘。extractJdSkills/frameJobExtract/TECH_VOCAB 内部私有。★openNewJob 的 §4-4 转义在函数体内、逐字保留。 */
+window.aiMetaHtml=aiMetaHtml; window.openNewJob=openNewJob;

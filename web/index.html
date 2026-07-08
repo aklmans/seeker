@@ -927,7 +927,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 </aside>
 <div class="toast-wrap" id="toasts"></div>
 <script src="./apps/jobseek/data.js"></script>
-<script src="./apps/jobseek/data-helpers.js"></script>
+<script type="module" src="./apps/jobseek/data-helpers.js"></script>
 <script>
 /* ICONS 已抽壳 → platform/shell/icons.js(抽壳序1-b) */
 
@@ -1036,7 +1036,7 @@ function renderFirstRun(){
 function showEmptyState(){ go('overview'); renderFirstRun(); }
 
 </script>
-<script src="./apps/jobseek/logic/intake-job.js"></script>
+<script type="module" src="./apps/jobseek/logic/intake-job.js"></script>
 <script src="./apps/jobseek/logic/intake-action.js"></script>
 <script src="./apps/jobseek/logic/match.js"></script>
 <script type="module" src="./apps/jobseek/logic/resume-modals.js"></script>
@@ -1056,7 +1056,7 @@ function goInterview(id){ closeModal(); ivState.jobId=id; ivState.tab='bank'; iv
 <script type="module" src="./apps/jobseek/logic/persistence.js"></script>
 <script src="./apps/jobseek/logic/demo-seed.js"></script>
 <script src="./apps/jobseek/logic/settings-jobseek.js"></script>
-<script src="./apps/jobseek/cards.js"></script>
+<script type="module" src="./apps/jobseek/cards.js"></script>
 <script>
 /* ---------- MARKET VALUE modal ---------- */
 function openMarketValue(){
