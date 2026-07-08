@@ -994,3 +994,27 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **内部辅助不上桥**:openJobDetail/jobTimelineRows/capCard/trainingFor/openSkillDetail/sessMins/recalcProgress/toggleAction/openActionDetail —— JS 接线(非内联 onclick)、仅文件内消费 → module-private。内联 onclick 目标(go/openResumeModal/openMarketValue)是**他文件**符号、桥仍在,不受影响。
 - **无 parse-time 坑**:5 页顶层仅状态字面量初始化 + 函数声明,零外部符号 parse-time 读。载序:页 module@960-964 早于 INIT-module(批A后@~1325)→ buildPages 调 manifest 箭头时 window.renderX 桥就绪。
 - **验**:node×5/tsc exit0;fresh-server+force-revalidate 冒烟——INIT done + **5/5 render 桥** + **9 页全渲** + jobs 页互调 renderActions/renderOverview(经桥)+ skills 页渲染 + **0 console error**。
+
+### 批2(commit `89e5107`)· 数据叶子 data-helpers/intake-job/cards → ES module · 待审
+3 文件 export 外部消费符号 + 桥,函数体逐字节零改。每符号外部消费者数 grep 核实(jobLabel 3 命中=同名形参 copPlan/genPlanFromGap、非真调用 → 私有)。
+- **data-helpers**:skillByName(const)/distBy/distinctNeedSkills/keywordsReal/pipelineReal/topGapsReal 桥;fmtScore/jobsByStatus/SOFT_WORDS 私有。
+- **intake-job**:aiMetaHtml/openNewJob 桥(★openNewJob §4-4 JD/URL 摄入转义在函数体逐字保留);extractJdSkills/frameJobExtract/TECH_VOCAB 私有。
+- **cards**:SEEKER_CARDS(const)/nextStep/calmDigest 桥;show/render 卡函数私有。**★SEEKER_CARDS 被 manifest.js:61 module-eval 急读** → cards@1059 早于 manifest@1226 eval(doc 序)→ 桥就绪;★简历红线(跳过 basic/locked)+ 外链经 rt.web 不进 DOM 在函数体逐字保留。
+- **★踩坑**:cards 桥注释含 `show*` `render*` 的 `*/` 提前闭合块注释 → **node --check 抓出**、已修。
+- **验**:node×3/tsc0;冒烟——**SeekerShell.cards()=11 卡(SEEKER_CARDS eval 序证)** + 11/11 桥 + 私有不上桥 + 9 页 + analysis(distBy)/overview(nextStep)渲染 + 0 err。
+
+### 批3(commit `51a1139`)· intake-action.js → ES module(★红线简历层)· 待审
+大文件 28 符号 export + 桥,函数体逐字节零改。**状态 IV_BANK/IV_RECORDS/MASTER/RESUME_TAILORED 皆 mutated-property**(grep 证无整体重赋、hydration in-place)→ dual-publish 免访问器;7 const 桥;私有 IV_STYLE/PLAN_LIB/aiGenQuestions/master*HTML。
+- **★红线逐字保留(在函数体)**:MASTER/RESUME_TAILORED = AI 可读专业简历层、**绝不含联系方式**(姓名/电话/邮箱在 PROFILE 隐私层);persistMaster 只写 resumes 哨兵 `r__master__`、**永不写 profile** → 隔离不变。
+- **★踩坑**:`sed -i '' 循环+变量` 在本文件 export 未生效(dry-run 匹配、in-place 不改,原因未明)→ **改 perl -i 一遍过**、export=28 落定(教训:大批量 export 用 perl 更稳)。
+- **验**:node/tsc0;冒烟——15/15 桥 + 私有不上桥 + **MASTER/RESUME_TAILORED dual-publish 同引用对象** + 9 页 + match/resumes/interview(经桥消费 intake-action)渲染 + 0 err。
+
+### 批4(commit `f51ef66`)· 逻辑叶子 frame-query/copilot-actions/demo-seed/settings-jobseek → ES module(★2 红线)· 待审
+4 文件 perl 一遍过 export + 桥,函数体逐字节零改。
+- **frame-query**:frameQuery 桥。**★红线**:框定 prompt 的联系方式隔离措辞在函数体逐字保留(profile/contact framing)。
+- **copilot-actions**:12 fn + AGENT_CMDS 桥。**★CACT_ALLOWED 6**(copMatch/copDoneAct/copInterview/copPlan/copResume/agentDeleteJob)**硬上 window**(cAB dispatcher `window[name]`);**copNewJob/copNewAction 内联 onclick 目标**(cBtn 串按 window 解析)→ 补桥(count 因 onclick 在本文件而漏);findJob/findSkill/findAction 私有。**★红线**:§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改 在函数体逐字保留。
+- **demo-seed**:captureSeed/syncDemoBanner/setDemoMode/seedDemoData 桥。**★SEED(let reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器**(SEED/demoMode 外部命中经核实=data-store 注释非代码)。
+- **settings-jobseek**:6 段函数桥(manifest.settings 契约)。**★红线**:wireMasterSection 编辑 MASTER 走 persistMaster、绝不写 profile。
+- **验**:node×4/tsc0;冒烟——INIT done(initApps→captureSeed via manifest.init)+ 19/19 桥 + 私有不上桥 + **契约全通**(SeekerShell.frameQuery/appReply/appSuggs/appCommands=13/appSettings 经 manifest 箭头解析 module 函数)+ **CACT_ALLOWED 6 dispatch 目标皆函数** + 设置页渲染 + 9 页 + 0 err。
+
+> **本组送审(批1-4 · 低风险机械叶子刀)**:`ee77d44`(页面)+ `89e5107`(数据叶子)+ `51a1139`(intake-action 红线简历层)+ `f51ef66`(逻辑叶子 · frame-query/copilot-actions 红线)。共性:export + 过渡 window 桥、函数体逐字节零改(sed/perl 仅加 export 前缀)、每符号外部消费者 grep 核实、node/tsc/fresh 冒烟净。**红线文件 intake-action/frame-query/copilot-actions 请加倍审**(隔离/转义在函数体、逐字保留)。剩批5(interview+resumes 协调)/批6(data+match 核心时序)/批8(profile 双红线)= 高风险协调/红线刀,后续单送 + 真机金标准。
