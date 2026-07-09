@@ -83,7 +83,7 @@ export function agentSend(text, aiText){
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
 
-/* ---- 抽壳序3-d-3:Copilot 面板初始化 copInit —— 依赖 $/IC(序1)+ 本文件 copToggle/copClose/copSend/copAppend/cSuggs;开场建议经 SeekerShell.appSuggs 契约(序3-d-2),不再直调 jobseek aiSuggs。⚠开场白文案仍 jobseek 味 = 过渡债(同 agentGreet 的 T('agentGreet')/i18n 表),待后续契约化清 ---- */
+/* ---- 抽壳序3-d-3:Copilot 面板初始化 copInit —— 依赖 $/IC(序1)+ 本文件 copToggle/copClose/copSend/copAppend/cSuggs;开场建议经 SeekerShell.appSuggs 契约、★开场白文案经 SeekerShell.greeting('copilot') 契约(3.y 尾清账,未命中回退中性平台串);不再直调 jobseek aiSuggs / 硬编码 jobseek 味开场白 ---- */
 export function copInit(){
   $('#copLaunch').onclick=copToggle;
   $('#copClose').innerHTML=IC.x; $('#copClose').onclick=copClose;
@@ -92,7 +92,8 @@ export function copInit(){
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
   inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
   /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
-  copAppend('ai','<span class="who">Copilot</span>'+tt('嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:','Hi, I\'m your job-hunt Copilot. Command the whole workbench in one line — match jobs, tune resumes, generate interview questions, plan training, find gaps. Try:')+cSuggs(window.SeekerShell.appSuggs()));
+  // §1 文案归属(3.y 尾 greeting 契约):开场白经 SeekerShell.greeting('copilot') 取应用招呼语,未命中回退中性平台串 T('copGreet');cSuggs 仍经 appSuggs 契约。
+  copAppend('ai','<span class="who">Copilot</span>'+(window.SeekerShell.greeting('copilot')||T('copGreet'))+cSuggs(window.SeekerShell.appSuggs()));
 }
 
 /* ---- 抽壳序3-d-4:Copilot/Agent 辅助 chrome —— copGo(关面板+导航)/ agentChat(追加到当前活动面板)/ agentCancel(取消回执)/ aiChatAvailable(真实流式能力判定)/ agentScroll。依赖 $/copClose/go/appMode/agentAppend/copAppend/isDesktop/SeekerRT(运行时全局);jobseek 经 onclick 字符串运行时调 copGo/agentCancel(过渡态) ---- */
@@ -104,7 +105,7 @@ export function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scro
 
 /* ---- 抽壳序3-d-6:Agent 模式群 —— appMode/appReady 状态 + renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet。
    依赖 $/$$/T(序1)+ 本文件 copClose/agentAppend(序3-a/3-d-1)+ document.body/localStorage(运行时);appMode 与其消费者 copSend/agentChat 同文件。
-   ⚠ agentGreet 用 T('agentGreet')=平台 i18n 的 jobseek 味开场白(文案归属待清账,同 copInit,3.y manifest.greeting 清)。
+   ★agentGreet 经 SeekerShell.greeting('agent') 契约取应用招呼语(3.y 尾清账);T('agentGreet')=中性平台回退串(不名应用功能)。
    initShell(壳启动非 chrome)留 index.html——归属另判(评审后续关注)。 ---- */
 let appMode='editor';                                 // 模块私有;★不上桥(reassigned@setAppMode)——外部读经 getAppMode()
 let appReady=false;                                   // 模块私有;★不上桥(外部写@index INIT appReady=true)——外部写经 setAppReady()
@@ -126,7 +127,8 @@ export function setAppMode(m){
 export function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
 export function agentCollapse(){ document.body.dataset.agent='centered'; }
 export function agentGreet(){
-  agentAppend('ai','<span class="who">Agent</span>'+T('agentGreet'));
+  // §1 文案归属(3.y 尾 greeting 契约):经 SeekerShell.greeting('agent') 取应用招呼语,未命中回退中性平台串 T('agentGreet')。
+  agentAppend('ai','<span class="who">Agent</span>'+(window.SeekerShell.greeting('agent')||T('agentGreet')));
 }
 
 /* ---- 抽壳序3-d-9:Agent /命令面板机制(通用) —— cmdActive/cmdFiltered 状态 + cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun。

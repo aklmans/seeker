@@ -26,6 +26,12 @@ export function aiSuggs(){
     ? [tt('我最该投哪个岗位?','Which job fits me best?'), tt('我最大的能力缺口是什么?','What is my biggest skill gap?'), tt('帮我改简历','Help me tune my resume'), tt('我现在最该做什么?','What should I do next?')]
     : [tt('这个工具能帮我做什么?','What can this tool do for me?'), tt('我该从哪一步开始?','Where should I start?'), tt('你能读到我的哪些数据?','What data can you read?')];
 }
+// ★3.y 尾:AI 面板开场白(经 manifest.greeting 契约供平台 agentGreet/copInit;原硬编码在平台 copilot-chrome/i18n 表、jobseek 味清账归此)。
+export function jobseekGreeting(mode){
+  return mode==='agent'
+    ? tt('嗨,我是你的求职 Agent。直接说需求,我来判断该做什么并执行 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行,结果会显示在右侧画布。也可以点下面的技能快捷开始。',"Hi, I'm your job-hunt Agent. Just tell me what you need and I'll figure out what to do — match jobs, tailor your resume, run interview prep, plan training, find gaps — results show on the right canvas. Or tap a skill below.")
+    : tt('嗨,我是你的求职 Copilot。用一句话就能指挥整个工作台 —— 匹配岗位、改简历、出面试题、排计划、查缺口都行。试试:',"Hi, I'm your job-hunt Copilot. Command the whole workbench in one line — match jobs, tune resumes, generate interview questions, plan training, find gaps. Try:");
+}
 
 export function copMatch(jobId){copClose();matchState.jobId=jobId;matchState.done=false;go('match');renderMatch();setTimeout(runMatch,260);}
 export function copInterview(jobId){copClose();goInterview(jobId);}

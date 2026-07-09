@@ -16,7 +16,7 @@ import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
 import { renderInterview } from './logic/interview.js';
 import { frameQuery } from './logic/frame-query.js';
 import {
-  copReply, aiSuggs, renderAgentCmds,
+  copReply, aiSuggs, renderAgentCmds, jobseekGreeting,
   // cAB 处理器(批11B · cActions 契约:平台委派按名调,不再 window[name])
   agentDeleteJob, agentBackupContinue, copDoneAct, copInterview, copMatch, copPlan, copResume,
   copNewJob, copNewAction, copMarket, copResumeUpload,
@@ -93,6 +93,7 @@ import { setState } from '../../platform/shell/shell-state.js';
     frameQuery: (t) => frameQuery(t),
     appReply: (t) => copReply(t),
     appSuggs: () => aiSuggs(),
+    greeting: (mode) => jobseekGreeting(mode),   // ★3.y 尾:AI 面板开场白(求职味)归属应用,平台 copilot-chrome 经契约取
     appCommands: () => AGENT_CMDS,
     renderAppChips: () => renderAgentCmds(),
     settings: () => ({

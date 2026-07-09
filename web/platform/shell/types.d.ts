@@ -135,6 +135,9 @@ export interface AppManifest {
   appReply?: (text: string) => string;
   /** 开场建议器:AI 面板开场白的建议 chips(命中返回非空字符串数组,未命中空数组;与单体 aiSuggs 同约)。 */
   appSuggs?: () => string[];
+  /** AI 面板开场白文案:按 mode('agent'|'copilot')返回本应用的招呼语(已 tt 双语解析;未命中返回 '')。
+   *  返回的是**应用自持的可信文案**(与旧平台硬编码同信任级),平台经 innerHTML 渲染。选择型(首个非空)。 */
+  greeting?: (mode: 'agent' | 'copilot') => string;
   /** /命令面板项:本应用贡献的 Agent 斜杠命令(与单体 AGENT_CMDS 同构);各应用命令在面板里并集同现。 */
   appCommands?: () => CommandSpec[];
   /** 重渲本应用的 Agent chrome 贡献(技能 chips → #agentCmds;随语言/初始化触发)。副作用、无返回。 */
@@ -213,6 +216,8 @@ export interface SeekerShellApi {
   appReply(text: string): string;
   /** 开场建议链:问各启用应用的建议器,首个非空数组生效;都未命中返回空数组。 */
   appSuggs(): string[];
+  /** 开场白链:依注册序问各启用应用的 greeting(mode),首个非空生效;都未命中返回 ''(调用方回退中性平台招呼语)。 */
+  greeting(mode: 'agent' | 'copilot'): string;
   /** /命令面板项:全部启用应用命令的并集(不同于 framer 首个非空;类比 cards()——命令面板汇总多应用)。 */
   appCommands(): CommandSpec[];
   /** 通知各启用应用重渲其 Agent chrome 贡献(技能 chips);汇总型副作用,全调无返回。 */

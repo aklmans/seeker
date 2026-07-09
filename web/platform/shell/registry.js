@@ -223,6 +223,18 @@
     return [];
   }
 
+  /** 开场白链:AI 面板招呼语 —— 依注册序问启用应用的 greeting(mode),首个非空字符串生效,否则 ''(调用方回退中性平台招呼语)。选择型(同 appReply)。
+   *  §1 文案归属(第14轮账):copilot-chrome 的 agentGreet/copInit 原硬编码 jobseek 味开场白,改经此契约取。 @param {'agent'|'copilot'} mode @returns {string} */
+  function greeting(mode) {
+    for (const a of enabledApps()) {
+      if (typeof a.greeting === 'function') {
+        const r = a.greeting(mode);
+        if (typeof r === 'string' && r) return r;
+      }
+    }
+    return '';
+  }
+
   /** /命令面板项:全部启用应用命令的**并集**(不同于 framer 的首个非空;类比 cards()——多应用命令同现一个面板)。 @returns {CommandSpec[]} */
   function appCommands() {
     /** @type {CommandSpec[]} */
@@ -390,6 +402,7 @@
     frameQuery,
     appReply,
     appSuggs,
+    greeting,
     appCommands,
     renderAppChips,
     appSettings,
