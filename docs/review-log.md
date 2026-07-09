@@ -1419,3 +1419,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议]2 · 披露完整性**:第48轮 [建议] 顺带在 copilot-chrome.js 应用(第48轮 61b9cdb),送审词宜点明改动面——采纳(以后送审词列全改动文件)。
 
 **★★批11B 收官 · §1 契约化完成 · 第一性原理实质达成(第49轮)。** 平台层对 apps 符号裸读全经契约收口、业务桥归零。
+
+---
+
+### 3.y 尾 · AGENT_CMDS 抽出单列 @ts-check(10d checklist①,commit `8606a70`)· ⏳ 待审
+**10d checklist① 收尾**(3.y 类型化最后一项)。AGENT_CMDS 原在 @ts-nocheck 的 copilot-actions.js,`@type {CommandSpec[]}` 只**断言**类型、字面量不受校验 → 漂移被吞(**实证**:删 run / label 元组改单串,tsc 均不报)。
+- **为何不整文件 flip**:copilot-actions.js flip @ts-check surface 18 error(全业务逻辑:隐式 any 参数 / SeekerRT/onclick/dataset 运行时全局)= 该文件头注释「类型化留 3.y」所指的业务层大块,非本尾项。**最小**做法 = 纯数据 AGENT_CMDS 抽独立 @ts-check 文件,业务逻辑不动。
+- **抽出**:新增 `apps/jobseek/logic/agent-commands.js`(@ts-check 纯数据):13 条 CommandSpec 字面量逐字迁 + `@type`;run 闭包引用 agentSend/copGo(chrome)/copNewJob(copilot-actions)/tt(i18n)全 import 惰性、顶层零 eager 读;**无环**(copilot-actions 移出后不再引用 AGENT_CMDS、不 import agent-commands;agent-commands→copilot-actions 单向)。copilot-actions 删 AGENT_CMDS + 更新注释;manifest 改 import 源;index.html 注释订正。
+- **★校验真生效(抽出后 @ts-check 实测漂移)**:漏 run→TS2741；label 元组→单串→TS2322；cmd:number→TS2322(原 @ts-nocheck 全吞)。恢复 tsc 0。
+- **验**:node×3/tsc 真 0;preview 净方法:appCommands() 仍 13 条+shape_ok+**same_instance**(manifest 用新模块 export 单实例);**命令 run 全链 LIVE**(/jobs→copGo 跳页；**/add→copNewJob 开录入岗位模态**=唯一 copilot-actions-local 依赖跨模块 import 通、无环破坏；/match→agentSend(tt)→frameQuery→appReply「美团…最该优先」、hasMatchQuery 证 tt 解析);0 console/11 页；真机 asset:// boot 6.14s、进程存活、零 panic。**3.y 类型化尾巴收干净。**
