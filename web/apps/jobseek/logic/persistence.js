@@ -87,6 +87,4 @@ export async function hydrateBizColls(){
 }
 /* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
 window.addEventListener('seeker-rt-ready', hydrateBizColls);
-/* 过渡 window 兼容桥:classic 消费者(jobs/cards/resumes/intake/settings 等)按全局名调不变;逐个改 import 后摘。均纯函数(无模块态)→ dual-publish 安全。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.hydrateJobs=hydrateJobs; 
+/* ★批11B 末件:hydrateJobs 桥已摘 —— 原平台 settings.js 导入回调硬编码 `hydrateJobs()`,改经 SeekerShell.notifyDataImported() 广播、由 manifest.onDataImported → hydrateJobs 词法调用;此文件 window 桥清零(rt-ready 监听器仍在=内部注册,非桥)。 */

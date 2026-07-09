@@ -389,7 +389,7 @@ export function renderSettings(){
     ${row(tt('自动备份','Auto backup'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.autobackup,'ab'))}
     ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
     ${row(tt('上次备份','Last backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">2026.05.18 14:30</span>`)}
-    ${row(tt('演示空状态','Demo empty state'),`<button class="btn" id="setDemoEmpty">${tt('查看引导态','View onboarding')}</button>`)}
+    <!-- 「演示空状态 · 查看引导态」行(showEmptyState=jobseek 符号)已随批11B 末件迁入 jobseek 的 data extend(dataResumeRowHTML,extendHTML('data') 位),平台不再裸读 apps 符号。 -->
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
     ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
     ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
@@ -441,9 +441,9 @@ export function renderSettings(){
   const mtv=$('#mdTtsVoice'); if(mtv) mtv.oninput=()=>{MODEL.ttsVoice=mtv.value;};
   wireModelConfigDesktop();
   wireDataIO();
-  // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)+ 演示空状态(showEmptyState=jobseek 符号,§1:平台经 window 读、typeof 守卫,契约化批11B)。
+  // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)。
+  // ★批11B 末件:演示空状态行(showEmptyState=jobseek 符号)已迁入 jobseek data extend 自绑 → 平台不再裸读 apps 符号、§1 债清零。
   $$('#page-settings [data-mocktoast]').forEach(b=>{ b.onclick=()=>toast(b.dataset.mocktoast); });
-  { const de=$('#setDemoEmpty'); if(de) de.onclick=()=>{ if(typeof window.showEmptyState==='function') window.showEmptyState(); }; }
   // ②契约驱动 tab/extend 接线:全调(同原逻辑"$$ 选择器对非当前 tab 内容 no-op"的无条件风格),不做条件判断。
   appTabs.forEach(t=>{ if(typeof t.wire==='function') t.wire(); });
   appSpecs.forEach(s=>{ if(s.extend) Object.keys(s.extend).forEach(k=>{ const e=s.extend[k]; if(e&&typeof e.wire==='function') e.wire(); }); });
@@ -477,7 +477,7 @@ function wireDataIO(){
         rt.db.import(String(reader.result||'')).then(counts=>{
           const total=Object.values(counts||{}).reduce((a,b)=>a+(+b||0),0);
           toast(tt('已导入 ','Imported ')+total+tt(' 条(导入前已自动快照)',' records (snapshot taken first)'));
-          if(typeof hydrateJobs==='function') hydrateJobs();
+          window.SeekerShell.notifyDataImported();   // §1 契约化(批11B 末件):原硬编码 hydrateJobs()(jobseek 符号)→ 广播,各应用按新库重水合
         }).catch(e=>toast(tt('导入失败:','Import failed: ')+errText(e)));
         impFile.value='';
       };

@@ -261,6 +261,16 @@
     });
   }
 
+  /** 「导入数据」成功后通知**全部已注册应用**(含禁用——数据被导入是事实)重水合内存态 + 重渲。汇总型副作用(与 notifyDataCleared 对称)。
+   *  §1 契约化(批11B 末件):settings.js 原导入后硬编码 `hydrateJobs()`(jobseek 符号),改经此广播。 */
+  function notifyDataImported() {
+    apps.forEach((a) => {
+      if (typeof a.onDataImported === 'function') {
+        try { a.onDataImported(); } catch (e) { console.error('[shell] onDataImported', a.id, e); }
+      }
+    });
+  }
+
   /** 各启用应用的设置贡献(新增 tab + 追加进壳既有 tab)。汇总型:并集(同 cards())。 @returns {AppSettingsSpec[]} */
   function appSettings() {
     /** @type {AppSettingsSpec[]} */
@@ -385,6 +395,7 @@
     appSettings,
     initApps,
     notifyDataCleared,
+    notifyDataImported,
     collId,
     pageNew,
     pageActions,

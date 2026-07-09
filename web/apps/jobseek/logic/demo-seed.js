@@ -77,8 +77,6 @@ export function renderFirstRun(){
 // 设置页「查看引导态」:强制预览落地页(已上手用户也能看)。
 export function showEmptyState(){ go('overview'); renderFirstRun(); }
 
-/* 过渡 window 桥:★批10b:captureSeed/syncDemoBanner/setDemoMode 桥删——manifest 已 import 直取(唯一外部消费者);★批10a:seedDemoData 桥删(frDemo 同文件词法)。
-   ★第43轮[建议]①:renderFirstRun 桥删——唯一消费者 overview.js 已 import(10d)、零 window 消费者(死桥);showEmptyState 被 settings.js:384 内联 onclick="showEmptyState()" 消费 → **须保 window 桥**(内联属性按 window 解析;§1 契约化批11)。
+/* ★批10b:captureSeed/syncDemoBanner/setDemoMode 桥删(manifest import 直取);★批10a:seedDemoData 桥删(frDemo 同文件词法);★第43轮:renderFirstRun 死桥删。
+   ★批11B 末件:showEmptyState 桥已摘 —— 原平台 settings.js 的「演示空状态」行迁入 settings-jobseek.js 的 data extend 自绑(import 词法调用),此文件 window 桥清零。
    ★SEED(let,reassigned)+ demoMode(函数)= 文件私有、不上桥不访问器。 */
-/* ★批10d 账本终态:本行为白名单桥——(d) window-解析强制(内联 onclick·cBtn 串·CACT window[name]·aiErrHTML 的 go)或 §1 平台裸读(契约化批11);其余桥已全摘、消费者已 import。 */
-window.showEmptyState=showEmptyState;

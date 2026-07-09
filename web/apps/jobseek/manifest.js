@@ -29,6 +29,7 @@ import { openResumeModal } from './logic/resume-modals.js';
 import { openMarketValue } from './logic/job-actions.js';
 import { jobseekWidgetAction } from './logic/widget-actions-jobseek.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
+import { hydrateJobs } from './logic/persistence.js';
 import { JOBS, ACTIONS } from './data.js';
 import { tt } from '../../platform/shell/i18n.js';
 import { go } from '../../platform/shell/nav.js';
@@ -133,5 +134,7 @@ import { setState } from '../../platform/shell/shell-state.js';
     init: () => { captureSeed(); syncDemoBanner(); },
     // 「清空全部数据」后:退演示模式(演示数据已被清,jh-demo 若残留会给空工作台挂示例条)。
     onDataCleared: () => setDemoMode(false),
+    // §1 契约化(批11B 末件):导入数据后重水合 —— 原 settings.js 导入回调硬编码 hydrateJobs(),改经此钩子。
+    onDataImported: () => hydrateJobs(),
   });
 })();

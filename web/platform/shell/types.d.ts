@@ -145,6 +145,8 @@ export interface AppManifest {
   init?: () => void;
   /** 「清空全部数据」确认后、reload 前调用:应用清自己的 app-local 状态(如 jobseek 退演示模式);数据集合本身由壳按 collections() 统一清。 */
   onDataCleared?: () => void;
+  /** 「导入数据」成功后调用:应用按新落库的数据重水合自己的内存态 + 重渲(如 jobseek 重载 JOBS);与 onDataCleared 对称(存在性广播)。 */
+  onDataImported?: () => void;
   /** 集合 id 键规则:给无 id 的记录返回天然键(如 skills 用 name);无特殊规则返回 undefined,由通用引擎生成随机 id。 */
   collId?: (name: string, r: any) => string | undefined;
   /** 页级「新建」动作:平台快捷键(Mod+N)/新建入口按 pageId 问应用的「创建」动作;命中返回无参函数,未命中 undefined(平台兜底 toast)。选择型(同 collId)。 */
@@ -221,6 +223,8 @@ export interface SeekerShellApi {
   initApps(): void;
   /** 「清空全部数据」后通知**全部已注册应用**(含禁用——数据被清是事实,app-local 状态须一致)清自己的本地状态;汇总型副作用。 */
   notifyDataCleared(): void;
+  /** 「导入数据」成功后通知**全部已注册应用**(含禁用——数据被导入是事实)按新库重水合内存态 + 重渲;汇总型副作用(与 notifyDataCleared 对称)。 */
+  notifyDataImported(): void;
   /** 集合 id 键规则:问各启用应用的集合 schema,首个非空生效;都无规则返回 undefined(调用方用默认生成)。 */
   collId(name: string, r: any): string | undefined;
   /** 页级「新建」动作链:依注册序问各启用应用的 pageNew,首个返回函数生效;都未命中返回 undefined(调用方兜底 toast)。 */

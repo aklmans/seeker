@@ -9,6 +9,7 @@
 
 import { MASTER, RESUME, persistMaster } from './intake-action.js';
 import { openResumeModal } from './resume-modals.js';
+import { showEmptyState } from './demo-seed.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { renderSettings } from '../../../platform/shell/settings.js';
@@ -54,11 +55,14 @@ export function wireMasterSection(){
 /* 追加进壳 data tab 尾部的"我的简历"行(RESUME 是 jobseek 全局,故不留在平台 renderSettings 里)。 */
 export function dataResumeRowHTML(){
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
-  return row(tt('我的简历','My resume'),`<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"><span class="mono" style="font-size:12px;color:var(--ink-2);">${RESUME.filename}</span><button class="btn" data-orm>${tt('管理简历','Manage resume')}</button></div>`);
+  // 「我的简历」行 + 「演示空状态」行(★批11B 末件:showEmptyState=jobseek 符号,原在平台 settings.js:392 的 data 段、迁入本 extend 自绑 → 平台不再裸读 apps 符号)。
+  return row(tt('我的简历','My resume'),`<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"><span class="mono" style="font-size:12px;color:var(--ink-2);">${RESUME.filename}</span><button class="btn" data-orm>${tt('管理简历','Manage resume')}</button></div>`)
+    + row(tt('演示空状态','Demo empty state'),`<button class="btn" id="setDemoEmpty">${tt('查看引导态','View onboarding')}</button>`);
 }
 /* ★批11A:data 行接线(原内联 onclick="openResumeModal()";settings 框架对 extend.wire 全调=既有机制,settings.js:446)。 */
 export function wireDataResumeRow(){
   $$('#page-settings [data-orm]').forEach(b=>{ b.onclick=()=>openResumeModal(); });
+  { const de=$('#setDemoEmpty'); if(de) de.onclick=()=>showEmptyState(); }   // ★批11B 末件:词法调用(本 app 内 import),原平台经 typeof window 守卫读
 }
 
 /* 过渡 window 桥:6 段函数经 manifest.settings 契约(tabs render/wire + extend.profile/data)。
