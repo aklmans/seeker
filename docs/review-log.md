@@ -1486,3 +1486,16 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:node×3/tsc 真 0;preview 净方法 · **★模拟 widget(renderWidget→append canvasBody+设 dataset,等价 onWidget 逻辑)**:widget 在**画布**(#agentCanvasBody .widget-card)、**不在对话**(#agentMsgs 0 widget)、画布显 #content 隐、iframe sandbox=allow-scripts;导航→data-canvas=page+#content 显+画布隐;「回到页面」→page 复显;boot #agentCanvas 隐(centered);截图证左对话+右画布沙箱 widget;0 console;真机 asset:// boot 6.37s、进程存活、零 panic。（注:web 态 aiChatAvailable=false、真 onWidget 不自然触发 → 以等价模拟 + DOM/CSS 切换验;真 onWidget 路径待桌面接真模型时覆盖。）
 
 **★P0 窗口收敛 arc(1a+1b+2)**:单一 Agent 窗口 · 左对话 + 右画布(页面/widget 按需切)。**剩 P0 末件:用 B(Rust Capability)落 1–2 真工具打样**(让「一句话完成一件事」经真工具循环跑出结果)。
+
+### P0 末件 · jobseek 真工具打样(路线 B:工具=Rust Capability · commit `15f11eb`)· ⏳ 待审
+**P0 收官件**(reviewer 抓的结构性 [应改] 落地:工具走 Rust 而非前端桥,红线净)。让 jobseek「市场价值估算」从 intake-action 的 `aiRun` 演出(脚本步 + 罐头结果),变成一枚经**真工具循环**跑出结果的 Rust Capability——模型请求 → `invoke_raw` → `Output::Widget` → 投画布(接 Cut 2)。
+- **新增 src-tauri/src/jobseek.rs · MarketValue(`Kind::Tool`,`Permission::Db` 只读、无 Destructive)**:
+  - **D3 三层闸双点复用(能力层强制、非仅提示)**:`available` 与 `invoke` 各自 `readable_set(cx).contains("skills")`——schema 上架只是给模型的提示,`invoke` 二次硬校验(即便模型越界发串仍被独立硬拦,与 DataQuery 同纪律)。
+  - **profile 结构性不可达**:走 `CallCx`(无 profile 字段)+ `with_db` 只读 skills 集合;对比路线 A(前端 `manifest.tools[].run()` 能读 `rt.profile.getAll()`)**无 profile/D3 破口**——正是 reviewer [应改] 的落点。
+  - **数据驱动**(非罐头):读 skills → `mid = 20 + Σ(lvl×1.6)`、low=mid×0.88、high=mid×1.16、top-5 技能 chips(打样公式,非真实定价模型)。
+  - **§4-4 纵深防御**:技能名(用户数据)进 HTML 前逐字 `html_escape`(&<>");终渲染仍在 Cut 2 的三墙沙箱。
+- **capability.rs**:注册 MarketValue;`gen_widget_id`/`readable_set` 提 `pub(crate)` 供本能力复用;装配测试 4→5 caps + 断言 `jobseek_market_value` schema.name/kind。**lib.rs**:`mod jobseek`。
+- **★§1 权衡记账(打样级,已拍板 2026-07-09)**:jobseek 业务进平台 Rust 与 §1「platform 业务无关」有张力。**换来红线净**(同一 invoke_raw 统一闸 / CallCx 无 profile / 纳 D3+Permission 纪律);Rust 侧无 apps 概念,暂以 `jobseek_` 前缀显式标注归属。**正式 app-tool 契约**(apps 声明工具 · 隔离上下文执行 · 结果经平台校验)待 P0 之后设计,届时本模块迁走(模块头已记)。
+- **验**:`cargo test` **84 passed / 0 failed**(新单测:估算随技能数据变 + 注入面 `<img onerror>`→`&lt;img` 转义;5-caps 装配 + schema/kind 断言);`cargo clippy` 净;`cargo fmt` 净;**真机 WKWebView 3.56s boot 零 panic**(能力注册不破启动、进程存活)。**端到端(模型请求本工具 → invoke → 画布)需桌面 + 用户 BYO 模型**——web 态 `aiChatAvailable=false`、`rt.capability.invoke`=NotImplemented,故本轮验 = Rust 单测(逻辑+转义)+ 装配测(5 caps)+ 全绿 84 + 真机 boot;**模型驱动路径留用户桌面覆盖**(与 Cut 2 同款诚实边界)。
+
+**★P0 arc 收官(窗口收敛 1a+1b+2 + 真工具打样)**:单一 Agent 窗口 · 一句话经真工具循环出结果投画布 · 红线走 Rust 结构性闸。**下一步 P1(评审留两子方案可展开)**:能力中心(Skills/Connector/Project/Scheduled 管理,Connector-MCP 最薄先落)+ jobseek 真化(6 处 aiRun→真工具)+ notes→记忆/知识库 + prompts→Skills。
