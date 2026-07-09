@@ -42,11 +42,6 @@ export const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csu
 //   `agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),登记即重开「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行);
 //   故 agentChat **不登记**;其唯一 cAB 调用点(固定串)走无参包装 agentBackupContinue(同 agentCancel 先例)。
 //   ⚠ 新增登记项前自检:该处理器的任一参数是否会流进上述 sink?是 → 改无参包装或先转义。
-// ★★不变式(第44轮[应改]修,随契约搬到契约面 types.d.ts / registry.cActions):
-//   **登记表里不得有任何处理器把 data-cargs 参数反射进 innerHTML / eval / Function / setTimeout(串)**——
-//   `agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),登记即重开「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行);
-//   故 agentChat **不登记**;其唯一 cAB 调用点(固定串)走无参包装 agentBackupContinue(同 agentCancel 先例)。
-//   ⚠ 新增登记项前自检:该处理器的任一参数是否会流进上述 sink?是 → 改无参包装或先转义。
 const CACT_OWN=Object.assign(Object.create(null),{copGo, agentCancel});   // 平台自有(hoisted 函数声明);应用的经契约取
 function cactHandler(name){
   if(typeof name!=='string' || !name) return undefined;

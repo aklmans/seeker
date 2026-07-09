@@ -1400,7 +1400,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批11B 末件 · settings 2 残留契约化(commit `b3400e7`)· ⏳ 待审 · ★0 业务桥终态 + §1 债清零
+### 批11B 末件 · settings 2 残留契约化(commit `b3400e7`)· 🏁 第49轮通过(+2 [建议],其一即修)· ★0 业务桥终态 + §1 债清零
 **批11B 收官**(四契约后最后 2 处平台裸读 apps 符号)。做完:平台层对 apps 符号裸读**全部收口**、业务桥归零。
 - **① hydrateJobs → notifyDataImported 契约(约束② · 与 notifyDataCleared 对称)**:registry +notifyDataImported() 汇总型副作用(遍历**全部已注册应用**含禁用=存在性口径、调 onDataImported、try/catch)逐字镜像 notifyDataCleared;types.d.ts 双声明;manifest `onDataImported:()=>hydrateJobs()`(惰性、export async function 无 eager 读);settings.js 导入回调 `hydrateJobs()` → `SeekerShell.notifyDataImported()`。**零行为**(hydrateJobs 自带 `if(!jobsPersistOn())return`,web no-op、桌面经契约仍调)。
 - **② showEmptyState → jobseek data extend 自绑(复用既有 appSettings 契约,无新契约)**:「演示空状态」行原在**平台** settings.js:392 硬编码 showEmptyState → 迁入 jobseek data extend(dataResumeRowHTML 追加该行 + wireDataResumeRow 内 `#setDemoEmpty`→showEmptyState import 词法调用);平台删该行 HTML + 删 `typeof window.showEmptyState` 绑定。**★位置微移**:随 ownership 从平台 data 段中部迁到 jobseek extend 渲染位(与「我的简历」行同块相邻),行为逐字不变、仅 DOM 位置变。
@@ -1409,3 +1409,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:node×6 / **tsc 真退出码 0**;preview 净方法:契约面(notifyDataImported 是函数、2 桥 undefined);**★showEmptyState**(settings→数据管理 tab→`#setDemoEmpty` 存在且已绑 + 与「我的简历」同块;点击→jobseek 引导态显示);**★notifyDataImported 全链**(stub __TAURI__ 过 jobsPersistOn+stub db:notifyDataImported()→onDataImported→hydrateJobs→list(jobs)→JOBS 重载为导入哨兵;存在性口径证 assets 已注册无 onDataImported→不抛);复位 12 岗位/0 console/11 页/0 残留业务桥;**真机 asset:// boot 重编 5.78s、进程存活、零 panic**(桌面态 jobsPersistOn()=true ⇒ manifest→persistence import + hydrateJobs 为实际路径)。
 
 **★批11B 收官(四契约 pageNew/pageActions/widgetActions/cActions[第45-48轮全过] + settings 残留[本轮]):桥 35→3(业务桥 0)、§1 债清零、契约面 +6(pageNew/pageActions/widgetActions/cActions/notifyDataImported + PageAction/WidgetActionSpec 型)、四契约模式贯穿。** 3.y 账本清空 + §1 契约化全线收官。剩 10d checklist(AGENT_CMDS @ts-check header flip)+ i18n 文案归属债(agentGreet→manifest.greeting)+ 阶段5 + #6 签名公证。
+
+### ★ 第49轮裁定 = 通过 + 2 [建议](均不涉功能,其一即修 commit `abce638`)· ★§1 第一性原理实质达成
+- **① §1 payoff 全面独立核实(整个批11 arc 的收官声称)· 双向阳性对照**:评审用两扫描 × 阳性对照(58f8f05 修复前)验——裸标识符读(tokenizer)+ `window.X` 属性读(grep):当前 platform/ 均 **0**,阳性对照对 58f8f05 分别抓到 `hydrateJobs`@settings:480 与 `window.showEmptyState`@settings:446。**评审诚实记录**:其第一次自写 tokenizer 的 `stripCS` 正则**有 bug 吃掉了 window.showEmptyState**、阳性对照对 58f8f05 没抓到 → 当场暴露盲点,换 grep 可靠法 + 双向阳性对照重做才下结论。合并:platform/ 对 **118 个 jobseek 导出符号零裸读 + 零 window.X 读 + 零反向 import**、index.html 内联块零 jobseek window 读 ⇒ **§1「platform/apps 物理分离、只靠契约」达成**。
+- **② 契约 + 迁移**:notifyDataImported ≅ notifyDataCleared 结构同构(both 遍历 `apps` 全部已注册含禁用=存在性口径、非 enabledApps + try/catch);showEmptyState 位置微移**诚实且验证**——LIVE 证「演示空状态」行是「我的简历」行的 `nextElementSibling`(同块相邻)、行为逐字不变。
+- **③ 删 2 桥 + 终态**:桥集差精确 2 删、消费者全 [DEF/IMPORT];终态 9 window 符号 = 6 运行时命名空间 + **3 平台结构桥**(评审核实 shellReassemble/shellPushAiReadable/openAppManager **是平台符号、不在 jobseek 导出集**、index.html 跨内联块 → 结构性)。**业务桥 = 0、§1 债 = 0。**
+- **④ LIVE**:notifyDataImported 全链(stub __TAURI__+db → onDataImported → hydrateJobs → list(jobs) → JOBS 重载哨兵;存在性口径不抛)+ showEmptyState 路径(#setDemoEmpty 存在已绑+同块相邻→点击引导态)+ 0 console/11 页/字面 onclick 0/复原 12/node×7/tsc 真 0;真机按我留痕采信。
+- **★[建议]1(已即修 `abce638`)· copilot-chrome.js 重复注释块**:第48轮 [建议] 即修(gadget/原型污染表述精确化,**评审判"订正很好、采纳到位"**)时复制粘贴致 `★★不变式(第44轮…` 注释块**逐字出现两次**(40-44+45-49 行)——纯注释、node/tsc 过、零功能影响。**已删重复块**(grep count 2→1、node/tsc 复验)。
+- **[建议]2 · 披露完整性**:第48轮 [建议] 顺带在 copilot-chrome.js 应用(第48轮 61b9cdb),送审词宜点明改动面——采纳(以后送审词列全改动文件)。
+
+**★★批11B 收官 · §1 契约化完成 · 第一性原理实质达成(第49轮)。** 平台层对 apps 符号裸读全经契约收口、业务桥归零。
