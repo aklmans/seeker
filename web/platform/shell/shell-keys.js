@@ -6,7 +6,7 @@
  *  §1 归属债已清(批11B · pageNew):contextNew 原硬编码 jobseek openNewJob/openNewAction,现经 SeekerShell.pageNew(pageId) 契约声明 per-page「新建」动作(平台不再裸读 apps 符号)。 */
 
 /* ============ KEYBOARD (A 层 · 集中注册;分发模块在 platform/keys/keys.js) ============ */
-import { agentCollapse, cmdClose, cmdIsOpen, copClose, copEl, copToggle, getAppMode, setAppMode } from './copilot-chrome.js';
+import { agentCollapse, cmdClose, cmdIsOpen } from './copilot-chrome.js';   /* ★Cut 1b:copClose/copEl/copToggle/getAppMode/setAppMode 移除(Copilot 浮窗删 + appMode 恒 agent) */
 import { $ } from './dom.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
@@ -67,11 +67,10 @@ export function initKeys(){
     {id:'i-updown', combo:'', display:'↑ ↓', group:G.agent, label:{zh:'命令浮层选择 / 空输入调历史',en:'Palette select / recall last'}},
     {id:'i-voice', combo:'Mod+Shift+M', display:K.fmt('Mod+Shift+M'), group:G.iv, label:{zh:'语音作答(M5 上线)',en:'Voice answer (in M5)'}}
   ]);
-  /* Esc 逐层链(优先级高→低):命令浮层 → 弹窗/帮助 → Copilot → 收起画布 */
+  /* Esc 逐层链(优先级高→低):命令浮层 → 弹窗/帮助 → 收起画布(★Cut 1b:Copilot 浮窗腿删,浮窗已删) */
   K.registerEscape(()=>{ if(cmdIsOpen()){cmdClose();return true;} return false; }, 50);
   K.registerEscape(()=>{ const o=$('#overlay'); if(o&&o.classList.contains('open')){closeModal();return true;} return false; }, 40);
-  K.registerEscape(()=>{ const c=copEl(); if(c&&c.classList.contains('open')){copClose();return true;} return false; }, 30);
-  K.registerEscape(()=>{ if(getAppMode()==='agent'&&document.body.dataset.agent==='split'){agentCollapse();return true;} return false; }, 20);
+  K.registerEscape(()=>{ if(document.body.dataset.agent==='split'){agentCollapse();return true;} return false; }, 20);   // ★Cut 1b:appMode 恒 agent,去 getAppMode 判定;split→收起画布回 centered
   K.attach();
 }
 

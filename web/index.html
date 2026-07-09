@@ -922,12 +922,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
   </div>
 </div>
 <div class="overlay" id="overlay"><div id="modalHost"></div></div>
-<button class="cop-launch" id="copLaunch"><span class="ld"></span>问问 AI · ⌘K</button>
-<aside class="cop-panel" id="copPanel">
-  <div class="cop-head"><span class="ld"></span><span class="ht">Copilot</span><span class="hs">· 用一句话指挥整个工作台</span><button class="x" style="margin-left:auto;" id="copClose"></button></div>
-  <div class="cop-msgs" id="copMsgs"></div>
-  <div class="cop-input"><textarea id="copInput" rows="1" placeholder="试试:我和字节那个岗位匹配吗?"></textarea><button class="cop-send" id="copSend"></button></div>
-</aside>
+<!-- ★AI-Native 收敛(Cut 1b):Copilot 浮窗(cop-launch 启动器 + cop-panel 面板)删除 —— Agent 窗口是唯一 AI 面,⌘K 聚焦 Agent 输入。发送/历史/招呼语已收敛到 agent(agentSend/agentMsgs/agentGreet)。 -->
 <div class="toast-wrap" id="toasts"></div>
 <script type="module" src="./apps/jobseek/data.js"></script>
 <script type="module" src="./apps/jobseek/data-helpers.js"></script>
@@ -1159,7 +1154,7 @@ function openAppManager(){
 window.shellReassemble=shellReassemble; window.shellPushAiReadable=shellPushAiReadable; window.openAppManager=openAppManager;
 </script>
 <script type="module">
-import { agentInit, copInit, setAppReady } from './platform/shell/copilot-chrome.js';
+import { agentInit, setAppReady } from './platform/shell/copilot-chrome.js';   /* ★Cut 1b:copInit 删(Copilot 浮窗删) */
 import { $ } from './platform/shell/dom.js';
 import { IC } from './platform/shell/icons.js';
 import { buildNav, buildPages, go, toggleTheme, wireOverlay } from './platform/shell/nav.js';
@@ -1173,8 +1168,7 @@ import { initKeys } from './platform/shell/shell-keys.js';
   wireOverlay(); // overlay-click-关闭绑定收进函数、此处 deferred 调($ 就绪)
   $('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;
   $('#themeBtn2').onclick=toggleTheme;
-  copInit();
-  agentInit();
+  agentInit();   /* ★Cut 1b:copInit() 删(Copilot 浮窗删);Agent 窗口接线 + 招呼语在 agentInit */
   initShell();
   initKeys();
   go('overview');

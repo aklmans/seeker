@@ -12,12 +12,10 @@ import { IC } from './icons.js';
 import { go } from './nav.js';
 import { isDesktop } from './shell-keys.js';
 
-export function copEl(){return $('#copPanel');}
-export function copOpen(){copEl().classList.add('open'); setTimeout(()=>$('#copInput').focus(),260);}
-export function copClose(){copEl().classList.remove('open');}
-export function copToggle(){copEl().classList.contains('open')?copClose():copOpen();}
-export function copScroll(){const m=$('#copMsgs'); m.scrollTop=m.scrollHeight;}
-export function copAppend(role, html){const d=el(`<div class="cop-msg ${role}">${html}</div>`); $('#copMsgs').appendChild(d); copScroll(); return d;}
+// ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
+//   copClose = 无操作(无浮窗可关;各函数的导航/执行部分照常);copScroll = 滚动 Agent 视图(唯一活动 AI 面)。copEl/copOpen/copToggle/copAppend 已删(浮窗专属、零外部消费者)。
+export function copClose(){}
+export function copScroll(){ const m=$('#agentMsgs'); if(m) m.scrollTop=m.scrollHeight; }
 // ★★§4-4 转义纪律(P1 审计刀):Copilot/Agent 面板经 el(innerHTML) 渲染、CSP unsafe-inline 无兜底 → 转义是唯一防线。
 // cEsc:HTML 文本 + 属性上下文转义(外部/业务数据 job.co/sk.name 等[JD 抽取=Untrusted]进 DOM 前一律过)。
 export const cEsc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -49,28 +47,16 @@ function cactHandler(name){
   const fn=window.SeekerShell.cActions()[name];   // 每次点击重取 → 应用开关/排序即时生效
   return typeof fn==='function' ? fn : undefined;
 }
-// 事件委派(P1):[data-cact]→已登记处理器(...JSON args)、[data-csugg]→copSend(值)。名过登记表、args/值按值传 → onclick/copSend 注入类从根消除。
+// 事件委派(P1):[data-cact]→已登记处理器(...JSON args)、[data-csugg]→agentSend(值)。名过登记表、args/值按值传 → onclick 注入类从根消除。
 document.addEventListener('click', (e)=>{
   const t=e.target; if(!t || !t.closest) return;
   const ab=t.closest('[data-cact]');
   if(ab){ const fn=cactHandler(ab.getAttribute('data-cact')); if(fn){ let args=[]; try{ args=JSON.parse(ab.getAttribute('data-cargs')||'[]'); }catch(_e){} fn(...args); } return; }
   const sg=t.closest('[data-csugg]');
-  if(sg) copSend(sg.getAttribute('data-csugg'));
+  if(sg) agentSend(sg.getAttribute('data-csugg'));   // ★Cut 1b:建议 chips 收敛到 agentSend(Copilot 浮窗删)
 });
 
-/* ---- 抽壳序3-d-1:Copilot/Agent 发送核心(红线:用户输入进 DOM 前 text.replace(/</g,&lt;) 转义逐字保留;frameQuery→streamReply|appReply 链) ---- */
-export function copSend(text, aiText){
-  const inp=$('#copInput');
-  text=(text||inp.value||'').trim(); if(!text)return;
-  if(appMode==='agent'){ copClose(); agentSend(text, aiText); return; } // agent 模式:关浮窗,回复进 agent 视图(否则面板看着没反应)
-  inp.value=''; inp.style.height='auto';
-  if(!copEl().classList.contains('open')) copOpen();
-  copAppend('user', text.replace(/</g,'&lt;')); persistMsg('cop','user',text);
-  const think=copAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Copilot', copScroll); }
-  else setTimeout(()=>{ think.remove(); copAppend('ai','<span class="who">Copilot</span>'+window.SeekerShell.appReply(text)); }, 680+Math.random()*460);
-}
+/* ---- ★Cut 1b:copSend 删 —— Copilot 浮窗发送核心已收敛,所有发送走 agentSend(序3-d-1,红线转义在 agentSend 内逐字保留);cSuggs 委派与 copInit 原两个调用点已改/删。 ---- */
 
 export function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
 export function agentSend(text, aiText){
@@ -83,22 +69,11 @@ export function agentSend(text, aiText){
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
 
-/* ---- 抽壳序3-d-3:Copilot 面板初始化 copInit —— 依赖 $/IC(序1)+ 本文件 copToggle/copClose/copSend/copAppend/cSuggs;开场建议经 SeekerShell.appSuggs 契约、★开场白文案经 SeekerShell.greeting('copilot') 契约(3.y 尾清账,未命中回退中性平台串);不再直调 jobseek aiSuggs / 硬编码 jobseek 味开场白 ---- */
-export function copInit(){
-  $('#copLaunch').onclick=copToggle;
-  $('#copClose').innerHTML=IC.x; $('#copClose').onclick=copClose;
-  $('#copSend').innerHTML=IC.arrow; $('#copSend').onclick=()=>copSend();
-  const inp=$('#copInput');
-  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();copSend();} });
-  inp.addEventListener('input',()=>{ inp.style.height='auto'; inp.style.height=Math.min(120,inp.scrollHeight)+'px'; });
-  /* Mod+K 与 Esc→关闭 Copilot 已收编进 SeekerKeys(见 initKeys),此处不再单独监听 */
-  // §1 文案归属(3.y 尾 greeting 契约):开场白经 SeekerShell.greeting('copilot') 取应用招呼语,未命中回退中性平台串 T('copGreet');cSuggs 仍经 appSuggs 契约。
-  copAppend('ai','<span class="who">Copilot</span>'+(window.SeekerShell.greeting('copilot')||T('copGreet'))+cSuggs(window.SeekerShell.appSuggs()));
-}
+/* ---- ★Cut 1b:copInit 删 —— Copilot 浮窗(copLaunch/copClose/copSend/copInput)+ 其开场白已随浮窗删除;Agent 窗口的接线在 agentInit、招呼语在 agentGreet(经 greeting('agent') 契约)。greeting('copilot')/copGreet 现无消费者(留作契约完整性 · 后续 P0 可清)。 ---- */
 
-/* ---- 抽壳序3-d-4:Copilot/Agent 辅助 chrome —— copGo(关面板+导航)/ agentChat(追加到当前活动面板)/ agentCancel(取消回执)/ aiChatAvailable(真实流式能力判定)/ agentScroll。依赖 $/copClose/go/appMode/agentAppend/copAppend/isDesktop/SeekerRT(运行时全局);jobseek 经 onclick 字符串运行时调 copGo/agentCancel(过渡态) ---- */
-export function copGo(id){copClose();go(id);}
-export function agentChat(html){ (appMode==='agent'?agentAppend:copAppend)('ai','<span class="who">Agent</span>'+html); }
+/* ---- 辅助 chrome —— copGo(导航)/ agentChat(追加到 Agent 视图)/ agentCancel/ aiChatAvailable/ agentScroll。 ---- */
+export function copGo(id){go(id);}   // ★Cut 1b:原 copClose()+go;浮窗删后 = 纯导航(agent 模式下 go→agentShowCanvas 切 split 展示页面)
+export function agentChat(html){ agentAppend('ai','<span class="who">Agent</span>'+html); }   // ★Cut 1b:appMode 恒 agent → 恒 agentAppend(去 copAppend 分支)
 export function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
 export function aiChatAvailable(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
 export function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
@@ -111,19 +86,7 @@ let appMode='agent';                                  // ★AI-Native 收敛(Cut
 let appReady=false;                                   // 模块私有;★不上桥(外部写@index INIT appReady=true)——外部写经 setAppReady()
 export function getAppMode(){ return appMode; }       // ★getter:appMode 内部写(setAppMode)/外部读(index keys)→ live 读、无快照分裂
 export function setAppReady(v){ appReady=v; }         // ★setter:appReady 外部写(index INIT)/内部读(agentShowCanvas)→ 单一写入口(reassigned+外部写者子模式)
-export function renderModeSwitch(){
-  const ms=$('#modeSwitch'); if(!ms)return;
-  ms.innerHTML=`<button class="${appMode==='agent'?'on':''}" data-am="agent">Agent</button><button class="${appMode==='editor'?'on':''}" data-am="editor">${T('editor')}</button>`;
-  $$('#modeSwitch button').forEach(b=>b.onclick=()=>setAppMode(b.dataset.am));
-}
-export function setAppMode(m){
-  const prev=appMode; appMode=m; document.body.dataset.appmode=m;
-  if(m==='agent'){ try{ copClose(); }catch(_e){} } // 进 agent 模式关掉浮窗(launcher 已隐藏,统一为 agent 视图唯一 AI 面)
-  if(m==='agent'&&prev!=='agent') document.body.dataset.agent='centered';
-  renderModeSwitch();
-  try{localStorage.setItem('jh-mode',m);}catch(e){}
-  if(m==='agent' && !$('#agentMsgs').children.length) agentGreet();
-}
+/* ★Cut 1b:renderModeSwitch + setAppMode 删 —— 编辑器/Agent 并列模式已删(1a)、二者零消费者(modeSwitch DOM 删、Mod+\ 删、agentInit boot 直设 dataset)。appMode 恒 'agent'(let 从不重赋 → 实为常量;getAppMode 仍读)。 */
 export function agentShowCanvas(){ if(appReady && appMode==='agent') document.body.dataset.agent='split'; }
 export function agentCollapse(){ document.body.dataset.agent='centered'; }
 export function agentGreet(){
@@ -204,9 +167,8 @@ export async function hydrateMessages(){
         for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
       }
     }); };
-    const cop = rows.filter(r=>r.surface==='cop'), agent = rows.filter(r=>r.surface==='agent');
-    // 有历史则清掉招呼语再渲染(#agentMsgs 有子节点后 setAppMode 不会再 agentGreet)
-    if(cop.length){ const c=$('#copMsgs'); if(c){ c.innerHTML=''; draw(cop, copAppend, 'Copilot'); } }
+    // ★Cut 1b:收敛后只恢复 agent 历史(Copilot 浮窗删、旧 'cop' 历史弃用=数据保留不删、不再读写)。有历史则清掉招呼语再渲染(#agentMsgs 有子节点即已由本函数或 agentGreet 处理)。
+    const agent = rows.filter(r=>r.surface==='agent');
     if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
   }catch(e){ console.error('[data] hydrate messages', e); }
 }

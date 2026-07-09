@@ -3,7 +3,7 @@
  *  chrome(updateAgentChrome/updateCopChrome/renderModeSwitch)归序3、留 index.html;setLang/go 运行时调之(函数延迟)。
  *  ★current 有状态(go:current=id 整体重赋值)+ 8 外部消费者 → 封装访问器 currentPage()、**不上 window 桥**(litmus:重赋值+外部消费者,dual-publish 会分裂快照);消费者经 currentPage() 读(同刀原子翻转,同 lastUndo→runLastUndo 先例)。
  *  其余 11 函数 export + 过渡 window 桥(classic/module 消费者按全局名调不变);PAGES/GROUPS/setState/chrome 均函数体内运行时求值(经全局词法/window)→ 载序零回归。 */
-import { agentShowCanvas, renderModeSwitch, updateAgentChrome, updateCopChrome } from './copilot-chrome.js';
+import { agentShowCanvas, updateAgentChrome, updateCopChrome } from './copilot-chrome.js';   /* ★Cut 1b:renderModeSwitch 删(模式切换删) */
 import { $, $$, el } from './dom.js';
 import { L, tt } from './i18n.js';
 import { IC } from './icons.js';
@@ -33,7 +33,7 @@ export function syncNavCounts(){
 export function setLang(l){
   setState.lang=l; try{localStorage.setItem('jh-lang',l);}catch(e){}
   const lb=$('#langBtn'); if(lb)lb.textContent=l==='en'?'EN':'中';
-  buildNav(); renderModeSwitch();
+  buildNav();   /* ★Cut 1b:renderModeSwitch() 删 */
   const p=PAGES.find(x=>x.id===current); if(p)$('#crumb').innerHTML=L(p);
   renderTopActions(current); updateAgentChrome(); updateCopChrome();
   if(typeof syncSbToggleTitle==='function') syncSbToggleTitle();
