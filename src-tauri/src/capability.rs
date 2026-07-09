@@ -178,6 +178,7 @@ impl Registry {
         reg.register(Box::new(ShowWidget));
         reg.register(Box::new(crate::memory::LongTermMemory));
         reg.register(Box::new(crate::docs::DocContext)); // RAG-over-docs:Context 自动召回用户文档
+        reg.register(Box::new(crate::jobseek::MarketValue)); // ★AI-Native P0 打样:jobseek 真工具(路线 B · §1 权衡见 jobseek.rs 头)
         reg
     }
 
@@ -372,7 +373,8 @@ impl Default for AiReadable {
 }
 
 /// 读当前可读集(state 缺失,如单测无 app → 回默认全 `QUERYABLE`)。
-fn readable_set(cx: &CallCx<'_>) -> HashSet<String> {
+pub(crate) fn readable_set(cx: &CallCx<'_>) -> HashSet<String> {
+    // ★AI-Native P0:jobseek.rs 的 D3 闸复用
     cx.app
         .try_state::<AiReadable>()
         .map(|s| s.0.lock().unwrap().clone())
@@ -484,7 +486,8 @@ impl Capability for DataQuery {
 const WIDGET_MAX_BYTES: usize = 64 * 1024;
 static WIDGET_SEQ: AtomicU64 = AtomicU64::new(1);
 
-fn gen_widget_id() -> String {
+pub(crate) fn gen_widget_id() -> String {
+    // ★AI-Native P0:jobseek.rs 的 Output::Widget 复用
     format!("w_{}", WIDGET_SEQ.fetch_add(1, Ordering::Relaxed))
 }
 
@@ -658,8 +661,14 @@ mod tests {
         assert_eq!(crate::docs::DocContext.id(), "docs");
         assert_eq!(crate::docs::DocContext.kind(), Kind::Context);
         assert!(crate::docs::DocContext.schema().is_none());
-        // Registry 装配四者(DataQuery / ShowWidget / memory / docs)。
-        assert_eq!(Registry::new().caps.len(), 4);
+        // ★AI-Native P0 打样:jobseek 真工具(路线 B)。
+        assert_eq!(
+            crate::jobseek::MarketValue.schema().unwrap().name,
+            "jobseek_market_value"
+        );
+        assert_eq!(crate::jobseek::MarketValue.kind(), Kind::Tool);
+        // Registry 装配五者(DataQuery / ShowWidget / memory / docs / jobseek_market_value)。
+        assert_eq!(Registry::new().caps.len(), 5);
     }
 
     #[test]
