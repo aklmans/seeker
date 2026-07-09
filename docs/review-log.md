@@ -1478,3 +1478,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **残留(后续 P0)**:greeting('copilot')/copGreet 现无消费者(留契约完整性、可后清);.cop-panel/.cop-launch CSS 类未删(死样式无害)。
 
 **★P0 窗口收敛收官(Cut 1a+1b)**:两个 AI 面板 + 模式切换 → **单一 Agent 窗口**(左对话 + 右画布按需)。下一步 P0:show_widget 输出从对话内联改投画布 + 用 B 落 1–2 真工具打样。
+
+### Cut 2 · show_widget 输出投画布(commit `ab47bc2`)· ⏳ 待审
+**P0 第三刀**。窗口收敛后,show_widget 沙箱组件从对话内联(`thinkBubble.parentElement`=#agentMsgs)改投**右画布**(#agentCanvas)。
+- **改动(4 文件 +24/−2)**:index.html 加 #agentCanvas 宿主(acv-head「回到页面」+ #agentCanvasBody)+ CSS(`data-canvas=widget` 显画布替代 #content 页面 / `page` 让位 / centered 皆隐);ai-engine.js `streamReply.onWidget`:renderWidget→#agentCanvasBody + 设 `data-canvas=widget`+`data-agent=split`(**直设 dataset 免 import agentShowCanvas 造 ai-engine⇄copilot-chrome 环**),兜底无画布容器仍内联;nav.js `go` 设 `data-canvas=page`(导航回页面视图);copilot-chrome agentInit 接线 #acvBackToPage→page。
+- **★红线不变**:renderWidget 未动 → **三墙沙箱保留**(iframe sandbox=allow-scripts + srcDoc CSP default-src none + 端口零信任);LIVE 证 iframe sandbox='allow-scripts' + widget 卡 SANDBOXED 标注。
+- **验**:node×3/tsc 真 0;preview 净方法 · **★模拟 widget(renderWidget→append canvasBody+设 dataset,等价 onWidget 逻辑)**:widget 在**画布**(#agentCanvasBody .widget-card)、**不在对话**(#agentMsgs 0 widget)、画布显 #content 隐、iframe sandbox=allow-scripts;导航→data-canvas=page+#content 显+画布隐;「回到页面」→page 复显;boot #agentCanvas 隐(centered);截图证左对话+右画布沙箱 widget;0 console;真机 asset:// boot 6.37s、进程存活、零 panic。（注:web 态 aiChatAvailable=false、真 onWidget 不自然触发 → 以等价模拟 + DOM/CSS 切换验;真 onWidget 路径待桌面接真模型时覆盖。）
+
+**★P0 窗口收敛 arc(1a+1b+2)**:单一 Agent 窗口 · 左对话 + 右画布(页面/widget 按需切)。**剩 P0 末件:用 B(Rust Capability)落 1–2 真工具打样**(让「一句话完成一件事」经真工具循环跑出结果)。
