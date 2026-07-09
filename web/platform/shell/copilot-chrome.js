@@ -107,7 +107,7 @@ export function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scro
    依赖 $/$$/T(序1)+ 本文件 copClose/agentAppend(序3-a/3-d-1)+ document.body/localStorage(运行时);appMode 与其消费者 copSend/agentChat 同文件。
    ★agentGreet 经 SeekerShell.greeting('agent') 契约取应用招呼语(3.y 尾清账);T('agentGreet')=中性平台回退串(不名应用功能)。
    initShell(壳启动非 chrome)留 index.html——归属另判(评审后续关注)。 ---- */
-let appMode='editor';                                 // 模块私有;★不上桥(reassigned@setAppMode)——外部读经 getAppMode()
+let appMode='agent';                                  // ★AI-Native 收敛(Cut 1a):Agent 是唯一框、appMode 恒 'agent'(编辑器模式删)。仍经 getAppMode() 读;setAppMode/renderModeSwitch 已成死导出、待 1b 清
 let appReady=false;                                   // 模块私有;★不上桥(外部写@index INIT appReady=true)——外部写经 setAppReady()
 export function getAppMode(){ return appMode; }       // ★getter:appMode 内部写(setAppMode)/外部读(index keys)→ live 读、无快照分裂
 export function setAppReady(v){ appReady=v; }         // ★setter:appReady 外部写(index INIT)/内部读(agentShowCanvas)→ 单一写入口(reassigned+外部写者子模式)
@@ -163,8 +163,11 @@ export function agentInit(){
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
   window.SeekerShell.renderAppChips();   // 命令 chips(双语,随语言重渲)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds 符号名)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
-  let m='editor'; try{m=localStorage.getItem('jh-mode')||'editor';}catch(e){}
-  setAppMode(m);
+  // ★AI-Native 收敛(Cut 1a):Agent 是唯一框,boot 直接进 agent + centered(删「编辑器」模式、不再读/写 jh-mode、不经 setAppMode)。
+  // centered = 全屏对话;导航到页面/出 widget 时 go→agentShowCanvas 切 split(页面即右画布)。历史由 hydrateMessages 清招呼语后重渲。
+  document.body.dataset.appmode='agent';
+  document.body.dataset.agent='centered';
+  if(!$('#agentMsgs').children.length) agentGreet();
 }
 
 /* ---- 抽壳序3-d-12:Copilot/Agent chrome 语言切换重渲 updateAgentChrome/updateCopChrome —— nav.js setLang 运行时调;

@@ -45,8 +45,8 @@ export function initKeys(){
   if(!K){ console.error('[keys] window.SeekerKeys 未加载 —— 快捷键将全部失效;请检查 platform/keys/keys.js 是否被 frontendDist 内嵌并成功加载'); return; }
   const G={glob:{zh:'全局',en:'Global'},navg:{zh:'导航',en:'Navigate'},ctx:{zh:'语境',en:'Contextual'},agent:{zh:'Agent / 命令',en:'Agent / Command'},iv:{zh:'面试陪练',en:'Interview'}};
   K.registerAll([
-    {id:'agent', combo:'Mod+K', allowInInput:true, group:G.glob, label:{zh:'唤起 Agent / 问问 AI',en:'Open Agent / Ask AI'}, run:()=>{ if(getAppMode()==='agent'){const ip=$('#agentInput');if(ip)ip.focus();}else copToggle(); }},
-    {id:'mode', combo:'Mod+\\', allowInInput:true, group:G.glob, label:{zh:'切换 Agent / 编辑器',en:'Toggle Agent / Editor'}, run:()=>setAppMode(getAppMode()==='agent'?'editor':'agent')},
+    {id:'agent', combo:'Mod+K', allowInInput:true, group:G.glob, label:{zh:'聚焦 Agent',en:'Focus Agent'}, run:()=>{ const ip=$('#agentInput'); if(ip) ip.focus(); }},  // ★AI-Native 收敛(Cut 1a):Agent 唯一框,⌘K 直接聚焦 Agent 输入(去 Copilot 浮窗 copToggle 分支)
+    // ★Cut 1a:删「切换 Agent / 编辑器」(Mod+\)—— 编辑器模式已删,无可切。
     {id:'sidebar', combo:'Mod+B', allowInInput:true, group:G.glob, label:{zh:'收起 / 展开侧栏',en:'Toggle sidebar'}, run:toggleSidebar},
     {id:'settings', combo:'Mod+,', allowInInput:true, group:G.glob, label:{zh:'数据设置',en:'Settings'}, run:()=>go('settings')},
     {id:'help', combo:'Mod+/', allowInInput:true, group:G.glob, label:{zh:'快捷键帮助',en:'Shortcut help'}, run:()=>openModal(keysHelpHTML())},
