@@ -29,14 +29,19 @@ export const cAct=(arr)=>arr.length?`<div class="cop-actions">${arr.join('')}</d
 // 点击时经委派**按值传参**调用,外部数据**永不拼进 JS/HTML 串** → 从根消除 onclick 注入类(优于脆弱引号转义)。label 经 cEsc。
 export const cAB=(l,fn,args,acc)=>`<button class="btn ${acc?'btn-accent':''}" data-cact="${cEsc(fn)}" data-cargs="${cEsc(JSON.stringify(args||[]))}">${cEsc(l)}</button>`;
 export const cSuggs=(arr)=>`<div class="cop-sugg">${arr.map(s=>`<button data-csugg="${cEsc(s)}">${cEsc(s)}</button>`).join('')}</div>`;
-// 委派处理器解析(P2 · 关放大器 → 批11B cActions 契约化收官)。
-// 原先是「CACT_ALLOWED 名单 Set + window[name] 取函数」;现在**注册表即白名单**:
-//   平台自有 = CACT_OWN(chrome 的 copGo/agentCancel);应用的 = SeekerShell.cActions()(各 manifest 声明之并集,§1 不再硬编码 jobseek 名)。
-// ★委派不再 window[name] —— 这消除两个隐患:
-//   ① gadget 面:任一未修 HTML 注入面若能落 <button data-cact="…">,旧路径可派发任意 window 函数(把 HTML 注入升级为 JS 执行 / 二次 innerHTML);
-//      现在只能命中**已登记处理器**(copAppend/agentAppend 本身即 innerHTML sink、eval/Function 更甚 → 前缀判定不够,必须精确登记表)。
-//   ② DOM 具名访问遮蔽(第41轮判据):`id="copMatch"` 的元素会让 window.copMatch 变成元素、处理器静默不触发;查表无此问题。
-// 防原型污染:CACT_OWN 与 cActions() 均为 **null 原型** ⇒ data-cact="toString"/"constructor"/"valueOf" 取不到东西。
+// 委派处理器解析(P2 → 批11B cActions 契约化收官)。
+// 原先「CACT_ALLOWED 名单 Set + window[name] 取函数」;现在 CACT_OWN(平台自有 copGo/agentCancel)∪ SeekerShell.cActions()(各 manifest 声明之并集,§1 不再硬编码 jobseek 名)。
+// ★精确记账(第48轮[建议]):gadget(data-cact="eval")与原型名(data-cact="toString")旧代码 **CACT_ALLOWED.has(name) 本就已挡** —— Set.has 精确成员判定、不走原型链;
+//   故本刀价值**不是**新关这两面,而是:
+//   ① §1 契约化:jobseek 名从平台硬编码 Set → manifest 声明(本刀主目的);
+//   ② 删掉 window[name] 派发原语 + 随之删 13 window 桥(纵深:不再保留一个"能被任意注入面复用的按名调全局函数"机制);
+//   ③ ★DOM 具名访问遮蔽免疫(第41轮判据)= **删桥的必要前提**:window[name] 在桥删后会被同名 `id=` 元素顶替(window.copMatch 变元素、处理器静默失效),改查表才能安全删桥;
+//   ④ null 原型的**必要性**:新机制改用**对象查表**,`{}` 会让 data-cact="toString" 命中 Object.prototype.toString(旧 Set.has 无此面)→ 故 CACT_OWN 与 cActions() 均 Object.create(null),把新机制引入的面堵回、net 不退化。
+// ★★不变式(第44轮[应改]修,随契约搬到契约面 types.d.ts / registry.cActions):
+//   **登记表里不得有任何处理器把 data-cargs 参数反射进 innerHTML / eval / Function / setTimeout(串)**——
+//   `agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),登记即重开「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行);
+//   故 agentChat **不登记**;其唯一 cAB 调用点(固定串)走无参包装 agentBackupContinue(同 agentCancel 先例)。
+//   ⚠ 新增登记项前自检:该处理器的任一参数是否会流进上述 sink?是 → 改无参包装或先转义。
 // ★★不变式(第44轮[应改]修,随契约搬到契约面 types.d.ts / registry.cActions):
 //   **登记表里不得有任何处理器把 data-cargs 参数反射进 innerHTML / eval / Function / setTimeout(串)**——
 //   `agentChat(html)` 正是不转义的 innerHTML sink(设计上收 HTML),登记即重开「二次 innerHTML」放大面(评审 PoC:data-cargs 里的 <img onerror> 真执行);
