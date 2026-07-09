@@ -1422,7 +1422,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 3.y 尾 · AGENT_CMDS 抽出单列 @ts-check(10d checklist①,commit `8606a70`)· ⏳ 待审
+### 3.y 尾 · AGENT_CMDS 抽出单列 @ts-check(10d checklist①,commit `8606a70`)· 🏁 第50轮通过
 **10d checklist① 收尾**(3.y 类型化最后一项)。AGENT_CMDS 原在 @ts-nocheck 的 copilot-actions.js,`@type {CommandSpec[]}` 只**断言**类型、字面量不受校验 → 漂移被吞(**实证**:删 run / label 元组改单串,tsc 均不报)。
 - **为何不整文件 flip**:copilot-actions.js flip @ts-check surface 18 error(全业务逻辑:隐式 any 参数 / SeekerRT/onclick/dataset 运行时全局)= 该文件头注释「类型化留 3.y」所指的业务层大块,非本尾项。**最小**做法 = 纯数据 AGENT_CMDS 抽独立 @ts-check 文件,业务逻辑不动。
 - **抽出**:新增 `apps/jobseek/logic/agent-commands.js`(@ts-check 纯数据):13 条 CommandSpec 字面量逐字迁 + `@type`;run 闭包引用 agentSend/copGo(chrome)/copNewJob(copilot-actions)/tt(i18n)全 import 惰性、顶层零 eager 读;**无环**(copilot-actions 移出后不再引用 AGENT_CMDS、不 import agent-commands;agent-commands→copilot-actions 单向)。copilot-actions 删 AGENT_CMDS + 更新注释;manifest 改 import 源;index.html 注释订正。
@@ -1431,8 +1431,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### i18n 文案归属债 · greeting 契约(第14轮账,commit `641a7ff`)· ⏳ 待审
+### i18n 文案归属债 · greeting 契约(第14轮账,commit `641a7ff`)· 🏁 第50轮通过(+1 [建议] 已即修 `4944586`)
 **第14轮文案债收尾**。copilot-chrome 的 agentGreet(`T('agentGreet')`)+ copInit 开场白硬编码 jobseek 味文案(「求职 Agent/Copilot」「匹配岗位、改简历、出面试题」)→ 改经 `SeekerShell.greeting(mode)` 选择型契约归属应用。
 - **契约扩展(约束②,选择型 同 appReply/appSuggs)**:types.d.ts +AppManifest.greeting?/SeekerShellApi.greeting;registry +greeting(mode)(enabledApps 首个非空、否则 '')+ api。★信任级:返回**应用自持可信文案**(与旧平台硬编码同级)经 innerHTML 渲染、非用户/AI/不可信输入、无新注入面。
 - **迁移**:jobseek copilot-actions.js +jobseekGreeting(mode)(两条求职味开场白逐字迁 tt 双语);manifest `greeting:(mode)=>jobseekGreeting(mode)`。平台 copilot-chrome copInit/agentGreet 改 `SeekerShell.greeting(mode)||T(中性回退)`;平台 i18n agentGreet **改中性**(「嗨,我是你的助手…」不名应用功能)+ 新增 copGreet 中性串(仅作回退);debt 注释更新为「已清」;agentSub/agentPh/cmdLabel 通用助手 UI 串留平台。
 - **验**:node×5/tsc 真 0;preview 净方法:契约面 greeting('agent'/'copilot')=jobseek 求职文案;**双面板 LIVE**(copInit=求职 Copilot、切 Agent 模式→agentGreet=求职 Agent 均经契约);**回退 LIVE**(setEnabled('jobseek',false)→greeting('agent')=''→平台落 T('agentGreet') 中性「助手」串、neutral_noJobseek 证平台 i18n 值无求职味);0 console/11 页/真机 boot 5.64s 零 panic。**平台 i18n 只留中性/通用串、jobseek 味随 manifest.greeting。**
+
+### ★ 第50轮裁定 = 两刀均通过(greeting +1 [建议] 已即修 `4944586`)
+- **刀一 AGENT_CMDS 通过**:评审**复跑三反证**(漏 run→TS2741@:17 / label 元组→单串→TS2322@:16 / cmd:number→TS2322@:16 全捕),`CommandSpec.run` 确为必填。**评审诚实记录**:其第一次反证 A 替换串没匹配到实际文本(run 没真删)、一度看似"漏 run 未抓",修正后 tsc 确报 TS2741——测试错非代码错(**与我送审时的 drift-1 perl 未匹配同款**)。**★无环独立核实**:agent-commands **仅被 manifest import**(copilot-actions 两处提及是注释非代码),`agent-commands→copilot-actions(copNewJob)` 单向、SCC 内无成员 import agent-commands ⇒ 不成新环;字面量顶层 run 箭头 eval 期不调 import 符号(惰性)→ 零 eager 读 TDZ 安全。LIVE:appCommands 13+shape_ok+same_instance;/jobs→copGo、**/add→copNewJob 开模态不抛**=无环破坏坐实。认可"不整文件 flip"(18 业务 error = 类型化留 3.y 大块、非本尾项)。
+- **刀二 greeting 通过**:选择型 ≅ appReply;**回退 LIVE 坐实**(`setEnabled('jobseek',false)`→greeting('agent')===''且('copilot')===''→平台落 T 中性串「你的助手…」、**neutral_noJobseek=true** 证平台 i18n 值零求职/匹配岗位/改简历/面试题;复原求职味回)。信任级认可(应用自持开发者文案走 tt、经 innerHTML、与旧硬编码同级、无新注入面)。
+- **★[建议](前瞻,已即修 `4944586`)**:greeting 返回值进 innerHTML;当前 jobseekGreeting 是开发者可信文案安全,但将来若应用把用户/AI 派生内容塞进 greeting 即成注入点 → **把「须应用自持可信文案、不得含用户/AI 派生内容」固化到 `AppManifest.greeting` 类型注释**(同 widgetActions 把红线搬进 types.d.ts 的做法)。**已即修**:types.d.ts greeting 两处注释加 §4-4 契约不变式(innerHTML 无转义、绝不得含用户/AI/RAG/JD 派生内容、需动态先 cEsc);tsc 0。
+
+**★3.y 收尾两刀通过(第50轮)· 3.y 全线收官(第1–50 轮全过审)。** 剩:10d② 真机 desktop-gated persist 写路径;#6 签名公证(用户 Apple 证书=手动);阶段5(已入 ROADMAP、暂不开发)。
