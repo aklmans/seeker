@@ -1377,7 +1377,7 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 ---
 
-### 批11B · cActions 契约(§1 契约化 4/4 · 收官,commit `58f8f05`)· 🏁 第48轮通过(+1 [建议] 措辞精确化 已即修 commit `b82a9e6`)
+### 批11B · cActions 契约(§1 契约化 4/4 · 收官,commit `58f8f05`)· 🏁 第48轮通过(+1 [建议] 措辞精确化 已即修 commit `61b9cdb`)
 **四契约收官**(约束② 契约必审)。Copilot cAB 委派的最后一段 §1 债:CACT_ALLOWED 硬编码 jobseek 名 + 分发器 `window[name]`。改为「**注册表即白名单**」:平台自有 `CACT_OWN`(copGo/agentCancel)∪ `SeekerShell.cActions()`(各 manifest 声明之**并集**)。**删 13 桥(18→5)**。**注:实际 11 个 jobseek 名**(送审词的 10 漏了第44轮新增的 `agentBackupContinue`)。
 - **★契约红线:注册表即白名单(§4-4,不再 window[name])**:委派 `CACT_ALLOWED.has(name) && window[name]` → `cactHandler(name)`(查 CACT_OWN 再查 cActions())。①**gadget 面从根消除**——只能命中已登记处理器,未修 HTML 注入面即便落 `<button data-cact="eval">` 也取不到 eval(旧 window[name] 路径可以);②**免疫 DOM 具名访问遮蔽(第41轮判据)**——`id="copMatch"` 元素不再顶替处理器;③**防原型污染**——CACT_OWN + registry.cActions() 均 `Object.create(null)` + 只收 own-enumerable function 值 ⇒ `data-cact="toString"/"constructor"/"valueOf"` 取不到;④**§4-4 不变式随契约面固化**——types.d.ts/registry.cActions/manifest.cActions 三处注明「登记项任一参数不得流进 innerHTML/eval/Function/setTimeout(串)」,`agentChat`(不转义 innerHTML sink)**不登记**、固定串走无参包装 agentBackupContinue(第44轮先例)。
 - **契约扩展(约束②)**:types.d.ts +AppManifest.cActions?()=>Record<名,处理器> + SeekerShellApi.cActions()(注 null 原型);registry.js +cActions() 汇总型(并集/Object.create(null)/只收 function 值)+ api。
