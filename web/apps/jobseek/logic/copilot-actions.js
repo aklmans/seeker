@@ -143,10 +143,8 @@ export function copReply(t){
   return '我可以帮你匹配岗位、改简历、出面试题、排训练计划、查缺口和市场价值。试试这些:'+cSuggs(['我和字节那个岗位匹配吗?','我最大的能力缺口是什么?','帮我加一个岗位','我现在最该做什么?']);
 }
 
-/* ---- 抽壳序3-d-8 择取:jobseek Agent 命令数据(第9轮裁定序3:chrome 批中 jobseek 专属部分择取到 apps)。
-   AGENT_CMDS = /命令面板项(经 manifest.appCommands 契约=序3-d-7 供平台 cmdFilterList 汇总);
-   renderAgentCmds = 技能 chips(平台 agentInit/updateAgentChrome 经全局触发,渲染进 #agentCmds)。
-   依赖 tt/$/$$(平台序1)+ agentSend/copGo/copNewJob(chrome/jobseek 运行时全局);逻辑零改动。 ---- */
+/* ---- 抽壳序3-d-8 择取:jobseek Agent 命令 chips(AGENT_CMDS /命令面板项已抽出单列 → ./agent-commands.js)。
+   renderAgentCmds = 技能 chips(平台 agentInit/updateAgentChrome 经全局触发,渲染进 #agentCmds);依赖 tt/$/$$/agentSend(import)。 ---- */
 // Agent 命令 chips(双语;随语言重渲 —— 见 updateAgentChrome 调用)。查询也双语,配合 frameQuery 的中英关键词框定。
 export function renderAgentCmds(){
   const host=$('#agentCmds'); if(!host) return;
@@ -163,24 +161,10 @@ export function renderAgentCmds(){
   $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
 }
 /* ---- /command palette ---- */
-/** @type {import('../../../platform/shell/types').CommandSpec[]} */ // ★批10b:账本删后类型随 import 传导——在定义处标注(替代原 monolith-globals ambient,label 元组不降级 string[])
-export const AGENT_CMDS=[
-  {cmd:'/match', label:['智能匹配','Smart match'], desc:['最该投哪个','Best fit'], run:()=>agentSend(tt('我最该投哪个岗位?','Which job should I apply to?'))},
-  {cmd:'/resume', label:['改简历','Tune resume'], desc:['打开简历','Open resume'], run:()=>copGo('resumes')},
-  {cmd:'/interview', label:['面试陪练','Interview'], desc:['出题练习','Practice'], run:()=>copGo('interview')},
-  {cmd:'/plan', label:['排训练计划','Training plan'], desc:['补齐缺口','Close gaps'], run:()=>agentSend(tt('给我排一个训练计划补齐缺口','Make me a training plan to close my gaps'))},
-  {cmd:'/gaps', label:['查能力缺口','Skill gaps'], desc:['Top 缺口','Top gaps'], run:()=>agentSend(tt('我最大的能力缺口是什么?','What is my biggest skill gap?'))},
-  {cmd:'/value', label:['市场价值','Market value'], desc:['估算身价','Estimate worth'], run:()=>agentSend(tt('我的市场价值值多少?','What is my market value?'))},
-  {cmd:'/trend', label:['技能趋势','Skill trends'], desc:['什么在涨','What is rising'], run:()=>agentSend(tt('什么技能在涨?','What skills are trending?'))},
-  {cmd:'/next', label:['下一步','Next step'], desc:['现在该做','Do now'], run:()=>agentSend(tt('我现在最该做什么?','What should I do next?'))},
-  {cmd:'/jobs', label:['目标岗位','Target jobs'], desc:['打开列表','Open list'], run:()=>copGo('jobs')},
-  {cmd:'/skills', label:['职业资产','Career assets'], desc:['能力档案','Asset profile'], run:()=>copGo('skills')},
-  {cmd:'/add', label:['录入岗位','Add job'], desc:['新增岗位','New job'], run:()=>copNewJob()},
-  {cmd:'/market', label:['市场情报','Market intel'], desc:['趋势/薪资','Trends/pay'], run:()=>copGo('analysis')},
-  {cmd:'/settings', label:['数据设置','Settings'], desc:['仅打开 · 不可改','Open only · read-only'], run:()=>copGo('settings')}
-];
+/* ★3.y 尾(10d checklist①):AGENT_CMDS 抽出单列 → ./agent-commands.js(@ts-check,纯数据,字面量真受 CommandSpec[] 校验;
+   本文件 @ts-nocheck 下 @type 只断言不校验、漂移会被吞)。manifest.appCommands 改从 agent-commands.js import。 */
 
 /* ★批11B(cActions 契约):11 个 cAB 处理器桥已摘 —— 平台委派不再 window[name],改经 manifest.cActions 登记表按名查调。
-   本文件 window 桥清零。aiSuggs/copReply/renderAgentCmds/AGENT_CMDS 经 manifest 契约;copMatch 等亦被 cards.js import 直调。findJob/findSkill/findAction 私有。
+   本文件 window 桥清零。aiSuggs/copReply/renderAgentCmds 经 manifest 契约(AGENT_CMDS 已抽出 agent-commands.js);copNewJob/copMatch 等亦被 agent-commands/cards.js import 直调。findJob/findSkill/findAction 私有。
    ★登记表不变式(§4-4):登记项的任一参数不得流进 innerHTML/eval/Function/setTimeout(串) —— agentChat 是不转义 innerHTML sink,**不登记**;其固定串调用点走无参包装 agentBackupContinue(第44轮)。
    ★红线逐字保留(在函数体):§4-4 转义 cEsc/jesc(job.co 等 JD 外部内容)+ 设置不可经对话改(copReply 拦截引导去设置页)。 */

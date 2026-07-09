@@ -1044,7 +1044,7 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
 /* initShell 已抽壳 → platform/shell/shell-boot.js(序5-d;第17轮裁定壳启动归独立 shell-boot 刀) */
 /* setAppMode/agentShowCanvas/agentCollapse/agentGreet 已抽壳 → platform/shell/copilot-chrome.js(序3-d-6;agentAppend/agentSend 同文件序3-d-1) */
 /* agentInit 已抽壳 → platform/shell/copilot-chrome.js(序3-d-10;renderAgentCmds 触发改 typeof 守卫,§1) */
-/* renderAgentCmds + AGENT_CMDS 已择取 → apps/jobseek/logic/copilot-actions.js(序3-d-8;命令数据经 SeekerShell.appCommands 契约[序3-d-7]供平台命令面板) */
+/* renderAgentCmds → apps/jobseek/logic/copilot-actions.js;AGENT_CMDS → apps/jobseek/logic/agent-commands.js(3.y 尾抽出单列 @ts-check);命令数据经 SeekerShell.appCommands 契约供平台命令面板 */
 /* Agent /命令面板机制(cmdActive/cmdFiltered/cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun)已抽壳 → platform/shell/copilot-chrome.js(序3-d-9;命令数据经 SeekerShell.appCommands 契约) */
 
 /* ★批9b:键盘系统(initKeys/toggleSidebar/syncSbToggleTitle/isDesktop + 私有 pageSearchInput/contextNew/keysHelpHTML)已抽壳 → platform/shell/shell-keys.js(过渡桥;INIT 调 initKeys、shell-boot 接线 toggleSidebar、isDesktop 供 4 模块 typeof 守卫读,均 runtime)。 */

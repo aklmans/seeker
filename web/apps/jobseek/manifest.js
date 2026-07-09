@@ -16,11 +16,12 @@ import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
 import { renderInterview } from './logic/interview.js';
 import { frameQuery } from './logic/frame-query.js';
 import {
-  copReply, aiSuggs, AGENT_CMDS, renderAgentCmds,
+  copReply, aiSuggs, renderAgentCmds,
   // cAB 处理器(批11B · cActions 契约:平台委派按名调,不再 window[name])
   agentDeleteJob, agentBackupContinue, copDoneAct, copInterview, copMatch, copPlan, copResume,
   copNewJob, copNewAction, copMarket, copResumeUpload,
 } from './logic/copilot-actions.js';
+import { AGENT_CMDS } from './logic/agent-commands.js';   // ★3.y 尾:AGENT_CMDS 抽出单列 @ts-check(字面量真受 CommandSpec[] 校验)
 import { SEEKER_CARDS } from './cards.js';
 import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
 import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
