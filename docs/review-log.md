@@ -1428,3 +1428,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **抽出**:新增 `apps/jobseek/logic/agent-commands.js`(@ts-check 纯数据):13 条 CommandSpec 字面量逐字迁 + `@type`;run 闭包引用 agentSend/copGo(chrome)/copNewJob(copilot-actions)/tt(i18n)全 import 惰性、顶层零 eager 读;**无环**(copilot-actions 移出后不再引用 AGENT_CMDS、不 import agent-commands;agent-commands→copilot-actions 单向)。copilot-actions 删 AGENT_CMDS + 更新注释;manifest 改 import 源;index.html 注释订正。
 - **★校验真生效(抽出后 @ts-check 实测漂移)**:漏 run→TS2741；label 元组→单串→TS2322；cmd:number→TS2322(原 @ts-nocheck 全吞)。恢复 tsc 0。
 - **验**:node×3/tsc 真 0;preview 净方法:appCommands() 仍 13 条+shape_ok+**same_instance**(manifest 用新模块 export 单实例);**命令 run 全链 LIVE**(/jobs→copGo 跳页；**/add→copNewJob 开录入岗位模态**=唯一 copilot-actions-local 依赖跨模块 import 通、无环破坏；/match→agentSend(tt)→frameQuery→appReply「美团…最该优先」、hasMatchQuery 证 tt 解析);0 console/11 页；真机 asset:// boot 6.14s、进程存活、零 panic。**3.y 类型化尾巴收干净。**
+
+---
+
+### i18n 文案归属债 · greeting 契约(第14轮账,commit `641a7ff`)· ⏳ 待审
+**第14轮文案债收尾**。copilot-chrome 的 agentGreet(`T('agentGreet')`)+ copInit 开场白硬编码 jobseek 味文案(「求职 Agent/Copilot」「匹配岗位、改简历、出面试题」)→ 改经 `SeekerShell.greeting(mode)` 选择型契约归属应用。
+- **契约扩展(约束②,选择型 同 appReply/appSuggs)**:types.d.ts +AppManifest.greeting?/SeekerShellApi.greeting;registry +greeting(mode)(enabledApps 首个非空、否则 '')+ api。★信任级:返回**应用自持可信文案**(与旧平台硬编码同级)经 innerHTML 渲染、非用户/AI/不可信输入、无新注入面。
+- **迁移**:jobseek copilot-actions.js +jobseekGreeting(mode)(两条求职味开场白逐字迁 tt 双语);manifest `greeting:(mode)=>jobseekGreeting(mode)`。平台 copilot-chrome copInit/agentGreet 改 `SeekerShell.greeting(mode)||T(中性回退)`;平台 i18n agentGreet **改中性**(「嗨,我是你的助手…」不名应用功能)+ 新增 copGreet 中性串(仅作回退);debt 注释更新为「已清」;agentSub/agentPh/cmdLabel 通用助手 UI 串留平台。
+- **验**:node×5/tsc 真 0;preview 净方法:契约面 greeting('agent'/'copilot')=jobseek 求职文案;**双面板 LIVE**(copInit=求职 Copilot、切 Agent 模式→agentGreet=求职 Agent 均经契约);**回退 LIVE**(setEnabled('jobseek',false)→greeting('agent')=''→平台落 T('agentGreet') 中性「助手」串、neutral_noJobseek 证平台 i18n 值无求职味);0 console/11 页/真机 boot 5.64s 零 panic。**平台 i18n 只留中性/通用串、jobseek 味随 manifest.greeting。**
