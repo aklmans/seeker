@@ -1469,3 +1469,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **布局(CSS 两态本就存在、不新造)**:boot=agent+centered=全屏对话(#content 隐、cop-launch 隐);导航→go→agentShowCanvas→**split**(左对话+右 #content 页面即画布);⤜收起画布→agentCollapse→centered。
 - **收敛后残留(1b 清)**:Copilot 浮窗(copLaunch/copPanel)物理仍在但 agent 模式 `display:none` + 无 editor 入口 = 不可达死元素;setAppMode/renderModeSwitch/copInit/copSend/copOpen/copClose/copAppend 成死导出。
 - **验**:node×2/tsc 真 0;preview 净方法 LIVE **boot 态**(appmode=agent/agent=centered/agentChat flex/content none/copLaunch none/modeSwitch 不存在/**恰 1 条求职 Agent 招呼语**/11 页)+ **功能链**(导航 jobs→data-agent=split+content block+page-jobs active 12 行=页面成右画布+chat 仍左;⤜收起→centered;agentInput 发送→追加);0 console;**真机 asset:// boot 6.14s、进程存活、零 panic**。**下一刀 1b:删 Copilot 浮窗 DOM + 收敛发送/历史/死导出到 agent。**
+
+### Cut 1b · 删 Copilot 浮窗 + 收敛发送/历史/死导出到 Agent(commit `6df8ac2`)· ⏳ 待审
+**窗口收敛第二刀**(用户拍板:浮窗彻底删、⌘K→Agent、旧 cop 历史弃用)。删 Copilot 浮窗(1a 后已不可达死元素)+ 彻底收敛到 Agent = 单一 AI 面。
+- **改动(4 文件 +22/−67 净删 45 行)**:index.html 删 cop-launch+cop-panel DOM + copInit 调用/import;copilot-chrome 删 copEl/copOpen/copToggle/copAppend/copSend/copInit + **死导出 renderModeSwitch/setAppMode**(1a 后零消费者)、copClose 神经元化 no-op + copScroll 改滚 #agentMsgs(保这两薄导出免改 jobseek 8+1 调用点)、copGo 去 copClose 只 go、agentChat 恒 agentAppend、cSuggs 委派 copSend→**agentSend**、hydrateMessages 只恢复 agent 历史;shell-keys 删 Esc 浮窗腿 + split 收起腿去 getAppMode + import 精简;nav 删 renderModeSwitch import+调用。
+- **★import↔export 完整性(ruling④ module link 死判据)**:20 个从 copilot-chrome import 的符号全部仍 export、**缺失 0**;8 删除函数全树 CODE 引用 **0**(剥注释/字符串扫描)。
+- **验**:node×3/tsc 真 0;preview 净方法(定向重验 4 文件)· **正向断言主证(证 module 全跑完无 link 死)**:11 页 + 契约面 6 齐 + 11 卡 + boot 态(appmode=agent/agent=centered/**恰 1 求职 Agent 招呼语**/Copilot 浮窗+启动器+模式切换 DOM 全无);**功能链 LIVE**(agentInput 发送 / #agentCmds 技能 chip[data-cmd→agentSend] / cSuggs 委派[data-csugg→agentSend] / copGo[CACT→go→split] / **copMatch**[CACT→copClose no-op+go('match')+renderMatch 页面渲染] / ⤜收起→centered);0 console;**真机 asset:// boot 6.76s、进程存活、零 panic**。
+- **残留(后续 P0)**:greeting('copilot')/copGreet 现无消费者(留契约完整性、可后清);.cop-panel/.cop-launch CSS 类未删(死样式无害)。
+
+**★P0 窗口收敛收官(Cut 1a+1b)**:两个 AI 面板 + 模式切换 → **单一 Agent 窗口**(左对话 + 右画布按需)。下一步 P0:show_widget 输出从对话内联改投画布 + 用 B 落 1–2 真工具打样。
