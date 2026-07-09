@@ -1528,3 +1528,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **exec 独立坐实评审两载重事实(不采信送审词)**:`mcp_list` 返回体确含 url/command/args([mcp.rs:890-892](src-tauri/src/mcp.rs#L890));`tool_descriptors` 确已把工具名/server/描述/schema 喂模型([ai.rs:432-435](src-tauri/src/ai.rs#L432))但**不含** url/command/args ⇒ [应改]A 的投影边界正是「模型已见面」、[应改]B 的「免费持工具清单」成立。**报告两 [应改] 均属实,已 v2 全整合。**
 
 **★方案 v2 已提交(评审 [应改]A/B + [建议]C/D 全采纳);待用户拍板 §8 三点 → 起 P1-a(读投影先行、复核比照 D3)。**
+
+**用户拍板(2026-07-09)**:P1 = a+b+c(能力中心框 + Connector 先落 + 记忆/知识库薄视图);Connector 先落(有后端的先);读/写界严守 §4-2。起 P1-a。
+
+### P1-a · 能力中心平台壳视图(只读总览 + 归属 + 入口)· commit `e8f1973` · ⏳ 待审
+**P1 首刀**。能力中心 = 平台壳导航页(**非 app**,§1),照**设置页 setShell 先例**(非 app-manager modal)注册,显示在 Agent 窗口右画布(P0 收敛保留)。
+- **改动(2 文件,新增 1 模块 + index.html +6/−1)**:新增 `web/platform/shell/capability-center.js` 的 `renderCapabilityCenter()`——聚合「给人看」五域(Connector/工具·能力/长期记忆/知识库/绿地占位);逐域异步 `rt.*.list()`、一域失败只降级本域(try/catch)。index.html:import + setShell `pages` 加 `capability` 条(system 组、置设置前);`buildNav/buildPages/go` 泛化消费**零改动**、`go` 天然 `data-canvas='page'` 显于 `#content`。
+- **★读/写界守界(§4-2 + [应改]A · 本刀落点)**:本页是**前端「给人看」视图**——读 `rt.*.list()` 渲染进 DOM、**永不喂模型**;端点/命令/密钥只在此 UI 呈现给用户、**绝不进模型上下文**。**故本刀不触发 [应改]A 的投影**(无模型侧读路径;模型侧读若将来做须走 §7 新红线的静态最小投影)。写(配置/密钥/启停)走管理面、不经对话;页顶 lock-note 向用户显式声明此界。**[建议]C 落**:工具枚举读 `cap_list`=平台读平台无 import(registry 含 route-B 打样 `jobseek_market_value`、如实显示)。深度管理(Connector 提一等公民、记忆/知识库查删)= P1-b/c。
+- **红线#6**:全文案走 `tt()` 双语——**与 jobseek Rust 打样的 CN-only 对照**(前端有 tt()、locale 前端态可达)。
+- **验**:node --check 净;preview 净方法**正向断言 LIVE**——nav 项(能/能力中心/Capabilities)+ 页注册 + 导航 `data-canvas=page` + frontis + lock-note + 五域正确渲染(web 降级:连接器/记忆/知识库空态、工具「桌面端可用」经 notImpl try/catch、绿地规划中);**EN 全切换无 CN 残留(#6 坐实)**;截图证 Agent 窗口左对话+右能力中心页、house 设计(衬线斜体标题+暖橙句号、mono eyebrow);真机 WKWebView 6.36s boot 零 panic、进程存活。**桌面真数据(5 caps 含 jobseek_market_value / 真连接器 / 记忆文档计数)经同一 rt→command plumbing,web 验结构+降级、真数据待桌面覆盖。**
+- **下一步 P1-b**:Connector-MCP 从 settings.js 抽出、提为能力中心一等公民(复用 mcp_*;若加模型侧 connector 状态读,须落 [应改]A 静态投影 + 复核比照 D3)。
