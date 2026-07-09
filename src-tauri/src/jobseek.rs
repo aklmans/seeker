@@ -7,6 +7,10 @@
 //!   - 代价:app 业务进平台 Rust(与 §1「platform 业务无关」有张力)。Rust 侧无 `apps/` 概念,故暂以 `jobseek_` 前缀
 //!     显式标注归属;**正式的 app-tool 契约**(apps 声明工具、profile 隔离上下文执行、结果经平台校验)待 P0 之后设计,
 //!     届时本模块随之迁走。用户已拍板此打样落法(2026-07-09)。
+//!
+//! ★★路线 B 封顶一枚(评审第51轮 [建议]2 · 防打样蔓延):**app-tool 契约落地前,不新增
+//!   `src-tauri/src/<app>.rs` 应用工具**。若第二个应用照此加 Rust 工具,打样会静默变事实模式、§1 债累积;
+//!   第二枚起必须等契约。本模块是唯一许可的路线 B 打样。
 
 use crate::capability::{
     gen_widget_id, readable_set, Availability, CallCx, Capability, Kind, Output, Permission,
@@ -63,6 +67,11 @@ impl Capability for MarketValue {
 }
 
 /// 从 skills 记录构建市场价值卡 HTML(纯函数,便于单测)。估算公式为**打样级、数据驱动**(base + Σ 技能等级权重)。
+///
+/// ★[建议]1 红线#6 债(评审第51轮,打样带、产品化前必消):本函数 UI 文案硬编码中文、无英文路径,
+///   与全 app 走 `tt()/L()/T()` 的双语纪律不一致。**locale 是前端态**(`localStorage 'jh-lang'`),Rust 侧够不到 →
+///   无法在此自本地化;正解 = **app-tool 契约把呈现移回前端**(工具只回结构化数据、前端用 tt 渲染),或经 CallCx 传 locale
+///   (需扩 ai_chat 往返)——二者皆 P1。此打样阶段暂容(与「路线 B 封顶一枚」同一出口:契约落地即消)。
 fn build_market_value_html(records: &[Value]) -> String {
     // 解析 (name, lvl);lvl 缺省 1。
     let mut skills: Vec<(String, i64)> = records
@@ -99,9 +108,9 @@ fn build_market_value_html(records: &[Value]) -> String {
     let n = skills.len();
     format!(
         "<div style=\"font-family:system-ui;padding:10px 6px\">\
-         <div style=\"font-size:10px;letter-spacing:.18em;color:#9a9a9a;font-family:monospace\">— 综合估算 · 年包</div>\
+         <div style=\"font-size:10px;letter-spacing:.18em;color:#9a9a9a;font-family:monospace\">— 参考区间 · 年包(示意)</div>\
          <div style=\"font-size:34px;color:#c95f3d;font-weight:600;margin:8px 0 4px\">{low}–{high}<span style=\"font-size:14px;color:#888;font-weight:400\"> 万 / 年</span></div>\
-         <div style=\"font-size:13px;color:#555;line-height:1.6;margin-bottom:14px\">基于你 <b>{n}</b> 项职业资产的数据驱动估算(打样公式);补齐高杠杆技能可上探区间上沿。</div>\
+         <div style=\"font-size:13px;color:#555;line-height:1.6;margin-bottom:14px\">基于你 <b>{n}</b> 项职业资产的<b>示意性</b>参考(打样公式,非真实定价模型;仅供参考、勿作决策依据);补齐高杠杆技能可上探上沿。</div>\
          <div style=\"display:flex;gap:6px;flex-wrap:wrap\">{chips}</div></div>"
     )
 }
