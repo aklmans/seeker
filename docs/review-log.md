@@ -1397,3 +1397,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★§1 第一性原理实质达成(评审语)**:平台层(shell-keys/nav/widget-actions/copilot-chrome)对 apps 符号的裸读**全部经四契约(pageNew/pageActions/widgetActions/cActions)收口**,仅剩 settings.js 2 处;四契约模式贯穿始终、类型层收口。
 
 **cActions 通过(第48轮;§1 契约化 4/4 收官;删 13 桥 18→5;§1 债 5→2 处;契约面 +cActions)。四契约模式贯穿始终。**
+
+---
+
+### 批11B 末件 · settings 2 残留契约化(commit `b3400e7`)· ⏳ 待审 · ★0 业务桥终态 + §1 债清零
+**批11B 收官**(四契约后最后 2 处平台裸读 apps 符号)。做完:平台层对 apps 符号裸读**全部收口**、业务桥归零。
+- **① hydrateJobs → notifyDataImported 契约(约束② · 与 notifyDataCleared 对称)**:registry +notifyDataImported() 汇总型副作用(遍历**全部已注册应用**含禁用=存在性口径、调 onDataImported、try/catch)逐字镜像 notifyDataCleared;types.d.ts 双声明;manifest `onDataImported:()=>hydrateJobs()`(惰性、export async function 无 eager 读);settings.js 导入回调 `hydrateJobs()` → `SeekerShell.notifyDataImported()`。**零行为**(hydrateJobs 自带 `if(!jobsPersistOn())return`,web no-op、桌面经契约仍调)。
+- **② showEmptyState → jobseek data extend 自绑(复用既有 appSettings 契约,无新契约)**:「演示空状态」行原在**平台** settings.js:392 硬编码 showEmptyState → 迁入 jobseek data extend(dataResumeRowHTML 追加该行 + wireDataResumeRow 内 `#setDemoEmpty`→showEmptyState import 词法调用);平台删该行 HTML + 删 `typeof window.showEmptyState` 绑定。**★位置微移**:随 ownership 从平台 data 段中部迁到 jobseek extend 渲染位(与「我的简历」行同块相邻),行为逐字不变、仅 DOM 位置变。
+- **删 2 桥(5→3)**:showEmptyState(settings-jobseek import)/hydrateJobs(manifest import + 自身 rt-ready 监听),消费者全 [DEF]/[IMPORT]、平台零裸读。终态 3 桥 = shellReassemble/shellPushAiReadable/openAppManager(index.html SHELL/INIT **跨内联块**、结构性不可 import、**非业务桥**)。
+- **★★终态:0 业务桥 + §1 债清零**:apps 桥 **0**;§1 债 2→**0**——全树扫描证 platform/ 下**零 jobseek 业务符号裸读**(shell-keys/nav/widget-actions/copilot-chrome/settings 全经四契约 + 本末件收口)。**§1「platform 与 apps 物理分离、只靠契约通信」第一性原理实质达成。**
+- **验**:node×6 / **tsc 真退出码 0**;preview 净方法:契约面(notifyDataImported 是函数、2 桥 undefined);**★showEmptyState**(settings→数据管理 tab→`#setDemoEmpty` 存在且已绑 + 与「我的简历」同块;点击→jobseek 引导态显示);**★notifyDataImported 全链**(stub __TAURI__ 过 jobsPersistOn+stub db:notifyDataImported()→onDataImported→hydrateJobs→list(jobs)→JOBS 重载为导入哨兵;存在性口径证 assets 已注册无 onDataImported→不抛);复位 12 岗位/0 console/11 页/0 残留业务桥;**真机 asset:// boot 重编 5.78s、进程存活、零 panic**(桌面态 jobsPersistOn()=true ⇒ manifest→persistence import + hydrateJobs 为实际路径)。
+
+**★批11B 收官(四契约 pageNew/pageActions/widgetActions/cActions[第45-48轮全过] + settings 残留[本轮]):桥 35→3(业务桥 0)、§1 债清零、契约面 +6(pageNew/pageActions/widgetActions/cActions/notifyDataImported + PageAction/WidgetActionSpec 型)、四契约模式贯穿。** 3.y 账本清空 + §1 契约化全线收官。剩 10d checklist(AGENT_CMDS @ts-check header flip)+ i18n 文案归属债(agentGreet→manifest.greeting)+ 阶段5 + #6 签名公证。
