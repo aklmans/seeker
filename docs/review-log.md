@@ -1443,3 +1443,16 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★[建议](前瞻,已即修 `4944586`)**:greeting 返回值进 innerHTML;当前 jobseekGreeting 是开发者可信文案安全,但将来若应用把用户/AI 派生内容塞进 greeting 即成注入点 → **把「须应用自持可信文案、不得含用户/AI 派生内容」固化到 `AppManifest.greeting` 类型注释**(同 widgetActions 把红线搬进 types.d.ts 的做法)。**已即修**:types.d.ts greeting 两处注释加 §4-4 契约不变式(innerHTML 无转义、绝不得含用户/AI/RAG/JD 派生内容、需动态先 cEsc);tsc 0。
 
 **★3.y 收尾两刀通过(第50轮)· 3.y 全线收官(第1–50 轮全过审)。** 剩:10d② 真机 desktop-gated persist 写路径;#6 签名公证(用户 Apple 证书=手动);阶段5(已入 ROADMAP、暂不开发)。
+
+---
+
+## 方案评审 · AI-Native 转向(`proposal-agent-native.md`)· 新评审 Agent 首审 · [应改]×1 已采纳 → v2
+
+**定位级方案评审**(非代码刀;新评审 Agent 入职首审,见 docs/reviewer-onboarding.md)。评审代码坐实、抓出结构性 [应改]:
+- **★[应改](已采纳,v2 改 B 先行)· 契约 A 开 profile+D3 破口**:v1 §4 称红线映射「全部已有机制、不新造」——**对路线 A(前端工具桥)不成立**。profile 硬隔离/D3 三层闸的强制点是 Rust 结构性闸口(profile 不在 QUERYABLE、query_data.invoke 拿不到 profile、D3 invoke 内二次校验 capability.rs:456);但 A 的 `manifest.tools[].run(input)` 在**前端 JS 执行**、结果直接喂回模型、**绕过 invoke_raw/query_data**,而前端能读 `rt.profile.getAll()`(profile.js:18)→ 存在「app run() 读 profile 或 D3 未授权集 → 回灌模型」新链路。**路线 B(工具=Rust Capability)走同一 invoke_raw、CallCx 无 profile、纳入 QUERYABLE/Permission 纪律,无此破口。** → **裁定 B 先行/混合,A 缓**(A 届时须配前端工具红线:受限无 profile 上下文 + 结果经平台校验,且 ai_chat 扩展/往返原语/profile-D3 前端强制各自独立加倍审)。破坏性部分「收规格不收执行、复用 widgetActions」A/B 均成立。
+- **事实订正(v2 已改)**:①aiRun **6 处非 8 处**(match/job-actions/resume-modals/resumes×3);②`Kind` 实为 Tool/Context/Sink、**`Destructive` 是 `Permission` 不是 `Kind`**(capability.rs:26/59);③assets「零连接」限定为 **UI 面**(数据面 assets_prompts/notes 已在 QUERYABLE + aiReadable default-off、D3 通路已铺);④**前端分叉**:自由问答**已接真循环**(streamReply→ai.stream→ai_chat、onTool/onWidget/mcp_confirm 均已接、widget 三墙沙箱已渲染 = v1 低估、P0 近完成)vs **manifest.tools(A)是新造跨界协议**(ai_chat 无 frontend tools 参数、循环内非 MCP 一律 Rust invoke_raw、无「派发前端 run() 喂回」机制 = v1 低估成本)。
+- **P0 重排(v2 采纳)**:P0 = 窗口收敛 + show_widget 投画布(当前内联 thinkBubble.parentElement、需改投 data-agent='split' 画布)+ **用 B 落 1–2 真工具打样**;Q&A 真循环不单列、manifest.tools 移出 P0。
+- **§7 预裁(v2 记入)**:窗口收敛/删「编辑器」并列模式(appMode 默认 editor=页面工作台视图非富文本)= 可先行;A/B=B 先行;**assets 归属拆两半**(能力管理 UI 归 platform 壳管理面非 app[否则违 §1] + notes/prompts 数据迁平台能力 + assets 退役)= 建议 P1 起单出小方案。
+- **P1 绿地订正**:Connector(MCP mcp.rs 已建)先落;Skills/Project/Scheduled **后端零基础=全绿地**(Kind 仅 Tool/Context/Sink、Sink dead_code),勿套「已建」光环。
+
+**方案 v2 已修订提交(评审 [应改] 采纳);待用户拍板 §7 四点后 P0 起刀。** 评审留两个可展开子方案(A 前端工具红线强制 / 能力中心 platform-vs-app 归属)——均 P1 可延,不阻塞 P0 拍板。
