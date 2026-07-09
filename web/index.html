@@ -841,6 +841,15 @@ body[data-appmode="agent"][data-agent="centered"] #content{display:none;}
 body[data-appmode="agent"][data-agent="centered"] #agentCanvasToggle{display:none;}
 body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-w,420px);}  /* split:按 --agent-w 固定宽、不缩,右侧画布(#content min-width:0)吸收其余 → 拖分隔条即调画布宽 */
 @media (max-width:900px){ .agent-chat{flex-basis:340px;} }
+/* ★AI-Native P0:show_widget 画布 —— data-canvas=widget 时右画布显示 #agentCanvas(替代 #content 页面)、page 时让位给页面。centered 态两者皆隐(全屏对话)。 */
+.agent-canvas{display:none; flex:1; min-width:0; flex-direction:column; overflow:hidden;}
+body[data-appmode="agent"][data-agent="split"][data-canvas="widget"] .agent-canvas{display:flex;}
+body[data-canvas="widget"] #content{display:none;}
+body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
+.acv-head{display:flex; align-items:center; gap:12px; padding:14px 28px; border-bottom:0.5px solid var(--border);}
+.acv-t{font-family:var(--font-mono); font-size:11px; letter-spacing:0.2em; color:var(--ink-3);}
+.acv-head .btn-text{margin-left:auto;}
+.acv-body{flex:1; overflow:auto; padding:20px 28px;}
 
 .hide{display:none !important;}
 
@@ -918,6 +927,11 @@ body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-
       </aside>
       <div class="agent-resize" id="agentResize" title="拖动调节宽度"></div>
       <div class="content" id="content"></div>
+      <!-- ★AI-Native P0:show_widget 画布 —— Agent 渲染的沙箱组件投这里(右画布),不再内联进对话。data-canvas=widget 时显示、page 时让位给 #content 页面。 -->
+      <section class="agent-canvas" id="agentCanvas" aria-label="Agent 画布">
+        <div class="acv-head"><span class="acv-t">— 画布</span><button class="btn-text" id="acvBackToPage">回到页面 →</button></div>
+        <div class="acv-body" id="agentCanvasBody"></div>
+      </section>
     </div>
   </div>
 </div>

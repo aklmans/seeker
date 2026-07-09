@@ -38,9 +38,15 @@ export function streamReply(thinkBubble, text, who, scrollFn){
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){
-      /* show_widget(#2 · W1):平台渲染器产沙箱卡 → 插入对话流(thinkBubble 所在容器)。 */
+      /* ★AI-Native P0:show_widget 沙箱卡投**右画布**(#agentCanvasBody),不再内联进对话;并切 split 显示画布
+         (appMode 恒 agent、流式期 appReady 必真 → 直设 dataset,免 import agentShowCanvas 造 ai-engine⇄copilot-chrome 环)。兜底:无画布容器则仍内联(#2 · W1 沙箱不变)。 */
       if(!streaming) startStream();
-      try{ const card=window.SeekerWidgets.renderWidget(w); const host=thinkBubble.parentElement; if(host) host.appendChild(card); }
+      try{
+        const card=window.SeekerWidgets.renderWidget(w);
+        const canvasBody=document.getElementById('agentCanvasBody');
+        if(canvasBody){ canvasBody.appendChild(card); document.body.dataset.canvas='widget'; document.body.dataset.agent='split'; }
+        else { const host=thinkBubble.parentElement; if(host) host.appendChild(card); }
+      }
       catch(e){ console.error('[widget] 渲染失败', e); }
       if(scrollFn) scrollFn();
     },

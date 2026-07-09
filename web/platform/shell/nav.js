@@ -52,6 +52,7 @@ export function go(id){
   const pg=$('#page-'+id); pg.classList.add('active');
   pg.scrollIntoView?null:null;
   window.scrollTo(0,0);
+  document.body.dataset.canvas='page';   // ★AI-Native P0:导航 = 画布回到页面视图(让位给 #content,隐藏 show_widget 画布)
   if(typeof agentShowCanvas==='function') agentShowCanvas();
 }
 export function renderTopActions(id){

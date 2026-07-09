@@ -126,6 +126,7 @@ export function agentInit(){
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
   window.SeekerShell.renderAppChips();   // 命令 chips(双语,随语言重渲)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds 符号名)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
+  const bp=$('#acvBackToPage'); if(bp) bp.onclick=()=>{ document.body.dataset.canvas='page'; };   // ★AI-Native P0:画布「回到页面」→ 让位给 #content(show_widget 画布退)
   // ★AI-Native 收敛(Cut 1a):Agent 是唯一框,boot 直接进 agent + centered(删「编辑器」模式、不再读/写 jh-mode、不经 setAppMode)。
   // centered = 全屏对话;导航到页面/出 widget 时 go→agentShowCanvas 切 split(页面即右画布)。历史由 hydrateMessages 清招呼语后重渲。
   document.body.dataset.appmode='agent';
