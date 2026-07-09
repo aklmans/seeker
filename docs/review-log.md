@@ -1456,3 +1456,16 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **P1 绿地订正**:Connector(MCP mcp.rs 已建)先落;Skills/Project/Scheduled **后端零基础=全绿地**(Kind 仅 Tool/Context/Sink、Sink dead_code),勿套「已建」光环。
 
 **方案 v2 已修订提交(评审 [应改] 采纳);待用户拍板 §7 四点后 P0 起刀。** 评审留两个可展开子方案(A 前端工具红线强制 / 能力中心 platform-vs-app 归属)——均 P1 可延,不阻塞 P0 拍板。
+
+**用户拍板(2026-07-08)**:按预裁拍 P0 · B 先行 · 起刀窗口收敛;三细节(默认 centered 对话居中/画布按需 · Copilot 浮窗彻底删 ⌘K→Agent · 旧 cop 历史弃用统一到 agent)全选推荐。窗口收敛拆两刀(1a Agent 默认框 / 1b 删浮窗)。
+
+---
+
+## P0 · AI-Native 主线 · 窗口收敛
+
+### Cut 1a · Agent 成默认唯一框 + 删「编辑器」模式(commit `1b849b1`)· ⏳ 待审
+**P0 首刀**(reviewer §7.3 预裁低危)。让 Agent 窗口成默认唯一 AI 框、删并列的「编辑器/页面工作台」模式。
+- **改动(3 文件 +9/−6)**:index.html 删 `#modeSwitch` DOM(renderModeSwitch 因 `if(!ms)return` 自动 no-op);copilot-chrome `appMode` 默认 editor→**agent** + agentInit boot 直接进 **agent+centered**(设 data-appmode/data-agent + agentGreet、不再读写 jh-mode、不经 setAppMode);shell-keys ⌘K 直接聚焦 Agent 输入(去 copToggle 分支)+ 删 Mod+\「切换 Agent/编辑器」键。
+- **布局(CSS 两态本就存在、不新造)**:boot=agent+centered=全屏对话(#content 隐、cop-launch 隐);导航→go→agentShowCanvas→**split**(左对话+右 #content 页面即画布);⤜收起画布→agentCollapse→centered。
+- **收敛后残留(1b 清)**:Copilot 浮窗(copLaunch/copPanel)物理仍在但 agent 模式 `display:none` + 无 editor 入口 = 不可达死元素;setAppMode/renderModeSwitch/copInit/copSend/copOpen/copClose/copAppend 成死导出。
+- **验**:node×2/tsc 真 0;preview 净方法 LIVE **boot 态**(appmode=agent/agent=centered/agentChat flex/content none/copLaunch none/modeSwitch 不存在/**恰 1 条求职 Agent 招呼语**/11 页)+ **功能链**(导航 jobs→data-agent=split+content block+page-jobs active 12 行=页面成右画布+chat 仍左;⤜收起→centered;agentInput 发送→追加);0 console;**真机 asset:// boot 6.14s、进程存活、零 panic**。**下一刀 1b:删 Copilot 浮窗 DOM + 收敛发送/历史/死导出到 agent。**
