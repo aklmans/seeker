@@ -89,7 +89,7 @@ app/
 | 0 | 方案对齐 + 基线更新(本文件修订) | 完成 |
 | 1 | 壳与契约(`platform/shell/` + jobseek 适配器,**行为零回归**) | 第5轮过审 |
 | 2 | 应用管理页(开/关/排序)+ **D3 三层闸落能力层**(静态 `QUERYABLE` 硬底 ∩ 运行时可读集,只窄不宽)| 第6轮过审 |
-| 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit;剩余交织按下方第8轮裁定) | **搬迁收官**(择取+抽壳序1–5 全落,index.html −71%→1330;1–22 轮全过审;8 个 `SeekerShell.*` 契约;余 3.y 类型化[单列里程碑:**步1-2 + 步3 叶子刀 + 注册链批A(registry/keys 解锁,第26-33轮 + 真机金标准)+ 僵尸桥清扫全落;剩 = classic 业务层 module 化(profile链②+账本大头同源,≈13 文件,单列大块)**]+ 归属债[settingsPersistOn 系/壳杂项/文案/CACT_ALLOWED 契约化]) |
+| 3 | 求职逐页迁入 `apps/jobseek/`(每页一 commit;剩余交织按第8轮裁定) | **搬迁 + 3.y 全线收官**(择取+抽壳序1–5 全落,index.html −71%→1330;**第1–49 轮全过审**)。**3.y(第26–49轮)= 类型化 + 账本清空 + §1 契约化**:@ts-nocheck→全 module 全 import(classic 外链 0、账本 d.ts 0)· 桥 198→**3**(**业务桥 0**,仅 3 平台 HTML 跨内联块结构桥)· **§1 契约化四契约 pageNew/pageActions/widgetActions/cActions + notifyDataImported 收官** ⇒ 平台层(shell-keys/nav/widget-actions/copilot-chrome/settings)对 apps 符号裸读**全经契约收口 = 「platform/apps 物理分离、只靠契约通信」第一性原理实质达成**。**剩归属债(非阻塞)**:10d checklist(AGENT_CMDS @ts-check header flip)· agentGreet→manifest.greeting 文案债。 |
 | 4 | 第二应用「数据资产管理」(验证新增应用成本) | **完成,待外审第23轮**(前置账已清:clearAllDataFlow→`SeekerShell.collections()` 存在性枚举 + 第9契约 onDataCleared;assets 应用=manifest+2页,**成本盘点:壳/平台 JS 零改动,仅后端集合白名单3处追加≈10行=D3 静态硬底的固有代价**) |
 | 5 | 记账(AI 网关 token 用量埋点)/ 项目 / 健康(隐私分级示范) | |
 
