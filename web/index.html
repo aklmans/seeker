@@ -1071,6 +1071,7 @@ import { IC } from './platform/shell/icons.js';
 import { openModal } from './platform/shell/modal.js';
 import { buildNav, currentPage, go } from './platform/shell/nav.js';
 import { renderSettings } from './platform/shell/settings.js';
+import { renderCapabilityCenter } from './platform/shell/capability-center.js';
 import { GROUPS, PAGES } from './platform/shell/shell-state.js';
 import { toast } from './platform/shell/toast.js';
 /* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)· 3.y 注册链 module 化 ============ */
@@ -1078,7 +1079,11 @@ import { toast } from './platform/shell/toast.js';
    本 module setShell/PAGES.push(pages())/GROUPS 在此 deferred 执行(不再 parse-time),下方 INIT-module 再消费填好的 PAGES。 */
 // 壳自持:设置页(全局配置框架;求职专属设置段阶段3 起由 manifest 贡献)+ 对话历史集合。
 window.SeekerShell.setShell({
-  pages: [{ id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system',
+  pages: [
+    { id:'capability', label:'能力中心', en:'Capabilities', abbr:'能', group:'system',
+      icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+      render: () => renderCapabilityCenter() },
+    { id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system',
     icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>',
     render: () => renderSettings() }],
   groups: { system: { zh:'系统', en:'SYSTEM' } },
