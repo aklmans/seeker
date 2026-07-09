@@ -50,3 +50,15 @@ tauri build --bundles nsis
 ```
 > M0 已验证 debug 二进制可运行(`src-tauri/target/debug/app.exe`,~12.5MB,原生「Seeker」窗口 + WebView2)。
 > 全量安装包打包由 CI 承担,本地按需执行上面命令即可。
+
+### macOS(现开发机)
+
+```bash
+# 从 app/ 运行;出未签名 .app + .dmg(arm64)
+npx tauri build
+# 产物:src-tauri/target/release/bundle/macos/Seeker.app · .../dmg/Seeker_<ver>_aarch64.dmg
+```
+
+> **✅ 2026-07-08 验证**:`tauri build` 的**发布打包路径通**——release 编译 14.4s、`Seeker.app` 完整出包(`Contents/{Info.plist,MacOS,Resources}`、identifier `dev.zhapar.seeker`、`domain/prompts/prompts.json` 资源正确嵌入 `Contents/Resources/prompts/`)、codesign 态 `adhoc,linker-signed`(**未签名 = 无 Apple 证书时的预期态**)。
+> `.dmg` 的外观布局步(`bundle_dmg.sh` 用 `osascript` 设 Finder 窗)在**无 GUI 会话下不完成**——是 bundle_dmg.sh 的已知限制、非本项目配置问题(CI macOS runner / 交互式会话正常出 dmg)。
+> **⏳ 仍需用户手动(凭据门)**:codesign + notarize + staple 需 **Apple 开发者账号 → Developer ID 证书 → app 专用密码**,填入 CI secrets(`APPLE_*`,见上表)后由 tauri-action 自动完成;或本机 `export APPLE_SIGNING_IDENTITY=… APPLE_ID=… APPLE_PASSWORD=… APPLE_TEAM_ID=…` 后 `tauri build`。Claude 不碰凭据,此步须你亲自做。
