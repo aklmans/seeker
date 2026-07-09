@@ -1510,3 +1510,21 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议]2(防打样蔓延)** —— **路线 B 封顶一枚**:jobseek.rs 模块头 + proposal §4 明记「app-tool 契约落地前,不新增 `src-tauri/src/<app>.rs` 应用工具;第二枚起必须等契约」,免打样静默变事实模式、§1 债累积。
 - **[建议]3(估值产品诚实,轻)** —— 卡片「综合估算 · 年包」→「参考区间 · 年包(示意)」;正文加「示意性参考(打样公式,非真实定价模型;仅供参考、勿作决策依据)」,不把打样公式的具体区间呈现为权威定价(暖橙非红、不破反焦虑)。
 - **验**:cargo test 84/0(jobseek 单测新文案下仍绿,`<b>{n}</b>`/`万 / 年`/`&lt;img`/`Go · L4` 断言全在)· clippy 净 · fmt 净 · 真机 3.50s boot 零 panic。**待复核 Agent 验收闭环(尤其 #6 记债充分性)。**
+
+### ★ 第52轮复核验收 = 🏁 三条 [建议] 全闭环通过 · P0 arc 末件收官
+复核 Agent 独立再跑(代码变=必重跑):fmt exit 0 · test 84/0(点名 `market_value_is_data_driven_and_escapes` 新文案下仍绿)· clippy 无告警。**[建议]1 裁定「defer + 显式记债是对的落法」**——复核坐实 locale 前端态(grep `lang`/`locale` 于 ai.rs/config.rs/capability.rs **零命中**、`ai_chat` 签名无 locale、`CallCx` 只有 app)⇒ Rust 侧硬修 #6 需新 plumbing(=P1)或建 Rust tt 表(=深化「呈现进 Rust」债),**「当场修」是拿已追踪 i18n 债换更糟架构债 = 坏交易**;#6 以两点守住(本工具端到端未验/未进出货路径 + 债记在 proposal §4 决策durable处锚定 P1 出口)。[建议]2 封顶措辞够硬(三要素齐,未来 PR 加 `app2.rs` 会正面撞条);[建议]3 去权威化清晰、反焦虑不破。**注**:复核确认 jobseek 注册在 capability.rs:181 使原 197/233 后移一行→198/234(exec 与复核行号均对、读的是移位前后)。**★P0 arc(窗口收敛 1a+1b+2 + 真工具打样 + 三 [建议])全线闭环。**
+
+---
+
+## P1 主线 · 能力中心方案(`proposal-p1-capability-center.md`)· 第53轮方案评审 · 有条件通过 → v2
+
+**定位/方案级评审**(非代码刀;承 agent-native §7.4「P1 起单出小方案再拍」)。评审代码坐实、抓出你 #2「读路径暴露边界」软肋 = 真实结构缺口(类比但轻于 route-A profile 破口)。**裁定=有条件通过**,拍板前须补 1 红线 + 订正 1 成本表述。exec 已 v2 整合四点(commit 见下)。
+- **★[应改]A(载重,已采纳)· 读路径暴露边界未定义 → 会把 MCP 端点/本地命令泄给模型**:`mcp_list` 今天**零模型消费者**(仅 settings.js:174/197 前端 + desktop.js:193 绑定);其返回体含 **`url`/`command`/`args`**([mcp.rs:890-892](src-tauri/src/mcp.rs#L890),exec 已坐实)。P1-a 若读路径图省事复用 `mcp_list` 喂模型 → 用户 MCP 端点 + 本地 stdio 命令进(多为远程第三方)BYO 模型上下文 = 拓扑泄露、违本地优先 §4-1。**严重度低于 route-A**(auth/env 已状态-only `configured/empty` mcp.rs:886、非密钥值,exec 已坐实)但结构缺口须**编码读路径前**钉死。**修法(同 D3 静态硬底纪律)**:模型侧读路径只走**静态最小投影** `name+status+工具名/描述`(镜像 `tool_descriptors` 已见面 [ai.rs:432-435](src-tauri/src/ai.rs#L432),exec 坐实模型已免费持工具名)、**显式排除 url/command/args/auth/env/配置**;§7 增该红线。→ v2 并入 §2 新 bullet + §7 新红线 + §6 P1-a「读投影先行」。
+- **★[应改]B(已采纳)· 「零新后端」对读路径低报**:管理视图复用 mcp_list=零新后端✓;但模型侧「Agent 直接列举」隐含数据进模型上下文 → (a) 新增列举能力=新后端(矛盾)或 (b) 纯前端=模型没参与(与措辞矛盾)。**honest 拆法**:模型**已免费持工具清单**(tool_descriptors)→「我能做什么」零后端零暴露;**仅** connector 级状态(工具清单外)需新面(投影 or 前端,二选一)。→ v2 §3 成本三分,不一把「零新后端」盖。
+- **[建议]C(已采纳)· 列工具会显 `jobseek_market_value`(route-B 打样债外溢、非新破)**:列工具=读 cap_list/registry=**平台读平台无 import**(exec #1 判断坐实正确);但 registry 含 route-B 打样工具(capability.rs:181)→ 显为平台能力(第52轮已记债)。→ v2 §3 注:工具枚举永经 registry/契约、**app-tool 契约迁移时「列工具」须同步更新**(否则列不全或被迫 import app)。
+- **[建议]D(已采纳)· assets 退役卡 Skills 绿地(拆分隐藏耦合)**:notes 可迁(后端已建),prompts→Skills 迁不走(Skills 零后端)⇒ assets 无法一次性退役。→ v2 §5 注排序耦合:完整退役(P2)须等 Skills 后端,P2 勿假设一次性退役。
+- **评审确认扎实(非发现)**:#4 绿地诚实=HONEST(Kind 仅 Tool/Context/Sink、Sink dead_code、Scheduled/Skills/Project grep 空、未套已建光环)· #1 归属正确(平台壳、cap_list 是前端命令非模型工具、5 caps 无列举 connector 者)· 写路径红线复用不新造(auth/env 状态-only、密钥进钥匙串、MCP Untrusted 专路 ai.rs:548)· profile 不受影响。
+- **§8 四待拍板 · 评审裁决建议**:①P1=a+b+c **认同**(附条件 P1-a 先落 [应改]A、不纳 Skills 雏形);②Connector 先落 **认同**(落码序按后端存否、列表序是欲求优先级);③读/写界 **认同是对的平衡**(以 [应改]A 有界投影为前提、写侧不放宽);④已外审。
+- **exec 独立坐实评审两载重事实(不采信送审词)**:`mcp_list` 返回体确含 url/command/args([mcp.rs:890-892](src-tauri/src/mcp.rs#L890));`tool_descriptors` 确已把工具名/server/描述/schema 喂模型([ai.rs:432-435](src-tauri/src/ai.rs#L432))但**不含** url/command/args ⇒ [应改]A 的投影边界正是「模型已见面」、[应改]B 的「免费持工具清单」成立。**报告两 [应改] 均属实,已 v2 全整合。**
+
+**★方案 v2 已提交(评审 [应改]A/B + [建议]C/D 全采纳);待用户拍板 §8 三点 → 起 P1-a(读投影先行、复核比照 D3)。**
