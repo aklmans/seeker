@@ -106,10 +106,18 @@ export async function renderMemory(box) {
         await refresh(); // 重渲出全新(enabled)按钮
         if (ok) {
           const gen = ++memGen; // 只有真销毁才推进世代
+          // ★上报撤销结果(toast.js 新契约):返回 false ⇒ toast.js 不报「已撤销」;失败因由由本回调自报。
+          //   ⚠ 陷阱:`return expiredUndo()` 的值是 undefined(toast 的返回值)⇒ 会被读成**成功**。必须显式 return false。
           toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => {
-            if (gen !== memGen) return expiredUndo(); // 过期:诚实拒绝,绝不静默还原错记录
-            try { await rt.memory.undo(); } catch (e) { toast(errText(e)); }
+            if (gen !== memGen) { expiredUndo(); return false; } // 过期:诚实拒绝,绝不静默还原错记录
+            let n;
+            try { n = await rt.memory.undo(); } catch (e) { toast(errText(e)); return false; }
             await refresh();
+            if (typeof n === 'number' && n === 0) { // 后端真还原 0 条(如单槽被覆盖)⇒ 绝不可报「已撤销」
+              toast(tt('没有可撤销的内容', 'Nothing to undo'));
+              return false;
+            }
+            return undefined; // n>0 或 web 降级(undefined)→ 成功
           });
           memUndoToast = lastToastEl();
         }

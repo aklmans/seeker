@@ -10,11 +10,35 @@ export function toast(msg){
   $('#toasts').appendChild(t);
   setTimeout(()=>{t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);},2800);
 }
+/** 可撤销 toast。**★撤销结果契约(评审第58轮裁定 · keyed-trash 的硬前置)**:
+ *  旧实现 `restoreFn(); toast('已撤销');` —— **不 await、无条件报成功**。现存消费者的 restoreFn 都是
+ *  同步闭包快照(不会失败)故当下无活 bug;但 keyed-trash 会给 `memory_undo(token)` 加 TTL ⇒ 撤销会
+ *  **合法地失败**(过期),届时「已撤销」即为**谎报**,直接违反 CLAUDE.md §4-3 ★判据(可撤销必须是真的)。
+ *
+ *  **新契约(opt-in · 现存消费者逐字零回归)** —— 由 `restoreFn` 的解析值决定提示:
+ *   · `undefined`(块体箭头 `()=>{…}` 的返回值,即现存全部消费者)→ **成功** → 报「已撤销」;
+ *   · 显式 `false` / `0`(如「还原 0 条」「撤销已过期」)→ **失败** → **不报成功**,且此处**静默** ——
+ *     **失败因由由 `restoreFn` 自报**(它持有 `tt` 与上下文,能说清是过期还是出错);
+ *   · 同步抛错 / Promise reject → 报 `errText(e)`,**不报成功**。
+ *
+ *  ★为何不在此处写「撤销失败」文案:`toast.js` 是 i18n **之下**的基础原语 —— `i18n → shell-state → toast`
+ *  已成链,引入 `tt` 会**成环**;而新增 CN-only 串又违反红线 #6。故把「说明失败原因」的责任上移给调用方。
+ *
+ *  ⚠ `lastUndo=null` **必须在 await 之前同步执行**,否则 restoreFn 挂起期间 Mod+Z 可二次触发同一撤销。 */
 export function toastUndo(msg, restoreFn){
   const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
   $('#toasts').appendChild(t);
   let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
-  const doUndo=()=>{close();restoreFn();toast('已撤销');if(lastUndo===doUndo)lastUndo=null;};
+  const succeeded=(v)=>v!==false&&v!==0;  /* undefined / 其它 → 成功;显式 false 或 0 → 失败 */
+  const doUndo=()=>{
+    close();
+    if(lastUndo===doUndo)lastUndo=null;   /* ★同步清除,先于任何 await:防 restoreFn 挂起期间 Mod+Z 二次触发 */
+    let r; try{ r=restoreFn(); }catch(e){ toast(errText(e)); return; }   /* 同步抛错 → 报错、不报成功 */
+    Promise.resolve(r).then(
+      (v)=>{ if(succeeded(v)) toast('已撤销'); },                         /* 失败时静默:因由由 restoreFn 自报 */
+      (e)=>{ toast(errText(e)); }                                        /* 异步 reject → 报错、不报成功 */
+    );
+  };
   lastUndo=doUndo;                       /* 登记为「最近可撤销」,Mod+Z 触发 */
   $('.toast-undo',t).onclick=doUndo;
   setTimeout(()=>{close();if(lastUndo===doUndo)lastUndo=null;},6500);
