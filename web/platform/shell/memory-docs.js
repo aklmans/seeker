@@ -41,6 +41,10 @@
  *       返回 `false`(无 token = 没有可还原之物)⇒ **按钮根本不出现**。此前 guardrail 无条件 `showUndo`,
  *       `onUndo` 只能靠 `if (!token) return;` 早返 ⇒ 用户点下去**一声不吭** —— 而整条撤销 arc 的主题
  *       正是**失败必须出声**。那行早返如今**结构上不可达**,并已改为**响亮**(`noTokenUnreachable`)。
+ *     · ★★**大快照落盘**(评审第62轮裁决6 → 第64轮次序①):超 RAM 环上限的 clear **不再是「不可撤销」** ——
+ *       后端把快照**流式写进一个独立 SQLite 文件**再销毁,撤销时 ATTACH 还原。预检 `reason='spill'`
+ *       ⇒ `undoable=true`,但对话框**如实告知会花几秒**(既不许承诺做不到的事,也不该瞒着代价)。
+ *       只有连落盘上限(2 GiB)也超了,才是真的 `too_large`。
  *     · ★★**决策点不得承诺做不到的撤销 —— 现已在全部四条销毁路径上成立**(第64轮 [应改] 收口):
  *       guardrail 在**建对话框时**就据 `opts.onUndo` 是否存在印出「执行后可撤销。」⇒ 三条 guardrail 路径
  *       (记忆清空 / 文档删 / 文档清空)**各自先问预检**,不可撤销就**连 `onUndo` 都不传** ⇒ 那行提示不出现;
@@ -146,6 +150,13 @@ const whyNotUndoable = (reason) => {
   if (reason === 'too_large') return tt('内容过大,无法生成撤销快照。', 'Too large to snapshot.');
   return tt('无法确认能否撤销。', 'Unable to confirm whether this can be undone.');
 };
+
+/** `reason==='spill'`:**仍然可撤销**,但快照会先落盘 ⇒ 销毁要花几秒。
+ *  事前说清楚 —— 决策点既不许承诺做不到的事,也不该瞒着代价(用户会以为界面卡死)。
+ *  @param {string} reason 预检给出的理由 */
+const spillNote = (reason) => (reason === 'spill'
+  ? tt('内容较大,会先把撤销快照写到磁盘,可能需要几秒。', ' Large — the undo snapshot is written to disk first; this may take a few seconds.')
+  : '');
 
 /**
  * 由销毁命令的返回 `{ deleted, undoToken }` 决定**这次销毁能否提供撤销**,
@@ -290,7 +301,7 @@ export async function renderMemory(box) {
     await G.confirmDestructive({
       title: tt('清除全部长期记忆?', 'Clear all long-term memory?'),
       detail: undoable
-        ? tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).')
+        ? tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).') + spillNote(pc.reason)
         : tt('将删除 AI 记住的全部内容。', 'Deletes everything AI remembers. ') + whyNotUndoable(pc.reason) + tt('清除后无法撤销。', ' This CANNOT be undone.'),
       confirmLabel: tt('清除', 'Clear'),
       undoText: tt('已清除长期记忆', 'Memory cleared'),
@@ -385,7 +396,7 @@ export async function renderDocs(box) {
       G.confirmDestructive({
         title: tt('删除文档?', 'Delete doc?'),
         detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : '')
-          + (undoable ? '' : ' · ' + whyNotUndoable(pc.reason) + tt('删除后无法撤销。', ' This CANNOT be undone.')),
+          + (undoable ? spillNote(pc.reason) : ' · ' + whyNotUndoable(pc.reason) + tt('删除后无法撤销。', ' This CANNOT be undone.')),
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
         onConfirm: async () => {
@@ -467,7 +478,7 @@ export async function renderDocs(box) {
     G.confirmDestructive({
       title: tt('清空全部文档?', 'Clear all docs?'),
       detail: undoable
-        ? tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).')
+        ? tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).') + spillNote(pc.reason)
         : tt('将删除知识库里的全部文档。', 'Removes every doc. ') + whyNotUndoable(pc.reason) + tt('清空后无法撤销。', ' This CANNOT be undone.'),
       confirmLabel: tt('清空', 'Clear'),
       undoText: tt('已清空知识库', 'Knowledge cleared'),

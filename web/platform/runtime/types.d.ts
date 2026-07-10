@@ -222,8 +222,13 @@ export interface MemoryEntry {
  */
 export interface UndoPrecheck {
   undoable: boolean;
-  /** `'ok'` | `'corrupt'`(有不可映射行) | `'too_large'`(超撤销环字节上限) */
-  reason: 'ok' | 'corrupt' | 'too_large' | string;
+  /**
+   * `'ok'` —— 小快照,留 RAM,瞬时完成;
+   * `'spill'` —— **大快照:先落盘再销毁**。仍然可撤销,但销毁会花几秒(几百 MiB 的流式拷贝);
+   * `'corrupt'` —— 有不可映射行,快照不可能完整;
+   * `'too_large'` —— 连落盘上限也超了,真的无法撤销。
+   */
+  reason: 'ok' | 'spill' | 'corrupt' | 'too_large' | string;
 }
 
 /**

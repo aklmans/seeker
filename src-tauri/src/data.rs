@@ -51,6 +51,10 @@ pub fn open(app: &AppHandle) -> Result<Connection, String> {
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
     let backups = dir.join("backups");
     migrate(&mut conn, &backups)?;
+    // ★开机清扫落盘撤销快照:撤销环是**进程内**状态,启动时必空 ⇒ `undo-spill/` 里的任何文件
+    //   都是上次崩溃 / 强杀留下的孤儿(正常路径下,文件在「被撤销」或「被淘汰」时即删)。
+    //   若不扫,一次崩溃就永久占着一份可能上 GiB 的快照。best-effort,不阻断启动。
+    sweep_undo_spill(&conn);
     // 周期性自动备份(开应用时若到期):best-effort,失败仅告警不阻断启动。
     if let Err(e) = auto_backup_if_due(&conn, &backups) {
         log::warn!("自动备份失败(不阻断): {e}");
@@ -628,7 +632,8 @@ fn doc_corrupt_count(conn: &Connection, doc_id: Option<&str>) -> Result<i64, Str
 #[derive(serde::Serialize, Debug, PartialEq)]
 pub struct UndoPrecheck {
     pub undoable: bool,
-    /// `"ok"` | `"corrupt"`(有不可映射行,快照不可能完整)| `"too_large"`(超环字节上限)
+    /// `"ok"`(小快照,留 RAM)| `"spill"`(大快照,**先落盘再销毁** —— 仍可撤销,但会花几秒)
+    /// | `"corrupt"`(有不可映射行,快照不可能完整)| `"too_large"`(连落盘上限也超了)
     pub reason: &'static str,
 }
 impl UndoPrecheck {
@@ -646,31 +651,61 @@ impl UndoPrecheck {
     }
 }
 
-/// 记忆整表清空的预检。**`corrupt` 优先于 `too_large`**:有损坏行时快照根本不可能完整,
-/// 字节是否超限无关紧要,且「已损坏」对用户更可操作。
-fn memory_clear_precheck(conn: &Connection, cap: usize) -> Result<UndoPrecheck, String> {
-    if mem_corrupt_count(conn)? > 0 {
-        return Ok(UndoPrecheck::no("corrupt"));
-    }
-    if memory_clear_undo_bytes(conn)? > cap {
-        return Ok(UndoPrecheck::no("too_large"));
-    }
-    Ok(UndoPrecheck::ok())
+/// 一次销毁的**撤销计划** —— 预检命令与执行体**共用同一个函数**得出它。
+/// 这一条把「预检说可撤销 ⇒ 执行必接受」从测试保障升级为**结构保障**(评审第64轮点名的那个性质)。
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum UndoPlan {
+    /// 小快照:留 RAM
+    Ram,
+    /// 大快照:落盘(仍可撤销 —— 评审第62轮裁决6 的「正解」)
+    Spill,
+    /// 不可撤销,并说明**为什么**(`corrupt` / `too_large`)
+    No(&'static str),
 }
 
-/// 文档销毁的预检(`doc_id = None` → 整库清空;`Some` → 单篇)。判据同 memory 侧。
-fn doc_precheck(
-    conn: &Connection,
-    cap: usize,
-    doc_id: Option<&str>,
-) -> Result<UndoPrecheck, String> {
-    if doc_corrupt_count(conn, doc_id)? > 0 {
-        return Ok(UndoPrecheck::no("corrupt"));
+impl UndoPlan {
+    fn precheck(self) -> UndoPrecheck {
+        match self {
+            UndoPlan::Ram => UndoPrecheck::ok(),
+            UndoPlan::Spill => UndoPrecheck {
+                undoable: true,
+                reason: "spill",
+            },
+            UndoPlan::No(r) => UndoPrecheck::no(r),
+        }
     }
-    if doc_undo_bytes(conn, doc_id)? > cap {
-        return Ok(UndoPrecheck::no("too_large"));
+}
+
+/// 由「有无损坏行 + 载荷字节 + 落盘是否可用」定计划。
+///
+/// ★次序即优先级:**`corrupt` 压倒一切**(有坏行时快照根本不可能完整,字节多少无关);
+/// 其次 RAM 上限(小快照零 IO);再次 **落盘上限**(超过它才是真的「内容过大,无法撤销」);
+/// 落盘不可用(内存库)时,原 RAM 超限的那一档退回 `too_large`,**如实告知**。
+fn plan_for(conn: &Connection, ram_cap: usize, corrupt: i64, payload_bytes: usize) -> UndoPlan {
+    if corrupt > 0 {
+        return UndoPlan::No("corrupt");
     }
-    Ok(UndoPrecheck::ok())
+    if payload_bytes <= ram_cap {
+        return UndoPlan::Ram;
+    }
+    if payload_bytes > UNDO_SPILL_MAX_BYTES || spill_dir(conn).is_none() {
+        return UndoPlan::No("too_large");
+    }
+    UndoPlan::Spill
+}
+
+/// 记忆整表清空的计划。
+fn memory_clear_plan(conn: &Connection, ram_cap: usize) -> Result<UndoPlan, String> {
+    let corrupt = mem_corrupt_count(conn)?;
+    let bytes = memory_clear_undo_bytes(conn)?;
+    Ok(plan_for(conn, ram_cap, corrupt, bytes))
+}
+
+/// 文档销毁的计划(`doc_id = None` → 整库清空;`Some` → 单篇)。
+fn doc_plan(conn: &Connection, ram_cap: usize, doc_id: Option<&str>) -> Result<UndoPlan, String> {
+    let corrupt = doc_corrupt_count(conn, doc_id)?;
+    let bytes = doc_undo_bytes(conn, doc_id)?;
+    Ok(plan_for(conn, ram_cap, corrupt, bytes))
 }
 
 // ── 长期记忆的用户掌控(#4 · 查看/清除/撤销入口)──────────────────────────
@@ -691,6 +726,150 @@ type MemRow = (String, String, Vec<f32>, i64); // (id, fact, embedding, created_
 /// 环上限(默认值;`with_bounds` 供单测注入小上限,免得为测字节判据去分配 64 MiB)。
 const UNDO_RING_MAX_ENTRIES: usize = 8;
 const UNDO_RING_MAX_BYTES: usize = 64 * 1024 * 1024;
+/// **落盘**快照的字节上限(超过它才是真的「内容过大,无法撤销」)。
+const UNDO_SPILL_MAX_BYTES: usize = 2 * 1024 * 1024 * 1024;
+/// 环内**最多保留一个**落盘快照(**策略,非安全**):落盘快照按定义 > 64 MiB,留多份磁盘代价高、
+/// 收益低;且产品本就只暴露「撤销最近一次」。新落盘快照入环时淘汰旧的那个(**并删掉它的文件**)。
+const UNDO_SPILL_MAX_ENTRIES: usize = 1;
+
+/// 落盘快照文件名的序号(与 `UNDO_TOKEN_SEQ` 分开:token 是撤销凭据,文件名只是唯一性)。
+static UNDO_SPILL_SEQ: AtomicU64 = AtomicU64::new(1);
+
+/// 允许落盘/还原的表白名单 —— 表名会被格式化进 SQL(它们是**本模块硬编码的常量**,不来自任何输入),
+/// 但仍在 `restore_from_spill` 入口再核一次:**格式化进 SQL 的东西必须来自白名单**,不靠调用点自律。
+const SPILL_TABLES: [(&str, &str); 2] = [
+    (
+        "memories",
+        "CREATE TABLE memories (id TEXT PRIMARY KEY, fact TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0)",
+    ),
+    (
+        "doc_chunks",
+        "CREATE TABLE doc_chunks (id TEXT PRIMARY KEY, doc_id TEXT NOT NULL, doc_name TEXT NOT NULL, text TEXT NOT NULL, embedding BLOB, created_at INTEGER DEFAULT 0)",
+    ),
+];
+
+fn spill_ddl(table: &str) -> Option<&'static str> {
+    SPILL_TABLES
+        .iter()
+        .find(|(t, _)| *t == table)
+        .map(|(_, d)| *d)
+}
+
+/// 落盘快照的目录 = **主库同目录**下的 `undo-spill/`。
+///
+/// ★为什么不用系统临时目录:快照含长期记忆(用户主动写入的 PII)与文档全文 + 向量。
+/// 它必须与主库同等看待 —— 留在应用数据目录,随主库一起被系统的文件权限保护。
+/// 内存库(`conn.path()` 为空,单测/降级)→ `None` ⇒ **落盘不可用** ⇒ 预检如实报 `too_large`。
+fn spill_dir(conn: &Connection) -> Option<PathBuf> {
+    let p = conn.path()?;
+    if p.is_empty() {
+        return None; // :memory:
+    }
+    Path::new(p).parent().map(|d| d.join("undo-spill"))
+}
+
+/// **开机清扫**:环是进程内状态,启动时必空 ⇒ `undo-spill/` 里剩下的任何文件都是上次崩溃/强杀的孤儿。
+/// (正常路径下文件在「被撤销」或「被淘汰」时即删。)
+fn sweep_undo_spill(conn: &Connection) {
+    let Some(dir) = spill_dir(conn) else { return };
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        if let Err(err) = std::fs::remove_file(e.path()) {
+            log::warn!("清扫孤儿撤销快照失败 {:?}: {err}", e.path());
+        }
+    }
+}
+
+/// **流式**把待销毁的行复制进一个独立的 SQLite 文件 —— **绝不先物化进 RAM**。
+///
+/// ★这是「大快照 spill 到磁盘」的要害(评审第62轮裁决6 + 第64轮次序①):
+/// `INSERT INTO spill.t SELECT * FROM main.t [WHERE …]` 由 SQLite 逐行搬运,常数内存;
+/// 且 BLOB 按存储类原样复制 ⇒ embedding 位级保真(实测往返 `[0.1, 0.2]` 逐位相等)。
+/// 若改成「读进 Vec 再序列化」,2 GiB 的知识库仍会先分配 2 GiB —— 那正是第62轮问题4 所禁。
+///
+/// 失败(磁盘满 / 目录不可写 / ATTACH 失败)⇒ 返回 `Err`,调用方 **fail-closed:不销毁**。
+/// 因为决策点已经承诺「可撤销」,承诺就必须兑现,兑现不了就别销毁。
+fn spill_rows(
+    conn: &Connection,
+    table: &'static str,
+    doc_id: Option<&str>,
+) -> Result<(PathBuf, usize), String> {
+    let ddl = spill_ddl(table).ok_or_else(|| format!("未知的落盘表: {table}"))?;
+    let dir = spill_dir(conn).ok_or_else(|| "内存库不支持落盘快照".to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let seq = UNDO_SPILL_SEQ.fetch_add(1, Ordering::Relaxed);
+    let path = dir.join(format!("undo-{table}-{seq}.db"));
+
+    let run = |conn: &Connection| -> Result<usize, String> {
+        conn.execute(
+            "ATTACH DATABASE ?1 AS undo_spill",
+            params![path.to_string_lossy()],
+        )
+        .map_err(|e| e.to_string())?;
+        // 从这里起必须 DETACH —— 用内层闭包 + 显式收尾,别让 `?` 把 ATTACH 泄漏出去。
+        let inner = || -> Result<usize, String> {
+            conn.execute_batch(&ddl.replacen("CREATE TABLE ", "CREATE TABLE undo_spill.", 1))
+                .map_err(|e| e.to_string())?;
+            let n = match doc_id {
+                Some(did) => conn.execute(
+                    &format!("INSERT INTO undo_spill.{table} SELECT * FROM main.{table} WHERE doc_id = ?1"),
+                    params![did],
+                ),
+                None => conn.execute(
+                    &format!("INSERT INTO undo_spill.{table} SELECT * FROM main.{table}"),
+                    [],
+                ),
+            }
+            .map_err(|e| e.to_string())?;
+            Ok(n)
+        };
+        let r = inner();
+        let _ = conn.execute("DETACH DATABASE undo_spill", []); // 尽力收尾
+        r
+    };
+
+    match run(conn) {
+        Ok(0) => {
+            let _ = std::fs::remove_file(&path);
+            Err("落盘快照为空(不应发生:预检已确认非空)".into()) // 不变式①:空快照永不入环
+        }
+        Ok(n) => Ok((path, n)),
+        Err(e) => {
+            let _ = std::fs::remove_file(&path); // 半成品不得留下
+            Err(e)
+        }
+    }
+}
+
+/// 从落盘快照还原(**流式**,同样不物化);成功后删除快照文件。返回还原条数。
+fn restore_from_spill(conn: &Connection, path: &Path, table: &str) -> Result<usize, String> {
+    if spill_ddl(table).is_none() {
+        return Err(format!("未知的落盘表: {table}")); // 白名单:格式化进 SQL 的表名必须来自它
+    }
+    if !path.exists() {
+        return Err("撤销快照文件已丢失".into()); // 响亮失败,绝不静默报成功
+    }
+    conn.execute(
+        "ATTACH DATABASE ?1 AS undo_spill",
+        params![path.to_string_lossy()],
+    )
+    .map_err(|e| e.to_string())?;
+    let inner = || -> Result<usize, String> {
+        conn.execute(
+            &format!("INSERT OR REPLACE INTO main.{table} SELECT * FROM undo_spill.{table}"),
+            [],
+        )
+        .map_err(|e| e.to_string())
+    };
+    let r = inner();
+    let _ = conn.execute("DETACH DATABASE undo_spill", []);
+    let n = r?;
+    // 还原成功才删文件:失败则留着,由开机清扫兜底(宁可留个孤儿,也别丢掉唯一的副本)。
+    let _ = std::fs::remove_file(path);
+    Ok(n)
+}
 
 /// 一行快照**堆上**占用的字节(String / Vec 的实际 `capacity`,含 embedding 向量)。
 ///
@@ -708,9 +887,34 @@ impl UndoBytes for MemRow {
     }
 }
 
+/// 环里一次销毁的快照:**要么在 RAM,要么在磁盘**。
+///
+/// ★评审第62轮裁决6:「大 clear 想要可撤销的正解是**落盘**(仿 `clearAllDataFlow` 的清前备份),
+/// 不是撑大 RAM 环 —— 单条超限也入环会让上限不再是上限。」
+enum UndoPayload<T> {
+    /// 小快照:留在 RAM(零 IO,现状)
+    Rows(Vec<T>),
+    /// 大快照:落在一个独立 SQLite 文件里(`table` 取自 `SPILL_TABLES` 白名单)
+    Spilled { path: PathBuf, table: &'static str },
+}
+
+impl<T> UndoPayload<T> {
+    fn is_spilled(&self) -> bool {
+        matches!(self, UndoPayload::Spilled { .. })
+    }
+    /// 条目被**淘汰**(而非被撤销)时调用:落盘快照必须连文件一起消失,否则磁盘无界。
+    fn discard(self) {
+        if let UndoPayload::Spilled { path, .. } = self {
+            if let Err(e) = std::fs::remove_file(&path) {
+                log::warn!("淘汰撤销快照时删文件失败 {path:?}: {e}");
+            }
+        }
+    }
+}
+
 struct UndoEntry<T> {
     token: String,
-    rows: Vec<T>,
+    payload: UndoPayload<T>,
     bytes: usize,
 }
 
@@ -740,9 +944,12 @@ static UNDO_TOKEN_SEQ: AtomicU64 = AtomicU64::new(1);
 ///     ⇒ 一个环的 token 永不命中另一个环的条目(见 `UNDO_TOKEN_SEQ` 注释)。
 pub struct UndoRing<T> {
     entries: VecDeque<UndoEntry<T>>,
+    /// **RAM 账本**(落盘条目不计入:它们不占 RAM)
     bytes: usize,
     max_entries: usize,
     max_bytes: usize,
+    /// 环内允许并存的**落盘**快照数(策略,非安全)
+    max_spill_entries: usize,
 }
 
 impl<T> Default for UndoRing<T> {
@@ -752,6 +959,7 @@ impl<T> Default for UndoRing<T> {
             bytes: 0,
             max_entries: UNDO_RING_MAX_ENTRIES,
             max_bytes: UNDO_RING_MAX_BYTES,
+            max_spill_entries: UNDO_SPILL_MAX_ENTRIES,
         }
     }
 }
@@ -766,6 +974,15 @@ impl<T: UndoBytes> UndoRing<T> {
         }
     }
 
+    /// 单测用:取出 RAM 快照(落盘条目在这里 panic —— 测试要显式区分两种载荷)
+    #[cfg(test)]
+    fn take_rows(&mut self, token: &str) -> Option<Vec<T>> {
+        match self.take(token)? {
+            UndoPayload::Rows(v) => Some(v),
+            UndoPayload::Spilled { .. } => panic!("该条目是落盘快照,不是 RAM 快照"),
+        }
+    }
+
     /// 入环并发 token。空快照 / 超字节上限 → `None`(不入环、不淘汰、不发 token)。
     fn stash(&mut self, rows: Vec<T>) -> Option<String> {
         if rows.is_empty() {
@@ -773,29 +990,76 @@ impl<T: UndoBytes> UndoRing<T> {
         }
         // ★真实口径(评审第62轮):堆载荷(capacity)+ Vec 槽位 + 环条目本体 + token 串的堆。
         //   不重复计数:元组本体只在「Vec 槽位」里算一次。
-        // token 取自**进程级**序号(不变式④):跨环唯一 ⇒ 错配的 token 只会落空,绝不命中别的环。
-        let token = format!("u{}", UNDO_TOKEN_SEQ.fetch_add(1, Ordering::Relaxed));
         let bytes = rows.iter().map(|r| r.heap_bytes()).sum::<usize>()
             + rows.capacity() * std::mem::size_of::<T>()
             + std::mem::size_of::<UndoEntry<T>>()
-            + token.capacity();
+            + std::mem::size_of::<String>();
         if bytes > self.max_bytes {
-            return None; // 不变式③:一次 clear 撑不爆环,也不谎报可撤销
+            return None; // 不变式③:一次 clear 撑不爆环(此路今由 spill 接管,见 stash_spilled)
         }
+        Some(self.push(UndoPayload::Rows(rows), bytes))
+    }
+
+    /// **落盘**快照入环:RAM 账本只计一个路径串,故永不触发字节淘汰。
+    /// 文件的生命周期由环负责 —— 被淘汰即删(`UndoPayload::discard`),被撤销即删(`restore_from_spill`)。
+    fn stash_spilled(&mut self, path: PathBuf, table: &'static str) -> String {
+        let bytes = std::mem::size_of::<UndoEntry<T>>() + path.as_os_str().len();
+        self.push(UndoPayload::Spilled { path, table }, bytes)
+    }
+
+    fn push(&mut self, payload: UndoPayload<T>, bytes: usize) -> String {
+        // token 取自**进程级**序号(不变式④):跨环唯一 ⇒ 错配的 token 只会落空,绝不命中别的环。
+        let token = format!("u{}", UNDO_TOKEN_SEQ.fetch_add(1, Ordering::Relaxed));
+        let spilled = payload.is_spilled();
         self.entries.push_back(UndoEntry {
             token: token.clone(),
-            rows,
+            payload,
             bytes,
         });
         self.bytes += bytes;
-        // 双判据淘汰,先到者触发。新入那条的 bytes ≤ max_bytes,故循环必终止且至少留下它。
-        while self.entries.len() > self.max_entries || self.bytes > self.max_bytes {
+        // ★★不变式②的结构保证:**push 永不淘汰它自己刚放进去的那一条**。
+        //   否则我们会为一个已不在环里的条目发出 token —— 那正是「谎报可撤销」。
+        //   RAM 路径靠 `stash` 的 `bytes > max_bytes → None` 事先挡住;**落盘路径不过字节闸**,
+        //   故必须在这里兜住。**这条是被单测抓出来的**:小上限下,一个落盘条目的路径串本身
+        //   就超过了 64 B 的测试上限,当场被自己的淘汰循环吃掉、却仍发出了 token。
+        //
+        // 落盘条目的淘汰(策略:环内最多一个)—— 从旧到新剔除多余的,**删掉它们的文件**。
+        if spilled {
+            while self.spilled_len() > self.max_spill_entries.max(1) {
+                let Some(i) = self.entries.iter().position(|e| e.payload.is_spilled()) else {
+                    break;
+                };
+                if i == self.entries.len() - 1 {
+                    break; // 只剩刚入环那一条,绝不动它
+                }
+                let old = self
+                    .entries
+                    .remove(i)
+                    .expect("position 刚返回的下标必然存在");
+                self.bytes -= old.bytes;
+                old.payload.discard();
+            }
+        }
+        // 双判据淘汰,先到者触发;`len() > 1` 保证至少留下刚入环的那一条。
+        while self.entries.len() > 1
+            && (self.entries.len() > self.max_entries || self.bytes > self.max_bytes)
+        {
             match self.entries.pop_front() {
-                Some(old) => self.bytes -= old.bytes,
+                Some(old) => {
+                    self.bytes -= old.bytes;
+                    old.payload.discard(); // 淘汰落盘条目必须连文件一起消失,否则磁盘无界
+                }
                 None => break,
             }
         }
-        Some(token)
+        token
+    }
+
+    fn spilled_len(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| e.payload.is_spilled())
+            .count()
     }
 
     /// 取走**指定 token 的那一次销毁**并移出环。找不到(已淘汰 / 未知 / 已被取走)→ `None`,
@@ -812,11 +1076,11 @@ impl<T: UndoBytes> UndoRing<T> {
     /// 由此**从「安全」降为「策略」**——一个陈旧的撤销 toast 点下去,要么精确还原它自己那一次(正确),
     /// 要么 token 已失效被诚实拒绝;**两种结果都不是「还原错记录」**。它们如今只在执行一条产品选择:
     /// 「只有最近一次可撤销」。(而 `toastUndo.done` 仍为另外四个闭包消费者**承重** —— 别一起降级。)
-    fn take(&mut self, token: &str) -> Option<Vec<T>> {
+    fn take(&mut self, token: &str) -> Option<UndoPayload<T>> {
         let idx = self.entries.iter().position(|e| e.token == token)?;
         let e = self.entries.remove(idx)?;
         self.bytes -= e.bytes;
-        Some(e.rows)
+        Some(e.payload)
     }
 
     /// 本环的字节上限 —— `*_clear_inner` 的预检据此决定「是否值得物化快照」,
@@ -959,21 +1223,30 @@ fn memory_clear_inner(
     ring: &Mutex<UndoRing<MemRow>>,
 ) -> Result<DestroyResult, String> {
     let cap = ring.lock().unwrap().max_bytes();
-    // ★预检与本函数**共用同一判据**(`memory_clear_precheck`)⇒「预检说可撤销 ⇒ stash 必接受」。
-    //   `reason=corrupt`(有不可映射行)⇒ **不物化、不发 token,但照常销毁** —— 这就是逃生口:
-    //   一行坏数据不得把整库锁死。红线只要求永不谎报撤销(确认弹窗已在决策点如实告知)。
-    //   `undoable=true` 时快照仍严格 fail-closed:承诺了可撤销就必须真能还原,取不到就 Err、不销毁。
-    let undoable = memory_clear_precheck(conn, cap)?.undoable;
-    let snap = if undoable {
+    // ★预检命令与本函数**共用 `memory_clear_plan`** ⇒「预检说可撤销 ⇒ 执行必接受」是**结构保障**。
+    //   · `No(corrupt)` ⇒ 不物化、不发 token,但**照常销毁**(逃生口:一行坏数据不得把整库锁死)。
+    //   · `No(too_large)` ⇒ 同上(连落盘上限也超了,如实告知不可撤销)。
+    //   · `Ram` ⇒ 物化进 RAM;快照仍严格 **fail-closed**(承诺了可撤销就必须真能还原,取不到就 Err、不销毁)。
+    //   · `Spill` ⇒ **先落盘再销毁**(流式,不物化);落盘失败 ⇒ Err、**什么都不销毁**(同上,承诺必须兑现)。
+    let plan = memory_clear_plan(conn, cap)?;
+    let spilled = if plan == UndoPlan::Spill {
+        Some(spill_rows(conn, "memories", None)?) // ★在 DELETE 之前,失败即 fail-closed
+    } else {
+        None
+    };
+    let snap = if plan == UndoPlan::Ram {
         memory_rows_full(conn)?
     } else {
-        Vec::new() // 超上限 / 有损坏行:不物化
+        Vec::new()
     };
     let n = conn
         .execute("DELETE FROM memories", [])
         .map_err(|e| e.to_string())?;
-    // 清空一个已空的库 = no-op ⇒ 空快照不入环、不发 token(不变式①),旧条目不受影响。
-    let undo_token = ring.lock().unwrap().stash(snap);
+    let undo_token = match spilled {
+        Some((path, _)) => Some(ring.lock().unwrap().stash_spilled(path, "memories")),
+        // 清空一个已空的库 = no-op ⇒ 空快照不入环、不发 token(不变式①),旧条目不受影响。
+        None => ring.lock().unwrap().stash(snap),
+    };
     Ok(DestroyResult {
         deleted: n,
         undo_token,
@@ -988,7 +1261,7 @@ pub fn memory_clear_undoable(
 ) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    memory_clear_precheck(&conn, cap)
+    Ok(memory_clear_plan(&conn, cap)?.precheck())
 }
 
 /// 快照一条记忆行(含 embedding)。**行不存在 → 空 Vec;行存在但映射失败 → `Err`(fail-closed)。**
@@ -1158,9 +1431,11 @@ pub fn memory_undo(
     token: String,
 ) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = trash.0.lock().unwrap().take(&token);
-    match rows {
-        Some(rows) => memory_restore_rows(&conn, &rows),
+    let payload = trash.0.lock().unwrap().take(&token);
+    match payload {
+        Some(UndoPayload::Rows(rows)) => memory_restore_rows(&conn, &rows),
+        // 大快照走磁盘:ATTACH → INSERT OR REPLACE SELECT → DETACH → 删文件(流式,不物化)
+        Some(UndoPayload::Spilled { path, table }) => restore_from_spill(&conn, &path, table),
         None => Ok(0), // 环内已无此次销毁(已淘汰 / 已撤销过)⇒ 还原 0 条,前端据此如实上报
     }
 }
@@ -1360,17 +1635,25 @@ fn doc_remove_inner(
     //   且与 `doc_remove_undoable` 用**同一个上限** ⇒「预检说可撤销 ⇒ stash 必接受」。
     //   销毁照常发生:红线只要求**永不谎报撤销**,并未要求拒绝销毁。
     let cap = ring.lock().unwrap().max_bytes();
-    // 预检与本函数共用同一判据(超上限 / 有不可映射行 ⇒ 不物化、不发 token,但**照常销毁** = 逃生口)。
-    let undoable = doc_precheck(conn, cap, Some(doc_id))?.undoable;
-    let snap = if undoable {
+    // 预检命令与本函数共用 `doc_plan`(详见 memory_clear_inner 同注)。
+    let plan = doc_plan(conn, cap, Some(doc_id))?;
+    let spilled = if plan == UndoPlan::Spill {
+        Some(spill_rows(conn, "doc_chunks", Some(doc_id))?) // ★DELETE 之前,失败即 fail-closed
+    } else {
+        None
+    };
+    let snap = if plan == UndoPlan::Ram {
         doc_snapshot(conn, Some(doc_id))? // 承诺可撤销 ⇒ 快照仍严格 fail-closed
     } else {
-        Vec::new() // 超上限 / 有损坏片段:不物化、不发 token、不淘汰既有条目(环不变式①③)
+        Vec::new() // 损坏 / 超落盘上限:不物化、不发 token、不淘汰既有条目(环不变式①③)
     };
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
         .map_err(|e| e.to_string())?;
-    let undo_token = ring.lock().unwrap().stash(snap); // 与 memory_remove_inner 同构
+    let undo_token = match spilled {
+        Some((path, _)) => Some(ring.lock().unwrap().stash_spilled(path, "doc_chunks")),
+        None => ring.lock().unwrap().stash(snap), // 与 memory_remove_inner 同构
+    };
     Ok(DestroyResult {
         deleted: n,
         undo_token,
@@ -1390,16 +1673,24 @@ fn doc_clear_inner(
     ring: &Mutex<UndoRing<DocRow>>,
 ) -> Result<DestroyResult, String> {
     let cap = ring.lock().unwrap().max_bytes();
-    let undoable = doc_precheck(conn, cap, None)?.undoable;
-    let snap = if undoable {
+    let plan = doc_plan(conn, cap, None)?;
+    let spilled = if plan == UndoPlan::Spill {
+        Some(spill_rows(conn, "doc_chunks", None)?) // ★DELETE 之前,失败即 fail-closed
+    } else {
+        None
+    };
+    let snap = if plan == UndoPlan::Ram {
         doc_snapshot(conn, None)?
     } else {
-        Vec::new() // 超上限:不物化(2 GiB 知识库不得先分配 2 GiB 再被环拒绝);有损坏片段:同样不物化
+        Vec::new() // 损坏 / 超落盘上限:不物化(2 GiB 知识库绝不先分配 2 GiB)
     };
     let n = conn
         .execute("DELETE FROM doc_chunks", [])
         .map_err(|e| e.to_string())?;
-    let undo_token = ring.lock().unwrap().stash(snap);
+    let undo_token = match spilled {
+        Some((path, _)) => Some(ring.lock().unwrap().stash_spilled(path, "doc_chunks")),
+        None => ring.lock().unwrap().stash(snap),
+    };
     Ok(DestroyResult {
         deleted: n,
         undo_token,
@@ -1414,7 +1705,7 @@ pub fn doc_clear_undoable(
 ) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    doc_precheck(&conn, cap, None)
+    Ok(doc_plan(&conn, cap, None)?.precheck())
 }
 
 /// 预检:这次「删除单篇文档」是否可撤销?(评审第64轮 [应改] · 队首)
@@ -1430,7 +1721,7 @@ pub fn doc_remove_undoable(
 ) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    doc_precheck(&conn, cap, Some(&doc_id))
+    Ok(doc_plan(&conn, cap, Some(&doc_id))?.precheck())
 }
 
 /// 撤销**指定 token 的那一次**文档销毁(删一篇 / 清空):从 DocTrash 的环里按 token 取出并还原
@@ -1443,9 +1734,10 @@ pub fn doc_undo(
     token: String,
 ) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = trash.0.lock().unwrap().take(&token);
-    match rows {
-        Some(rows) => doc_restore_rows(&conn, &rows),
+    let payload = trash.0.lock().unwrap().take(&token);
+    match payload {
+        Some(UndoPayload::Rows(rows)) => doc_restore_rows(&conn, &rows),
+        Some(UndoPayload::Spilled { path, table }) => restore_from_spill(&conn, &path, table),
         None => Ok(0), // 环内已无此次销毁 ⇒ 还原 0 条,绝不静默成功
     }
 }
@@ -1715,7 +2007,7 @@ mod tests {
         let tb = ring.stash(vec![mrow("B", 0)]).unwrap();
 
         // ★即便 A 不是环顶(B 才是),按 A 的 token 撤销也**只**还原 A —— 绝不会碰到 B。
-        let rows = ring.take(&ta).expect("按 token 应取到 A 那一次");
+        let rows = ring.take_rows(&ta).expect("按 token 应取到 A 那一次");
         assert_eq!(rows[0].0, "A", "必须还原它自己那一次,而非环顶");
         assert!(!ring.has(&ta), "取走后应移出环");
         assert!(ring.has(&tb), "B 那一次不受影响");
@@ -1725,7 +2017,7 @@ mod tests {
         // 同一 token 二次撤销 → None(已被取走)⇒ 前端如实上报「该撤销已失效」
         assert!(ring.take(&ta).is_none(), "同一 token 不得被撤销两次");
         // B 仍可按自己的 token 撤销
-        assert_eq!(ring.take(&tb).unwrap()[0].0, "B");
+        assert_eq!(ring.take_rows(&tb).unwrap()[0].0, "B");
         // 环空 → 任何 token 都 None
         assert!(ring.take(&tb).is_none());
     }
@@ -1769,8 +2061,8 @@ mod tests {
         assert!(doc.take(&tm).is_none(), "错配的 token 必须落空,而非命中");
         assert!(mem.take(&td).is_none(), "反向亦然");
         // 各自的 token 仍正常工作。
-        assert_eq!(mem.take(&tm).unwrap()[0].0, "A");
-        assert_eq!(doc.take(&td).unwrap()[0].1, "d1");
+        assert_eq!(mem.take_rows(&tm).unwrap()[0].0, "A");
+        assert_eq!(doc.take_rows(&td).unwrap()[0].1, "d1");
     }
 
     /// ★评审第63轮 [建议] · **预检估计 ≥ stash 实际** —— 否则第62轮 [应改](决策点谎报)原样复发:
@@ -2172,6 +2464,217 @@ mod tests {
         );
     }
 
+    // ═══ 大快照 spill 到磁盘(评审第62轮裁决6 → 第64轮次序 ①)═══════════════
+
+    /// 建一个**文件库**(spill 只对文件库可用;内存库 `conn.path()` 为空)。
+    fn file_db(name: &str) -> (Connection, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("seeker-spill-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = Connection::open(dir.join("seeker.db")).unwrap();
+        migrate(&mut conn, &dir.join("backups")).unwrap();
+        (conn, dir)
+    }
+    fn spill_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let sd = dir.join("undo-spill");
+        match std::fs::read_dir(&sd) {
+            Ok(rd) => rd.flatten().map(|e| e.path()).collect(),
+            Err(_) => vec![],
+        }
+    }
+
+    /// ★★大 clear 仍可撤销:快照**落盘**而非撑大 RAM 环。
+    /// 钉三条:① 预检说 `spill`(决策点如实告知「可撤销,但会先落盘」);
+    /// ② 落盘发生在 **DELETE 之前**,且 RAM 账本几乎不增长(**不物化**);
+    /// ③ 撤销后**逐位**还原(embedding / created_at 无损),且快照文件被删除。
+    #[test]
+    fn large_clear_spills_to_disk_and_undo_restores_bitwise() {
+        use std::sync::Mutex;
+        let (conn, dir) = file_db("roundtrip");
+        super::memory_add(&conn, "m1", "事实一", &[0.1, 0.2, 0.3]).unwrap();
+        super::memory_add(&conn, "m2", "事实二", &[-1.5]).unwrap();
+        conn.execute("UPDATE memories SET created_at = 4242 WHERE id='m1'", [])
+            .unwrap();
+
+        // RAM 上限设成 64 B ⇒ 这次 clear 必然走落盘(真实上限是 64 MiB,单测不必分配那么多)
+        let ring: Mutex<super::UndoRing<super::MemRow>> =
+            Mutex::new(super::UndoRing::with_bounds(8, 64));
+        let cap = ring.lock().unwrap().max_bytes();
+        assert_eq!(
+            super::memory_clear_plan(&conn, cap).unwrap(),
+            super::UndoPlan::Spill,
+            "超 RAM 上限但未超落盘上限 ⇒ 计划落盘"
+        );
+        assert_eq!(
+            super::memory_clear_plan(&conn, cap).unwrap().precheck(),
+            super::UndoPrecheck {
+                undoable: true,
+                reason: "spill"
+            },
+            "决策点:可撤销,理由 spill"
+        );
+
+        let r = super::memory_clear_inner(&conn, &ring).unwrap();
+        assert_eq!(r.deleted, 2);
+        let token = r.undo_token.expect("落盘快照必须发 token(它可撤销)");
+        assert_eq!(super::memory_entries(&conn).unwrap().len(), 0, "确已销毁");
+        eprintln!(
+            "DEBUG spill_dir={:?} files={:?}",
+            super::spill_dir(&conn),
+            spill_files(&dir)
+        );
+        assert_eq!(spill_files(&dir).len(), 1, "快照落在磁盘上");
+        assert!(
+            ring.lock().unwrap().total_bytes() < 1024,
+            "★不物化:落盘条目在 RAM 账本里只占一个路径串"
+        );
+
+        // 撤销 = memory_undo 的命令体:take → 按载荷分派
+        let payload = ring.lock().unwrap().take(&token).expect("token 应命中");
+        let (path, table) = match payload {
+            super::UndoPayload::Spilled { path, table } => (path, table),
+            _ => panic!("应是落盘载荷"),
+        };
+        assert!(path.exists());
+        let n = super::restore_from_spill(&conn, &path, table).unwrap();
+        assert_eq!(n, 2, "两行都还原");
+        assert!(!path.exists(), "撤销之后快照文件必须消失(否则磁盘无界)");
+
+        // 逐位保真
+        let all = super::memory_all(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+        let m1 = all.iter().find(|x| x.0 == "m1").unwrap();
+        assert_eq!(m1.2, vec![0.1, 0.2, 0.3], "embedding 逐位无损");
+        assert_eq!(all.iter().find(|x| x.0 == "m2").unwrap().2, vec![-1.5]);
+        let ts: i64 = conn
+            .query_row("SELECT created_at FROM memories WHERE id='m1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(ts, 4242, "created_at 原样保留(非 now)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★**落盘失败 ⇒ fail-closed:什么都不销毁**。承诺了可撤销,兑现不了就别销毁。
+    /// 构造:把 `undo-spill` 做成一个**文件**,`create_dir_all` 必失败。
+    #[test]
+    fn spill_failure_is_fail_closed_and_destroys_nothing() {
+        use std::sync::Mutex;
+        let (conn, dir) = file_db("failclosed");
+        super::memory_add(&conn, "m1", "别弄丢我", &[0.1]).unwrap();
+        std::fs::write(dir.join("undo-spill"), b"not a dir").unwrap(); // 占位:目录建不出来
+
+        let ring: Mutex<super::UndoRing<super::MemRow>> =
+            Mutex::new(super::UndoRing::with_bounds(8, 64));
+        let err = super::memory_clear_inner(&conn, &ring).unwrap_err();
+        assert!(!err.is_empty(), "必须响亮失败:{err}");
+        assert_eq!(
+            super::memory_entries(&conn).unwrap().len(),
+            1,
+            "★落盘失败 ⇒ 一行都不许销毁(spill 必须发生在 DELETE 之前)"
+        );
+        assert_eq!(ring.lock().unwrap().len(), 0, "也不得留下半个环条目");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 环内**最多一个**落盘快照(策略):新的挤掉旧的,并**删掉旧文件**;旧 token 随之失效(撤销 0 条)。
+    #[test]
+    fn new_spill_evicts_the_previous_one_and_deletes_its_file() {
+        use std::sync::Mutex;
+        let (conn, dir) = file_db("evict");
+        let ring: Mutex<super::UndoRing<super::MemRow>> =
+            Mutex::new(super::UndoRing::with_bounds(8, 64));
+
+        super::memory_add(&conn, "a", "第一批", &[0.1]).unwrap();
+        let t1 = super::memory_clear_inner(&conn, &ring)
+            .unwrap()
+            .undo_token
+            .unwrap();
+        let f1 = spill_files(&dir);
+        assert_eq!(f1.len(), 1);
+
+        super::memory_add(&conn, "b", "第二批", &[0.2]).unwrap();
+        let t2 = super::memory_clear_inner(&conn, &ring)
+            .unwrap()
+            .undo_token
+            .unwrap();
+        let f2 = spill_files(&dir);
+
+        assert_eq!(f2.len(), 1, "★旧落盘文件必须被删除,否则磁盘无界");
+        assert!(!f1[0].exists(), "旧文件不复存在");
+        assert_eq!(ring.lock().unwrap().len(), 1, "环内只留新那一个");
+        assert!(
+            ring.lock().unwrap().take(&t1).is_none(),
+            "旧 token 已失效 ⇒ 撤销 0 条,绝不静默成功"
+        );
+        // (clippy 抓到我这里原本写了 `has(&t2) || true` —— 一条**恒真的空断言**。
+        //  正是「断言必须能红」的同族;改成真断言。)
+        assert!(ring.lock().unwrap().has(&t2), "新 token 仍在环内,可撤销");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 开机清扫:环是进程内状态,启动时必空 ⇒ `undo-spill/` 里的任何文件都是崩溃遗留的孤儿。
+    #[test]
+    fn boot_sweep_removes_orphaned_spill_files() {
+        let (conn, dir) = file_db("sweep");
+        let sd = dir.join("undo-spill");
+        std::fs::create_dir_all(&sd).unwrap();
+        std::fs::write(sd.join("undo-memories-99.db"), b"orphan").unwrap();
+        std::fs::write(sd.join("undo-doc_chunks-1.db"), b"orphan").unwrap();
+        assert_eq!(spill_files(&dir).len(), 2);
+        super::sweep_undo_spill(&conn);
+        assert_eq!(spill_files(&dir).len(), 0, "孤儿快照必须在开机时清掉");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `plan_for` 的四条分支(**corrupt 压倒一切**;落盘不可用时如实退回 too_large)。
+    #[test]
+    fn plan_for_covers_all_four_branches() {
+        let (conn, dir) = file_db("plan");
+        assert_eq!(
+            super::plan_for(&conn, 1000, 1, 10),
+            super::UndoPlan::No("corrupt"),
+            "坏行压倒字节"
+        );
+        assert_eq!(super::plan_for(&conn, 1000, 0, 10), super::UndoPlan::Ram);
+        assert_eq!(
+            super::plan_for(&conn, 8, 0, 10),
+            super::UndoPlan::Spill,
+            "超 RAM、未超磁盘 ⇒ 落盘"
+        );
+        assert_eq!(
+            super::plan_for(&conn, 8, 0, super::UNDO_SPILL_MAX_BYTES + 1),
+            super::UndoPlan::No("too_large"),
+            "连落盘上限也超了 ⇒ 真的不可撤销"
+        );
+        // 内存库:落盘不可用 ⇒ 原本该落盘的那一档如实退回 too_large
+        let memc = Connection::open_in_memory().unwrap();
+        assert!(super::spill_dir(&memc).is_none());
+        assert_eq!(
+            super::plan_for(&memc, 8, 0, 10),
+            super::UndoPlan::No("too_large")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 表名会被格式化进 SQL —— 它只能来自**白名单**,不靠调用点自律。
+    #[test]
+    fn restore_from_spill_rejects_tables_outside_the_whitelist() {
+        let (conn, dir) = file_db("whitelist");
+        let bogus = dir.join("x.db");
+        std::fs::write(&bogus, b"").unwrap();
+        let e = super::restore_from_spill(&conn, &bogus, "profile").unwrap_err();
+        assert!(e.contains("未知的落盘表"), "白名单之外的表名必须被拒:{e}");
+        assert!(super::spill_ddl("memories").is_some() && super::spill_ddl("doc_chunks").is_some());
+        assert!(super::spill_ddl("profile").is_none(), "profile 永不落盘");
+        // 文件丢失 ⇒ 响亮失败,绝不静默报「已撤销」
+        let missing = dir.join("gone.db");
+        assert!(super::restore_from_spill(&conn, &missing, "memories")
+            .unwrap_err()
+            .contains("丢失"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// ★逃生口的第一步不是「能删」,而是「**能看见**」—— 看不见的行没法点删除。
     /// 并钉死那条**用户掌控的谎言**:修前 `memory_entries` 报错(前端 catch 成空列表 ⇒ 用户被告知
     /// 「AI 还没有记住任何内容」),而 `memory_all`(recall)照常返回全部记忆。
@@ -2299,7 +2802,7 @@ mod tests {
         let prev = ring.lock().unwrap().stash(vec![mrow("PREV", 0)]).unwrap();
         let cap = ring.lock().unwrap().max_bytes();
 
-        let pc = super::memory_clear_precheck(&conn, cap).unwrap();
+        let pc = super::memory_clear_plan(&conn, cap).unwrap().precheck();
         assert_eq!(
             pc,
             super::UndoPrecheck {
@@ -2318,7 +2821,7 @@ mod tests {
         drop(g);
         super::memory_add(&conn, "x", "健康", &[0.1]).unwrap();
         assert_eq!(
-            super::memory_clear_precheck(&conn, cap).unwrap(),
+            super::memory_clear_plan(&conn, cap).unwrap().precheck(),
             super::UndoPrecheck {
                 undoable: true,
                 reason: "ok"
@@ -2363,11 +2866,14 @@ mod tests {
         let cap = ring.lock().unwrap().max_bytes();
         // 单篇预检:坏的说 corrupt、好的说 ok(**逐篇**,不被别人的坏数据牵连)
         assert_eq!(
-            super::doc_precheck(&conn, cap, Some("bad")).unwrap().reason,
+            super::doc_plan(&conn, cap, Some("bad"))
+                .unwrap()
+                .precheck()
+                .reason,
             "corrupt"
         );
         assert_eq!(
-            super::doc_precheck(&conn, cap, Some("ok")).unwrap(),
+            super::doc_plan(&conn, cap, Some("ok")).unwrap().precheck(),
             super::UndoPrecheck {
                 undoable: true,
                 reason: "ok"
@@ -2375,7 +2881,7 @@ mod tests {
         );
         // 整库预检:被坏片段拉成 corrupt
         assert_eq!(
-            super::doc_precheck(&conn, cap, None).unwrap().reason,
+            super::doc_plan(&conn, cap, None).unwrap().precheck().reason,
             "corrupt"
         );
 
@@ -2421,7 +2927,7 @@ mod tests {
         );
 
         // 撤销:按 token 取走并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
-        let rows = ring.lock().unwrap().take(&ta).unwrap();
+        let rows = ring.lock().unwrap().take_rows(&ta).unwrap();
         let n = super::memory_restore_rows(&conn, &rows).unwrap();
         assert_eq!(n, 1, "撤销应真还原 1 行");
         let back: String = conn
@@ -2468,7 +2974,7 @@ mod tests {
         let t = r.undo_token.expect("快照完整 ⇒ 应入环并发 token");
 
         // 撤销:按 token 取走,按 ts=0 还原
-        let rows = ring.lock().unwrap().take(&t).unwrap();
+        let rows = ring.lock().unwrap().take_rows(&t).unwrap();
         assert_eq!(super::memory_restore_rows(&conn, &rows).unwrap(), 1);
         let ts: i64 = conn
             .query_row("SELECT created_at FROM memories WHERE id='B'", [], |r| {
