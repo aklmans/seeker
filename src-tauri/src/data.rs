@@ -1423,6 +1423,182 @@ fn memory_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyR
     })
 }
 
+/// 一次「修复」的结果 —— 决策点据此决定:**还用不用销毁**,以及销毁会让用户失去什么。
+///
+/// ★评审第66轮 [应改] 的根:一行 `created_at='abc'` 的记录,**内容与向量完好、AI 正在检索它**
+/// (`memory_all` / `doc_chunks_all` 根本不读 `created_at`,实测坐实)。把它叫「已损坏」并只给
+/// 一条「删除」的路,是在诱导用户为修一个时间戳而永久丢掉一段仍在服役的知识。
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct RepairResult {
+    pub repaired: bool,
+    /// `"repaired"` | `"healthy"`(**谓词与 oracle 漂移**,见下) | `"not_repairable"` | `"missing"`
+    pub reason: &'static str,
+    /// 这一行现在能否被 **AI 的召回路径**读到(召回列可映射 ∧ 有向量)。
+    /// `true` ⇒ 销毁它 = 让 AI 永久失去一段**仍在服役**的内容。
+    #[serde(rename = "aiReadable")]
+    pub ai_readable: bool,
+    /// 这一行的**召回列**不可映射 ⇒ 整表召回查询报错 ⇒ **AI 一条都读不到**(实测)。
+    /// `true` ⇒ 销毁它反而**恢复**检索。
+    #[serde(rename = "recallBroken")]
+    pub recall_broken: bool,
+}
+
+/// 记忆行相对**召回路径**(`memory_all` 的 `SELECT id, fact, embedding` + 跳过无向量行)的可读性。
+/// 返回 `(召回列可映射, 有向量)`。**必须与 `memory_all` 的列与跳过规则逐字对齐** —— 它是这条判断的 oracle。
+fn mem_recall_state(conn: &Connection, rowid: i64) -> Result<(bool, bool), String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding FROM memories WHERE rowid = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(params![rowid]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        None => Ok((false, false)),
+        Some(r) => {
+            let ok = r.get::<_, String>(0).is_ok() && r.get::<_, String>(1).is_ok();
+            match r.get::<_, Option<Vec<u8>>>(2) {
+                Ok(b) => Ok((ok, b.is_some())),
+                Err(_) => Ok((false, false)), // embedding 不是 BLOB ⇒ 召回列不可映射
+            }
+        }
+    }
+}
+
+/// 文档片段相对召回路径(`doc_chunks_all` 的 `SELECT doc_name, text, embedding`)的可读性。
+fn doc_recall_state(conn: &Connection, rowid: i64) -> Result<(bool, bool), String> {
+    let mut stmt = conn
+        .prepare("SELECT doc_name, text, embedding FROM doc_chunks WHERE rowid = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(params![rowid]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        None => Ok((false, false)),
+        Some(r) => {
+            let ok = r.get::<_, String>(0).is_ok() && r.get::<_, String>(1).is_ok();
+            match r.get::<_, Option<Vec<u8>>>(2) {
+                Ok(b) => Ok((ok, b.is_some())),
+                Err(_) => Ok((false, false)),
+            }
+        }
+    }
+}
+
+/// **修复优先于销毁**(评审第66轮 [建议]强)。
+///
+/// `created_at INTEGER **DEFAULT 0**` —— **schema 自己定义了默认值**,故把非法值归一化为 `0` 是
+/// 第61轮裁决A 划的那条线之内的**忠实归一化**,不是凭空造值。其余列(`fact`/`text`/`id`/`doc_id`/
+/// `embedding`)**没有** schema 默认值 ⇒ 不碰,销毁仍是它们唯一的逃生口。
+///
+/// ★两次都问 **oracle**(`map_mem_row` / `map_doc_row` —— 快照代码本身),不问谓词:
+/// 先确认「确实不可快照」,归一化之后再确认「是否已可快照」。
+///
+/// ★`reason = "healthy"` 是一个**运行时不变式监视器**:调用点的 rowid 来自 `*_CORRUPT_PRED`(展示用),
+/// 守卫来自 oracle。二者一致时它**永不出现**;一旦出现,就是「谓词比 oracle 更严」——
+/// 正是第65轮点名的危险方向。**必须响亮**,不得被静默吸收进计数。
+fn memory_repair_corrupt_inner(conn: &Connection, rowid: i64) -> Result<RepairResult, String> {
+    let info =
+        |conn: &Connection| -> Result<(bool, bool), String> { mem_recall_state(conn, rowid) };
+    match memory_row_state(conn, rowid)? {
+        RowState::Missing => {
+            return Ok(RepairResult {
+                repaired: false,
+                reason: "missing",
+                ai_readable: false,
+                recall_broken: false,
+            })
+        }
+        RowState::Healthy => {
+            let (ok, emb) = info(conn)?;
+            return Ok(RepairResult {
+                repaired: false,
+                reason: "healthy",
+                ai_readable: ok && emb,
+                recall_broken: !ok,
+            });
+        }
+        RowState::Unmappable => {}
+    }
+    // 只碰有 schema 默认值的那一列;WHERE 再夹一道,绝不覆盖合法的整数/NULL 时间戳。
+    conn.execute(
+        "UPDATE memories SET created_at = 0 WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')",
+        params![rowid],
+    )
+    .map_err(|e| e.to_string())?;
+    let (ok, emb) = info(conn)?;
+    match memory_row_state(conn, rowid)? {
+        RowState::Healthy => Ok(RepairResult {
+            repaired: true,
+            reason: "repaired",
+            ai_readable: ok && emb,
+            recall_broken: false,
+        }),
+        RowState::Unmappable => Ok(RepairResult {
+            repaired: false,
+            reason: "not_repairable",
+            ai_readable: ok && emb,
+            recall_broken: !ok,
+        }),
+        RowState::Missing => Err("该记录在修复过程中消失了".into()),
+    }
+}
+
+/// 见 `memory_repair_corrupt_inner`。
+#[tauri::command]
+pub fn memory_repair_corrupt(db: State<'_, Db>, rowid: i64) -> Result<RepairResult, String> {
+    let conn = db.0.lock().unwrap();
+    memory_repair_corrupt_inner(&conn, rowid)
+}
+
+fn doc_repair_corrupt_inner(conn: &Connection, rowid: i64) -> Result<RepairResult, String> {
+    let info =
+        |conn: &Connection| -> Result<(bool, bool), String> { doc_recall_state(conn, rowid) };
+    match doc_row_state(conn, rowid)? {
+        RowState::Missing => {
+            return Ok(RepairResult {
+                repaired: false,
+                reason: "missing",
+                ai_readable: false,
+                recall_broken: false,
+            })
+        }
+        RowState::Healthy => {
+            let (ok, emb) = info(conn)?;
+            return Ok(RepairResult {
+                repaired: false,
+                reason: "healthy",
+                ai_readable: ok && emb,
+                recall_broken: !ok,
+            });
+        }
+        RowState::Unmappable => {}
+    }
+    conn.execute(
+        "UPDATE doc_chunks SET created_at = 0 WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')",
+        params![rowid],
+    )
+    .map_err(|e| e.to_string())?;
+    let (ok, emb) = info(conn)?;
+    match doc_row_state(conn, rowid)? {
+        RowState::Healthy => Ok(RepairResult {
+            repaired: true,
+            reason: "repaired",
+            ai_readable: ok && emb,
+            recall_broken: false,
+        }),
+        RowState::Unmappable => Ok(RepairResult {
+            repaired: false,
+            reason: "not_repairable",
+            ai_readable: ok && emb,
+            recall_broken: !ok,
+        }),
+        RowState::Missing => Err("该片段在修复过程中消失了".into()),
+    }
+}
+
+/// 见 `memory_repair_corrupt_inner`。
+#[tauri::command]
+pub fn doc_repair_corrupt(db: State<'_, Db>, rowid: i64) -> Result<RepairResult, String> {
+    let conn = db.0.lock().unwrap();
+    doc_repair_corrupt_inner(&conn, rowid)
+}
+
 /// 「这一片段能不能被快照?」—— 与 `memory_row_state` 同款:**让快照代码(`map_doc_row`)自己回答**,
 /// 不问 `DOC_CORRUPT_PRED`(第65轮裁决2:代理谓词不得承担安全属性)。
 /// 取行/语句失败 ⇒ 向上传播 `Err`,**绝不当成「这行坏了」而销毁**。
@@ -2932,6 +3108,242 @@ mod tests {
             1,
             "只剩那个好片段"
         );
+    }
+
+    // ═══ 修复优先于销毁(评审第66轮 [应改] + [建议]强)═════════════════════
+
+    /// ★★这条测试钉死评审第66轮自我订正的那个事实(**实测,非推理**):
+    /// `created_at` 坏掉时,**内容与向量完好、AI 正在检索它** —— `memory_all` / `doc_chunks_all`
+    /// 根本不读 `created_at`。所以「已损坏 · 只能删除」是**误导**;正解是**修复**。
+    #[test]
+    fn corrupt_created_at_leaves_content_live_and_repair_restores_undoability() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-repair");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "healthy", "健康记忆", &[0.5]).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('bad','用户偏好远程后端岗位',x'0000803f','abc')",
+            [],
+        )
+        .unwrap();
+        let bad: i64 = conn
+            .query_row("SELECT rowid FROM memories WHERE id='bad'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        // 修前:快照坏了,但 AI **正在检索它**(召回返回两条,含这一条)
+        assert!(super::memory_rows_full(&conn).is_err(), "快照坏了");
+        let recall = super::memory_all(&conn).unwrap();
+        assert_eq!(recall.len(), 2, "AI 的召回照常返回,坏行也在其中");
+        assert!(
+            recall.iter().any(|r| r.1 == "用户偏好远程后端岗位"),
+            "内容仍在服役"
+        );
+
+        // 修复:只归一化 created_at
+        let r = super::memory_repair_corrupt_inner(&conn, bad).unwrap();
+        assert_eq!(
+            r,
+            super::RepairResult {
+                repaired: true,
+                reason: "repaired",
+                ai_readable: true,
+                recall_broken: false
+            }
+        );
+
+        // ★零内容损失:fact 与 embedding 逐位不变;时间戳归一化为 schema 的 DEFAULT 0
+        let (fact, ts): (String, i64) = conn
+            .query_row(
+                "SELECT fact, created_at FROM memories WHERE id='bad'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(fact, "用户偏好远程后端岗位");
+        assert_eq!(ts, 0, "schema DEFAULT 0 ⇒ 忠实归一化(第61轮裁决A 的线内)");
+        assert_eq!(super::memory_all(&conn).unwrap().len(), 2, "召回不受影响");
+
+        // ★可撤销性恢复:整表 clear 从 No("corrupt") 回到 Ram,**用户根本不必删任何东西**
+        assert!(super::memory_rows_full(&conn).is_ok());
+        assert_eq!(super::mem_corrupt_count(&conn).unwrap(), 0);
+        assert_eq!(
+            super::memory_clear_plan(&conn, usize::MAX).unwrap(),
+            super::UndoPlan::Ram
+        );
+    }
+
+    /// ★没有 schema 默认值的列**绝不擅自造值**(第61轮裁决A 的另一半)——
+    /// `fact` 是 BLOB ⇒ 不可修复,销毁仍是唯一逃生口。且此时**召回列坏了**。
+    #[test]
+    fn repair_never_invents_values_for_columns_without_a_schema_default() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-norepair");
+        migrate(&mut conn, &tmp).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('bad',X'00FF',x'0000803f',1)",
+            [],
+        )
+        .unwrap();
+        let bad: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+
+        let r = super::memory_repair_corrupt_inner(&conn, bad).unwrap();
+        assert_eq!(
+            r,
+            super::RepairResult {
+                repaired: false,
+                reason: "not_repairable",
+                ai_readable: false,
+                recall_broken: true
+            }
+        );
+        // fact 原样未动(修复绝不碰它)
+        let t: String = conn
+            .query_row(
+                "SELECT typeof(fact) FROM memories WHERE id='bad'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(t, "blob", "没有 schema 默认值的列,修复一个字节都不许改");
+    }
+
+    /// ★★评审第66轮裁决2:`reason="healthy"` 是**运行时不变式监视器** ——
+    /// 调用点的 rowid 来自谓词(展示用),守卫来自 oracle。二者一致时它永不出现;
+    /// 一旦出现,就是「谓词比 oracle 更严」。**必须响亮,不得被静默吸收进计数。**
+    #[test]
+    fn repair_reports_healthy_as_a_predicate_oracle_drift_signal() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-drift");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "ok", "健康", &[0.5]).unwrap();
+        let rid: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+
+        let r = super::memory_repair_corrupt_inner(&conn, rid).unwrap();
+        assert_eq!(r.reason, "healthy", "健康行 ⇒ 漂移信号,不是「修好了」");
+        assert!(!r.repaired);
+        assert!(r.ai_readable && !r.recall_broken);
+        // 行不存在 → missing(≠ healthy ≠ 修好了)
+        assert_eq!(
+            super::memory_repair_corrupt_inner(&conn, 999_999)
+                .unwrap()
+                .reason,
+            "missing"
+        );
+    }
+
+    /// ★★一个**评审没说、我实测出来**的事实:召回列坏掉时,整表召回查询**整体报错**
+    /// ⇒ **AI 一条记忆都读不到**(不只是读不到那一行)。故销毁它反而**恢复**检索 —— 文案必须说对方向。
+    #[test]
+    fn a_single_bad_recall_column_breaks_the_whole_recall_and_removing_it_restores() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-recallbreak");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "healthy", "健康记忆", &[0.5]).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('bad',X'00FF',x'0000803f',1)",
+            [],
+        )
+        .unwrap();
+        let bad: i64 = conn
+            .query_row("SELECT rowid FROM memories WHERE id='bad'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        assert!(
+            super::memory_all(&conn).is_err(),
+            "★一行坏的召回列 ⇒ AI 整个记忆检索报错"
+        );
+        assert!(
+            super::memory_repair_corrupt_inner(&conn, bad)
+                .unwrap()
+                .recall_broken
+        );
+        assert_eq!(
+            super::memory_remove_corrupt_inner(&conn, bad)
+                .unwrap()
+                .deleted,
+            1
+        );
+        let back = super::memory_all(&conn).unwrap();
+        assert_eq!(back.len(), 1, "移除坏行之后,AI 的检索恢复");
+
+        // 文档侧同款(doc_chunks_all 读 doc_name/text/embedding)
+        let mut c2 = Connection::open_in_memory().unwrap();
+        migrate(&mut c2, &tmp).unwrap();
+        super::doc_chunks_insert(&c2, "ok", "健康", &[("片段".into(), vec![0.5])]).unwrap();
+        c2.execute(
+            "INSERT INTO doc_chunks VALUES ('b','d','名',X'00FF',x'0000803f',1)",
+            [],
+        )
+        .unwrap();
+        assert!(super::doc_chunks_all(&c2).is_err());
+        let brid: i64 = c2
+            .query_row("SELECT rowid FROM doc_chunks WHERE id='b'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(
+            super::doc_repair_corrupt_inner(&c2, brid)
+                .unwrap()
+                .recall_broken
+        );
+        assert_eq!(
+            super::doc_remove_corrupt_inner(&c2, brid).unwrap().deleted,
+            1
+        );
+        assert_eq!(super::doc_chunks_all(&c2).unwrap().len(), 1);
+    }
+
+    /// ★文档侧:`doc_id` 是 BLOB ⇒ **不可修复**(无 schema 默认值),但 `doc_chunks_all` 不读它
+    /// ⇒ **内容仍在被 AI 检索**。这类销毁必须在决策点说清「删了就永久失去仍在服役的内容」。
+    #[test]
+    fn doc_with_blob_doc_id_is_unrepairable_yet_its_content_is_still_live() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-liveblob");
+        migrate(&mut conn, &tmp).unwrap();
+        conn.execute(
+            "INSERT INTO doc_chunks VALUES ('c',X'00FF','JD','重要文本',x'0000803f',1)",
+            [],
+        )
+        .unwrap();
+        let rid: i64 = conn
+            .query_row("SELECT rowid FROM doc_chunks", [], |r| r.get(0))
+            .unwrap();
+
+        assert_eq!(
+            super::doc_chunks_all(&conn).unwrap().len(),
+            1,
+            "AI 读得到它(doc_id 不在召回列里)"
+        );
+        let r = super::doc_repair_corrupt_inner(&conn, rid).unwrap();
+        assert_eq!(
+            r,
+            super::RepairResult {
+                repaired: false,
+                reason: "not_repairable",
+                ai_readable: true, // ★仍在服役 ⇒ 文案必须警告「删除即永久丢失」
+                recall_broken: false
+            }
+        );
+        // 文档侧 created_at 归一化同款可用(另起一行验证正向)
+        conn.execute(
+            "INSERT INTO doc_chunks VALUES ('c2','d2','JD2','文本',x'0000803f','abc')",
+            [],
+        )
+        .unwrap();
+        let r2: i64 = conn
+            .query_row("SELECT rowid FROM doc_chunks WHERE id='c2'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(super::doc_repair_corrupt_inner(&conn, r2).unwrap().repaired);
     }
 
     /// ★逃生口的第一步不是「能删」,而是「**能看见**」—— 看不见的行没法点删除。

@@ -220,6 +220,22 @@ export interface MemoryEntry {
  *
  * ★`reason` 由后端给,前端只负责说人话;拿不到(命令失败)⇒ **保守按不可撤销告知**。
  */
+/**
+ * 一次「修复」的结果。**修复优先于销毁**(评审第66轮)。
+ *
+ * ★根:`created_at` 坏掉的那一行,**内容与向量完好、AI 正在检索它**(召回路径根本不读 `created_at`)。
+ * 把它叫「已损坏」并只给一条「删除」的路,是在诱导用户为修一个时间戳而永久丢掉仍在服役的知识。
+ */
+export interface RepairResult {
+  repaired: boolean;
+  /** `'repaired'` | `'healthy'`(**谓词与快照判据漂移** —— 正确系统里永不出现)| `'not_repairable'` | `'missing'` */
+  reason: 'repaired' | 'healthy' | 'not_repairable' | 'missing' | string;
+  /** 这一行现在能否被 AI 的召回路径读到 ⇒ `true` 时销毁 = 让 AI 永久失去**仍在服役**的内容。 */
+  aiReadable: boolean;
+  /** 它的**召回列**不可映射 ⇒ 整表召回查询报错 ⇒ **AI 一条都读不到**;销毁它反而**恢复**检索。 */
+  recallBroken: boolean;
+}
+
 export interface UndoPrecheck {
   undoable: boolean;
   /**
@@ -257,6 +273,8 @@ export interface MemoryApi {
    * 不变式:**健康行永远有快照可撤销;只有不可快照的行才可能被无撤销地销毁,且必经 guardrail 确认。**
    */
   removeCorrupt(rowid: number): Promise<DestroyResult>;
+  /** **修复优先于销毁**:归一化 `created_at`(schema 有 `DEFAULT 0`),零内容损失。其余列不碰。 */
+  repairCorrupt(rowid: number): Promise<RepairResult>;
   /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原条数;
    *  token 已失效(被撤回过 / 被更新的销毁挤出上限)→ `0`,**绝不静默成功**。 */
   undo(token: string): Promise<number>;
@@ -293,6 +311,8 @@ export interface DocsApi {
    * 与 `memory.removeCorrupt` 粒度对齐:一个孤立的坏片段不该逼用户清空整个知识库。
    */
   removeCorrupt(rowid: number): Promise<DestroyResult>;
+  /** **修复优先于销毁**:归一化 `created_at`(schema 有 `DEFAULT 0`),零内容损失。其余列不碰。 */
+  repairCorrupt(rowid: number): Promise<RepairResult>;
   clear(): Promise<DestroyResult>;
   /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
   clearUndoable(): Promise<UndoPrecheck>;

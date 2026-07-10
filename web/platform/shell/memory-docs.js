@@ -60,6 +60,17 @@
  *       后端**拒绝销毁健康行** ⇒ 它不是「绕过快照直接删」的后门。
  *       ⚠ **粒度对齐**(第65轮 [建议]):文档侧同样有**逐片段手术** `rt.docs.removeCorrupt(rowid)` ——
  *       一个孤立的坏片段不该逼用户清空整个知识库。移除坏片段后,该篇恢复健康、恢复「可撤销删除」。
+ *     · ★★**修复优先于销毁**(第66轮 [应改] + [建议]强 —— 评审自我订正的那一条):
+ *       **实测**:`created_at` 坏掉时,`fact`/`text` 与 `embedding` 完好,**AI 正在检索它**
+ *       (`memory_all` / `doc_chunks_all` 根本不读 `created_at`)。把它叫「已损坏」并只给「删除」一条路,
+ *       是诱导用户为修一个时间戳而永久丢掉仍在服役的知识。
+ *       ⇒ 按钮是**「修复」**:`created_at` 有 schema `DEFAULT 0` ⇒ 归一化是忠实修复、**零内容损失**
+ *       (第61轮裁决A 的线内);其余列无默认值 ⇒ 一个字节都不碰。修好即恢复「可撤销删除」。
+ *       ⇒ 只有**修不好**时才退到销毁,且决策点按后端实测的 `aiReadable` / `recallBroken` 说清代价:
+ *       内容仍在服役(删=永久失去)/ 召回列已坏(删=**恢复** AI 检索)/ 无向量(AI 本就读不到)。
+ *     · ★**谓词 / oracle 漂移必须响亮**(第66轮裁决2):`corruptRowids` 与 `corrupt` 标记来自 SQL 谓词
+ *       (展示用);修复/销毁守卫来自 oracle(快照代码)。二者一致时「其实是健康的」**永不出现**;
+ *       一旦出现即不变式违反 ⇒ `driftDetected()` 响亮上报,**绝不静默吸收进计数**。
  *     · ★**即时删除按钮在 await 窗口内必须不可重入**:逻辑闸 `memBusy` + 物理闸 `disabled`(见下)。
  *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
  *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
@@ -113,6 +124,41 @@ const staleUndo = () => toast(tt(
   '该撤销已失效 —— 这次销毁已不在撤销环内(可能已被撤回,或被更新的销毁挤出)。',
   'Undo no longer available — that deletion is no longer in the undo ring.'
 ));
+
+/** ★★评审第66轮裁决2 · **谓词 / oracle 漂移的运行时监视器**。
+ *
+ *  `corruptRowids`(以及记忆行的 `corrupt` 标记)由 SQL 谓词产出 = **展示用途**;
+ *  而后端的修复 / 销毁守卫由 **oracle**(`map_mem_row` / `map_doc_row` —— 快照代码本身)裁决。
+ *  二者一致时,「这行其实是健康的」**永不出现**。一旦出现,就是「谓词比 oracle 更严」——
+ *  正是第65轮点名的那个危险方向。
+ *  ⇒ **绝不把它静默吸收进计数**:响亮上报,让一张沉默的安全网变成活的不变式检查。
+ *  @param {number} n 被判定为「其实健康」的条数 */
+const driftDetected = (n) => {
+  console.error(`[memory-docs] 不变式违反:${n} 条被标为「已损坏」的记录,快照判据说它们是健康的(谓词/oracle 漂移)`);
+  toast(tt(`其中 ${n} 条实际未损坏(已跳过)`, `${n} of them were not actually corrupted (skipped)`));
+};
+
+/** 销毁一条**不可修复**的记录时,决策点必须说清用户将失去什么(第66轮 [应改])。
+ *  三种真实情形,措辞各不相同 —— 都由后端 oracle 实测得出,不靠猜。
+ *  @param {{aiReadable?: boolean, recallBroken?: boolean}} r 修复失败时返回的实况 */
+const destroyCost = (r) => {
+  if (r && r.recallBroken) {
+    return tt(
+      '它的内容已无法读取,并且正在让 AI 的整个检索失效 —— 删除它可以恢复检索。删除后无法撤销。',
+      'Its content is unreadable and is breaking the AI\'s entire retrieval — removing it restores retrieval. This CANNOT be undone.'
+    );
+  }
+  if (r && r.aiReadable) {
+    return tt(
+      '⚠ 它的内容仍可被 AI 检索(损坏的只是元数据)。删除后这段内容将永久丢失,且无法撤销。',
+      '⚠ Its content is still retrievable by the AI (only the metadata is broken). Deleting it loses that content permanently, and CANNOT be undone.'
+    );
+  }
+  return tt(
+    'AI 检索不到它(缺少向量)。删除后无法撤销。',
+    'The AI cannot retrieve it (no embedding). This CANNOT be undone.'
+  );
+};
 
 /** 「拿不到 token 却出现了撤销按钮」—— `onConfirm` 返回 `false` 时 guardrail 根本不建按钮,
  *  故此分支**结构上不可达**。它仍然留着,但**必须响亮**(评审第64轮 Q2):
@@ -202,7 +248,7 @@ export async function renderMemory(box) {
       // r.fact = 用户主动写入的内容,可能含 PII → cEsc 后只呈现给用户;r.id 落 data-* 属性位 → cEsc 转 " 封越狱。
       ? `<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ', 'What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地', ' · local only')}</p>`
         // ★损坏行:标出来 + 删除键改用 rowid(其 id 可能不可映射);删除走 guardrail 逃生口,不给撤销。
-        + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}${r.corrupt ? ` · <span style="color:var(--accent);">${tt('已损坏 · 删除不可撤销', 'CORRUPTED · delete cannot be undone')}</span>` : ''}</div></div><button class="btn" ${r.corrupt ? `data-memcorrupt="${cEsc(String(r.rowid))}"` : `data-memdel="${cEsc(r.id)}"`} style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+        + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}${r.corrupt ? ` · <span style="color:var(--accent);">${tt('元数据损坏 · 无法生成撤销快照', 'METADATA CORRUPTED · no undo snapshot')}</span>` : ''}</div></div><button class="btn" ${r.corrupt ? `data-memfix="${cEsc(String(r.rowid))}"` : `data-memdel="${cEsc(r.id)}"`} style="padding:4px 10px;font-size:11px;flex-shrink:0;">${r.corrupt ? tt('修复', 'Repair') : tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
 
     // 逐条删:即时删除 + toastUndo(token 必填 ⇒ 每次撤销只作用于它自己那一次)。摘旧撤销 + 世代号 = **UX 策略**,非安全。
@@ -252,18 +298,32 @@ export async function renderMemory(box) {
         frozen.forEach((x) => { if (x.isConnected) x.disabled = false; }); // refresh 失败时解禁旧按钮
       }
     }));
-    // ★逃生口:损坏行 = 无法快照 ⇒ 不可撤销 ⇒ **必须走 guardrail 确认闸**(§4-3:做不到可靠撤销就走确认)。
-    //   不传 `onUndo` ⇒ 对话框不印「执行后可撤销。」,也不会出现按钮;`onConfirm` 返 false 双重收口。
-    [...box.querySelectorAll('[data-memcorrupt]')].forEach((b) => (b.onclick = async () => {
+    // ★★**修复优先于销毁**(评审第66轮 [建议]强)。`created_at` 有 schema `DEFAULT 0` ⇒ 归一化是
+    //   忠实修复、零内容损失(第61轮裁决A 的线内)。修好之后这条记录恢复「可撤销删除」——
+    //   用户根本不必在「丢内容」和「不可撤销」之间选。
+    //   只有**修不好**(损坏落在没有默认值的列上)时,才退到销毁,并在决策点说清失去什么。
+    [...box.querySelectorAll('[data-memfix]')].forEach((b) => (b.onclick = async () => {
       if (memBusy) return;
+      const rowid = Number(b.dataset.memfix);
+      memBusy = true;
+      let r;
+      try { r = await rt.memory.repairCorrupt(rowid); }
+      catch (e) { toast(errText(e)); memBusy = false; return; }
+      finally { memBusy = false; }
+
+      if (r.reason === 'repaired') {
+        toast(tt('已修复:时间戳已归一化;内容与向量未改动。现在可以正常删除并撤销。',
+          'Repaired: timestamp normalized; content and embedding untouched. It can now be deleted with undo.'));
+        await refresh(); return;
+      }
+      if (r.reason === 'healthy') { driftDetected(1); await refresh(); return; } // 谓词/oracle 漂移 ⇒ 响亮
+      if (r.reason === 'missing') { toast(tt('该记录已不存在', 'That record no longer exists')); await refresh(); return; }
+
+      // not_repairable ⇒ 销毁是最后手段,且必须说清代价
       if (!G || !G.confirmDestructive) { toast(tt('该端暂不支持', 'Not supported here')); return; } // fail-closed
-      const rowid = Number(b.dataset.memcorrupt);
       await G.confirmDestructive({
-        title: tt('删除已损坏的记录?', 'Delete corrupted record?'),
-        detail: tt(
-          '这条记录已损坏,无法生成撤销快照。删除后无法撤销。',
-          'This record is corrupted and cannot be snapshotted. Deleting it CANNOT be undone.'
-        ),
+        title: tt('无法修复 —— 删除这条记录?', 'Cannot repair — delete this record?'),
+        detail: tt('这条记录的损坏不在可归一化的列上(内容或向量本身不是文本/向量)。', 'The corruption is not in a normalizable column (the content or embedding itself is not text/vector). ') + destroyCost(r),
         confirmLabel: tt('删除', 'Delete'),
         onConfirm: async () => {
           memBusy = true;
@@ -271,7 +331,7 @@ export async function renderMemory(box) {
             const res = await rt.memory.removeCorrupt(rowid);
             const n = res && typeof res.deleted === 'number' ? res.deleted : 0;
             toast(n > 0
-              ? tt('已删除该已损坏的记录(无法撤销)', 'Corrupted record deleted (cannot be undone)')
+              ? tt('已删除该记录(无法撤销)', 'Record deleted (cannot be undone)')
               : tt('没有可删除的内容', 'Nothing to delete'));
             await refresh();
           } catch (e) { toast(errText(e)); } // 后端拒绝(如「该记录未损坏」)如实浮出,绝不静默
@@ -381,7 +441,7 @@ export async function renderDocs(box) {
     // d.name = 用户填的名 / 文件名(可能是外部语料标题)→ cEsc;d.docId 落 data-* 属性位 → cEsc。
     body.innerHTML = rows.length
       ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ', 'Docs · ')}${rows.length}</div>`
-        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}${d.corrupt ? ` · <span style="color:var(--accent);">${tt('含已损坏片段 · 删除不可撤销', 'CORRUPTED chunks · delete cannot be undone')}</span>` : ''}</div></div>${d.corrupt && (d.corruptRowids || []).length ? `<button class="btn" data-docfix="${cEsc((d.corruptRowids || []).join(','))}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('移除已损坏片段', 'Remove corrupted chunks')}</button>` : ''}<button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}${d.corrupt ? ` · <span style="color:var(--accent);">${tt('含元数据损坏的片段 · 无法生成撤销快照', 'CORRUPTED metadata · no undo snapshot')}</span>` : ''}</div></div>${d.corrupt && (d.corruptRowids || []).length ? `<button class="btn" data-docfix="${cEsc((d.corruptRowids || []).join(','))}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('修复损坏片段', 'Repair chunks')}</button>` : ''}<button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
 
     // ★逐片段手术(评审第65轮 [建议] 粒度对齐):一个孤立的坏片段不该逼用户清空整个知识库。
@@ -389,26 +449,44 @@ export async function renderDocs(box) {
     //   坏片段本身不可快照 ⇒ 此操作**不可撤销** ⇒ 走 guardrail 确认闸、**不传 onUndo**(§4-3)。
     //   用 rowid 而非 doc_id:坏片段的 `doc_id` 列本身可能就是 BLOB,按名寻址不到它。
     [...box.querySelectorAll('[data-docfix]')].forEach((b) => (b.onclick = async () => {
-      if (!G || !G.confirmDestructive) { toast(tt('该端暂不支持', 'Not supported here')); return; } // fail-closed
       const rowids = String(b.dataset.docfix || '').split(',').map(Number).filter((x) => Number.isFinite(x) && x > 0);
       if (!rowids.length) return;
+
+      // ① 先修复:能归一化的一律修好(零内容损失),销毁只对修不好的那些作为最后手段。
+      let repaired = 0, drift = 0;
+      /** @type {Array<{rowid: number, aiReadable?: boolean, recallBroken?: boolean}>} */
+      const stuck = []; // 修不好的那些(销毁是它们的最后手段)
+      for (const rid of rowids) {
+        let r;
+        try { r = await rt.docs.repairCorrupt(rid); } catch (e) { toast(errText(e)); continue; }
+        if (r.reason === 'repaired') repaired++;
+        else if (r.reason === 'healthy') drift++;                  // 谓词/oracle 漂移
+        else if (r.reason === 'not_repairable') stuck.push({ rowid: rid, ...r });
+      }
+      if (repaired) toast(tt('已修复 ', 'Repaired ') + repaired + tt(' 个片段(内容与向量未改动)', ' chunk(s) (content and embeddings untouched)'));
+      if (drift) driftDetected(drift);                             // ★绝不静默吸收
+      await refresh();
+      if (!stuck.length) return;                                   // 全修好了 —— 根本不必销毁
+
+      // ② 修不好的:销毁是最后手段,且决策点必须说清失去什么(按实况取最坏的那一句)
+      if (!G || !G.confirmDestructive) { toast(tt('该端暂不支持', 'Not supported here')); return; } // fail-closed
+      const worst = stuck.find((x) => x.aiReadable) || stuck.find((x) => x.recallBroken) || stuck[0];
       await G.confirmDestructive({
-        title: tt('移除已损坏的片段?', 'Remove corrupted chunks?'),
-        detail: tt(
-          `将从这篇文档移除 ${rowids.length} 个已损坏的片段(它们无法生成撤销快照)。移除后无法撤销;这篇文档随后可正常删除并撤销。`,
-          `Removes ${rowids.length} corrupted chunk(s) from this doc (they cannot be snapshotted). This CANNOT be undone; afterwards the doc deletes normally and can be undone.`
-        ),
+        title: tt('无法修复 —— 移除这些片段?', 'Cannot repair — remove these chunks?'),
+        detail: tt(`这篇文档有 ${stuck.length} 个片段的损坏不在可归一化的列上。`, `${stuck.length} chunk(s) in this doc are corrupted in a non-normalizable column. `) + destroyCost(worst),
         confirmLabel: tt('移除', 'Remove'),
         onConfirm: async () => {
-          let done = 0;
-          for (const rid of rowids) {
+          let done = 0, refused = 0;
+          for (const x of stuck) {
             try {
-              const res = await rt.docs.removeCorrupt(rid);
+              const res = await rt.docs.removeCorrupt(x.rowid);
               done += (res && typeof res.deleted === 'number') ? res.deleted : 0;
-            } catch (e) { toast(errText(e)); } // 后端拒绝(如「该片段未损坏」)如实浮出,绝不静默
+            } catch (e) { refused++; toast(errText(e)); } // 后端拒绝如实浮出,绝不静默
           }
+          // ★拒绝不是正常结果,是不变式违反(守卫说它健康,而谓词把它标成了坏的)。响亮。
+          if (refused) driftDetected(refused);
           toast(done > 0
-            ? tt('已移除 ', 'Removed ') + done + tt(' 个已损坏片段(无法撤销)', ' corrupted chunk(s) (cannot be undone)')
+            ? tt('已移除 ', 'Removed ') + done + tt(' 个无法修复的片段(无法撤销)', ' unrepairable chunk(s) (cannot be undone)')
             : tt('没有可移除的内容', 'Nothing to remove'));
           await refresh();
           return false; // 永不提供撤销:没有快照,就没有可还原之物

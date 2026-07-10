@@ -183,6 +183,9 @@ export function createDesktopRuntime() {
       // ★逃生口(第64轮③):销毁一条**不可映射(已损坏)**的记忆 —— 按 rowid 删,不快照、不发 token。
       //   后端**拒绝销毁健康行**(结构性守卫),故它不是「绕过快照直接删」的后门。
       removeCorrupt: (rowid) => invoke('memory_remove_corrupt', { rowid }),
+      // ★修复优先于销毁(第66轮):`created_at` 有 schema `DEFAULT 0` ⇒ 归一化是忠实修复,零内容损失。
+      //   其余列无默认值 ⇒ 不碰,销毁仍是它们唯一的逃生口。返回 {repaired, reason, aiReadable, recallBroken}。
+      repairCorrupt: (rowid) => invoke('memory_repair_corrupt', { rowid }),
       undo: (token) => invoke('memory_undo', { token }),
     },
 
@@ -198,6 +201,7 @@ export function createDesktopRuntime() {
       //   后端**拒绝销毁健康片段**(判据是快照代码 `doc_row_state`,不是谓词)⇒ 不是绕过快照的后门。
       //   删掉坏片段后,该篇立刻恢复「可撤销删除」,不必清空整个知识库。
       removeCorrupt: (rowid) => invoke('doc_remove_corrupt', { rowid }),
+      repairCorrupt: (rowid) => invoke('doc_repair_corrupt', { rowid }), // 修复优先于销毁(第66轮)
       clear: () => invoke('doc_clear'), // → { deleted, undoToken }
       clearUndoable: () => invoke('doc_clear_undoable'),
       undo: (token) => invoke('doc_undo', { token }), // token 必填(后端 DocTrash 环按 token 还原,向量不出后端)

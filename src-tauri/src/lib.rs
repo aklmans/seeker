@@ -76,6 +76,8 @@ pub fn run() {
             data::doc_remove_undoable,
             data::memory_remove_corrupt,
             data::doc_remove_corrupt,
+            data::memory_repair_corrupt,
+            data::doc_repair_corrupt,
             data::doc_undo,
             mcp::mcp_probe,
             mcp::mcp_list,

@@ -187,6 +187,7 @@ export function createWebRuntime() {
       clearUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }),
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }),
       removeCorrupt: () => Promise.resolve({ deleted: 0, undoToken: null }), // 无行可损坏 ⇒ 诚实 no-op
+      repairCorrupt: () => Promise.resolve({ repaired: false, reason: 'missing', aiReadable: false, recallBroken: false }),
       undo: (_token) => Promise.resolve(0), // 环内无此次销毁 ⇒ 还原 0 条(前端据此 staleUndo,不报「已撤销」)
     },
 
@@ -197,6 +198,7 @@ export function createWebRuntime() {
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
       removeUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }), // 同形:{undoable, reason}
       removeCorrupt: () => Promise.resolve({ deleted: 0, undoToken: null }), // 无片段可损坏 ⇒ 诚实 no-op
+      repairCorrupt: () => Promise.resolve({ repaired: false, reason: 'missing', aiReadable: false, recallBroken: false }),
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       clearUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }),
       undo: (_token) => Promise.resolve(0),
