@@ -1181,6 +1181,34 @@ mod tests {
         assert!(ring.has(&keep));
     }
 
+    /// ★跨进程契约:`DestroyResult` 必须序列化为 `{ deleted, undoToken }`。
+    /// 若 `#[serde(rename)]` 写错,前端读到 `undefined` ⇒ `token == null` 成立 ⇒ `offerUndo` 判为
+    /// 「超上限、无法撤销」⇒ **每次真实删除都静默失去撤销**,而无任何测试会红。故在此钉死。
+    #[test]
+    fn destroy_result_serializes_as_deleted_and_camel_case_undo_token() {
+        let some = serde_json::to_value(super::DestroyResult {
+            deleted: 3,
+            undo_token: Some("u7".into()),
+        })
+        .unwrap();
+        assert_eq!(some["deleted"], 3);
+        assert_eq!(some["undoToken"], "u7");
+        assert!(
+            some.get("undo_token").is_none(),
+            "不得暴露 snake_case 字段名(前端按 undoToken 读)"
+        );
+
+        let none = serde_json::to_value(super::DestroyResult {
+            deleted: 0,
+            undo_token: None,
+        })
+        .unwrap();
+        assert!(
+            none["undoToken"].is_null(),
+            "无 token 须序列化为 null(前端据此不提供撤销)"
+        );
+    }
+
     /// ★环的价值兑现:**按 token 精确撤销那一次**,而非只能撤最近一次;未知/已淘汰 token → `None`。
     #[test]
     fn undo_ring_takes_by_token_not_just_newest() {
