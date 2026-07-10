@@ -10,16 +10,15 @@
  *       故本页的删除**纯属用户 UI 发起**。
  *     · **用户发起**:记忆逐条删 = 即时删 + `toastUndo`;记忆清空 / 文档删 / 文档清空 = `guardrail`
  *       的 `confirmDestructive`(预览 + 确认 + `onUndo`),`!G` 时 fail-closed 早返。
- *     · ★**撤销语义 = 撤销「最近一次销毁」,而非「撤销这一条」** —— **理由已随刀2b-1 改变,勿照旧解读**:
- *       · 第56轮起的旧理由(**已不成立**):后端曾是**单槽覆盖**,新销毁会把上一次的快照冲掉。
- *       · **今日理由**(刀2b-1):后端已是**有界环 `UndoRing`**,多次销毁**各自留存**并各有 token;
- *         但**本模块尚未把 token 穿进撤销回调** ⇒ `rt.*.undo()` 不带 token ⇒ 后端取**环顶(最近一次)**。
- *       ⇒ 语义仍是「撤销最近一次」,故世代守卫仍必需:① 新销毁前**摘掉本域尚存的撤销 toast**
- *       (不留会还原错记录的死按钮);② 过期的撤销回调**诚实拒绝**,而非静默还原错记录。
- *       ⚠ **`undo()` 不带 token 是一个明确的临时不安全 affordance**(评审第62轮):旧单槽下第二次撤销
- *       只会还原 0 条(诚实的 no-op);**环下它会还原环顶 = 别人的那一次销毁**。今天挡住它的全是**前端**闸
- *       (`done` / 世代 / `dropToast` / `offerUndo`)—— 纵深防御被迫承重。**刀2b-2 必须把 `None` 这个
- *       affordance 删掉**(`token` 必填、未命中即还原 0 条),届时「还原错记录」才**结构上不可能**。
+ *     · ★★**撤销语义 = 「撤销它自己那一次销毁」(刀2b-2 起,由 token 结构性保证)**:
+ *       · 旧理由一(第56轮,**已不成立**):后端曾是**单槽覆盖**,新销毁会把上一次的快照冲掉。
+ *       · 旧理由二(刀2b-1,**已不成立**):环已保留多次销毁,但前端不穿 token ⇒ `undo()` 取环顶。
+ *       · **今日**:`rt.*.undo(token)` 的 **`token` 必填**(后端 `UndoRing::take(&str)`,「取最近一次」
+ *         的 affordance 已在**类型层面删除**)⇒ 每次撤销**只能**作用于它自己那一次销毁;
+ *         token 已失效(被撤销过 / 被更新的销毁挤出上限)→ 后端还原 0 条 → 前端 `staleUndo()` + `return false`。
+ *       ⇒ **「还原错记录」在类型层面不可能**(评审第62轮验收判据③)。
+ *       ⚠ 因此 **`memGen`/`docGen` 世代守卫与 `dropToast` 已降为纯纵深防御**(以及「场上只留一个撤销
+ *         affordance」的 UX 选择),**不再承重**。**勿以为删了它们就会丢数据 —— 但也别删**:安全网仍有价值。
  *       ⚠ **不得改 `toast.js` 共享原语**:notes/prompts/resumes 的撤销是**闭包快照、各自独立正确**,
  *       做成全局互斥反而把它们改坏。世代守卫**只作用于本模块自己的两个 trash 域**(memory / docs)。
  *     · ★**提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原**(第58轮 [建议]A + 第60轮 [建议]1 + 刀2b-1):
@@ -55,10 +54,10 @@ import { errText, toast, toastUndo } from './toast.js';
 const fmtTs = (ts) => { try { return new Date(+ts || 0).toLocaleString(); } catch (_e) { return ''; } };
 const emptyLine = (txt) => `<p style="color:var(--ink-3);font-size:12px;padding:12px 0;">${txt}</p>`;
 
-/* ── 撤销世代守卫(见模块头 §4-3):后端 MemTrash / DocTrash 现为**各自独立的有界环 `UndoRing`**
-      (刀2b-1;不再是单槽)。环里多次销毁各自留存,但**本模块尚未穿 token** ⇒ `undo()` 取环顶(最近一次)
-      ⇒ 语义仍是「撤销最近一次」,故任一域发生新销毁 → 该域此前的撤销 affordance 立即过期。
-      两域计数独立(后端两个环亦独立 ⇒ 文档销毁**结构上**动不了记忆环顶)。 */
+/* ── 撤销世代守卫(见模块头 §4-3):后端 MemTrash / DocTrash 是**各自独立的有界环 `UndoRing`**。
+      刀2b-2 起前端**穿 token**、后端 `take(&str)` token 必填 ⇒ 每次撤销只作用于它自己那一次销毁,
+      **「还原错记录」在类型层面不可能**。故本守卫已降为**纯纵深防御**(外加「场上只留一个撤销
+      affordance」的 UX 选择),不再承重。两域计数独立(后端两个环亦独立)。 */
 let memGen = 0, docGen = 0;
 let memUndoToast = null; // 记忆域当前在场的 toastUndo 元素(新销毁前摘掉,避免留下会还原错记录的死按钮)
 /* ★重入守卫(评审第57轮 [应改]):记忆逐条删是**唯一的即时删除路径** —— 按钮在 `await remove()`+`await refresh()`
@@ -79,23 +78,34 @@ const expiredUndo = () => toast(tt(
 /** toastUndo 无返回值:它同步 append 到 #toasts,故紧随其后的 lastElementChild 即本次的 toast。 */
 const lastToastEl = () => { const h = document.getElementById('toasts'); return h ? h.lastElementChild : null; };
 
+/** 该次撤销已不在环内(已被撤回过 / 被更新的销毁挤出上限)—— 如实上报,绝不报「已撤销」。
+ *  ⚠ 措辞刻意**不含「已撤销」四字**:那是 `toast.js` 成功路径的专用提示,
+ *    复用它会让用户(以及断言)把一次失败读成成功。 */
+const staleUndo = () => toast(tt(
+  '该撤销已失效 —— 这次销毁已不在撤销环内(可能已被撤回,或被更新的销毁挤出)。',
+  'Undo no longer available — that deletion is no longer in the undo ring.'
+));
+
 /**
- * 由销毁命令的返回 `{ deleted, undoToken }` 判定**是否提供撤销**(刀2b-1)。
- *  · `deleted === 0`(no-op:行已不在 / 库本就空)→ 不提供 + 提示「没有可…的内容」;
- *  · `deleted > 0` 但 **`undoToken` 为空** → 不提供 + 提示「已…;内容过大,无法撤销」。
- *    此时销毁**确已发生**,但快照超过后端环的字节上限、**未入环**(UndoRing 不变式③)。
- *    ★为何必须拒:`undo()` 不带 token 会取走环里**最近的另一次**销毁 ⇒ **还原错记录**。
- *    ⇒ 「**无 token ⇒ 不提供撤销**」由后端结构性保证,前端据此收口,而非靠约定。
- *  · 其余(含 web 降级 `{deleted:0,undoToken:null}` 已被第一条拦下)→ 提供。
+ * 由销毁命令的返回 `{ deleted, undoToken }` 决定**这次销毁能否提供撤销**,
+ * 并把**撤销所需的 token** 交出去(刀2b-2:token 是撤销的唯一凭据)。
  *
+ *  · `deleted === 0`(no-op:行已不在 / 库本就空)→ 不提供 + 「没有可…的内容」;
+ *  · **无 `undoToken`** → 不提供 + 「已…;内容过大,无法撤销」。销毁确已发生,但快照超后端环的
+ *    字节上限、**未入环**(UndoRing 不变式③),**没有可还原之物**;
+ *  · 其余 → 返回 token。
+ *
+ * @returns {string|null} 撤销凭据;`null` = 不提供撤销。
+ *
+ * ★「无 token ⇒ 不提供撤销」由后端**结构性**保证(`undo(token)` 的 `token` 必填),前端只是把它显式化。
  * 与不变式「**提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原**」一致。
  */
 function offerUndo(res, nothingMsg, tooBigMsg) {
   const n = res && typeof res.deleted === 'number' ? res.deleted : undefined;
-  const token = res ? res.undoToken : undefined;
-  if (typeof n === 'number' && n === 0) { toast(nothingMsg); return false; }
-  if (typeof n === 'number' && n > 0 && token == null) { toast(tooBigMsg); return false; }
-  return true;
+  const token = res && res.undoToken != null ? String(res.undoToken) : null;
+  if (typeof n === 'number' && n === 0) { toast(nothingMsg); return null; }
+  if (token == null) { toast(tooBigMsg); return null; }
+  return token;
 }
 
 /* ─────────────────────────── 长期记忆 ─────────────────────────── */
@@ -138,29 +148,27 @@ export async function renderMemory(box) {
         // ★后端返回**实际删除条数**(评审第60轮 [建议]1:提供撤销 ⇔ 销毁确已发生)。
         //   n===0 = no-op 删除 ⇒ 后端 trash 仍是**上一次**的快照 ⇒ 绝不可推进世代 / 给撤销,否则点下去还原错记录。
         //   web 端降级返回 undefined → 视为成功(那里本无行、不可达)。
-        let ok = true;
+        let token = null;
         try {
-          ok = offerUndo(
+          token = offerUndo(
             await rt.memory.remove(b.dataset.memdel),
             tt('没有可删除的内容', 'Nothing to delete'),
             tt('已删除;内容过大,无法撤销', 'Deleted; too large to undo')
           );
-        } catch (e) { ok = false; toast(errText(e)); }
+        } catch (e) { token = null; toast(errText(e)); }
         await refresh(); // 重渲出全新(enabled)按钮
-        if (ok) {
-          const gen = ++memGen; // 只有真销毁才推进世代
-          // ★上报撤销结果(toast.js 新契约):返回 false ⇒ toast.js 不报「已撤销」;失败因由由本回调自报。
+        if (token) {
+          const gen = ++memGen; // 只有真销毁才推进世代(世代守卫今已降为**纵深防御**,见模块头)
+          // ★上报撤销结果(toast.js 契约):返回 false ⇒ toast.js 不报「已撤销」;失败因由由本回调自报。
           //   ⚠ 陷阱:`return expiredUndo()` 的值是 undefined(toast 的返回值)⇒ 会被读成**成功**。必须显式 return false。
           toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => {
-            if (gen !== memGen) { expiredUndo(); return false; } // 过期:诚实拒绝,绝不静默还原错记录
+            if (gen !== memGen) { expiredUndo(); return false; } // 兜底(非承重):token 已保证只能还原它自己那一次
             let n;
-            try { n = await rt.memory.undo(); } catch (e) { toast(errText(e)); return false; }
+            // ★刀2b-2:token 必填 —— 这次撤销**只能**作用于它自己那一次销毁,还原错记录在类型层面不可能。
+            try { n = await rt.memory.undo(token); } catch (e) { toast(errText(e)); return false; }
             await refresh();
-            if (typeof n === 'number' && n === 0) { // 后端真还原 0 条(环内已无此次销毁)⇒ 绝不可报「已撤销」
-              toast(tt('没有可撤销的内容', 'Nothing to undo'));
-              return false;
-            }
-            return undefined; // n>0 或 web 降级(undefined)→ 成功
+            if (typeof n === 'number' && n === 0) { staleUndo(); return false; } // token 已失效 ⇒ 绝不报「已撤销」
+            return undefined; // n>0 → 成功
           });
           memUndoToast = lastToastEl();
         }
@@ -185,7 +193,7 @@ export async function renderMemory(box) {
     //     而**环是后端状态、跨刷新存活** ⇒「刷新后 memGen=0 而环里躺着 A」是真实可达状态。
     //     此时一次超限 clear(ok=false、不推进世代)恰好命中 `gen(0)===memGen(0)` ——
     //     **`if (!ok) return;` 是唯一挡住「撤销取走环顶的 A」的那道闸,不是冗余。**
-    let gen = 0, ok = false;
+    let gen = 0, token = null; // token = 撤销凭据;null ⇒ 无可撤销之物(onUndo 据此拒绝)
     // ★预检(评审第62轮 [应改]):确认文案必须在**用户做决定之前**说真话 ——
     //   超出后端环的字节上限时,这次清空**不可撤销**;绝不能先承诺「可在几秒内撤销」、销毁后才改口。
     let undoable = true;
@@ -204,14 +212,14 @@ export async function renderMemory(box) {
           //   逐条删的快照,而 guardrail 无条件给撤销按钮 ⇒ 点下去会还原一条 clear 根本没销毁的记录。
           //   故 n===0 ⇒ 不推进世代、不视为成功(onUndo 据 ok 拒绝)。
           try {
-            ok = offerUndo(
+            token = offerUndo(
               await rt.memory.clear(),
               tt('没有可清除的内容', 'Nothing to clear'),
               tt('已清除;内容过大,无法撤销', 'Cleared; too large to undo')
             );
-          } catch (e) { toast(errText(e)); }
-          if (ok) { // 提供撤销 ⇔ 销毁确已发生
-            dropToast(memUndoToast); memUndoToast = null; // 清空已入环成为新环顶 → 未穿 token 的旧撤销就此失效
+          } catch (e) { token = null; toast(errText(e)); }
+          if (token) { // 提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原
+            dropToast(memUndoToast); memUndoToast = null; // 只保留一个在场的撤销 affordance(UX,非正确性)
             gen = ++memGen;
           }
           await refresh();
@@ -221,10 +229,15 @@ export async function renderMemory(box) {
       //   ⇒ 无需遵循 toast.js 的「显式 return false」契约。若将来改走 `toastUndo`,失败路径**必须显式 return false**,
       //   否则默认值 undefined 会被读成「成功」而谎报「已撤销」。(评审第59轮 [建议]3 · 防漂移)
       onUndo: async () => {
-        if (!ok) return; // 销毁未发生 → 无可撤销(guardrail 已擅自给出按钮)
+        // ★★评审第62轮变体(f):`memGen` 是**前端模块级、刷新即归零**,而**环是后端状态、跨刷新存活**
+        //   ⇒「刷新后 memGen=0 而环里躺着上一次销毁」真实可达。此时一次超限 clear(token=null、不推进世代)
+        //   恰好命中 gen(0)===memGen(0) —— **`if (!token) return;` 是唯一挡住它的闸,不是冗余。别并进 gen 判据。**
+        if (!token) return; // 销毁未发生 / 无可撤销之物(guardrail 已擅自给出按钮)
         if (gen !== memGen) return expiredUndo();
-        try { await rt.memory.undo(); } catch (e) { toast(errText(e)); }
+        let n;
+        try { n = await rt.memory.undo(token); } catch (e) { toast(errText(e)); return; }
         await refresh();
+        if (typeof n === 'number' && n === 0) staleUndo(); // token 已失效 —— guardrail 不报成功,故只需如实告知
       },
     });
   };
@@ -270,30 +283,31 @@ export async function renderDocs(box) {
     [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = () => {
       if (!G || !G.confirmDestructive) return; // fail-closed
       const d = rows.find((x) => String(x.docId) === String(b.dataset.docdel));
-      let gen = 0, ok = false; // ok 必需:失败时不推进世代会使 gen(0)===docGen(0) 误判为有效(见 renderMemory 同注)
+      let gen = 0, token = null; // token 必需:它既是撤销凭据,也是「无可撤销之物」的唯一判据(见 renderMemory 同注)
       G.confirmDestructive({
         title: tt('删除文档?', 'Delete doc?'),
         detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : ''),
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
         onConfirm: async () => {
-          // ★[建议]1 同源:doc_remove 返回实际删除的 chunk 数;n===0 = no-op ⇒ 不给撤销(否则还原上一次的文档)。
           try {
-            ok = offerUndo(
+            token = offerUndo(
               await rt.docs.remove(b.dataset.docdel),
               tt('没有可删除的内容', 'Nothing to delete'),
               tt('已删除;内容过大,无法撤销', 'Deleted; too large to undo')
             );
-          } catch (e) { toast(errText(e)); }
-          if (ok) gen = ++docGen; // 提供撤销 ⇔ 销毁确已发生
+          } catch (e) { token = null; toast(errText(e)); }
+          if (token) gen = ++docGen; // 提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原
           await refresh();
         },
         // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
         onUndo: async () => {
-          if (!ok) return; // 销毁未发生 → 无可撤销
+          if (!token) return; // 销毁未发生 / 无可撤销之物
           if (gen !== docGen) return expiredUndo();
-          try { await rt.docs.undo(); } catch (e) { toast(errText(e)); }
+          let n;
+          try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }
           await refresh();
+          if (typeof n === 'number' && n === 0) staleUndo();
         },
       });
     }));
@@ -346,7 +360,7 @@ export async function renderDocs(box) {
   const clr = q('#ccDocClear');
   if (clr) clr.onclick = async () => { // async:预检需 await(确认文案在用户决定前说真话)
     if (!G || !G.confirmDestructive) return; // fail-closed
-    let gen = 0, ok = false;
+    let gen = 0, token = null;
     // ★预检同 renderMemory 清空路径:确认文案在用户做决定之前说真话(评审第62轮 [应改])。
     let undoable = true;
     try { undoable = await rt.docs.clearUndoable(); } catch (_e) { undoable = false; }
@@ -360,21 +374,23 @@ export async function renderDocs(box) {
       onConfirm: async () => {
         // ★[建议]1 同源:清空一个已空的知识库 = 销毁 0 条 ⇒ 不给撤销(后端仍留着上一次删文档的快照)。
         try {
-          ok = offerUndo(
+          token = offerUndo(
             await rt.docs.clear(),
             tt('没有可清空的内容', 'Nothing to clear'),
             tt('已清空;内容过大,无法撤销', 'Cleared; too large to undo')
           );
-        } catch (e) { toast(errText(e)); }
-        if (ok) gen = ++docGen;
+        } catch (e) { token = null; toast(errText(e)); }
+        if (token) gen = ++docGen;
         await refresh();
       },
       // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
       onUndo: async () => {
-        if (!ok) return;
+        if (!token) return;
         if (gen !== docGen) return expiredUndo();
-        try { await rt.docs.undo(); } catch (e) { toast(errText(e)); }
+        let n;
+        try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }
         await refresh();
+        if (typeof n === 'number' && n === 0) staleUndo();
       },
     });
   };

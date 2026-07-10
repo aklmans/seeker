@@ -172,13 +172,14 @@ export function createDesktopRuntime() {
     memory: {
       // 长期记忆的用户掌控(#4):查看(不含 embedding)/ 清除 / 删一条 / 撤销(后端 trash 还原,向量不出后端)。
       list: () => invoke('memory_list'),
-      // ★刀2b-1:销毁命令返回 { deleted, undoToken }(undoToken=null ⇒ 无可撤销之物 ⇒ 前端不给撤销);
-      //   undo 收 token —— 不传 = 撤销最近一次(向后兼容,token 穿线 = 刀2b-2)。
+      // ★销毁命令返回 { deleted, undoToken }(undoToken=null ⇒ 无可撤销之物 ⇒ 前端不给撤销)。
+      //   ★刀2b-2:undo 的 token **必填** —— 后端 `take(&str)` 已删掉「取最近一次」的 affordance,
+      //   故一次撤销只能作用于它自己那一次销毁(还原错记录在类型层面不可能)。
       clear: () => invoke('memory_clear'),
       // 预检:这次清空是否可撤销(供确认弹窗在用户做决定前说真话 · 评审第62轮 [应改])
       clearUndoable: () => invoke('memory_clear_undoable'),
       remove: (id) => invoke('memory_remove', { id }),
-      undo: (token) => invoke('memory_undo', { token: token ?? null }),
+      undo: (token) => invoke('memory_undo', { token }),
     },
 
     docs: {
@@ -188,7 +189,7 @@ export function createDesktopRuntime() {
       remove: (docId) => invoke('doc_remove', { docId }), // → { deleted, undoToken }
       clear: () => invoke('doc_clear'), // → { deleted, undoToken }
       clearUndoable: () => invoke('doc_clear_undoable'),
-      undo: (token) => invoke('doc_undo', { token: token ?? null }), // 不传 token = 撤销最近一次(后端 DocTrash 环还原,向量不出后端)
+      undo: (token) => invoke('doc_undo', { token }), // token 必填(后端 DocTrash 环按 token 还原,向量不出后端)
       // 块3b:从 PDF(data-URL 或 base64)提取纯文本(纯本地,不出网)。供 AI 录入把 PDF 转文本喂抽取路径。
       pdfText: (dataBase64) => invoke('pdf_extract_text', { dataBase64 }),
     },

@@ -185,7 +185,7 @@ export function createWebRuntime() {
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       clearUndoable: () => Promise.resolve(true), // web 端本无行 ⇒ 估算 0 字节 ⇒ 可撤销(与桌面判据同源)
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }),
-      undo: () => Promise.resolve(0),
+      undo: (_token) => Promise.resolve(0), // 环内无此次销毁 ⇒ 还原 0 条(前端据此 staleUndo,不报「已撤销」)
     },
 
     // 网页端暂无本地知识库(切块/嵌入/SQLite 为桌面能力)→ 列空、加文档不支持、删/清无操作。
@@ -195,7 +195,7 @@ export function createWebRuntime() {
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       clearUndoable: () => Promise.resolve(true),
-      undo: () => Promise.resolve(0),
+      undo: (_token) => Promise.resolve(0),
       pdfText: () => notImpl('rt.docs.pdfText', 'web'),
     },
 

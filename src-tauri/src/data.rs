@@ -638,14 +638,17 @@ impl<T: UndoBytes> UndoRing<T> {
         Some(token)
     }
 
-    /// 取走一条并移出环。`Some(token)` → 精确取那一次;`None` → 取**最近一次**
-    /// (向后兼容:刀2b-1 的前端仍调 `undo()` 不带 token;token 穿线 = 刀2b-2)。
-    /// 找不到(已淘汰 / 未知 token)→ `None`,命令遂返回 0,**绝不静默成功**。
-    fn take(&mut self, token: Option<&str>) -> Option<Vec<T>> {
-        let idx = match token {
-            Some(t) => self.entries.iter().position(|e| e.token == t)?,
-            None => self.entries.len().checked_sub(1)?,
-        };
+    /// 取走**指定 token 的那一次销毁**并移出环。找不到(已淘汰 / 未知 / 已被取走)→ `None`,
+    /// 命令遂返回 0,**绝不静默成功**。
+    ///
+    /// ★★刀2b-2:**`token` 必填 —— 「取最近一次」这个 affordance 已被删除**(评审第62轮验收判据③)。
+    /// 理由:环下 `take(None)` 弹环顶 ⇒ 一次**虚假的**撤销会还原**别人的那一次销毁**
+    /// (旧单槽下只会还原 0 条,是诚实的 no-op)⇒ **失效模式从 no-op 升级为「还原更早的销毁」**。
+    /// 当时挡住它的全是**前端**闸(`toastUndo.done` / `guardrail.showUndo.done` / 世代 / `dropToast`),
+    /// 纵深防御被迫承重。删掉 `None` 之后:每次撤销都**只能**作用于它自己那一次销毁 ⇒
+    /// **「还原错记录」在类型层面不可能**,前端闸退回纯纵深防御。
+    fn take(&mut self, token: &str) -> Option<Vec<T>> {
+        let idx = self.entries.iter().position(|e| e.token == token)?;
         let e = self.entries.remove(idx)?;
         self.bytes -= e.bytes;
         Some(e.rows)
@@ -908,13 +911,13 @@ pub fn memory_remove(
 pub fn memory_undo(
     db: State<'_, Db>,
     trash: State<'_, MemTrash>,
-    token: Option<String>,
+    token: String,
 ) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = trash.0.lock().unwrap().take(token.as_deref());
+    let rows = trash.0.lock().unwrap().take(&token);
     match rows {
         Some(rows) => memory_restore_rows(&conn, &rows),
-        None => Ok(0), // 环内已无此次销毁 ⇒ 还原 0 条
+        None => Ok(0), // 环内已无此次销毁(已淘汰 / 已撤销过)⇒ 还原 0 条,前端据此如实上报
     }
 }
 
@@ -1140,10 +1143,10 @@ pub fn doc_clear_undoable(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Resu
 pub fn doc_undo(
     db: State<'_, Db>,
     trash: State<'_, DocTrash>,
-    token: Option<String>,
+    token: String,
 ) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = trash.0.lock().unwrap().take(token.as_deref());
+    let rows = trash.0.lock().unwrap().take(&token);
     match rows {
         Some(rows) => doc_restore_rows(&conn, &rows),
         None => Ok(0), // 环内已无此次销毁 ⇒ 还原 0 条,绝不静默成功
@@ -1405,26 +1408,29 @@ mod tests {
         );
     }
 
-    /// ★环的价值兑现:**按 token 精确撤销那一次**,而非只能撤最近一次;未知/已淘汰 token → `None`。
+    /// ★环的价值兑现 + **刀2b-2 的结构性保证**:撤销**只能**作用于它自己那一次销毁。
+    /// `take` 的 `token` 已是必填 —— 「取最近一次」的 affordance 在**类型层面**不存在,
+    /// 故「一次虚假的撤销还原了别人那一次销毁」**不可能被表达**。
     #[test]
-    fn undo_ring_takes_by_token_not_just_newest() {
+    fn undo_ring_takes_only_its_own_entry_by_token() {
         let mut ring: super::UndoRing<super::MemRow> = Default::default();
         let ta = ring.stash(vec![mrow("A", 0)]).unwrap();
         let tb = ring.stash(vec![mrow("B", 0)]).unwrap();
 
-        // 精确取 A(较旧的那一次)—— 单槽时代做不到
-        let rows = ring.take(Some(&ta)).expect("按 token 应取到 A 那一次");
-        assert_eq!(rows[0].0, "A");
+        // ★即便 A 不是环顶(B 才是),按 A 的 token 撤销也**只**还原 A —— 绝不会碰到 B。
+        let rows = ring.take(&ta).expect("按 token 应取到 A 那一次");
+        assert_eq!(rows[0].0, "A", "必须还原它自己那一次,而非环顶");
         assert!(!ring.has(&ta), "取走后应移出环");
         assert!(ring.has(&tb), "B 那一次不受影响");
 
         // 未知 token → None(命令遂返回 0,绝不静默成功)
-        assert!(ring.take(Some("nope")).is_none());
-        // 不带 token → 取最近一次(刀2b-1 前端仍走这条)
-        let rows = ring.take(None).expect("应取到最近一次");
-        assert_eq!(rows[0].0, "B");
-        // 环空 → None
-        assert!(ring.take(None).is_none());
+        assert!(ring.take("nope").is_none());
+        // 同一 token 二次撤销 → None(已被取走)⇒ 前端如实上报「该撤销已失效」
+        assert!(ring.take(&ta).is_none(), "同一 token 不得被撤销两次");
+        // B 仍可按自己的 token 撤销
+        assert_eq!(ring.take(&tb).unwrap()[0].0, "B");
+        // 环空 → 任何 token 都 None
+        assert!(ring.take(&tb).is_none());
     }
 
     /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
@@ -1460,7 +1466,7 @@ mod tests {
         );
 
         // 撤销:按 token 取走并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
-        let rows = ring.lock().unwrap().take(Some(&ta)).unwrap();
+        let rows = ring.lock().unwrap().take(&ta).unwrap();
         let n = super::memory_restore_rows(&conn, &rows).unwrap();
         assert_eq!(n, 1, "撤销应真还原 1 行");
         let back: String = conn
@@ -1507,7 +1513,7 @@ mod tests {
         let t = r.undo_token.expect("快照完整 ⇒ 应入环并发 token");
 
         // 撤销:按 token 取走,按 ts=0 还原
-        let rows = ring.lock().unwrap().take(Some(&t)).unwrap();
+        let rows = ring.lock().unwrap().take(&t).unwrap();
         assert_eq!(super::memory_restore_rows(&conn, &rows).unwrap(), 1);
         let ts: i64 = conn
             .query_row("SELECT created_at FROM memories WHERE id='B'", [], |r| {
