@@ -9,6 +9,7 @@
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -529,25 +530,143 @@ pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
 // ── 长期记忆的用户掌控(#4 · 查看/清除/撤销入口)──────────────────────────
 // 记忆可能含用户主动写出的 PII;给用户查看 + 清除 + **撤销**入口(本地、即时生效)。embedding 永不出后端。
 
-/// 记忆销毁撤销暂存:存「最近一次销毁(清除/单删)」的记忆行(含 embedding)。
-/// **向量仅留后端、绝不经命令外泄**(守 embedding 隔离红线);供 memory_undo 还原。进程内,重启即失(undo 是当场动作)。
+/// 记忆销毁撤销暂存的行(含 embedding)。**向量仅留后端、绝不经命令外泄**(守 embedding 隔离红线);
+/// 供 memory_undo 还原。进程内,重启即失(undo 是当场动作)。
 type MemRow = (String, String, Vec<f32>, i64); // (id, fact, embedding, created_at)
-#[derive(Default)]
-pub struct MemTrash(pub Mutex<Vec<MemRow>>);
 
-/// **只有「确有行被销毁」时才覆盖撤销槽** —— no-op 销毁(行已不存在 / 库本就空)**绝不清空** trash。
-///
-/// ★评审第57/58轮 [应改] 的后端根因:原先四处销毁命令都无条件 `*trash = snap`。当 `snap` 为空
-/// (重复删同一 id、或清空一个已空的库)时,**上一次销毁的快照被清成 `[]`** ⇒ `undo` 用
-/// `mem::take` 取到空集、还原 0 条,而前端旧 `doUndo` 还报「已撤销」= **静默永久丢数据 + 假成功提示**。
-/// 与前端不变式「**提供撤销 ⇔ 销毁确已发生**」严格对称(见 web/platform/shell/memory-docs.js 模块头)。
-///
-/// 判据用 `snap.is_empty()` 而非「DELETE 影响行数」:trash 的语义是**可供还原的行**,
-/// 存一个空快照既无意义、又摧毁前一次的可还原状态。
-fn stash_if_destroyed<T>(slot: &Mutex<Vec<T>>, snap: Vec<T>) {
-    if !snap.is_empty() {
-        *slot.lock().unwrap() = snap;
+// ── 撤销环(刀2b-1:取代单槽 trash)────────────────────────────────────
+// ★为何是「有界环」而非「时间 TTL」(评审第60轮裁决):
+//   · 刀1(toastUndo 契约化)之后,撤销失败已由「后端权威拒绝 → restoreFn 上报 false → toast 静默」
+//     兜住,**不会出现假的「已撤销」** ⇒ TTL 漂移从**正确性问题降级为 UX 问题**。
+//   · **正确性绝不能依赖跨进程时钟一致**;没有时钟,就没有时钟漂移,整类问题消失。
+//   · 真正要 bound 的是**内存**(快照含 embedding,`clear` 的快照可能是整表)——
+//     **条数 ∧ 字节才是直接杠杆,时间不是**;两者取先到者触发淘汰。
+
+/// 环上限(默认值;`with_bounds` 供单测注入小上限,免得为测字节判据去分配 64 MiB)。
+const UNDO_RING_MAX_ENTRIES: usize = 8;
+const UNDO_RING_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+/// 快照占用的近似字节(含 embedding 向量),用于环的字节判据。
+pub(crate) trait UndoBytes {
+    fn undo_bytes(&self) -> usize;
+}
+impl UndoBytes for MemRow {
+    fn undo_bytes(&self) -> usize {
+        self.0.len() + self.1.len() + self.2.len() * 4 + std::mem::size_of::<i64>()
     }
+}
+
+struct UndoEntry<T> {
+    token: String,
+    rows: Vec<T>,
+    bytes: usize,
+}
+
+/// **有界撤销环**:保留最近若干次销毁的快照,按「条数 ∧ 字节」双判据淘汰最旧。
+///
+/// ★不变式(从单槽时代的 `stash_if_destroyed` **原样带进新结构**,别在重写中丢掉 —— 评审第61轮点名):
+///  ① **空快照永不入环**:no-op 销毁(行已不存在 / 库本就空)**不发 token、不淘汰任何东西**;
+///     与前端「**提供撤销 ⇔ 销毁确已发生**」严格对称。
+///  ② **入环即「已销毁且可还原」**:环里躺着的每一条,都是确实被销毁、且能被完整还原的行。
+///  ③ **单次快照超字节上限 ⇒ 不入环、不发 token**:前端据「无 token」**不提供撤销**,
+///     而不是给一个还原不了的按钮 —— 同「提供撤销 ⇔ 快照完整」的锐化方向。
+pub struct UndoRing<T> {
+    entries: VecDeque<UndoEntry<T>>,
+    bytes: usize,
+    next: u64,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl<T> Default for UndoRing<T> {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            bytes: 0,
+            next: 1,
+            max_entries: UNDO_RING_MAX_ENTRIES,
+            max_bytes: UNDO_RING_MAX_BYTES,
+        }
+    }
+}
+
+impl<T: UndoBytes> UndoRing<T> {
+    #[cfg(test)]
+    fn with_bounds(max_entries: usize, max_bytes: usize) -> Self {
+        Self {
+            max_entries,
+            max_bytes,
+            ..Default::default()
+        }
+    }
+
+    /// 入环并发 token。空快照 / 超字节上限 → `None`(不入环、不淘汰、不发 token)。
+    fn stash(&mut self, rows: Vec<T>) -> Option<String> {
+        if rows.is_empty() {
+            return None; // 不变式①
+        }
+        let bytes: usize = rows.iter().map(|r| r.undo_bytes()).sum();
+        if bytes > self.max_bytes {
+            return None; // 不变式③:一次 clear 撑不爆环,也不谎报可撤销
+        }
+        let token = format!("u{}", self.next);
+        self.next += 1;
+        self.entries.push_back(UndoEntry {
+            token: token.clone(),
+            rows,
+            bytes,
+        });
+        self.bytes += bytes;
+        // 双判据淘汰,先到者触发。新入那条的 bytes ≤ max_bytes,故循环必终止且至少留下它。
+        while self.entries.len() > self.max_entries || self.bytes > self.max_bytes {
+            match self.entries.pop_front() {
+                Some(old) => self.bytes -= old.bytes,
+                None => break,
+            }
+        }
+        Some(token)
+    }
+
+    /// 取走一条并移出环。`Some(token)` → 精确取那一次;`None` → 取**最近一次**
+    /// (向后兼容:刀2b-1 的前端仍调 `undo()` 不带 token;token 穿线 = 刀2b-2)。
+    /// 找不到(已淘汰 / 未知 token)→ `None`,命令遂返回 0,**绝不静默成功**。
+    fn take(&mut self, token: Option<&str>) -> Option<Vec<T>> {
+        let idx = match token {
+            Some(t) => self.entries.iter().position(|e| e.token == t)?,
+            None => self.entries.len().checked_sub(1)?,
+        };
+        let e = self.entries.remove(idx)?;
+        self.bytes -= e.bytes;
+        Some(e.rows)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+    #[cfg(test)]
+    fn total_bytes(&self) -> usize {
+        self.bytes
+    }
+    #[cfg(test)]
+    fn has(&self, token: &str) -> bool {
+        self.entries.iter().any(|e| e.token == token)
+    }
+}
+
+#[derive(Default)]
+pub struct MemTrash(pub Mutex<UndoRing<MemRow>>);
+
+/// 销毁命令的返回:**实际销毁条数** + **撤销 token**(`None` = 没什么可撤销 / 快照未入环)。
+///
+/// ★`deleted` 支撑前端不变式「**提供撤销 ⇔ 销毁确已发生**」(第60轮 [建议]1);
+/// ★`undoToken` 支撑刀2b-2 的**精确撤销**,并让「**无 token ⇒ 不提供撤销**」成为**结构性事实**,
+///   而不再是前端约定。
+#[derive(serde::Serialize)]
+pub struct DestroyResult {
+    pub deleted: usize,
+    #[serde(rename = "undoToken")]
+    pub undo_token: Option<String>,
 }
 
 /// 读全量记忆行(含 embedding + 时间)——内部用(快照),绝不经命令外泄向量。
@@ -599,14 +718,21 @@ pub fn memory_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
 
 /// 清除全部长期记忆,返回删除条数。**删前把整表(含 embedding)快照进后端 trash**,供撤销(向量不出后端)。
 #[tauri::command]
-pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usize, String> {
+pub fn memory_clear(
+    db: State<'_, Db>,
+    trash: State<'_, MemTrash>,
+) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
     let snap = memory_rows_full(&conn)?;
     let n = conn
         .execute("DELETE FROM memories", [])
         .map_err(|e| e.to_string())?;
-    stash_if_destroyed(&trash.0, snap); // 清空一个已空的库 = no-op,不得摧毁上一次的撤销槽
-    Ok(n)
+    // 清空一个已空的库 = no-op ⇒ 空快照不入环、不发 token(不变式①),旧条目不受影响。
+    let undo_token = trash.0.lock().unwrap().stash(snap);
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token,
+    })
 }
 
 /// 快照一条记忆行(含 embedding)。**行不存在 → 空 Vec;行存在但映射失败 → `Err`(fail-closed)。**
@@ -664,15 +790,19 @@ fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, Strin
 /// (与「不触发的控制组什么都证明不了」同族纪律)。
 fn memory_remove_inner(
     conn: &Connection,
-    slot: &Mutex<Vec<MemRow>>,
+    ring: &Mutex<UndoRing<MemRow>>,
     id: &str,
-) -> Result<usize, String> {
+) -> Result<DestroyResult, String> {
     let snap = memory_snapshot_one(conn, id)?; // 映射失败 → 提前 Err,什么也不销毁
     let n = conn
         .execute("DELETE FROM memories WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    stash_if_destroyed(slot, snap); // ★重复删同一 id ⇒ snap 空 ⇒ 不得把上一次的快照清成 []
-    Ok(n)
+    // ★重复删同一 id ⇒ snap 空 ⇒ 不入环、不发 token(不变式①),环内旧条目**不受影响**。
+    let undo_token = ring.lock().unwrap().stash(snap);
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token,
+    })
 }
 
 /// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。返回**实际删除条数**。
@@ -685,17 +815,29 @@ pub fn memory_remove(
     db: State<'_, Db>,
     trash: State<'_, MemTrash>,
     id: String,
-) -> Result<usize, String> {
+) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
     memory_remove_inner(&conn, &trash.0, &id)
 }
 
-/// 撤销最近一次记忆销毁(清除 / 单删):从后端 trash 还原(原 embedding 与时间无损)→ 清空 trash。
+/// 撤销一次记忆销毁,返回**实际还原条数**。
+///
+/// `token = Some(t)` → **精确撤销那一次**(尚在环内);`token = None` → 撤销**最近一次**
+/// (向后兼容:刀2b-1 的前端仍不带 token 调用)。
+/// **token 已被淘汰 / 未知 / 环为空 ⇒ 返回 `0`,绝不静默成功** —— 前端据 `n===0` 如实上报
+/// 「没有可撤销的内容」并 `return false`,`toast.js` 遂不报「已撤销」。
 #[tauri::command]
-pub fn memory_undo(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usize, String> {
+pub fn memory_undo(
+    db: State<'_, Db>,
+    trash: State<'_, MemTrash>,
+    token: Option<String>,
+) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = std::mem::take(&mut *trash.0.lock().unwrap());
-    memory_restore_rows(&conn, &rows)
+    let rows = trash.0.lock().unwrap().take(token.as_deref());
+    match rows {
+        Some(rows) => memory_restore_rows(&conn, &rows),
+        None => Ok(0), // 环内已无此次销毁 ⇒ 还原 0 条
+    }
 }
 
 // ── RAG-over-docs 存储(#2)──────────────────────────────────────────────
@@ -769,8 +911,18 @@ pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
 // ── 文档销毁撤销(DocTrash;与 MemTrash 对称)──────────────────────────
 /// 暂存"最近一次文档销毁(删一篇 / 清空)"的整行(含 embedding),供 doc_undo 还原。进程内、重启即失。
 type DocRow = (String, String, String, String, Vec<f32>, i64); // (id, doc_id, doc_name, text, embedding, created_at)
+impl UndoBytes for DocRow {
+    fn undo_bytes(&self) -> usize {
+        self.0.len()
+            + self.1.len()
+            + self.2.len()
+            + self.3.len()
+            + self.4.len() * 4
+            + std::mem::size_of::<i64>()
+    }
+}
 #[derive(Default)]
-pub struct DocTrash(pub Mutex<Vec<DocRow>>);
+pub struct DocTrash(pub Mutex<UndoRing<DocRow>>);
 
 fn map_doc_row(r: &rusqlite::Row) -> rusqlite::Result<DocRow> {
     let blob: Option<Vec<u8>> = r.get(4)?;
@@ -831,7 +983,7 @@ pub fn doc_remove(
     db: State<'_, Db>,
     trash: State<'_, DocTrash>,
     doc_id: String,
-) -> Result<usize, String> {
+) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
     doc_remove_inner(&conn, &trash.0, &doc_id)
 }
@@ -839,35 +991,49 @@ pub fn doc_remove(
 /// 删除一篇文档的**真实逻辑**(与 memory_remove_inner 同构;抽出以便单测覆盖真实命令体 · [建议]3)。
 fn doc_remove_inner(
     conn: &Connection,
-    slot: &Mutex<Vec<DocRow>>,
+    ring: &Mutex<UndoRing<DocRow>>,
     doc_id: &str,
-) -> Result<usize, String> {
+) -> Result<DestroyResult, String> {
     let snap = doc_snapshot(conn, Some(doc_id))?; // doc_snapshot 本就传播错误(fail-closed)
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
         .map_err(|e| e.to_string())?;
-    stash_if_destroyed(slot, snap); // ★与 memory_remove 同构(评审第58轮 [建议]C:doc_remove 一并覆盖)
-    Ok(n)
+    let undo_token = ring.lock().unwrap().stash(snap); // 与 memory_remove_inner 同构
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token,
+    })
 }
 
 /// 清空全部文档。**删前快照进 DocTrash**,供撤销。
 #[tauri::command]
-pub fn doc_clear(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<usize, String> {
+pub fn doc_clear(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
     let snap = doc_snapshot(&conn, None)?;
     let n = conn
         .execute("DELETE FROM doc_chunks", [])
         .map_err(|e| e.to_string())?;
-    stash_if_destroyed(&trash.0, snap); // 清空一个已空的知识库 = no-op,不得摧毁上一次的撤销槽
-    Ok(n)
+    // 清空一个已空的知识库 = no-op ⇒ 空快照不入环、不发 token(不变式①)。
+    let undo_token = trash.0.lock().unwrap().stash(snap);
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token,
+    })
 }
 
 /// 撤销最近一次文档销毁(删一篇 / 清空):从 DocTrash 还原(原 id / embedding / 时间无损)→ 清空 trash。
 #[tauri::command]
-pub fn doc_undo(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<usize, String> {
+pub fn doc_undo(
+    db: State<'_, Db>,
+    trash: State<'_, DocTrash>,
+    token: Option<String>,
+) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let rows = std::mem::take(&mut *trash.0.lock().unwrap());
-    doc_restore_rows(&conn, &rows)
+    let rows = trash.0.lock().unwrap().take(token.as_deref());
+    match rows {
+        Some(rows) => doc_restore_rows(&conn, &rows),
+        None => Ok(0), // 环内已无此次销毁 ⇒ 还原 0 条,绝不静默成功
+    }
 }
 
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
@@ -946,36 +1112,95 @@ mod tests {
     use super::{migrate, now_ms, schema_version, table_for, MIGRATIONS};
     use rusqlite::Connection;
 
-    /// ★评审第57/58轮 [应改] 的后端根因单测:**no-op 销毁不得清空撤销槽**。
-    /// 含**阳性对照**——先证旧的「无条件覆盖」确会把上一次的快照清成空(缺陷真实、测试能捕获),
-    /// 再证 `stash_if_destroyed` 挡住它。
+    /// 造一条已知字节数的记忆行:`undo_bytes = id.len() + 0 + 4*emb_len + 8`。
+    fn mrow(id: &str, emb_len: usize) -> super::MemRow {
+        (id.to_string(), String::new(), vec![0.0f32; emb_len], 0)
+    }
+
+    /// ★不变式①(从单槽时代带进环,评审第61轮点名):**空快照永不入环** ——
+    /// no-op 销毁不发 token、**不淘汰任何东西**。含**阳性对照**:旧的单槽「无条件覆盖」确会把
+    /// 上一次的快照清成空(缺陷真实、测试能捕获)。
     #[test]
     fn noop_destroy_must_not_clobber_undo_slot() {
         use std::sync::Mutex;
-        type Row = (String, i64);
 
         // ── 阳性对照:旧行为 `*slot = snap` 无条件覆盖 ⇒ 空快照把 A 清掉
-        let old: Mutex<Vec<Row>> = Mutex::new(Vec::new());
-        *old.lock().unwrap() = vec![("A".into(), 1)]; // 第一次真销毁
+        let old: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
+        *old.lock().unwrap() = vec![mrow("A", 0)]; // 第一次真销毁
         *old.lock().unwrap() = Vec::new(); // 第二次 no-op 删除(空快照)
         assert!(
             old.lock().unwrap().is_empty(),
             "阳性对照:旧的无条件覆盖确会清空撤销槽(A 的快照永久丢失)"
         );
 
-        // ── 阴性:新守卫下,空快照不得覆盖
-        let slot: Mutex<Vec<Row>> = Mutex::new(Vec::new());
-        super::stash_if_destroyed(&slot, vec![("A".into(), 1)]);
-        super::stash_if_destroyed(&slot, Vec::new()); // no-op 删除
-        assert_eq!(
-            slot.lock().unwrap().as_slice(),
-            &[("A".to_string(), 1)],
-            "no-op 销毁不得清空撤销槽"
+        // ── 阴性:环里,空快照不入环、不发 token、不淘汰旧条目
+        let mut ring: super::UndoRing<super::MemRow> = Default::default();
+        let ta = ring.stash(vec![mrow("A", 0)]).expect("真销毁应发 token");
+        assert!(
+            ring.stash(Vec::new()).is_none(),
+            "空快照不得入环、不得发 token"
         );
+        assert_eq!(ring.len(), 1, "no-op 销毁不得淘汰任何条目");
+        assert!(ring.has(&ta), "A 那一次仍应在环内");
 
-        // 真销毁仍正常覆盖(撤销语义 = 撤销最近一次销毁)
-        super::stash_if_destroyed(&slot, vec![("B".into(), 2)]);
-        assert_eq!(slot.lock().unwrap()[0].0, "B", "真销毁应覆盖为最近一次");
+        // 真销毁正常入环,且**不再覆盖**上一次(单槽时代会覆盖 —— 这正是环的价值)
+        let tb = ring.stash(vec![mrow("B", 0)]).unwrap();
+        assert_eq!(ring.len(), 2, "环应同时保有 A 与 B 两次销毁");
+        assert!(ring.has(&ta) && ring.has(&tb));
+    }
+
+    /// ★不变式③ + 双判据淘汰:条数上限、字节上限、以及**单次超限快照不入环、不发 token**。
+    #[test]
+    fn undo_ring_evicts_by_count_and_bytes_and_rejects_oversized() {
+        // ── 条数判据:上限 2,推 3 条 ⇒ 最旧被淘汰
+        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(2, 1 << 20);
+        let t1 = ring.stash(vec![mrow("1", 0)]).unwrap();
+        let t2 = ring.stash(vec![mrow("2", 0)]).unwrap();
+        let t3 = ring.stash(vec![mrow("3", 0)]).unwrap();
+        assert_eq!(ring.len(), 2, "条数上限应触发淘汰");
+        assert!(!ring.has(&t1), "最旧的应被淘汰");
+        assert!(ring.has(&t2) && ring.has(&t3));
+
+        // ── 字节判据:每条 = 1 + 4*5 + 8 = 29 字节;上限 70 ⇒ 最多容 2 条
+        use super::UndoBytes;
+        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(100, 70);
+        assert_eq!(mrow("a", 5).undo_bytes(), 29, "字节口径须与环一致");
+        let a = ring.stash(vec![mrow("a", 5)]).unwrap();
+        let b = ring.stash(vec![mrow("b", 5)]).unwrap();
+        let c = ring.stash(vec![mrow("c", 5)]).unwrap();
+        assert!(ring.total_bytes() <= 70, "字节上限必须成立");
+        assert!(!ring.has(&a), "字节判据应淘汰最旧");
+        assert!(ring.has(&b) && ring.has(&c));
+
+        // ── 不变式③:单次快照超字节上限 ⇒ 不入环、不发 token、旧条目不受影响
+        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(10, 50);
+        let keep = ring.stash(vec![mrow("k", 0)]).unwrap(); // 9 字节
+        let huge = ring.stash(vec![mrow("h", 100)]); // 1 + 400 + 8 = 409 > 50
+        assert!(huge.is_none(), "超上限快照不得入环、不得发 token");
+        assert_eq!(ring.len(), 1, "超限快照不得淘汰既有条目");
+        assert!(ring.has(&keep));
+    }
+
+    /// ★环的价值兑现:**按 token 精确撤销那一次**,而非只能撤最近一次;未知/已淘汰 token → `None`。
+    #[test]
+    fn undo_ring_takes_by_token_not_just_newest() {
+        let mut ring: super::UndoRing<super::MemRow> = Default::default();
+        let ta = ring.stash(vec![mrow("A", 0)]).unwrap();
+        let tb = ring.stash(vec![mrow("B", 0)]).unwrap();
+
+        // 精确取 A(较旧的那一次)—— 单槽时代做不到
+        let rows = ring.take(Some(&ta)).expect("按 token 应取到 A 那一次");
+        assert_eq!(rows[0].0, "A");
+        assert!(!ring.has(&ta), "取走后应移出环");
+        assert!(ring.has(&tb), "B 那一次不受影响");
+
+        // 未知 token → None(命令遂返回 0,绝不静默成功)
+        assert!(ring.take(Some("nope")).is_none());
+        // 不带 token → 取最近一次(刀2b-1 前端仍走这条)
+        let rows = ring.take(None).expect("应取到最近一次");
+        assert_eq!(rows[0].0, "B");
+        // 环空 → None
+        assert!(ring.take(None).is_none());
     }
 
     /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
@@ -993,22 +1218,25 @@ mod tests {
         )
         .unwrap();
 
-        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
+        let ring: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
 
-        // 第一次删 A(真销毁)→ 快照进槽 —— 走真实命令体
-        super::memory_remove_inner(&conn, &slot, "A").unwrap();
-        assert_eq!(slot.lock().unwrap().len(), 1, "真销毁应把 A 的快照存进槽");
+        // 第一次删 A(真销毁)→ 快照入环 + 发 token —— 走真实命令体
+        let r1 = super::memory_remove_inner(&conn, &ring, "A").unwrap();
+        assert_eq!(r1.deleted, 1);
+        let ta = r1.undo_token.expect("真销毁应发 token");
+        assert_eq!(ring.lock().unwrap().len(), 1);
 
-        // 第二次删 A(行已不存在 = no-op)→ 空快照,**不得清槽**
-        super::memory_remove_inner(&conn, &slot, "A").unwrap();
-        assert_eq!(
-            slot.lock().unwrap().len(),
-            1,
-            "no-op 重复删除后撤销槽仍应保有 A(不得清成空)"
+        // 第二次删 A(行已不存在 = no-op)→ 空快照:**不入环、不发 token、不淘汰旧条目**
+        let r2 = super::memory_remove_inner(&conn, &ring, "A").unwrap();
+        assert_eq!(r2.deleted, 0, "no-op 销毁应如实返回 0 条");
+        assert!(r2.undo_token.is_none(), "no-op 销毁不得发 token");
+        assert!(
+            ring.lock().unwrap().has(&ta),
+            "no-op 重复删除后环内仍应保有 A 那一次"
         );
 
-        // 撤销:取走槽内内容并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
-        let rows = std::mem::take(&mut *slot.lock().unwrap());
+        // 撤销:按 token 取走并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
+        let rows = ring.lock().unwrap().take(Some(&ta)).unwrap();
         let n = super::memory_restore_rows(&conn, &rows).unwrap();
         assert_eq!(n, 1, "撤销应真还原 1 行");
         let back: String = conn
@@ -1049,13 +1277,13 @@ mod tests {
         assert_eq!(snap[0].3, 0, "NULL 应按 schema DEFAULT 0 归一化为 0");
 
         // 可删除(不再被 fail-closed 挡住 = 可用性回归已消)
-        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
-        let n = super::memory_remove_inner(&conn, &slot, "B").expect("坏时间戳的行仍应可删");
-        assert_eq!(n, 1);
-        assert_eq!(slot.lock().unwrap().len(), 1, "快照完整 ⇒ 应入撤销槽");
+        let ring: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
+        let r = super::memory_remove_inner(&conn, &ring, "B").expect("坏时间戳的行仍应可删");
+        assert_eq!(r.deleted, 1);
+        let t = r.undo_token.expect("快照完整 ⇒ 应入环并发 token");
 
-        // 撤销:按 ts=0 还原
-        let rows = std::mem::take(&mut *slot.lock().unwrap());
+        // 撤销:按 token 取走,按 ts=0 还原
+        let rows = ring.lock().unwrap().take(Some(&t)).unwrap();
         assert_eq!(super::memory_restore_rows(&conn, &rows).unwrap(), 1);
         let ts: i64 = conn
             .query_row("SELECT created_at FROM memories WHERE id='B'", [], |r| {
@@ -1076,9 +1304,13 @@ mod tests {
         let tmp = std::env::temp_dir().join("seeker-test-backups");
         migrate(&mut conn, &tmp).unwrap();
 
-        // 槽里先放一条「上一次销毁」的快照(A)——它绝不能被错还原
-        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
-        *slot.lock().unwrap() = vec![("A".into(), "fact A".into(), vec![], 1)];
+        // 环里先放一条「上一次销毁」的快照(A)——它绝不能被错还原、也不能被这次失败污染
+        let ring: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
+        let ta = ring
+            .lock()
+            .unwrap()
+            .stash(vec![("A".into(), "fact A".into(), vec![], 1)])
+            .unwrap();
 
         // B 存在但 created_at 是非数字文本 ⇒ 即便归一化也映射不了(真·不可映射)
         conn.execute(
@@ -1094,7 +1326,7 @@ mod tests {
         );
 
         // fail-closed:删除应报错
-        let r = super::memory_remove_inner(&conn, &slot, "B");
+        let r = super::memory_remove_inner(&conn, &ring, "B");
         assert!(r.is_err(), "不能完整快照就不得销毁 → 应返回 Err");
 
         // ① B **未被删除**(DELETE 从未执行)
@@ -1105,10 +1337,10 @@ mod tests {
             .unwrap();
         assert_eq!(still, 1, "fail-closed:B 不得被删除");
 
-        // ② 撤销槽**未被动过** —— 仍是 A,绝不会被「还原错记录」
-        let s = slot.lock().unwrap();
-        assert_eq!(s.len(), 1);
-        assert_eq!(s[0].0, "A", "撤销槽不得被这次失败的删除污染");
+        // ② 撤销环**未被动过** —— A 那一次仍在,绝不会被「还原错记录」
+        let g = ring.lock().unwrap();
+        assert_eq!(g.len(), 1);
+        assert!(g.has(&ta), "撤销环不得被这次失败的删除污染");
     }
 
     #[test]

@@ -178,11 +178,12 @@ export function createWebRuntime() {
     // 网页端暂无本地长期记忆(BYO 嵌入 + SQLite 为桌面能力)→ 优雅降级:空列表、清除无操作。
     memory: {
       list: () => Promise.resolve([]),
-      clear: () => Promise.resolve(0),
-      // ★评审第61轮 [建议]2:返回 0(销毁 0 条)而非 undefined —— 与 clear/undo/docs 四兄弟统一。
-      //   前端「提供撤销 ⇔ 销毁确已发生」据 n===0 收口,故降级路径**如实上报 0**,
-      //   安全性不必让「web 端不可达」这个偶然前提承重。
-      remove: () => Promise.resolve(0),
+      // ★刀2b-1:销毁命令的降级返回须与桌面同形 —— { deleted, undoToken }。
+      //   deleted:0 + undoToken:null ⇒ 前端「提供撤销 ⇔ 销毁确已发生」据此**不给撤销**;
+      //   undo 返回 0 ⇒ restoreFn 如实上报 false ⇒ toast.js 不报「已撤销」。
+      //   (第61轮 [建议]2:降级路径如实上报,安全性不让「web 端不可达」这个偶然前提承重。)
+      clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
+      remove: () => Promise.resolve({ deleted: 0, undoToken: null }),
       undo: () => Promise.resolve(0),
     },
 
@@ -190,8 +191,8 @@ export function createWebRuntime() {
     docs: {
       add: () => notImpl('rt.docs.add', 'web'),
       list: () => Promise.resolve([]),
-      remove: () => Promise.resolve(0),
-      clear: () => Promise.resolve(0),
+      remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
+      clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       undo: () => Promise.resolve(0),
       pdfText: () => notImpl('rt.docs.pdfText', 'web'),
     },
