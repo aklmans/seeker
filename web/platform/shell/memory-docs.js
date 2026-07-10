@@ -66,6 +66,10 @@
  *       是诱导用户为修一个时间戳而永久丢掉仍在服役的知识。
  *       ⇒ 按钮是**「修复」**:`created_at` 有 schema `DEFAULT 0` ⇒ 归一化是忠实修复、**零内容损失**
  *       (第61轮裁决A 的线内);其余列无默认值 ⇒ 一个字节都不碰。修好即恢复「可撤销删除」。
+ *       ⚠ 精确些:REAL 时间戳走 `CAST` **保住日期**(SQLite 亲和性使残留的 REAL 必带小数);
+ *       **只有非数值文本时间戳**(如 `'2026-07-10'`)才退到 `0` —— 那是唯一有损的一支,
+ *       且 UI 今日也已把它显示为 `0`。**repair 不走 guardrail 是显式豁免**,论证见 `types.d.ts`
+ *       的 `MemoryApi.repairCorrupt` 与 Rust 侧 `MEM_REPAIR_SQL` 头注:用户**无可失去之物**。
  *       ⇒ 只有**修不好**时才退到销毁,且决策点按后端实测的 `aiReadable` / `recallBroken` 说清代价:
  *       内容仍在服役(删=永久失去)/ 召回列已坏(删=**恢复** AI 检索)/ 无向量(AI 本就读不到)。
  *     · ★**谓词 / oracle 漂移必须响亮**(第66轮裁决2):`corruptRowids` 与 `corrupt` 标记来自 SQL 谓词
@@ -312,8 +316,9 @@ export async function renderMemory(box) {
       finally { memBusy = false; }
 
       if (r.reason === 'repaired') {
-        toast(tt('已修复:时间戳已归一化;内容与向量未改动。现在可以正常删除并撤销。',
-          'Repaired: timestamp normalized; content and embedding untouched. It can now be deleted with undo.'));
+        // 措辞与代码一致:REAL 时间戳走 CAST 保住日期;只有**非数值文本**时间戳才退到 0(日期丢失)。
+        toast(tt('已修复:时间戳已归一化(无法解析的日期会归零);内容与向量未改动。现在可以正常删除并撤销。',
+          'Repaired: timestamp normalized (an unparseable date resets to zero); content and embedding untouched. It can now be deleted with undo.'));
         await refresh(); return;
       }
       if (r.reason === 'healthy') { driftDetected(1); await refresh(); return; } // 谓词/oracle 漂移 ⇒ 响亮
@@ -463,7 +468,7 @@ export async function renderDocs(box) {
         else if (r.reason === 'healthy') drift++;                  // 谓词/oracle 漂移
         else if (r.reason === 'not_repairable') stuck.push({ rowid: rid, ...r });
       }
-      if (repaired) toast(tt('已修复 ', 'Repaired ') + repaired + tt(' 个片段(内容与向量未改动)', ' chunk(s) (content and embeddings untouched)'));
+      if (repaired) toast(tt('已修复 ', 'Repaired ') + repaired + tt(' 个片段(时间戳已归一化;内容与向量未改动)', ' chunk(s) (timestamps normalized; content and embeddings untouched)'));
       if (drift) driftDetected(drift);                             // ★绝不静默吸收
       await refresh();
       if (!stuck.length) return;                                   // 全修好了 —— 根本不必销毁

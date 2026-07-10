@@ -1423,6 +1423,43 @@ fn memory_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyR
     })
 }
 
+/// **归一化 `created_at` 的唯一一条 SQL**(记忆 / 文档各一份,只差表名)。
+///
+/// ★★**为什么 `repair` 不走 guardrail —— 显式豁免 §4-3,不靠沉默**(评审第66轮裁决 + 义务①)
+///
+/// §4-3 的确认闸是用来**防止用户失去他拥有的东西**。这里他一无所失:
+/// 被覆盖的那一列,**app 里没有任何代码路径能观测到它的旧值** ——
+///  · `int_lossy` 早已把非整数的 `created_at` **显示为 0**(列表页,`memory_entries` / `doc_list`);
+///  · `memory_all` / `doc_chunks_all`(AI 召回)的 `SELECT` **根本不含这一列**;
+///  · `map_mem_row` / `map_doc_row`(快照)**读不了它**(正是它「不可快照」的原因)。
+/// ⇒ 修复是**存储向显示收敛**,不是销毁。且它无撤销窗口反而是对的:再点一次「修复」是幂等的。
+/// ⇒ 在**安全**的那条路上加模态,只会钝化「修复优先于销毁」这个偏置(销毁那条本就有模态)。
+/// ⚠ **这是一次显式的、有论证的豁免,不是疏忽。** 后来者**不得**援引它作为
+/// 「可观测的写操作也可以跳过 guardrail」的先例 —— 判据是「用户有没有可失去之物」,不是「是不是写」。
+/// ⚠ 模型**无法触发** repair(它是 UI 按钮,没有对应的 Capability / 工具)⇒ §4-3 安全内核未被触碰。
+///
+/// ★★**哪一支真的有损?**(实测 SQLite INTEGER 亲和性,非推理 —— 评审义务②)
+/// 亲和性会把**能无损转成整数的**数值自动存成 INTEGER:`1.0` / `1e3` / `'123'` / `'1.0'` → `integer`。
+/// 故 `created_at` 里的残留只可能是两种:
+///  · **REAL(必带小数)**,如 `1752105600000.5` —— 它**是**一个合理的 epoch 毫秒(带亚毫秒小数)。
+///    ⚠ 评审说「REAL 归 0 一个比特都没丢」**不成立**:归 0 会丢掉**整个日期**。
+///    ⇒ 故这里**不归 0,而是 `CAST(… AS INTEGER)`** —— 保住日期,只截掉亚毫秒小数(忠实转换,非造值)。
+///    (`BETWEEN` 夹一道:超出 i64 安全范围的 REAL 才退到 `0`,免得 CAST 饱和成 `i64::MAX` 这种假时间戳。)
+///  · **非数值 TEXT**,如外部工具 / 坏迁移写入的 `'2026-07-10'` —— 无从忠实转成 epoch(格式未知,解析即猜),
+///    退到 schema 的 `DEFAULT 0`。**这是唯一真正有损的一支:日期丢失。**
+///    但它**今天在 UI 上也已经显示为 0** ⇒ 该损失同样不可观测。toast 如实写明「时间戳已归一化」。
+///
+/// ★不碰任何**没有 schema 默认值**的列(`fact`/`text`/`id`/`doc_id`/`embedding`)——
+/// 第61轮裁决A:全域归一化只在 schema 自己定义了默认值的地方合法;其余一律 fail-closed,销毁是它们的逃生口。
+const MEM_REPAIR_SQL: &str = "UPDATE memories SET created_at = CASE \
+     WHEN typeof(created_at) = 'real' AND created_at BETWEEN -9.0e15 AND 9.0e15 THEN CAST(created_at AS INTEGER) \
+     ELSE 0 END \
+     WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')";
+const DOC_REPAIR_SQL: &str = "UPDATE doc_chunks SET created_at = CASE \
+     WHEN typeof(created_at) = 'real' AND created_at BETWEEN -9.0e15 AND 9.0e15 THEN CAST(created_at AS INTEGER) \
+     ELSE 0 END \
+     WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')";
+
 /// 一次「修复」的结果 —— 决策点据此决定:**还用不用销毁**,以及销毁会让用户失去什么。
 ///
 /// ★评审第66轮 [应改] 的根:一行 `created_at='abc'` 的记录,**内容与向量完好、AI 正在检索它**
@@ -1515,12 +1552,10 @@ fn memory_repair_corrupt_inner(conn: &Connection, rowid: i64) -> Result<RepairRe
         }
         RowState::Unmappable => {}
     }
-    // 只碰有 schema 默认值的那一列;WHERE 再夹一道,绝不覆盖合法的整数/NULL 时间戳。
-    conn.execute(
-        "UPDATE memories SET created_at = 0 WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')",
-        params![rowid],
-    )
-    .map_err(|e| e.to_string())?;
+    // 只碰 `created_at`;WHERE 再夹一道,绝不覆盖合法的整数/NULL 时间戳。详见 MEM_REPAIR_SQL 头注
+    // (含「为何不走 guardrail」的显式豁免论证,以及「哪一支真的有损」的实测依据)。
+    conn.execute(MEM_REPAIR_SQL, params![rowid])
+        .map_err(|e| e.to_string())?;
     let (ok, emb) = info(conn)?;
     match memory_row_state(conn, rowid)? {
         RowState::Healthy => Ok(RepairResult {
@@ -1569,11 +1604,8 @@ fn doc_repair_corrupt_inner(conn: &Connection, rowid: i64) -> Result<RepairResul
         }
         RowState::Unmappable => {}
     }
-    conn.execute(
-        "UPDATE doc_chunks SET created_at = 0 WHERE rowid = ?1 AND typeof(created_at) NOT IN ('integer','null')",
-        params![rowid],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute(DOC_REPAIR_SQL, params![rowid])
+        .map_err(|e| e.to_string())?;
     let (ok, emb) = info(conn)?;
     match doc_row_state(conn, rowid)? {
         RowState::Healthy => Ok(RepairResult {
@@ -3111,6 +3143,137 @@ mod tests {
     }
 
     // ═══ 修复优先于销毁(评审第66轮 [应改] + [建议]强)═════════════════════
+
+    /// ★评审第66轮义务② + **订正它一处**:它说「REAL 分支归 0 一个比特都没丢」——**不成立**。
+    ///
+    /// 实测 SQLite INTEGER 亲和性(**事实,非推理**):`1.0` / `1e3` / `'123'` / `'1.0'` 都被存成 `integer`;
+    /// **只有带小数的才留成 `real`**。所以 `created_at` 里的 REAL 残留,完全可能是一个**合理的 epoch 毫秒**
+    /// (如 `1752105600000.5`)—— 把它归 0 会丢掉**整个日期**。
+    /// ⇒ 故 REAL 走 `CAST(… AS INTEGER)`(保住日期、只截亚毫秒),**只有非数值 TEXT 才退到 `DEFAULT 0`**
+    /// (格式未知,解析即猜)。**那一支是唯一真正有损的**,且今日 UI 已把它显示为 0。
+    #[test]
+    fn repair_preserves_real_timestamps_and_only_zeroes_unparseable_text() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-affinity");
+        migrate(&mut conn, &tmp).unwrap();
+
+        // 亲和性前提(先钉死,否则下面的推论无据)
+        let typeof_of = |conn: &Connection, lit: &str| -> String {
+            conn.execute("DELETE FROM memories", []).unwrap();
+            conn.execute(
+                &format!("INSERT INTO memories VALUES ('m','f',NULL,{lit})"),
+                [],
+            )
+            .unwrap();
+            conn.query_row("SELECT typeof(created_at) FROM memories", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(
+            typeof_of(&conn, "1.0"),
+            "integer",
+            "无小数的 REAL 被亲和性收成 integer"
+        );
+        assert_eq!(typeof_of(&conn, "1e3"), "integer");
+        assert_eq!(typeof_of(&conn, "'123'"), "integer", "数值 TEXT 亦然");
+        assert_eq!(typeof_of(&conn, "1.5"), "real", "★只有带小数的才留成 real");
+        assert_eq!(
+            typeof_of(&conn, "'2026-07-10'"),
+            "text",
+            "非数值 TEXT 才留成 text"
+        );
+
+        // ① REAL epoch(带亚毫秒小数)→ **日期必须保住**
+        conn.execute("DELETE FROM memories", []).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('r','事实',x'0000803f',1752105600000.5)",
+            [],
+        )
+        .unwrap();
+        let rid: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            super::memory_repair_corrupt_inner(&conn, rid)
+                .unwrap()
+                .repaired
+        );
+        let ts: i64 = conn
+            .query_row("SELECT created_at FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            ts, 1752105600000,
+            "★REAL 时间戳的日期必须保住(只截掉亚毫秒),绝不归 0"
+        );
+
+        // ② 非数值 TEXT(ISO 日期串)→ 退到 schema DEFAULT 0(**唯一真正有损的一支**)
+        conn.execute("DELETE FROM memories", []).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('t','事实',x'0000803f','2026-07-10')",
+            [],
+        )
+        .unwrap();
+        let rid2: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            super::memory_repair_corrupt_inner(&conn, rid2)
+                .unwrap()
+                .repaired
+        );
+        assert_eq!(
+            conn.query_row("SELECT created_at FROM memories", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0,
+            "格式未知,解析即猜 ⇒ 退到 DEFAULT 0(有损,但 UI 早已显示为 0)"
+        );
+
+        // ③ 超出 i64 安全范围的 REAL → 不许 CAST 饱和成假时间戳,退 0
+        conn.execute("DELETE FROM memories", []).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('h','事实',x'0000803f',1.0e30)",
+            [],
+        )
+        .unwrap();
+        let rid3: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            super::memory_repair_corrupt_inner(&conn, rid3)
+                .unwrap()
+                .repaired
+        );
+        assert_eq!(
+            conn.query_row("SELECT created_at FROM memories", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0,
+            "超范围 REAL 退 0,绝不饱和成 i64::MAX 这种假时间戳"
+        );
+
+        // ④ 合法的整数 / NULL 时间戳,修复一个字节都不许碰(WHERE 那道闸)
+        conn.execute("DELETE FROM memories", []).unwrap();
+        conn.execute(
+            "INSERT INTO memories VALUES ('ok','事实',x'0000803f',4242)",
+            [],
+        )
+        .unwrap();
+        let rid4: i64 = conn
+            .query_row("SELECT rowid FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            super::memory_repair_corrupt_inner(&conn, rid4)
+                .unwrap()
+                .reason,
+            "healthy"
+        );
+        assert_eq!(
+            conn.query_row("SELECT created_at FROM memories", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            4242
+        );
+    }
 
     /// ★★这条测试钉死评审第66轮自我订正的那个事实(**实测,非推理**):
     /// `created_at` 坏掉时,**内容与向量完好、AI 正在检索它** —— `memory_all` / `doc_chunks_all`

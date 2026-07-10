@@ -215,12 +215,6 @@ export interface MemoryEntry {
 }
 
 /**
- * 一次销毁**能否撤销**,以及**为什么不能** —— 供确认弹窗在用户做决定**之前**说真话,
- * 并说对**理由**(「内容过大」与「数据已损坏」对用户是两件事)。
- *
- * ★`reason` 由后端给,前端只负责说人话;拿不到(命令失败)⇒ **保守按不可撤销告知**。
- */
-/**
  * 一次「修复」的结果。**修复优先于销毁**(评审第66轮)。
  *
  * ★根:`created_at` 坏掉的那一行,**内容与向量完好、AI 正在检索它**(召回路径根本不读 `created_at`)。
@@ -236,6 +230,12 @@ export interface RepairResult {
   recallBroken: boolean;
 }
 
+/**
+ * 一次销毁**能否撤销**,以及**为什么不能** —— 供确认弹窗在用户做决定**之前**说真话,
+ * 并说对**理由**(「内容过大」与「数据已损坏」对用户是两件事)。
+ *
+ * ★`reason` 由后端给,前端只负责说人话;拿不到(命令失败)⇒ **保守按不可撤销告知**。
+ */
 export interface UndoPrecheck {
   undoable: boolean;
   /**
@@ -273,7 +273,21 @@ export interface MemoryApi {
    * 不变式:**健康行永远有快照可撤销;只有不可快照的行才可能被无撤销地销毁,且必经 guardrail 确认。**
    */
   removeCorrupt(rowid: number): Promise<DestroyResult>;
-  /** **修复优先于销毁**:归一化 `created_at`(schema 有 `DEFAULT 0`),零内容损失。其余列不碰。 */
+  /**
+   * **修复优先于销毁**:归一化 `created_at`,**其余列一个字节都不碰**。
+   *
+   * ★★**它不走 guardrail —— 这是显式的、有论证的豁免,不是疏忽**(评审第66轮裁决):
+   * §4-3 的确认闸用来**防止用户失去他拥有的东西**;这里他一无所失 ——
+   * 被覆盖的旧值 **app 里没有任何代码路径能观测到**(列表页经 `int_lossy` 早已显示为 `0`;
+   * AI 召回的 `SELECT` 不含这一列;快照读不了它,那正是它「不可快照」的原因)。
+   * 修复是**存储向显示收敛**,不是销毁;再点一次也是幂等的。
+   *
+   * ⚠ **不得援引它作为「可观测的写操作也可以跳过 guardrail」的先例。**
+   * 判据是「**用户有没有可失去之物**」,不是「是不是写操作」。
+   * ⚠ 模型**无法触发**它(UI 按钮,无对应 Capability / 工具)⇒ §4-3 安全内核未被触碰。
+   * ⚠ 唯一有损的一支:**非数值 TEXT 时间戳**(如 `'2026-07-10'`)退到 `0`,日期丢失 ——
+   * 但 UI 今日也已把它显示为 `0`。(REAL 走 `CAST` 保住日期;详见 `MEM_REPAIR_SQL` 头注。)
+   */
   repairCorrupt(rowid: number): Promise<RepairResult>;
   /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原条数;
    *  token 已失效(被撤回过 / 被更新的销毁挤出上限)→ `0`,**绝不静默成功**。 */
@@ -311,7 +325,7 @@ export interface DocsApi {
    * 与 `memory.removeCorrupt` 粒度对齐:一个孤立的坏片段不该逼用户清空整个知识库。
    */
   removeCorrupt(rowid: number): Promise<DestroyResult>;
-  /** **修复优先于销毁**:归一化 `created_at`(schema 有 `DEFAULT 0`),零内容损失。其余列不碰。 */
+  /** **修复优先于销毁**;**不走 guardrail 是显式豁免**,理由与边界见 `MemoryApi.repairCorrupt`。 */
   repairCorrupt(rowid: number): Promise<RepairResult>;
   clear(): Promise<DestroyResult>;
   /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
