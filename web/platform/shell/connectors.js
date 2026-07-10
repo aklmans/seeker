@@ -9,8 +9,13 @@
  *   - **破坏性(§4-3)**:删除服务器走 `platform/guardrail` 的 `confirmDestructive`(预览 + 确认)。
  *   - **知情同意(§4-4)**:本地 = 在本机运行该程序;远程 = 连接你填的 HTTP 端点;只加可信来源;
  *     AI 每次调用其工具都先问你;返回内容当作**不可信数据**(Untrusted、防注入)。
- *   - **转义**:用户数据一律经平台唯一转义器 `cEsc`(`&<>"`)进 DOM —— 含 `data-*` **属性位**
- *     (原 `esc`/`escA` 两个 bespoke 转义器随本刀消除,承评审第54轮 [建议])。
+ *   - **转义(不变式 · 评审第55轮 [应改] 收口后为真)**:用户数据**一律**经平台唯一转义器 `cEsc`(`&<>"`)
+ *     进 DOM,**两条 sink 都算**:① `innerHTML` 渲染(含 `data-*` **属性位** —— 原 `escA` 的职责,cEsc 是其超集);
+ *     ② **`toast()` 路径** —— `toast`→`el`→`template.innerHTML` 是 **HTML sink**(toast.js:9 / dom.js:9),
+ *     故 `toast(… + cEsc(name))`(同 `copilot-actions.js:38` 既有纪律:「否则只是把注入点从 onclick 移到此 toast」)。
+ *     原 `esc`/`escA` 两个 bespoke 转义器随本刀消除(承第54轮 [建议])。
+ *     **唯一免转义处(有意)**:`guardrail.confirmDestructive` 的 `detail` 走 `textContent`
+ *     (`platform/guardrail/index.js:71`),故传裸名安全 —— 勿"顺手"给它加转义,那会把 `&amp;` 显给用户。
  *
  *  ★读/写界(§4-2 + 评审第53轮 [应改]A):本视图是**「给人看」的前端管理面** —— 端点 / 命令 / 密钥状态
  *   只呈现给**用户**,**永不进模型上下文**(能力中心页顶 lock-note 已把此印成用户承诺)。写(增删启停 /
@@ -166,13 +171,14 @@ export async function renderConnectors(box) {
       const varName = (vn && vn.value.trim()) || '';
       if (!varName) { toast(tt('请填变量名', 'Enter a var name')); return; }
       const hasVal = !!(vv && vv.value.trim());
-      try { await rt.mcp.setEnv(name, varName, (vv && vv.value) || ''); toast((hasVal ? tt('已保存 ', 'Saved ') : tt('已清除 ', 'Cleared ')) + varName); }
+      // toast 经 el(innerHTML) 进 DOM(toast.js:9 → dom.js:9)⇒ 用户数据须 cEsc(同 copilot-actions.js:38 纪律)
+      try { await rt.mcp.setEnv(name, varName, (vv && vv.value) || ''); toast((hasVal ? tt('已保存 ', 'Saved ') : tt('已清除 ', 'Cleared ')) + cEsc(varName)); }
       catch (e) { toast(errText(e)); }
       await refresh();
     }));
     qa('[data-mcpenvclear]').forEach((el) => (el.onclick = async () => {
       const name = el.dataset.cn, varName = el.dataset.cv;
-      try { await rt.mcp.setEnv(name, varName, ''); toast(tt('已清除 ', 'Cleared ') + varName); }
+      try { await rt.mcp.setEnv(name, varName, ''); toast(tt('已清除 ', 'Cleared ') + cEsc(varName)); }
       catch (e) { toast(errText(e)); }
       await refresh();
     }));
@@ -196,7 +202,7 @@ export async function renderConnectors(box) {
         if (!cmd) { toast(tt('请填命令', 'Enter command')); return; }
         await rt.mcp.add(name, { command: cmd, args: parseArgs(val('#ccMcpArgs')) });
       }
-      toast(tt('已添加 ', 'Added ') + name);
+      toast(tt('已添加 ', 'Added ') + cEsc(name)); // toast = innerHTML sink,用户数据须 cEsc(见上)
       ['#ccMcpName', '#ccMcpCmd', '#ccMcpArgs', '#ccMcpUrl', '#ccMcpToken'].forEach((id) => { const e = q(id); if (e) e.value = ''; });
       if (hint) hint.textContent = '';
       await refresh();
