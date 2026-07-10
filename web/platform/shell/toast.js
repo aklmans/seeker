@@ -21,16 +21,35 @@ export function toast(msg){
  *     **失败因由由 `restoreFn` 自报**(它持有 `tt` 与上下文,能说清是过期还是出错);
  *   · 同步抛错 / Promise reject → 报 `errText(e)`,**不报成功**。
  *
- *  ★为何不在此处写「撤销失败」文案:`toast.js` 是 i18n **之下**的基础原语 —— `i18n → shell-state → toast`
- *  已成链,引入 `tt` 会**成环**;而新增 CN-only 串又违反红线 #6。故把「说明失败原因」的责任上移给调用方。
+ *  ★为何不在此处写「撤销失败」文案(**两条真理由**,评审第59轮订正了我原先的假理由):
+ *   ① **分层**:`toast.js` 是 i18n **之下**的基础原语(`shell-state` 依赖 toast,`i18n` 依赖 `shell-state`),
+ *      向上依赖 `i18n` 是**层级倒置**。
+ *   ② **职责**:`toast.js` 结构上**不可能知道失败的因由**(过期?后端报错?还原 0 条?)。它若打一句通用的
+ *      「撤销失败」,信息量反而低于 `restoreFn` 能给的「该撤销已过期」/「没有可撤销的内容」/`errText`。
+ *      **把「报因由」放在唯一知道因由的人手上。**
+ *   ⚠ 原注释曾写「引入 `tt` 会成环 ⇒ 违 SCC 不变式」—— **那是假的,已删**:`i18n ⇄ shell-state` 环
+ *   **今天就存在**且已被裁定安全(见 i18n.js:4「两侧读全在函数体、零 eager 互读,ESM 语义安全,接受」);
+ *   SCC 不变式禁的是**环内顶层急读非函数声明绑定**,而 `tt` 是 hoisted `export function`、只在函数体内调。
+ *   ⇒ 此路**结构上通**,只是分层与职责上不该走。**勿以假前提锁死 [建议]2 的 #6 修法。**
  *
- *  ⚠ `lastUndo=null` **必须在 await 之前同步执行**,否则 restoreFn 挂起期间 Mod+Z 可二次触发同一撤销。 */
+ *  ★存量 #6 债(先存,非本刀引入 · 评审第59轮 [建议]2 记债):本模块的 `撤销`(按钮 label)与 `已撤销`
+ *  两串是 **CN-only、无 i18n**,是平台基元里的红线 #6 违例。本刀以「不新增 CN-only 串」避开、未扩大。
+ *  **出口(保分层、零环、不需 `tt`)**:把两个 label 参数化 —— `toastUndo(msg, restoreFn, {undoLabel, doneLabel})`
+ *  带默认值,或由**持有 i18n 的上层**一次性注入 `setToastLabels(...)`。按第52轮 `jobseek.rs` 先例:显式记债 + 留出口。
+ *
+ *  ⚠ `lastUndo=null` **必须在 await 之前同步执行**,否则 restoreFn 挂起期间 Mod+Z 可二次触发同一撤销。
+ *  ⚠ `done` 闸(评审第59轮 [建议]1):`close()` 只置 `opacity:0` 并在 **300ms 后**才 `remove()` ——
+ *    透明元素**照样可点**。无闸时 300ms 内双击「撤销」会让 `restoreFn` **跑两次**(闭包消费者 `splice(i,0,snap)`
+ *    重复插入;memory 侧则出现「已撤销」与「没有可撤销的内容」并存)。姊妹原语 `guardrail.showUndo:34-36`
+ *    早有此闸,此处补齐。 */
 export function toastUndo(msg, restoreFn){
   const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
   $('#toasts').appendChild(t);
   let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
   const succeeded=(v)=>v!==false&&v!==0;  /* undefined / 其它 → 成功;显式 false 或 0 → 失败 */
+  let done=false;                         /* ★重入闸(同 guardrail.showUndo:34-36):opacity:0 的 toast 仍可点,300ms 内双击会跑两次 restoreFn */
   const doUndo=()=>{
+    if(done)return; done=true;            /* 同步置位,先于 close/restoreFn/任何 await */
     close();
     if(lastUndo===doUndo)lastUndo=null;   /* ★同步清除,先于任何 await:防 restoreFn 挂起期间 Mod+Z 二次触发 */
     let r; try{ r=restoreFn(); }catch(e){ toast(errText(e)); return; }   /* 同步抛错 → 报错、不报成功 */

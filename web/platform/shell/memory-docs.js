@@ -155,6 +155,9 @@ export async function renderMemory(box) {
           await refresh();
         } finally { memBusy = false; }
       },
+      // ★此处走 `guardrail.showUndo`(guardrail/index.js:36),它**从不报成功**、**返回值不被解释**
+      //   ⇒ 无需遵循 toast.js 的「显式 return false」契约。若将来改走 `toastUndo`,失败路径**必须显式 return false**,
+      //   否则默认值 undefined 会被读成「成功」而谎报「已撤销」。(评审第59轮 [建议]3 · 防漂移)
       onUndo: async () => {
         if (!ok) return; // 销毁未发生 → 无可撤销(guardrail 已擅自给出按钮)
         if (gen !== memGen) return expiredUndo();
@@ -216,6 +219,7 @@ export async function renderDocs(box) {
           if (ok) gen = ++docGen; // 提供撤销 ⇔ 销毁确已发生
           await refresh();
         },
+        // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
         onUndo: async () => {
           if (!ok) return; // 销毁未发生 → 无可撤销
           if (gen !== docGen) return expiredUndo();
@@ -284,6 +288,7 @@ export async function renderDocs(box) {
         if (ok) gen = ++docGen;
         await refresh();
       },
+      // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
       onUndo: async () => {
         if (!ok) return;
         if (gen !== docGen) return expiredUndo();
