@@ -32,6 +32,10 @@ const ASSETS_NOTES = [];
 /** 本次渲染时,知识库里实际存在的 docId 集合 —— 用它判断一条笔记「是否真的还在知识库里」,
  *  而不是只看本地的 `docId` 字段(用户可能已在能力中心把那篇文档删了)。**自愈,不留悬挂引用。** */
 let LIVE_DOC_IDS = new Set();
+/** 后端知识库状态**是否已知**。`rt.docs.list()` **抛错**时为 false(web 端返回 `[]` 是「已知为空」,不算未知)。
+ *  ★评审第67轮 [建议]:状态未知时**拒绝行动**,不假设最宽松 —— 否则会诱导用户在知识库里造重复副本
+ *  (`docs.add` 不会拒绝,它会欣然再加一份,RAG top-k 被同一段内容稀释)。**判定不了就别动 = fail-closed。** */
+let docsStatusKnown = false;
 
 /** 笔记 → 知识库文档的标题:取首行(截断),空则退回时间戳。
  *  @param {{text:string, updated:number}} n */
@@ -64,14 +68,18 @@ export function renderNotes(){
         <p style="margin:8px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;">${anEsc(n.text)}</p>
       </div>`).join('')
     : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有笔记。随手记下想法、片段与线索 —— 只存本地;授权后 AI 也能检索引用。','No notes yet. Jot down ideas, snippets, leads — local-only; with your grant the AI can reference them.')}</p></div>`;
-  const pending=ASSETS_NOTES.filter(n=>!inKnowledge(n)).length;
+  // ★fail-closed:状态未知(问不到后端)⇒ 按钮禁用 + 提示重试,绝不让用户在盲态下造重复副本。
+  const pending=docsStatusKnown ? ASSETS_NOTES.filter(n=>!inKnowledge(n)).length : 0;
+  const kbBtn = (!docsStatusKnown && ASSETS_NOTES.length)
+    ? `<button class="btn" id="anToKb" disabled style="opacity:.5;cursor:not-allowed;">${tt('迁入知识库','Add to knowledge')}</button><span class="mono" style="font-size:10px;color:var(--ink-3);">${tt('无法确认知识库状态,稍后重试','Cannot confirm knowledge state — retry later')}</span>`
+    : (pending?`<button class="btn" id="anToKb">${tt('迁入知识库','Add to knowledge')} · ${pending}</button>`:'');
   host.innerHTML=frontis('NOTES', tt('笔记','Notes'))
     +`<div class="sec" style="border-bottom:none;padding-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button>`
-    +(pending?`<button class="btn" id="anToKb">${tt('迁入知识库','Add to knowledge')} · ${pending}</button>`:'')
+    +kbBtn
     +`</div>`
     +list+signFoot();
   const add=$('#anAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openNoteModal('');
-  const kb=$('#anToKb'); if(kb) /** @type {HTMLElement} */(kb).onclick=()=>openMigrateModal();
+  const kb=$('#anToKb'); if(kb && !(/** @type {HTMLButtonElement} */(kb).disabled)) /** @type {HTMLElement} */(kb).onclick=()=>openMigrateModal();
   $$('#page-notes [data-anedit]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>openNoteModal(/** @type {HTMLElement} */(b).dataset.anedit||''); });
   $$('#page-notes [data-andel]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
     const id=/** @type {HTMLElement} */(b).dataset.andel; const i=ASSETS_NOTES.findIndex(x=>x.id===id); if(i<0) return;
@@ -85,15 +93,19 @@ export function renderNotes(){
 /**
  * 刷新「哪些笔记真的还在知识库里」。**不看本地 docId,看后端实际有哪些文档** ——
  * 用户可能已在能力中心把某篇删了,那条笔记应当重新变成「可迁入」。**自愈,不留悬挂引用。**
- * 拿不到列表(web 端降级 / 后端出错)⇒ **保守当作「一篇都不在」**:宁可让用户看到「可迁入」
- * 再被后端如实拒绝,也不要谎称「已在知识库」。
+ *
+ * ★评审第67轮 [建议] 订正了我原来的「保守 = 假设一篇都不在」:那不是保守,是**假设最宽松的状态** ——
+ * 于是所有笔记显示「可迁入」,用户一点就在知识库里造出重复副本(`docs.add` 不会拒绝)。
+ * **真正的保守是拒绝行动**:`docs.list()` 抛错 ⇒ `docsStatusKnown=false` ⇒ 迁入按钮禁用 + 提示重试;
+ * 既不谎称「已在知识库」,也不制造重复。
  */
 async function refreshLiveDocIds(){
   try{
     const rt=/** @type {any} */(window).SeekerRT;
     const rows=await rt.docs.list();
     LIVE_DOC_IDS=new Set((rows||[]).map((/** @type {any} */d)=>String(d.docId)));
-  }catch(_e){ LIVE_DOC_IDS=new Set(); }
+    docsStatusKnown=true;                         // 成功(含 web 端返回空列表)⇒ 状态已知
+  }catch(_e){ LIVE_DOC_IDS=new Set(); docsStatusKnown=false; }  // ★问不到 ⇒ 状态未知,拒绝行动
 }
 
 /**
@@ -101,6 +113,7 @@ async function refreshLiveDocIds(){
  * 故必须在用户点下去之前把后果讲清,并告诉他怎么撤回。**
  */
 function openMigrateModal(){
+  if(!docsStatusKnown){ toast(tt('无法确认知识库状态,请稍后重试','Cannot confirm knowledge state — please retry')); return; } // ★判定不了就别动
   const pending=ASSETS_NOTES.filter(n=>!inKnowledge(n));
   if(!pending.length){ toast(tt('没有待迁入的笔记','Nothing to add')); return; }
   openModal(`<div class="modal-head"><div><p class="eyebrow">— KNOWLEDGE</p><h2 style="margin-top:5px;">${tt('把笔记迁入知识库?','Add notes to knowledge?')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
