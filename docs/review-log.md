@@ -1820,3 +1820,29 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **诚实边界**:`doc_id` / `id` 列**本身**存成 BLOB 时,该篇/该行仍无法按名寻址(记忆侧有 `rowid` 兜底;文档侧只能靠整库清空)。可达性远低于 `created_at`/`fact` 损坏;**未修,如实记债。**
 
 **剩余后续刀**:① 大快照 **spill 到磁盘**(评审第64轮:已由预检如实披露,从「谎报」降为「能力缺口」,等知识库功能成熟再做)。
+
+### ★ 第65轮独立复核 = 🏁 通过 + 3 裁决 + 2 [建议] → 两刀全落 `51d41b0` + `556228f`
+**评审先认错**:它在第62/64 轮把这条记债定性为「可用性悬崖」,**低估了**。代码坐实:`memory_all`(recall)不读 `created_at`,`memory_entries`(用户列表)读 ⇒ 一行 `created_at='abc'` ⇒ 用户被告知「AI 什么都没记住」而 AI 仍记得全部 ⇒ **这是 §4-2(用户对 AI 可读内容的掌控),不是可用性**。评审判词:「**逃生口的第一步不是能删,而是能看见**」是本刀的真正洞察。
+
+#### 裁决 2(采纳)· 守卫改由「快照当裁判」 · commit `51d41b0`
+- **病灶**:`memory_remove_corrupt` 原用 `MEM_CORRUPT_PRED` 二次判定拒绝健康行。这道守卫是**安全属性**,于是「谓词 ≡ rusqlite `FromSql`」也成了安全属性 —— 而它是一份**跨依赖版本的维护负债**。**危险方向 = 谓词比 rusqlite 更严**:一条健康、可快照的记忆会被**无快照、无撤销地销毁**(静默、不可逆)。
+- **正解(评审原话)**:「**这行能不能快照**」的权威答案就是**快照代码本身**。抽 `map_mem_row`(与既有 `map_doc_row` 同款先例),`memory_rows_full` / `memory_snapshot_one` / 新增 `memory_row_state` **三处共用同一份映射** ⇒ 裁判 literally 是快照代码,而非重抄一份列清单。等价性遂**从安全属性降级为展示属性**(只剩列表打标 + clear 预检两个咨询性用途)。
+- **★★与评审落法的刻意分歧(已写进代码注释)**:它写 `Err(_) => DELETE`。**那会把一次瞬时 DB 错误(sqlite BUSY / 磁盘 / 语句失败)读成「这行坏了」而销毁它。** 故严格区分「取行/语句失败」(传播 `Err`,**绝不销毁**)与「行取到了、列转换失败」(才是 `Unmappable`)。另:行不存在仍返回 `Ok(deleted:0)` 的**诚实 no-op**(评审草稿写 `Err("不存在")`)—— 与 `memory_remove`/`memory_clear` 的 no-op 语义一致,也是 `offerUndo` 的 `deleted===0` 分支所依赖的。
+- **★跨版本对照实验(最强证据)**:把 `MEM_CORRUPT_PRED` 改成过严的 `"1=1"` —— **A. 旧码(`8214e42`,谓词当判据):`remove_corrupt_refuses_healthy...` FAILED(健康行被销毁)** ⇒ 评审预言的危险方向被实测复现;**B. 新码(快照当判据):同一过严谓词下测试照样绿**。
+- 新测试两个点名跑过:`row_state_asks_the_snapshot_itself_not_a_proxy_predicate`(五形态 → Unmappable;健康 → Healthy 阳性对照;不存在 → Missing;**DROP TABLE 后 prepare 失败 → 必须 Err 传播**)、`guard_refuses_healthy_row_even_if_a_predicate_would_call_it_corrupt`。103/0;clippy/fmt 净;真机 boot 零 panic。
+
+#### 裁决 3(采纳)· `text_lossy` 按列类型分开 · commit `556228f`
+- `Text(b) | Blob(b)` 合并成一支 lossy,合并了两个不同的事实:TEXT 逐字返回(**必须保留** —— 用户要知道自己在删什么);BLOB 的乱码**不是内容,却长得像内容**,对「删掉它」这个唯一决定零信息量。安全性上无新破口(两支都经 `cEsc`)—— 是**呈现的诚实性**。
+- **★★同刀订正评审裁决的一半**:它的 `Integer`/`Real` 一支**对现有调用点不可达**(实测,非推理)—— `id`/`fact`/`doc_id`/`doc_name` 全是 **TEXT 亲和**列,SQLite 把写入的数字**转成文本**(`fact=12345` → `typeof='text'`;`1.5` 亦然)⇒ 这类行是**健康行**、逐字呈现。只有 BLOB 不受亲和转换影响。两支仍保留(函数总体性),注释与测试写清不可达。
+- **这条是被一个失败的测试逼出来的**:我按裁决写了「数字 → 占位符」的断言,它红了(实际值 `"12345"`),于是去 probe 亲和性才拿到事实。**断言能红,是它教我东西的前提。**
+- `lossy_list_renders_text_verbatim_but_never_fakes_binary_as_content` 点名跑过(TEXT 逐字 = 阳性对照;BLOB → 占位符;亲和转换 → `corrupt=false`;`SELECT 7` 覆盖不可达分支)。104/0;preview 三行渲染 + `<img onerror>` 惰性 + rowid 作键。
+
+#### 裁决 1 + [建议]:`doc_remove_corrupt` —— **未做,记债写准**
+评审核实**文档侧没有死胡同**(`doc_clear_inner` 在 `reason=corrupt` 时 `undoable=false` ⇒ 不物化、不发 token、照常 `DELETE`),故**不构成逃生口漏洞**。真正的问题是**粒度不对称**:
+- **记忆侧 = 逐行手术**(`memory_remove_corrupt(rowid)`);**文档侧 = 整库核弹**(只能 `doc_clear`,丢掉全部文档 + 全部 embedding 的重算成本)。
+- 修法:`doc_chunks` 有 `rowid` ⇒ `doc_remove_corrupt(rowid)` 删掉那一个孤立的坏 chunk,其余文档立刻恢复健康(约 30 行 + UI 一处)。
+- **不阻塞**(无死胡同 + `doc_id`/`id` 存成 BLOB 的可达性比 `created_at` 低一档:前者需外部写库,后者 schema 是 `DEFAULT 0` 而非 `NOT NULL`,NULL 天然可写、REAL 可由迁移写入)。**范围克制,留后续刀。**
+
+**★方法论(评审点名,已收进 `reviewer-onboarding.md` §4-⑧)**:**记债是上一轮的判断,不是这一轮的事实。** 动手前先去量 blast radius —— 本刀正是这样把一个被记成「可用性问题」的 §4-2 说谎挖出来的。
+
+**剩余后续刀**:① 大快照 **spill 到磁盘**;② `doc_remove_corrupt(rowid)`(粒度对齐)。做完 ①,撤销债清零。
