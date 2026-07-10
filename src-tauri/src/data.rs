@@ -532,15 +532,28 @@ const MEM_CORRUPT_PRED: &str = "typeof(id)<>'text' OR typeof(fact)<>'text' OR ty
 /// 同上,对应 `DocRow = (String, String, String, String, Vec<f32>, i64)`。
 const DOC_CORRUPT_PRED: &str = "typeof(id)<>'text' OR typeof(doc_id)<>'text' OR typeof(doc_name)<>'text' OR typeof(text)<>'text' OR typeof(embedding) NOT IN ('blob','null') OR typeof(created_at) NOT IN ('integer','null')";
 
-/// **宽容**读一列文本:BLOB / 数字 / NULL 一律不报错(损坏行也要能被用户看见,才可能被删掉)。
+/// **宽容**读一列文本:任何类型都不报错(损坏行也要能被用户看见,才可能被删掉)。
 /// 仅用于**给人看**的列表,绝不用于快照 —— 快照仍严格 fail-closed(有损转换不是忠实快照)。
+///
+/// ★评审第65轮裁决 3 · **按列类型分开,别把「非内容」渲染成「内容」**:
+///  · `Text`  → `from_utf8_lossy` 逐字返回。**这一支必须保留**:最常见的损坏是 `created_at` 坏而
+///    `fact` 正常,此时用户看到的是**真实的那条记忆**,才知道自己在删什么;
+///    lossy 顺带优雅处理 TEXT 列里的坏字节。
+///  · `Blob` → **固定占位符**。此时根本不存在文本内容,`from_utf8_lossy` 渲染出的乱码
+///    **不是内容,却长得像内容**;而用户唯一能做的决定是「删掉它」,乱码对该决定零信息量。
+///    他需要看见的是 `rowid` 与「哪一列坏了」,不是字节的幻影。
+///    (安全性上无新破口 —— 两支都经 `cEsc`;这是**呈现的诚实性**,不是安全问题。)
+///  · `Integer` / `Real` → 同样给占位符,但**对现有调用点不可达**:`id`/`fact`/`doc_id`/`doc_name`
+///    全是 **TEXT 亲和**列,SQLite 会把写入的数字转成文本(实测 `fact=12345` → `typeof='text'`,
+///    `fact=1.5` 亦然)⇒ 它们是**健康行**、逐字呈现。只有 BLOB 不受亲和转换影响。
+///    保留这两支只是让本函数对「无亲和列」也成立(防将来的调用点)。
 fn text_lossy(r: &rusqlite::Row, i: usize) -> rusqlite::Result<String> {
     use rusqlite::types::ValueRef;
     Ok(match r.get_ref(i)? {
         ValueRef::Null => String::new(),
-        ValueRef::Integer(v) => v.to_string(),
-        ValueRef::Real(v) => v.to_string(),
-        ValueRef::Text(b) | ValueRef::Blob(b) => String::from_utf8_lossy(b).into_owned(),
+        ValueRef::Text(b) => String::from_utf8_lossy(b).into_owned(),
+        ValueRef::Blob(_) => "(内容已损坏 · 二进制)".to_string(),
+        ValueRef::Integer(_) | ValueRef::Real(_) => "(内容已损坏 · 非文本)".to_string(),
     })
 }
 
@@ -1994,6 +2007,55 @@ mod tests {
             weak_disagreed,
             "阳性对照失效:弱化谓词竟与 rusqlite 处处一致 —— 本测试分辨不出谓词的对错,是死靶"
         );
+    }
+
+    /// ★评审第65轮裁决 3 · **别把「非内容」渲染成「内容」**。
+    /// TEXT 列(哪怕别的列坏了)必须逐字呈现 —— 用户要知道自己在删什么;
+    /// BLOB 列没有文本内容,乱码不是内容 ⇒ 固定占位符。
+    ///
+    /// ★同时钉死一条 **SQLite 亲和性**事实(实测得来,非推理):`fact`/`id` 是 TEXT 亲和列,
+    /// 写入数字会被**转成文本** ⇒ 它们是健康行,不是损坏行。故裁决 3 里的 `Integer`/`Real` 一支
+    /// 对现有调用点**不可达**(保留只为函数的总体性)。
+    #[test]
+    fn lossy_list_renders_text_verbatim_but_never_fakes_binary_as_content() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-lossy");
+        migrate(&mut conn, &tmp).unwrap();
+        // ① 最常见的损坏:created_at 坏、fact 正常 ⇒ fact 必须**逐字**可读
+        conn.execute(
+            "INSERT INTO memories VALUES ('a','用户偏好远程后端岗位',NULL,'abc')",
+            [],
+        )
+        .unwrap();
+        // ② fact 本身是 BLOB ⇒ 没有文本内容 ⇒ 占位符,绝不渲染乱码
+        conn.execute("INSERT INTO memories VALUES ('b',X'00FF10',NULL,1)", [])
+            .unwrap();
+        // ③ fact 写成数字 ⇒ **TEXT 亲和把它转成文本** ⇒ 健康行、逐字呈现
+        conn.execute("INSERT INTO memories VALUES ('c',12345,NULL,1)", [])
+            .unwrap();
+
+        let e = super::memory_entries(&conn).unwrap();
+        assert_eq!(e.len(), 3, "三条都得看得见");
+        let by = |id: &str| e.iter().find(|x| x["id"] == id).unwrap().clone();
+
+        // ①(阳性对照:证明我们没有把所有损坏行都占位符化)
+        assert_eq!(by("a")["fact"], serde_json::json!("用户偏好远程后端岗位"));
+        assert_eq!(by("a")["corrupt"], serde_json::json!(true));
+        // ② BLOB → 固定占位符,且**不含**原始字节的任何有损转写
+        assert_eq!(by("b")["fact"], serde_json::json!("(内容已损坏 · 二进制)"));
+        assert_eq!(by("b")["corrupt"], serde_json::json!(true));
+        // ③ 亲和转换 ⇒ 健康行(**不是**损坏行),内容逐字
+        assert_eq!(by("c")["fact"], serde_json::json!("12345"));
+        assert_eq!(by("c")["corrupt"], serde_json::json!(false));
+
+        // 三条都给了 rowid(用户唯一能做的决定「删掉它」所需的键)
+        assert!(e.iter().all(|x| x["rowid"].as_i64().unwrap() > 0));
+
+        // Integer/Real 一支:调用点不可达,但函数本身仍须给占位符(直接喂一个 Integer 求值)
+        let s: String = conn
+            .query_row("SELECT 7", [], |r| super::text_lossy(r, 0))
+            .unwrap();
+        assert_eq!(s, "(内容已损坏 · 非文本)");
     }
 
     /// ★★守卫的**真正判据**(评审第65轮 [建议]强):`memory_row_state` 直接问 `map_mem_row`
