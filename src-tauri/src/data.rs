@@ -609,12 +609,23 @@ pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usi
     Ok(n)
 }
 
-/// 快照一条记忆行(含 embedding)。行不存在 → 空 Vec(= no-op 删除的信号)。抽出以便单测走**真查询**。
+/// 快照一条记忆行(含 embedding)。**行不存在 → 空 Vec;行存在但映射失败 → `Err`(fail-closed)。**
+///
+/// ★评审第60轮 [建议]2:原实现用 `.filter_map(|x| x.ok())` **吞掉逐行映射错误**(先存缺陷,随
+/// `memory_remove` 内联体忠实搬出)。而 `DELETE` **不管映射成不成功都会删掉那行** ⇒ 旧语义下
+/// `snap.is_empty()` 实为「命中 0 行 **或** 命中的行全部映射失败」,**并不等价于「0 行被销毁」**。
+/// 一旦配上 `stash_if_destroyed`,后果被放大成:行被删、快照为空 → 跳过 stash → 槽里留着**上一次**的
+/// 快照 → 命令仍 `Ok` → 前端推进世代并给出撤销 → 用户点撤销 **还原了错的记录**、且 `n>0` 报「已撤销」。
+/// (对比旧码 `*slot = snap`(空)只是**清空**槽:丢 A,但不还原错的。**本刀曾把良性吞错变成还原错记录的通路**。)
+///
+/// 故改为**与三个兄弟一致地传播错误**(`memory_rows_full` / `doc_snapshot` 均 `r.map_err(…)?`;
+/// 本函数曾是四者里唯一的异类)。映射失败 → 在 `DELETE` **之前**返回 `Err` ⇒ 什么也没销毁、槽未被动、
+/// 前端 `ok=false` 不推进世代不给撤销。**此后 `snap.is_empty()` 才真正 ⟺「0 行被销毁」,`is_empty()` 判据才名副其实。**
 fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, String> {
     let mut stmt = conn
         .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
         .map_err(|e| e.to_string())?;
-    let snap: Vec<MemRow> = stmt
+    let it = stmt
         .query_map(params![id], |r| {
             let i: String = r.get(0)?;
             let f: String = r.get(1)?;
@@ -622,25 +633,46 @@ fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, Strin
             let t: i64 = r.get(3)?;
             Ok((i, f, b.map(|x| blob_to_vec(&x)).unwrap_or_default(), t))
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|x| x.ok())
-        .collect();
-    Ok(snap)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in it {
+        out.push(r.map_err(|e| e.to_string())?); // fail-closed:不能完整快照,就不销毁
+    }
+    Ok(out)
 }
 
-/// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。
+/// 删除一条长期记忆的**真实逻辑**(快照 → 删 → 按需 stash)。命令只负责取锁转调。
+///
+/// ★评审第60轮 [建议]3:抽出 inner 是为了让单测覆盖**真实命令体** —— 原测试自己重抄了
+/// 「snapshot → DELETE → stash」这段序列,断言的是**测试自己写的代码**:若有人把命令改回
+/// `*trash = snap`、或把 stash 挪到 DELETE 之前,那测试照样绿。**重抄被测代码的测试,证明的是测试、不是代码**
+/// (与「不触发的控制组什么都证明不了」同族纪律)。
+fn memory_remove_inner(
+    conn: &Connection,
+    slot: &Mutex<Vec<MemRow>>,
+    id: &str,
+) -> Result<usize, String> {
+    let snap = memory_snapshot_one(conn, id)?; // 映射失败 → 提前 Err,什么也不销毁
+    let n = conn
+        .execute("DELETE FROM memories WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    stash_if_destroyed(slot, snap); // ★重复删同一 id ⇒ snap 空 ⇒ 不得把上一次的快照清成 []
+    Ok(n)
+}
+
+/// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。返回**实际删除条数**。
+///
+/// ★返回条数(本刀新增,原为 `()`):`doc_remove`/`memory_clear`/`doc_clear` 早已返回 `usize`,
+/// 唯独此命令不返回 ⇒ 前端**无从判断销毁是否真的发生**,「提供撤销 ⇔ 销毁确已发生」这条不变式
+/// 在此**无法贯彻**(no-op 删除会推进世代并给出撤销,点下去还原的是**上一次**的记录)。补齐以消除该盲区。
 #[tauri::command]
 pub fn memory_remove(
     db: State<'_, Db>,
     trash: State<'_, MemTrash>,
     id: String,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let snap = memory_snapshot_one(&conn, &id)?;
-    conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
-    stash_if_destroyed(&trash.0, snap); // ★重复删同一 id ⇒ snap 空 ⇒ 不得把上一次的快照清成 []
-    Ok(())
+    memory_remove_inner(&conn, &trash.0, &id)
 }
 
 /// 撤销最近一次记忆销毁(清除 / 单删):从后端 trash 还原(原 embedding 与时间无损)→ 清空 trash。
@@ -784,11 +816,20 @@ pub fn doc_remove(
     doc_id: String,
 ) -> Result<usize, String> {
     let conn = db.0.lock().unwrap();
-    let snap = doc_snapshot(&conn, Some(&doc_id))?;
+    doc_remove_inner(&conn, &trash.0, &doc_id)
+}
+
+/// 删除一篇文档的**真实逻辑**(与 memory_remove_inner 同构;抽出以便单测覆盖真实命令体 · [建议]3)。
+fn doc_remove_inner(
+    conn: &Connection,
+    slot: &Mutex<Vec<DocRow>>,
+    doc_id: &str,
+) -> Result<usize, String> {
+    let snap = doc_snapshot(conn, Some(doc_id))?; // doc_snapshot 本就传播错误(fail-closed)
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
         .map_err(|e| e.to_string())?;
-    stash_if_destroyed(&trash.0, snap); // ★与 memory_remove 同构(评审 [建议]C:doc_remove 一并覆盖)
+    stash_if_destroyed(slot, snap); // ★与 memory_remove 同构(评审第58轮 [建议]C:doc_remove 一并覆盖)
     Ok(n)
 }
 
@@ -921,6 +962,8 @@ mod tests {
     }
 
     /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
+    /// ★评审第60轮 [建议]3:**直调 `memory_remove_inner`(真实命令体)**,而非在测试里重抄
+    /// 「snapshot → DELETE → stash」序列 —— 否则有人把命令改回 `*trash = snap` 此测试照样绿。
     #[test]
     fn repeated_memory_delete_keeps_first_snapshot_and_undo_restores_it() {
         use std::sync::Mutex;
@@ -935,20 +978,17 @@ mod tests {
 
         let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
 
-        // 第一次删 A(真销毁)→ 快照进槽
-        let snap1 = super::memory_snapshot_one(&conn, "A").unwrap();
-        assert_eq!(snap1.len(), 1, "A 存在,快照应有 1 行");
-        conn.execute("DELETE FROM memories WHERE id = 'A'", [])
-            .unwrap();
-        super::stash_if_destroyed(&slot, snap1);
+        // 第一次删 A(真销毁)→ 快照进槽 —— 走真实命令体
+        super::memory_remove_inner(&conn, &slot, "A").unwrap();
+        assert_eq!(slot.lock().unwrap().len(), 1, "真销毁应把 A 的快照存进槽");
 
         // 第二次删 A(行已不存在 = no-op)→ 空快照,**不得清槽**
-        let snap2 = super::memory_snapshot_one(&conn, "A").unwrap();
-        assert!(snap2.is_empty(), "A 已删,第二次快照应为空");
-        conn.execute("DELETE FROM memories WHERE id = 'A'", [])
-            .unwrap();
-        super::stash_if_destroyed(&slot, snap2);
-        assert_eq!(slot.lock().unwrap().len(), 1, "重复删除后撤销槽仍应保有 A");
+        super::memory_remove_inner(&conn, &slot, "A").unwrap();
+        assert_eq!(
+            slot.lock().unwrap().len(),
+            1,
+            "no-op 重复删除后撤销槽仍应保有 A(不得清成空)"
+        );
 
         // 撤销:取走槽内内容并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
         let rows = std::mem::take(&mut *slot.lock().unwrap());
@@ -958,6 +998,52 @@ mod tests {
             .query_row("SELECT fact FROM memories WHERE id = 'A'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(back, "fact A", "A 应按原内容还原");
+    }
+
+    /// ★评审第60轮 [建议]2:`memory_snapshot_one` 曾用 `.filter_map(|x| x.ok())` **吞掉映射错误**。
+    /// 行存在但映射失败(schema `created_at INTEGER DEFAULT 0` —— **DEFAULT ≠ NOT NULL**,NULL 可表示)
+    /// ⇒ 旧语义 `snap=[]` 而 `DELETE` 仍删掉该行 ⇒ 跳过 stash ⇒ 槽里留着**上一次**的快照
+    /// ⇒ 撤销**还原错的记录**且报「已撤销」。修后须 **fail-closed:提前 Err、什么也不销毁、槽不被动**。
+    #[test]
+    fn unmappable_row_fails_closed_and_never_clobbers_or_deletes() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups");
+        migrate(&mut conn, &tmp).unwrap();
+
+        // 槽里先放一条「上一次销毁」的快照(A)——它绝不能被错还原
+        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
+        *slot.lock().unwrap() = vec![("A".into(), "fact A".into(), vec![], 1)];
+
+        // B 存在但 created_at 为 NULL ⇒ 逐行映射失败(DEFAULT 不等于 NOT NULL,NULL 可写入)
+        conn.execute(
+            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('B','fact B',NULL,NULL)",
+            [],
+        )
+        .unwrap();
+
+        // 阳性对照:确认该行确实映射失败(证明用例打到了真实故障面,而非空跑)
+        assert!(
+            super::memory_snapshot_one(&conn, "B").is_err(),
+            "created_at=NULL 应使逐行映射失败(用例必须真的触发故障)"
+        );
+
+        // fail-closed:删除应报错
+        let r = super::memory_remove_inner(&conn, &slot, "B");
+        assert!(r.is_err(), "不能完整快照就不得销毁 → 应返回 Err");
+
+        // ① B **未被删除**(DELETE 从未执行)
+        let still: i64 = conn
+            .query_row("SELECT COUNT(*) FROM memories WHERE id = 'B'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(still, 1, "fail-closed:B 不得被删除");
+
+        // ② 撤销槽**未被动过** —— 仍是 A,绝不会被「还原错记录」
+        let s = slot.lock().unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].0, "A", "撤销槽不得被这次失败的删除污染");
     }
 
     #[test]

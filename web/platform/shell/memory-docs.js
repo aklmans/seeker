@@ -18,9 +18,13 @@
  *       其 toast 仍可点 → 还原的是第二条,第一条永久丢失。)
  *       ⚠ **不得改 `toast.js` 共享原语**:notes/prompts/resumes 的撤销是**闭包快照、各自独立正确**,
  *       做成全局互斥反而把它们改坏。世代守卫**只作用于本模块自己的两个 trash 域**(memory / docs)。
- *     · ★**提供撤销 ⇔ 销毁确已发生**(评审第58轮 [建议]A):后端调用失败(sqlite 锁 / 磁盘 / IPC)时
- *       **不推进世代、不给撤销**,并 `toast(errText(e))` 而非静默吞错。否则 trash 里仍是**上一条**,
- *       新撤销的 `gen` 与世代相符会放行 ⇒ 还原**错的记录**、且报「已撤销」。
+ *     · ★**提供撤销 ⇔ 销毁确已发生**(评审第58轮 [建议]A + 第60轮 [建议]1):
+ *       ① 后端调用**失败**(sqlite 锁 / 磁盘 / IPC)→ **不推进世代、不给撤销**,并 `toast(errText(e))` 而非静默吞错;
+ *       ② 后端返回**实际销毁条数 `n===0`**(no-op:行已不在 / 库本就空)→ 同样**不推进世代、不给撤销**。
+ *       否则 trash 里仍是**上一条**的快照,新撤销的 `gen` 与世代相符会放行 ⇒ 还原**错的记录**、且报「已撤销」。
+ *       ⚠ 四条路径全部据此收口(逐条删 / 清空 / 文档删 / 文档清空);`memory_remove` 的返回值由 `()` 改为
+ *       `usize` 正是为了让本条在它身上**可被贯彻**(原先前端无从判断销毁是否真发生)。
+ *       web 端降级返回 `undefined` → 视为成功(那里本无行、不可达)。
  *       ⚠ guardrail 在 `onConfirm` 之后**无条件** `showUndo`(guardrail/index.js:125),故 guardrail 三条路径
  *       必须靠**显式 `ok` 标志**让 `onUndo` 自行拒绝 —— **只靠世代不够**:失败时不推进世代会使
  *       `gen(0) === docGen(0)` 被误判为有效。
@@ -101,8 +105,14 @@ export async function renderMemory(box) {
         // ★不变式(评审第58轮 [建议]A):**提供撤销 ⇔ 销毁确已发生**。
         //   原 `catch(_e){}` 吞错后仍 ++memGen + 给撤销 ⇒ remove 失败时 trash 还是上一条,
         //   而新 toast 的 gen 与 memGen 相符、守卫放行 ⇒ 会还原**上一条(错的)记录**,且报「已撤销」。
+        // ★后端返回**实际删除条数**(评审第60轮 [建议]1:提供撤销 ⇔ 销毁确已发生)。
+        //   n===0 = no-op 删除 ⇒ 后端 trash 仍是**上一次**的快照 ⇒ 绝不可推进世代 / 给撤销,否则点下去还原错记录。
+        //   web 端降级返回 undefined → 视为成功(那里本无行、不可达)。
         let ok = true;
-        try { await rt.memory.remove(b.dataset.memdel); } catch (e) { ok = false; toast(errText(e)); }
+        try {
+          const n = await rt.memory.remove(b.dataset.memdel);
+          if (typeof n === 'number' && n === 0) { ok = false; toast(tt('没有可删除的内容', 'Nothing to delete')); }
+        } catch (e) { ok = false; toast(errText(e)); }
         await refresh(); // 重渲出全新(enabled)按钮
         if (ok) {
           const gen = ++memGen; // 只有真销毁才推进世代
@@ -147,7 +157,14 @@ export async function renderMemory(box) {
       onConfirm: async () => {
         memBusy = true; // 与逐条删互斥(guardrail 确认按钮先 close() 再 await,故自身不可重入)
         try {
-          try { await rt.memory.clear(); ok = true; } catch (e) { toast(errText(e)); }
+          // ★[建议]1:清空一个已空的库 = 销毁 0 条。后端(刀2a 的 stash_if_destroyed)会**保留**上一次
+          //   逐条删的快照,而 guardrail 无条件给撤销按钮 ⇒ 点下去会还原一条 clear 根本没销毁的记录。
+          //   故 n===0 ⇒ 不推进世代、不视为成功(onUndo 据 ok 拒绝)。
+          try {
+            const n = await rt.memory.clear();
+            ok = !(typeof n === 'number' && n === 0);
+            if (!ok) toast(tt('没有可清除的内容', 'Nothing to clear'));
+          } catch (e) { toast(errText(e)); }
           if (ok) { // 提供撤销 ⇔ 销毁确已发生
             dropToast(memUndoToast); memUndoToast = null; // 清空已覆盖单槽 → 旧的逐条撤销就此失效
             gen = ++memGen;
@@ -215,7 +232,12 @@ export async function renderDocs(box) {
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
         onConfirm: async () => {
-          try { await rt.docs.remove(b.dataset.docdel); ok = true; } catch (e) { toast(errText(e)); }
+          // ★[建议]1 同源:doc_remove 返回实际删除的 chunk 数;n===0 = no-op ⇒ 不给撤销(否则还原上一次的文档)。
+          try {
+            const n = await rt.docs.remove(b.dataset.docdel);
+            ok = !(typeof n === 'number' && n === 0);
+            if (!ok) toast(tt('没有可删除的内容', 'Nothing to delete'));
+          } catch (e) { toast(errText(e)); }
           if (ok) gen = ++docGen; // 提供撤销 ⇔ 销毁确已发生
           await refresh();
         },
@@ -284,7 +306,12 @@ export async function renderDocs(box) {
       confirmLabel: tt('清空', 'Clear'),
       undoText: tt('已清空知识库', 'Knowledge cleared'),
       onConfirm: async () => {
-        try { await rt.docs.clear(); ok = true; } catch (e) { toast(errText(e)); }
+        // ★[建议]1 同源:清空一个已空的知识库 = 销毁 0 条 ⇒ 不给撤销(后端仍留着上一次删文档的快照)。
+        try {
+          const n = await rt.docs.clear();
+          ok = !(typeof n === 'number' && n === 0);
+          if (!ok) toast(tt('没有可清空的内容', 'Nothing to clear'));
+        } catch (e) { toast(errText(e)); }
         if (ok) gen = ++docGen;
         await refresh();
       },
