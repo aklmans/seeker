@@ -103,8 +103,15 @@ export interface WidgetActionSpec {
   confirmLabel?: string;
   /** 结构化「前→后」预览(guardrail 一律 textContent 渲染,不可信内容无法注入)。 */
   changes?: { label?: string; before?: string; after?: string }[];
-  /** 用户确认后才执行(必填;registry 以 `typeof onConfirm==='function'` 守卫,缺失则视为未认领)。 */
-  onConfirm: () => void | Promise<void>;
+  /**
+   * 用户确认后才执行(必填;registry 以 `typeof onConfirm==='function'` 守卫,缺失则视为未认领)。
+   *
+   * 返回 **显式 `false` 或 `0`** ⇒ 销毁未发生 / 无可还原之物 ⇒ 平台**不给撤销按钮**;`undefined` ⇒ 视为已执行。
+   * (与 `toast.js` 的 `toastUndo` 判据逐字同款:`v !== false && v !== 0`。)
+   * ★这**不给应用任何新权力**:应用本来就能通过**不声明 `onUndo`** 让一次销毁无从撤销;`false` 只是把
+   *   同一个决定挪到**执行之后**(「有没有可还原之物」往往执行时才知道)。它**不能**让应用绕过确认闸。
+   */
+  onConfirm: () => void | boolean | number | Promise<void | boolean | number>;
   onUndo?: () => void | Promise<void>;
   undoText?: string;
   undoMs?: number;
