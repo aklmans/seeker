@@ -1734,3 +1734,19 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **★刀2b-2 验收判据(评审在其两条之上加的第③条)**:① 四个闭包消费者**逐字零回归**(真模块导出 + 双向阳性对照,别让控制组空跑);② token 失效 → `return false` + 自报,**绝不退回默认「成功」**;**③ 删除 `undo(None)` 这个 affordance —— `token` 必填,未命中即还原 0 条。** 做完第③条,「还原错记录」才从「靠前端五道闸挡住」变成**结构上不可能**,这个 arc 才算真正收口。
 **后续刀(记债)**:大快照 **spill 到磁盘**(仿 `clearAllDataFlow` 清前备份)⇒ 内存有界、撤销恒可用;guardrail `onConfirm: () => Promise<boolean>`(`false` ⇒ 跳过 `showUndo`,`undefined` ⇒ 视为 true,现存调用点零回归)。
+
+### 刀2b-2/2 · 删除 `undo(None)` affordance:token 必填 · commit `71abe1f` · ⏳ 待审
+承第62轮验收判据③。**撤销债 arc 由此收口。**
+- **★核心不是「把 token 穿过去」,而是把 `None` 这个 affordance 删掉**(评审原话)。落法:`UndoRing::take(&mut self, token: &str)` —— `Option<&str>` 与「取环顶」分支**一并删除**;`memory_undo`/`doc_undo` 形参 `Option<String>` → `String`。**编译器即证明**:改签名后旧的 `take(None)` / `take(Some(..))` 调用点直接 E0308 —— 「取环顶」在**类型层面不再可被表达**。未命中(已淘汰/未知/已取走)→ 还原 0 条,绝不静默成功。
+- **前端**:`offerUndo()` 由返 bool 改为**返 token(或 null)** ⇒「无 token ⇒ 不提供撤销」不再是前端约定,而是后端结构的显式化。四条销毁路径各自捕获**自己那一次**的 token 并在撤销回调回传;token 失效 → `staleUndo()` 自报 + `return false` ⇒ toast.js 不报「已撤销」(刀1 契约)。两端 runtime `undo(token)` token 必填。
+- **同刀订正模块头**(勿留假陈述):第62轮写下的「本模块尚未穿 token ⇒ undo() 取环顶」已不成立。改为:今日撤销语义 = **「撤销它自己那一次销毁」**,由 token 结构性保证;并明记 **`memGen`/`docGen` 世代守卫、`dropToast`、`toastUndo.done` 已降为纯纵深防御,不再承重**(但也别删 —— 变体 (f) 的分析仍成立,只是不再是唯一那道闸)。
+- **★staleUndo 措辞与成功提示解耦**:原文案含「已撤销**过**」——**内含「已撤销」四字**,那是 toast.js 成功路径的专用提示。复用会让用户(以及断言)把一次失败读成成功。此问题正是被我一条**子串断言**暴露的(`/已撤销/` 命中失败文案)⇒ 判据改为**精确匹配 toast 节点全文**,措辞亦改。
+- **验(三条判据,每条配一个能亮的控制组)**:
+  - ①**四个闭包消费者逐字零回归** —— 真模块导出(`typeof window.toastUndo === 'undefined'` 佐证控制组不是空跑,`CTL_moduleIsReal`);`restoreFn` 返 `undefined` → 仍报「已撤销」且闭包真跑;两个独立闭包快照并存、各自独立执行(`C1_twoIndependentToasts` / `C1_bothRanIndependently`);**真消费者端到端**(notes.js:48):新建 → 删 → 撤销 → **按原 id 还原**、仍报「已撤销」;**双击撤销**不重复插入、恰**一条**「已撤销」(刀1 `done` 闸未被本刀破坏)。
+  - ②**token 失效** → 后端被调用(带 token)、还原 0 条、`staleUndo` 自报、**exact「已撤销」toast 数 = 0**、db 未变。**阳性对照**:成功路径确实产出 exact「已撤销」toast(`CTL_successProducesExactUndoneToast: true` ⇒ 判据能亮)。
+  - ③**token 必填** —— 前端实际以**后端签发的那个 token** 调 undo(非 undefined);**结构性**:即便撤销的不是环顶,也**只还原它自己那一次**(A 被还原、B 原封不动、环内仍留 B)。Rust `undo_ring_takes_only_its_own_entry_by_token`(**点名跑过**):非环顶按 token 精确取 / 未知 token → `None` / **同一 token 不得撤销两次** / 环空 → `None`。
+  - cargo test **92 passed / 0 failed**;clippy `-D warnings` 净;fmt 净;真机 WKWebView **5.14s boot 零 panic、进程存活**。
+- **★诚实边界**:桌面真 `invoke('memory_undo', { token })` 未被端到端驱动(Rust 单测 + boot + web 桩 + preview 覆盖其余)。`Option<String>` → `String` 比第62轮裁决7 讨论的形状**更不易出错**(必填而非可空)。
+
+**★撤销债 arc 收口**:刀1(toastUndo 契约:`undefined`=成功 / `false`=静默失败 / throw=错误)+ 刀2a(no-op 守卫 · fail-closed 快照 · 全域映射 · 据条数收口)+ 刀2b-1(有界环 · token 签发 · 决策点说真话 · 真字节上限)+ 刀2b-2(token 必填)。**「还原错记录」不再靠前端五道闸挡住,而是结构上不可能。**
+**未清之债(记账,非本 arc)**:① 大快照 **spill 到磁盘**(仿 `clearAllDataFlow` 清前备份)⇒ 内存有界 ∧ 大 clear 恒可撤销;② guardrail `onConfirm: () => Promise<boolean>`(`false` ⇒ 跳过 `showUndo`;`undefined` ⇒ 视为 true ⇒ 现存调用点零回归);③ 「无逃生口」锐化:允许经 guardrail 销毁不可映射行(明告「不可撤销」);④ `toast.js` 的 `撤销`/`已撤销` CN-only #6 债(出口:标签参数化 / `setToastLabels`);⑤ `jobseek.rs` #6 i18n 债(随 app-tool 契约解);⑥ **路线 B 封顶**:app-tool 契约落地前不新增 `src-tauri/src/<app>.rs` 工具。
