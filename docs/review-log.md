@@ -1634,3 +1634,20 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **[建议]C(TTL 同源常量)已并入 keyed-trash chip**:当前前端两个撤销窗口 `toast.js:20` 的 `6500` 与 `guardrail:125` 的 `undoMs||6000` **硬编码且互不相同**;后端 TTL 若各自漂移会出现「UI 说可撤销、后端已过期」= 又一条 §4-3 ★违例。要求定义**单一来源**并写测试钉住;`doc_remove` 的 `if !snap.is_empty()` 亦一并覆盖。
 
 **★P1-c 收官(第58轮通过 + 三 [建议] 全落)。P1 = a+b+c 全线收齐。** 后续两刀已开 chip 并标注依赖序:**`task_e94bf3c5`(toastUndo 契约化)→ `task_9b4b646d`(keyed trash + no-op 守卫 + TTL 同源)**。评审预告复核重点:TTL 与前端撤销窗口是否同源、四个现存消费者在新契约下**逐字零回归**(用真模块导出做双向阳性对照,别让控制组空跑)。
+
+---
+
+## 撤销债清偿(用户拍板 2026-07-09:P1 收齐后先清撤销债,再谈 P2 / 绿地)
+
+### 刀1/2 · `toastUndo` 契约化 —— doUndo 不再谎报「已撤销」· commit `a0fe6c6` · ⏳ 待审
+承评审第58轮**明确裁决**(toast.js 单出一刀、须排在 keyed-trash 之前或同刀)。**理由不是现在坏,而是 TTL 会让它坏**:keyed-trash 给 `memory_undo(token)` 加 TTL 后撤销会**合法地失败**(过期),而 `doUndo` 仍无条件 `toast('已撤销')` ⇒ **假成功提示由设计重新引入**,直接违反 §4-3 ★判据。
+- **★新契约(opt-in · 现存 5 消费者逐字零回归)**:由 `restoreFn` 的解析值决定提示 —— `undefined`(块体箭头 `()=>{…}` 的返回值,**现存全部消费者**)→ 成功 → 报「已撤销」;显式 `false`/`0`(还原 0 条 / 已过期)→ **不报成功**且此处静默;同步抛错 / Promise reject → 报 `errText(e)`、**不报成功**。⚠ `lastUndo=null` **移到 await 之前同步执行**(评审点名):否则 restoreFn 挂起期间 Mod+Z 可二次触发。
+- **★「失败因由由 restoreFn 自报」的设计缘由(exec 坐实的硬约束,非风格选择)**:`toast.js` 是 i18n **之下**的基础原语 —— `i18n.js:9 → shell-state.js:13 → toast.js` 已成链,**引入 `tt` 会成环**(违 SCC 不变式);而在 `toast.js` 新增 CN-only「撤销失败」串又**违反红线 #6**。故契约把「说明失败原因」的责任**上移给调用方**(它持有 `tt` 与上下文,能说清是过期还是出错)。`toast.js` 因此**零新串、零 i18n 依赖、零新环**。
+- **★memory-docs.js 同刀 opt-in,并修掉本契约引入的一处陷阱**:原 `return expiredUndo();` 的值是 `undefined`(`toast()` 的返回值)⇒ **新契约会把它读成「成功」**。改为 `{ expiredUndo(); return false; }`;后端抛错 → `return false`;并接住 `memory_undo` 的返回值(`Result<usize>` = 还原行数):`n===0` → 报「没有可撤销的内容」+ `return false`(web 降级返回 `undefined` → 视为成功,不误判)。
+- **验(★控制组必须真触发)**:第56轮教训 —— `window.toastUndo` 桥 3.y 已摘(`typeof undefined`),拿它做对照会**空跑成假阴性**;本轮用**真模块导出**并断言 `CTL_moduleIsFreshContract`(且首跑确实因浏览器缓存旧模块而**报错崩出**,证明控制组有效、非空跑)。
+  - **契约面 7 例全绿**:`undefined`→已撤销 ∧ 闭包真执行;`false`→不报成功且调用方因由可见;`0`→不报成功;同步抛错→报 errText 不报成功;async reject→同;async undefined→成功;**★Mod+Z 在 restoreFn 挂起期间 `runLastUndo()===false` 且 restoreFn 只跑一次**。
+  - **★真消费者端到端零回归**([notes.js:48](web/apps/assets/pages/notes.js#L48)):UI 新建笔记 → 逐条删 → 点撤销 → **笔记按原 id 还原、仍报「已撤销」**。附带损害检查:两个独立闭包快照 toast 并存且**各自独立执行**。
+  - **memory 域**:过期撤销 → 报「已过期」且**绝不报「已撤销」**(本刀新增关键断言);成功路径 `n=1` → 报「已撤销」+ 真还原;`n=0` → 报「没有可撤销的内容」不报成功;后端抛错 → 报 errText 不报成功。
+  - node×2 净;0 console;**guardrail 共享原语仍未动**(`git diff` 空);真机 WKWebView 6.26s boot 零 panic。
+- **诚实边界**:`rt.memory.undo()` 的返回值在桌面端是 `usize`(还原行数)、web 端降级为 `undefined`;`n===0` 判据只在桌面端生效(web 端本无行、不可达)。真后端返回值路径待桌面覆盖。
+- **下一刀(刀2/2)**:keyed trash + `if !snap.is_empty()` no-op 守卫 + **TTL 与前端撤销窗口同源常量**(`toast.js` 6500 / `guardrail` 6000 现硬编码且不同,评审 [建议]C)。
