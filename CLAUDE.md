@@ -66,6 +66,10 @@ app/
 3. **反焦虑** —— 不用红色警告、不用倒计时施压。破坏性操作(删/清空/覆盖)**分两档**(第56轮裁定;旧写法「一律统一走 guardrail」与 notes/prompts/resumes/jobs 的既有逐条删相矛盾,是条会被代码证伪的声明):
    - **安全内核(不可让步)** —— 凡**非用户直接发起**的破坏性(Agent / 模型 / widget 触发)**永远**走 `platform/guardrail`(预览 + 确认 + 可撤销)。能力层已结构性保证:破坏性能力须 `Permission::Destructive`,`invoke_raw` 拒绝自动执行、必走护栏。
      - **★「触发」= 执行发起点,不是提议者**(第57轮 [建议] 澄清):模型**只能提议**(渲染确认卡/建议),**用户显式点击确认**即属**用户发起**(与 widgetActions「收规格不收执行」同源)。**已认可先例**:`agentDeleteJob`(copilot-actions.js)由模型渲染确认卡、用户点 `cAB` 才执行,其撤销是**闭包快照**(`JOBS.splice(idx,0,job)`)⇒ 可靠 ⇒ 合规走 `toastUndo`。**反之,模型/widget 自行执行的破坏性一律不得绕过 guardrail。**
+     - **★★「用户显式点击确认」不得可被伪造**(第58轮 [建议]B · 堵后门):上条成立的**前提**是两道约束,缺一即失效 ——
+       ① **动作来自白名单注册表**:确认按钮只能派发 `cActions` 里已注册的函数(`Object.create(null)` + own-enumerable + function-only),模型无法凭字符串调任意代码;
+       ② **按钮文案与动作语义由应用/平台自持**(硬编码),**绝不得由模型 / RAG / MCP 派生内容决定「这个按钮是干什么的」**。不可信派生内容**只能作为已转义的数据**出现在描述里(先例:`cAB('确认删除','agentDeleteJob',…)` 的按钮文案硬编码,详情里的公司名走 `cEsc(j.co)`)。
+       **否则**:模型可造一张写着「点此继续查看结果」的卡、底下挂破坏性动作,把「用户显式点击确认」**伪造**出来。与 `greeting`(第50轮:须应用自持可信文案)、`widgetActions`(收规格不收执行)同源纪律。
    - **用户 UI 发起** —— **清空 / 覆盖 / 批量仍走 guardrail**;**单条删除**若「低恢复成本」且**撤销可靠**,可用「即时删 + `toastUndo` 撤销」(不弹模态,反而更反焦虑)。现例:notes / prompts / resumes / jobs / 记忆 的逐条删。
    - **★「可撤销」必须是真的**(第56轮 [应改] 用真数据丢失换来的判据):撤销的 **UI 语义必须与后端 trash 语义一致**。后端**单槽** trash(`MemTrash`/`DocTrash`:`*trash = snap` 覆盖写、`undo` 用 `mem::take`)只能承诺「**撤销最近一次销毁**」—— **绝不可**给每行一个假装独立的撤销按钮,否则窗口内连删两条会**静默永久丢数据 + 还原错记录**。落码前先读后端 trash 是单槽还是 keyed;做不到可靠撤销就走 guardrail 确认闸。**别声明做不到的不变式。**
 4. **不可信代码沙箱化** —— show_widget 等 LLM 生成 UI:`iframe sandbox="allow-scripts"` + srcDoc 内 CSP(`default-src 'none'`)+ 父窗口零信任 + MessageChannel 专属端口;外部内容(RAG/MCP/JD)标注 `Untrusted` 防注入。
