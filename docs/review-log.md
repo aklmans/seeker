@@ -1967,3 +1967,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**(preview 真模块 + 攻击者公司名藏注入):被注入公司名 + JD + need **全落 untrusted**、**instruction 纯常量**(不含任何 JD 派生)、task=interview。node 净;tsc 51→51;Rust 124/0;真机 boot 零 panic。
 
 **下一刀(评审第68轮建议次序)**:rewrite 真化(带 [建议] 信任纪律:抽取字段进 untrusted、instruction 纯常量、走 `ai_generate` 无工具、钉「无工具是地基」注释)→ 然后 T0 协议骨架(抽取字段信任问题的根本解)→ 反馈最后(先解 `ivScore` 分数 schema 承重)。
+
+### 块(i) 站点② · 简历改写真化 `resumeGenerate` · commit `d622b32` · ⏳ 待审
+承评审第68轮次序(rewrite 次之)+ 用户裁定(只写 summary)。
+- **★量出的关键(rewrite ≠ 模型生成整份简历)**:`genTailoredResume` 的 work/projects/edu/strengths **全深拷自 MASTER(用户真实数据)**,skills 是集合运算,**只有 summary 是模板拼的** ⇒ rewrite 真化 = **模型只重写 summary**,事实字段一律用户真实数据、**模型绝不虚构**。(「summary + 重写项目 bullets」被用户否掉:模型编辑用户事实性陈述有失真风险,留后续可选刀。)
+- **落法**:`genTailoredResume(j)` 建结构 → **只把 summary 模块 content 交模型流式重写**、其余不动。诚实降级(aiChatAvailable 假→回落 mock 模板 summary)、失败出声、结果卡 mock/真共用 `resumeGenResult`、`data-close`/`data-go` 走文档级委派。
+- **信任纪律(承第68轮 [建议] 模板;rewrite 是评审警告「信任问题随组合放大」的那刀)**:instruction **纯 app 常量**;候选人背景+岗位信息+**JD 全文**全进 `untrusted`(后端框定)。地基仍是 **`ai_generate` 无工具**。**★链条闭合**:summary 会回流成 interview 的 `resumeNote`,而该处(ed02dc2)已把 resumeNote 归入 untrusted。§4-4:流式 `textContent`、渲染 `cEsc`。
+- **验**(preview 真模块 + 攻击者 JD 藏注入):task=rewrite、**JD/背景/岗位全落 untrusted、instruction 纯常量**;**只 summary 被模型替换、work/projects/edu/skills 事实模块原封不动**;注入 `<img onerror>` 流式期与结果卡都不执行。降级路径**绝不调真 generate**、回落 mock 仍建简历(6s 墙钟避定时器节流)。tsc 51→51、Rust 124/0、真机 boot 零 panic。
+- **诚实边界**:端到端需桌面+BYO。**记债**:项目 bullets 岗位向重写(用户已否决为默认)= 可选后续刀;面试反馈真化待(先解 `ivScore` 分数 schema);`ivStartRound` 整轮种题仍 mock。
+
+**块(i) 三站点进度**:出题 ✓(`157447c`+`ed02dc2`)· 简历改写 ✓(`d622b32`)· **面试反馈**待(需先解 `ivScore` 分数 schema 承重)。**下一刀次序(评审第68轮)**:T0 协议骨架(抽取字段信任问题的根本解;纯平台,四失败面各带阳性对照)→ 面试反馈(最后,解分数 schema)。
