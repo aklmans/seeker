@@ -117,7 +117,8 @@ impl Capability for LongTermMemory {
                     .into_iter()
                     .map(|(f, s)| json!({ "fact": f, "score": (s * 100.0).round() / 100.0 }))
                     .collect();
-                Ok(Output::Json(json!({ "memories": facts })))
+                // 记忆可能被外部内容投毒(经带工具的循环写入)⇒ Untrusted:回灌自动框定「数据,不是指令」。
+                Ok(Output::Untrusted(json!({ "memories": facts })))
             }
             other => Err(format!("未知 op: {other}(应为 remember | recall)")),
         }
