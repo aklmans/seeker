@@ -1750,3 +1750,21 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **★撤销债 arc 收口**:刀1(toastUndo 契约:`undefined`=成功 / `false`=静默失败 / throw=错误)+ 刀2a(no-op 守卫 · fail-closed 快照 · 全域映射 · 据条数收口)+ 刀2b-1(有界环 · token 签发 · 决策点说真话 · 真字节上限)+ 刀2b-2(token 必填)。**「还原错记录」不再靠前端五道闸挡住,而是结构上不可能。**
 **未清之债(记账,非本 arc)**:① 大快照 **spill 到磁盘**(仿 `clearAllDataFlow` 清前备份)⇒ 内存有界 ∧ 大 clear 恒可撤销;② guardrail `onConfirm: () => Promise<boolean>`(`false` ⇒ 跳过 `showUndo`;`undefined` ⇒ 视为 true ⇒ 现存调用点零回归);③ 「无逃生口」锐化:允许经 guardrail 销毁不可映射行(明告「不可撤销」);④ `toast.js` 的 `撤销`/`已撤销` CN-only #6 债(出口:标签参数化 / `setToastLabels`);⑤ `jobseek.rs` #6 i18n 债(随 app-tool 契约解);⑥ **路线 B 封顶**:app-tool 契约落地前不新增 `src-tauri/src/<app>.rs` 工具。
+
+### ★ 第63轮独立复核 = 有条件通过 → [应改] + Q2 + [建议] 全落 `7f9416e` · **撤销债 arc 收口**
+- **★★[应改] · token 命名空间重叠 —— 「结构上不可能」原本只在**环内**为真(本 arc 第八次「勿声明假不变式」,而它就出现在**收官宣言**里)**:两个 `UndoRing` 各有 `next: u64` 且都从 1 起 ⇒ `MemTrash` 与 `DocTrash` 的首个 token **同为 `"u1"`**。**token 不自带环身份** ⇒ 一个环的 token 若被交给另一个环的 undo,`position()` 会命中**同序号的另一次销毁**并静默还原它。今天不可达 —— **但挡住它的是前端约定,不是结构**。
+  - **我独立核实了这条不可达性**(preview,两域故意发同号 token `"u1"`):记忆路径只调 `memory.undo("u1")`、文档路径只调 `docs.undo("u1")`,**零跨域调用**。⇒ 评审的「今天不可达」属实,「靠约定」也属实。
+  - **落法(取评审第二个选项,strictly stronger)**:进程级 `static UNDO_TOKEN_SEQ: AtomicU64`。任意两条环条目 token 永不相同 ⇒ 错配必然落空 → `None` → 0 条 → `staleUndo()`。**失败从「静默还原错域」变成「响亮拒绝」**,且对未来的第三个环**天然免疫**(无需记得挑一个没被占用的前缀)。环的 `next` 字段删除。列为 `UndoRing` **不变式④**。
+- **★★Q2 裁决 · 世代守卫 / `dropToast` 从「安全」降为「策略」(必须改注释)**:token 化后,一个陈旧撤销 toast 点下去 —— token 还在环里 ⇒ **精确还原它自己那一次(正确!这正是环存在的意义)**;已失效 ⇒ 诚实拒绝。**两种结果都不是「还原错记录」⇒ 现在删掉世代守卫是安全的。** 它只在执行一条**产品选择**「只有最近一次可撤销」。**★评审的判词:「你现在可以安全地删掉世代守卫」这个事实本身,就是安全性已迁入类型系统的证明;arc 收口的判据不是「闸还在」,是「闸没了也不出错」。** 全部注释改标「策略,非安全」。
+  - ⚠ **不得一起降级的那一条**:`toast.js` 的 `done` 重入闸**仍为另外四个闭包消费者(notes/prompts/resumes/jobs)承重** —— 它们的 `restoreFn` 是 `splice(i,0,snap)`,双击会重复插入。memory 侧才是纵深。
+- **★顺手清掉评审未点名、但已随刀2b-2 变假的四处陈述**:①「未穿 token ⇒ `undo()` 取环顶」;②「若 remove 失败…环顶仍是上一次销毁」;③「web 端降级返回 undefined → **视为成功**」(**实为 `{deleted:0,undoToken:null}`,被 `offerUndo` 拦下**);④「DocTrash 与 MemTrash…**均未穿 token**」。并把 `!token` 早返的**理由**改对:它挡的不再是「撤销取走环顶的别人那一次」,而是**一次注定失败的 IPC + 一条莫名其妙的错误 toast**(`token: String` 非 `Option`,`undo(null)` 在反序列化处即被拒;退一万步 `take("")` 也只会落空 → 0 条 → `staleUndo`)。**仍要保留。**
+- **★[建议] 已落 · 预检与 stash 是两套账,方向须钉死**:预检 = SQL 侧估计(`payload*2 + rows*row_size*2 + OVERHEAD`),stash = 真实 `capacity` 口径,二者只共用同一个 `max_bytes()`。需要的性质是 **`预检估计 ≥ stash 实际`**,否则「预检说可撤销 → 承诺 → clear → stash 拒绝 → 无 token」= **第62轮 [应改] 原样复发**。新增 `clear_precheck_upper_bound_is_never_below_actual_stash_bytes`(点名跑过)。
+  - **★阳性对照用变异测试证明能证伪生产代码**:把生产 `undo_bytes_upper_bound` 的系数 2 临时改 1 → 测试 **FAILED**(`预检上界 1810 < 实际 2812`);还原 → 绿。机理:`memory_rows_full` 用 `push` 建 Vec ⇒ 容量按 4→8→16→32 摊还翻倍 ⇒ `capacity > len` ⇒ 17 条**小行**时系数 1 必然低估。**fixture 选「多条小行」而非「一条大行」正是为此**(载荷主导时系数 1 也过得去,测试会变死靶)。
+- **★评审对我提的 standing 规则:采纳其一、驳回其二 —— 我认同驳回**:
+  - ✅ **采纳(standing)**:**对用户可见文案的断言,必须精确匹配文本节点全文,禁止子串匹配。** 由测试自身强制执行,永不失效。
+  - ❌ **驳回(降为 advisory)**:「失败文案不得内含成功文案的子串」—— 把**产品文案**耦合到**测试技术**,且**语言相关**(中文 `已撤销` ⊂ `已撤销过` 成立;英文 `Undone` 与 `Undo expired` 不成立),**无任何机制强制执行**,一次翻译即可悄悄破坏。**用精确匹配挡住这一类,而不是让文案绕着测试走。**
+- **★★方法论遗产(评审归并三条为一族)**:第56轮「不触发的控制组」· 第59轮「浏览器缓存的旧模块」· 第63轮「命中失败文案的子串断言」⇒ **控制组必须能亮;断言必须能红。**
+- **验**:两 Rust 新测试点名跑过(`undo_tokens_never_collide_across_independent_rings` 自带阳性对照:复刻旧的每环计数器必定撞号 + **错配 token 双向落空** + 各自 token 仍正常);cargo test **94 passed / 0 failed**(92→94);clippy `-D warnings` 净;fmt 净;`node --check` 净;真机 WKWebView **2.20s boot 零 panic、进程存活**。preview(真模块导出,`typeof window.renderMemory === 'undefined'` 佐证非空跑):**跨域路由**(两域同号 token、各自只调自己那个命令、零跨域)+ 成功路径 exact「已撤销」toast = **1**(判据能亮)+ 失效路径 exact「已撤销」= **0** 且如实报「该撤销已失效」。
+
+**★★撤销债 arc 全线收口**:刀1(`toastUndo` 契约)+ 刀2a(no-op 守卫 · fail-closed 快照 · 全域映射 · 据条数收口)+ 刀2b-1(有界环 · token 签发 · 决策点说真话 · 真字节上限)+ 刀2b-2(token 必填)+ 收尾刀(token 跨环唯一)。**「还原错记录」不再靠前端五道闸挡住,而是结构上不可能 —— 环内靠 `take(&str)`,环间靠全局唯一序号。安全性从五道前端闸,搬进了类型系统。**
+**后续刀(评审裁的次序,均不阻塞 P2)**:② guardrail `onConfirm: () => Promise<boolean>` —— **先做**(最便宜,且消掉本 arc 残留的最后一处「沉默」:超限 clear 后 guardrail 仍给按钮,点下去 `if (!token) return;` 一声不吭,而整条 arc 的主题就是「失败必须出声」);③ 不可映射行的**逃生口**(一行坏数据同时 brick 掉逐条删与整库清空;可达性≈0 但后果是记忆功能整体不可管理 —— **若有用户报「某条记忆删不掉」,立刻插队**);① 大快照 **spill 到磁盘**(已由预检如实披露,从「谎报」降为「能力缺口」,等知识库功能成熟再做)。
