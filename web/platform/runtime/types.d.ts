@@ -270,6 +270,13 @@ export interface DocInfo {
   ts: number;
   /** 本篇含不可映射(坏数据)片段 ⇒ 删除它无法撤销(预检会给出 `reason:'corrupt'`)。 */
   corrupt: boolean;
+  /**
+   * 本篇里**不可映射片段**的 rowid —— 逐片段手术的删除键(走 `removeCorrupt`)。
+   *
+   * ★用 rowid 而非 doc_id:坏片段的 `doc_id` 列本身可能就是 BLOB,**按名寻址不到它**。
+   * 删光它们之后,该篇恢复健康、恢复「可撤销删除」——不必清空整个知识库。
+   */
+  corruptRowids: number[];
 }
 
 /** RAG-over-docs(#2):加文档(后端切块+嵌入)/ 列出 / 删一篇 / 清空 / 按 token 撤销。网页端降级。 */
@@ -279,6 +286,13 @@ export interface DocsApi {
   remove(docId: string): Promise<DestroyResult>;
   /** 预检:删这一篇是否可撤销(评审第64轮 [应改]:对话框在**建立时**就承诺可撤销,故须先问)。 */
   removeUndoable(docId: string): Promise<UndoPrecheck>;
+  /**
+   * **逐片段逃生口**:销毁一个不可映射(已损坏)的片段 —— 按 `rowid` 删,**不快照、不发 token**。
+   *
+   * ★后端**拒绝销毁健康片段**(判据是快照代码,不是谓词)⇒ 这不是「绕过快照直接删」的后门。
+   * 与 `memory.removeCorrupt` 粒度对齐:一个孤立的坏片段不该逼用户清空整个知识库。
+   */
+  removeCorrupt(rowid: number): Promise<DestroyResult>;
   clear(): Promise<DestroyResult>;
   /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
   clearUndoable(): Promise<UndoPrecheck>;

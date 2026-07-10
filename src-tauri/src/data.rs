@@ -1423,6 +1423,61 @@ fn memory_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyR
     })
 }
 
+/// 「这一片段能不能被快照?」—— 与 `memory_row_state` 同款:**让快照代码(`map_doc_row`)自己回答**,
+/// 不问 `DOC_CORRUPT_PRED`(第65轮裁决2:代理谓词不得承担安全属性)。
+/// 取行/语句失败 ⇒ 向上传播 `Err`,**绝不当成「这行坏了」而销毁**。
+fn doc_row_state(conn: &Connection, rowid: i64) -> Result<RowState, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, doc_id, doc_name, text, embedding, created_at FROM doc_chunks WHERE rowid = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(params![rowid]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        None => Ok(RowState::Missing),
+        Some(r) => Ok(match map_doc_row(r) {
+            Ok(_) => RowState::Healthy,
+            Err(_) => RowState::Unmappable,
+        }),
+    }
+}
+
+/// **逃生口(逐片段)**:销毁一个**不可映射(已损坏)**的文档片段 —— 按 `rowid` 删,不快照、不发 token。
+///
+/// ★评审第65轮 [建议](粒度对齐):此前记忆侧是**逐行手术**(`memory_remove_corrupt`),
+/// 而文档侧只有**整库核弹**(`doc_clear` 丢掉全部文档 + 全部 embedding 的重算成本)。
+/// 一个孤立的坏片段不该逼用户清空整个知识库。删掉它之后,**该篇立刻恢复健康、恢复可撤销删除**。
+///
+/// ★★结构性守卫(同 `memory_remove_corrupt`):**它拒绝销毁健康片段**,否则就是绕过快照的后门。
+/// 判据是 `doc_row_state`(快照代码本身),不是谓词。片段不存在 → `deleted = 0` 诚实 no-op。
+/// 不触碰撤销环。
+#[tauri::command]
+pub fn doc_remove_corrupt(db: State<'_, Db>, rowid: i64) -> Result<DestroyResult, String> {
+    let conn = db.0.lock().unwrap();
+    doc_remove_corrupt_inner(&conn, rowid)
+}
+
+/// 命令体(评审第60轮 [建议]3:命令只取锁转调,测试直调 inner)。
+fn doc_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyResult, String> {
+    match doc_row_state(conn, rowid)? {
+        RowState::Missing => {
+            return Ok(DestroyResult {
+                deleted: 0,
+                undo_token: None,
+            })
+        }
+        RowState::Healthy => {
+            return Err("该片段未损坏:请删除整篇文档(可撤销),不得绕过快照。".into())
+        }
+        RowState::Unmappable => {}
+    }
+    let n = conn
+        .execute("DELETE FROM doc_chunks WHERE rowid = ?1", params![rowid])
+        .map_err(|e| e.to_string())?;
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token: None, // 不可完整快照 ⇒ 没有可还原之物 ⇒ 绝不发 token
+    })
+}
+
 /// 「该撤销已失效」并 `return false`,`toast.js` 遂不报「已撤销」。
 #[tauri::command]
 pub fn memory_undo(
@@ -1496,10 +1551,15 @@ fn doc_list_inner(conn: &Connection) -> Result<Vec<Value>, String> {
     // ★逃生口(③):**列表永不因一个坏片段而整体失败**。实测 `MAX(created_at)` 为 TEXT 时原实现整表列不出,
     //   而 `doc_chunks_all`(RAG 召回那条路)照常返回 —— 用户看到「知识库为空」,AI 却仍在检索它。
     //   `ts` 只取 Integer 型的最大值;`corrupt` = 本篇是否含不可映射片段(该篇的删除将不可撤销)。
+    // `corruptRowids`:本篇里**不可映射片段**的 rowid —— 逐片段手术的删除键(评审第65轮 [建议]:
+    //   记忆侧是逐行手术、文档侧只有整库核弹 = **粒度不对称**)。用 rowid 而非 doc_id,
+    //   因为坏片段的 `doc_id` 列本身可能就是 BLOB(按名寻址不到它)—— 那正是第65轮点名的残留。
+    //   ⚠ 这里的 `DOC_CORRUPT_PRED` 是**展示用途**(第65轮裁决2);真正的销毁守卫是 `doc_row_state`。
     let sql = format!(
         "SELECT doc_id, doc_name, COUNT(*) AS chunks, \
          MAX(CASE WHEN typeof(created_at)='integer' THEN created_at ELSE 0 END) AS ts, \
-         MAX(CASE WHEN ({DOC_CORRUPT_PRED}) THEN 1 ELSE 0 END) AS corrupt \
+         MAX(CASE WHEN ({DOC_CORRUPT_PRED}) THEN 1 ELSE 0 END) AS corrupt, \
+         group_concat(CASE WHEN ({DOC_CORRUPT_PRED}) THEN rowid END) AS bad_rowids \
          FROM doc_chunks GROUP BY doc_id ORDER BY ts DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -1507,12 +1567,19 @@ fn doc_list_inner(conn: &Connection) -> Result<Vec<Value>, String> {
         .query_map([], |r| {
             let chunks: i64 = r.get(2)?;
             let corrupt: i64 = r.get(4)?;
+            let bad: Option<String> = r.get(5)?;
+            let bad_rowids: Vec<i64> = bad
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|x| x.trim().parse::<i64>().ok())
+                .collect();
             Ok(serde_json::json!({
                 "docId": text_lossy(r, 0)?,
                 "name": text_lossy(r, 1)?,
                 "chunks": chunks,
                 "ts": int_lossy(r, 3)?,
                 "corrupt": corrupt != 0,
+                "corruptRowids": bad_rowids,
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -2673,6 +2740,198 @@ mod tests {
             .unwrap_err()
             .contains("丢失"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★评审第65轮 [建议] · **粒度对齐**:文档侧也要有逐片段手术,不能只有整库核弹。
+    /// 钉四条:① 守卫的判据是 `doc_row_state`(快照代码),健康片段必被拒;② 片段不存在 → 诚实 no-op;
+    /// ③ 坏片段可删、不发 token、不碰环;④ **删掉它之后,该篇立刻恢复「可撤销删除」**(这才是逃生口的意义)。
+    #[test]
+    fn doc_remove_corrupt_is_surgical_and_restores_the_docs_undoability() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-docsurgery");
+        migrate(&mut conn, &tmp).unwrap();
+        super::doc_chunks_insert(&conn, "d1", "JD", &[("好片段".into(), vec![0.1])]).unwrap();
+        conn.execute(
+            "INSERT INTO doc_chunks (id,doc_id,doc_name,text,embedding,created_at) VALUES ('bad','d1','JD','坏片段',NULL,'abc')",
+            [],
+        )
+        .unwrap();
+
+        let ring: Mutex<super::UndoRing<super::DocRow>> = Mutex::new(Default::default());
+        let prev = ring
+            .lock()
+            .unwrap()
+            .stash(vec![(
+                "x".into(),
+                "y".into(),
+                "z".into(),
+                "t".into(),
+                vec![],
+                0,
+            )])
+            .unwrap();
+        let cap = ring.lock().unwrap().max_bytes();
+
+        let rowid = |id: &str| -> i64 {
+            conn.query_row(
+                "SELECT rowid FROM doc_chunks WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        let good_rowid = rowid(
+            &conn
+                .query_row(
+                    "SELECT id FROM doc_chunks WHERE text='好片段'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap(),
+        );
+        let bad_rowid = rowid("bad");
+
+        // 起点:整篇不可撤销(一个坏片段拖累全篇)
+        assert_eq!(
+            super::doc_plan(&conn, cap, Some("d1")).unwrap(),
+            super::UndoPlan::No("corrupt")
+        );
+
+        // ① 健康片段 → 拒绝,且片段还在
+        let err = super::doc_remove_corrupt_inner(&conn, good_rowid).unwrap_err();
+        assert!(err.contains("未损坏"), "健康片段必须被拒:{err}");
+        assert_eq!(
+            super::doc_chunks_all(&conn).unwrap().len(),
+            1,
+            "好片段原封不动(坏片段本就读不出)"
+        );
+
+        // ② 不存在的 rowid → 诚实 no-op
+        let r0 = super::doc_remove_corrupt_inner(&conn, 999_999).unwrap();
+        assert_eq!(r0.deleted, 0);
+        assert!(r0.undo_token.is_none());
+
+        // ③ 坏片段 → 销毁发生、不发 token、不碰环
+        let r = super::doc_remove_corrupt_inner(&conn, bad_rowid).unwrap();
+        assert_eq!(r.deleted, 1);
+        assert!(r.undo_token.is_none(), "不可完整快照 ⇒ 绝不发 token");
+        {
+            let g = ring.lock().unwrap();
+            assert_eq!(g.len(), 1);
+            assert!(g.has(&prev), "逃生口不得淘汰既有撤销条目");
+        }
+
+        // ④ ★逃生口的意义:该篇恢复健康 ⇒ 常规删除**重新可撤销**(不必清空整个知识库)
+        assert_eq!(
+            super::doc_plan(&conn, cap, Some("d1")).unwrap(),
+            super::UndoPlan::Ram
+        );
+        let r2 = super::doc_remove_inner(&conn, &ring, "d1").unwrap();
+        assert_eq!(r2.deleted, 1);
+        assert!(r2.undo_token.is_some(), "坏片段清掉后,整篇必须重新可撤销");
+    }
+
+    /// `doc_row_state` 三态(与 memory 侧同款);瞬时 DB 故障必须传播为 `Err`,绝不判成 Unmappable。
+    #[test]
+    fn doc_row_state_asks_the_snapshot_itself_not_a_proxy_predicate() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-docrowstate");
+        migrate(&mut conn, &tmp).unwrap();
+        super::doc_chunks_insert(&conn, "ok", "健康", &[("t".into(), vec![0.1])]).unwrap();
+        conn.execute(
+            "INSERT INTO doc_chunks (id,doc_id,doc_name,text,embedding,created_at) VALUES ('b','ok','健康','t',NULL,'abc')",
+            [],
+        )
+        .unwrap();
+        let good: i64 = conn
+            .query_row("SELECT rowid FROM doc_chunks WHERE id<>'b'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let bad: i64 = conn
+            .query_row("SELECT rowid FROM doc_chunks WHERE id='b'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            super::doc_row_state(&conn, good).unwrap(),
+            super::RowState::Healthy
+        );
+        assert_eq!(
+            super::doc_row_state(&conn, bad).unwrap(),
+            super::RowState::Unmappable
+        );
+        assert_eq!(
+            super::doc_row_state(&conn, 999_999).unwrap(),
+            super::RowState::Missing
+        );
+        conn.execute("DROP TABLE doc_chunks", []).unwrap();
+        assert!(
+            super::doc_row_state(&conn, good).is_err(),
+            "语句失败必须传播,不得判成 Unmappable"
+        );
+    }
+
+    /// `doc_list` 交出坏片段的 **rowid**(删除键)—— 包括 `doc_id` 列本身是 BLOB、**按名寻址不到**的那种。
+    /// 这正是评审第65轮点名的残留:rowid 键能够到它,doc_id 键够不到。
+    #[test]
+    fn doc_list_exposes_corrupt_rowids_even_when_doc_id_itself_is_blob() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-docrowids");
+        migrate(&mut conn, &tmp).unwrap();
+        super::doc_chunks_insert(&conn, "d1", "JD", &[("好".into(), vec![0.1])]).unwrap();
+        conn.execute(
+            "INSERT INTO doc_chunks (id,doc_id,doc_name,text,embedding,created_at) VALUES ('b1','d1','JD','坏',NULL,'abc')",
+            [],
+        )
+        .unwrap();
+        // doc_id 本身是 BLOB:按名根本寻址不到(WHERE doc_id = '…' 匹配不上)
+        conn.execute(
+            "INSERT INTO doc_chunks (id,doc_id,doc_name,text,embedding,created_at) VALUES ('b2',X'00FF','JD2','坏2',NULL,1)",
+            [],
+        )
+        .unwrap();
+
+        let docs = super::doc_list_inner(&conn).unwrap();
+        let all_bad: Vec<i64> = docs
+            .iter()
+            .flat_map(|d| {
+                d["corruptRowids"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_i64().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            all_bad.len(),
+            2,
+            "两个坏片段的 rowid 都要交出来(含 BLOB doc_id 的那个)"
+        );
+
+        // 健康片段的 rowid 绝不在列表里(否则 UI 会诱导用户去无撤销地删一条好数据)
+        let good_rowid: i64 = conn
+            .query_row("SELECT rowid FROM doc_chunks WHERE text='好'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(!all_bad.contains(&good_rowid));
+
+        // 逐个删掉 → 知识库恢复健康
+        for rid in all_bad {
+            assert_eq!(
+                super::doc_remove_corrupt_inner(&conn, rid).unwrap().deleted,
+                1
+            );
+        }
+        assert_eq!(super::doc_corrupt_count(&conn, None).unwrap(), 0);
+        assert_eq!(
+            super::doc_chunks_all(&conn).unwrap().len(),
+            1,
+            "只剩那个好片段"
+        );
     }
 
     /// ★逃生口的第一步不是「能删」,而是「**能看见**」—— 看不见的行没法点删除。

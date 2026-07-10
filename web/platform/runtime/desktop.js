@@ -194,6 +194,10 @@ export function createDesktopRuntime() {
       // 预检:删这一篇是否可撤销(评审第64轮 [应改]:guardrail 建对话框时就印「执行后可撤销。」,
       // 故必须在**弹窗之前**问,而不是等 onConfirm 执行时才发现整篇超上限——那时话已出口)。
       removeUndoable: (docId) => invoke('doc_remove_undoable', { docId }),
+      // ★逐片段逃生口(第65轮 [建议] 粒度对齐):销毁一个**不可映射**的片段 —— 按 rowid 删,不快照、不发 token。
+      //   后端**拒绝销毁健康片段**(判据是快照代码 `doc_row_state`,不是谓词)⇒ 不是绕过快照的后门。
+      //   删掉坏片段后,该篇立刻恢复「可撤销删除」,不必清空整个知识库。
+      removeCorrupt: (rowid) => invoke('doc_remove_corrupt', { rowid }),
       clear: () => invoke('doc_clear'), // → { deleted, undoToken }
       clearUndoable: () => invoke('doc_clear_undoable'),
       undo: (token) => invoke('doc_undo', { token }), // token 必填(后端 DocTrash 环按 token 还原,向量不出后端)

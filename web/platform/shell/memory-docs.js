@@ -57,7 +57,9 @@
  *       `catch` 成空数组 ⇒ 用户看到「AI 还没有记住任何内容。」,而 AI 的 recall 照常读得到整张表。
  *       **这个视图的全部意义就是用户掌控,它却在说谎**(§4-2)。现在后端逐行标 `corrupt` 并给 `rowid`。
  *       ⚠ 损坏行走 `rt.memory.removeCorrupt(rowid)`(其 `id` 本身可能不可映射,不能当删除键);
- *       后端**拒绝销毁健康行** ⇒ 它不是「绕过快照直接删」的后门。文档侧同理(坏片段 ⇒ 该篇删除不可撤销)。
+ *       后端**拒绝销毁健康行** ⇒ 它不是「绕过快照直接删」的后门。
+ *       ⚠ **粒度对齐**(第65轮 [建议]):文档侧同样有**逐片段手术** `rt.docs.removeCorrupt(rowid)` ——
+ *       一个孤立的坏片段不该逼用户清空整个知识库。移除坏片段后,该篇恢复健康、恢复「可撤销删除」。
  *     · ★**即时删除按钮在 await 窗口内必须不可重入**:逻辑闸 `memBusy` + 物理闸 `disabled`(见下)。
  *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
  *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
@@ -379,8 +381,40 @@ export async function renderDocs(box) {
     // d.name = 用户填的名 / 文件名(可能是外部语料标题)→ cEsc;d.docId 落 data-* 属性位 → cEsc。
     body.innerHTML = rows.length
       ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ', 'Docs · ')}${rows.length}</div>`
-        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}${d.corrupt ? ` · <span style="color:var(--accent);">${tt('含已损坏片段 · 删除不可撤销', 'CORRUPTED chunks · delete cannot be undone')}</span>` : ''}</div></div><button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}${d.corrupt ? ` · <span style="color:var(--accent);">${tt('含已损坏片段 · 删除不可撤销', 'CORRUPTED chunks · delete cannot be undone')}</span>` : ''}</div></div>${d.corrupt && (d.corruptRowids || []).length ? `<button class="btn" data-docfix="${cEsc((d.corruptRowids || []).join(','))}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('移除已损坏片段', 'Remove corrupted chunks')}</button>` : ''}<button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
+
+    // ★逐片段手术(评审第65轮 [建议] 粒度对齐):一个孤立的坏片段不该逼用户清空整个知识库。
+    //   删掉坏片段 ⇒ 该篇恢复健康 ⇒ 常规删除**重新可撤销**。
+    //   坏片段本身不可快照 ⇒ 此操作**不可撤销** ⇒ 走 guardrail 确认闸、**不传 onUndo**(§4-3)。
+    //   用 rowid 而非 doc_id:坏片段的 `doc_id` 列本身可能就是 BLOB,按名寻址不到它。
+    [...box.querySelectorAll('[data-docfix]')].forEach((b) => (b.onclick = async () => {
+      if (!G || !G.confirmDestructive) { toast(tt('该端暂不支持', 'Not supported here')); return; } // fail-closed
+      const rowids = String(b.dataset.docfix || '').split(',').map(Number).filter((x) => Number.isFinite(x) && x > 0);
+      if (!rowids.length) return;
+      await G.confirmDestructive({
+        title: tt('移除已损坏的片段?', 'Remove corrupted chunks?'),
+        detail: tt(
+          `将从这篇文档移除 ${rowids.length} 个已损坏的片段(它们无法生成撤销快照)。移除后无法撤销;这篇文档随后可正常删除并撤销。`,
+          `Removes ${rowids.length} corrupted chunk(s) from this doc (they cannot be snapshotted). This CANNOT be undone; afterwards the doc deletes normally and can be undone.`
+        ),
+        confirmLabel: tt('移除', 'Remove'),
+        onConfirm: async () => {
+          let done = 0;
+          for (const rid of rowids) {
+            try {
+              const res = await rt.docs.removeCorrupt(rid);
+              done += (res && typeof res.deleted === 'number') ? res.deleted : 0;
+            } catch (e) { toast(errText(e)); } // 后端拒绝(如「该片段未损坏」)如实浮出,绝不静默
+          }
+          toast(done > 0
+            ? tt('已移除 ', 'Removed ') + done + tt(' 个已损坏片段(无法撤销)', ' corrupted chunk(s) (cannot be undone)')
+            : tt('没有可移除的内容', 'Nothing to remove'));
+          await refresh();
+          return false; // 永不提供撤销:没有快照,就没有可还原之物
+        },
+      });
+    }));
 
     // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
     // ★DocTrash 与 MemTrash 同款(各自独立的有界环、token 跨环唯一)→ 同一**策略**闸:只撤销最近一次。

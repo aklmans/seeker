@@ -196,6 +196,7 @@ export function createWebRuntime() {
       list: () => Promise.resolve([]),
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
       removeUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }), // 同形:{undoable, reason}
+      removeCorrupt: () => Promise.resolve({ deleted: 0, undoToken: null }), // 无片段可损坏 ⇒ 诚实 no-op
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       clearUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }),
       undo: (_token) => Promise.resolve(0),
