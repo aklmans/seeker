@@ -1861,3 +1861,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **★★撤销债清零(第56–65 轮外审)**:单槽被覆盖 → 空快照不入环 → 快照不完整则不销毁 → 有界环按真实字节计量 → token 全局唯一且必填 → 前端无 token 在类型上无法提供撤销 → 失败一律出声 → 决策点在四条销毁路径上都说真话 → 坏数据有逃生口 → **大快照落盘,可撤销不再让位于内存上限**。
 **剩余(非本 arc)**:`doc_remove_corrupt(rowid)` 粒度对齐(第65轮 [建议],非阻塞)。**下一步**:P2(jobseek 6 aiRun 真化 / notes→记忆知识库 / prompts→Skills)或绿地(Skills/Project/Scheduled)。
+
+### 逃生口粒度对齐 · `doc_remove_corrupt(rowid)` · commit `fcbd26a` · ⏳ 待审
+承第65轮 [建议](裁决1 的落法)。评审核实文档侧**无死胡同**(`doc_clear_inner` 在 `reason=corrupt` 时不物化、不发 token、照常 DELETE)⇒ 非漏洞;真问题是**粒度不对称**:记忆侧逐行手术、文档侧只有整库核弹(丢掉全部文档 + 全部 embedding 的重算成本)。而上一刀我刚援引过「同一缺陷不得因所在支路不同而两种待遇」——**逃生口的粒度本身就是那种待遇差**。
+- **落法(与记忆侧逐条同构)**:`doc_row_state(rowid)` → `Missing|Healthy|Unmappable`,判据是 **`map_doc_row`(快照代码本身)**,不是 `DOC_CORRUPT_PRED`(第65轮裁决2);取行/语句失败 ⇒ 传播 `Err`,**绝不把瞬时 sqlite 故障当成数据损坏而销毁**。`doc_remove_corrupt(rowid)` **拒绝销毁健康片段**、不存在 → 诚实 no-op、坏片段 → 删且不发 token、不碰环。
+- **★用 rowid 而非 doc_id**,正好补上评审自己点名的残留:坏片段的 `doc_id` 列**本身**可能就是 BLOB,`WHERE doc_id = ?` 寻址不到它;rowid 够得到。`doc_list` 交出每篇的 `corruptRowids`(**展示走谓词、销毁守卫走快照**,角色分明)。
+- **前端**:含坏片段的文档多出「移除已损坏片段」按钮 → guardrail 确认闸、**不传 onUndo**(§4-3)→ 逐 rowid 调 `removeCorrupt`。
+- **★逃生口的意义被测试直接钉死**:移除坏片段后 `doc_plan` 由 `No("corrupt")` 变回 `Ram`,整篇的常规删除**重新可撤销** —— 不必为一个孤立的坏片段清空整个知识库。
+- **验**:三个新 Rust 测试点名跑过(含 **DROP TABLE 后必须 Err 传播**、**BLOB doc_id 的坏片段也交出 rowid**、**健康片段的 rowid 绝不在列表里**);**变异测试证明两条断言能证伪生产代码**(①拿掉「拒绝健康片段」守卫 → 后门测试红;②`corruptRowids` 漏掉谓词过滤 → 「健康 rowid 不得在列表里」红);cargo test **113/0**(110→113);clippy/fmt 净;tsc 51→51;AST 审计 17 个 `onConfirm` 仍 0 回归面;真机 1.85s boot 零 panic。preview 真 guardrail:手术按钮**只**出现在坏片段那一篇、rowid 作键、明告不可撤销、不印「执行后可撤销」、逐 rowid 调用 `[7,9]`、无撤销按钮、**exact「已撤销」toast = 0**、**后端拒绝如实浮出**。
+- **harness 自查**:首版 `await b.onclick()` 把自己挂死了(`onclick` 里 await 的是 guardrail,而 guardrail 要等用户点确认)。改 `.click()` 重跑 —— 与前两次 harness 自查同族。
+
+⇒ **逃生口在记忆与文档两侧粒度一致**:坏数据可逐条/逐片段手术切除,健康数据永远享有可撤销删除。
+**撤销债 + 其全部 [建议] 清零。下一步**:P2(jobseek 6 aiRun 真化 / notes→记忆知识库 / prompts→Skills)或绿地(Skills/Project/Scheduled,各自出方案)。
