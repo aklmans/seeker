@@ -26,6 +26,9 @@ const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.co
 const SET_TABS_SHELL=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['data',['数据管理','Data']],['about',['关于','About']]];
 
 /* ===== 隐私 · 历史与记忆掌控(#4 用户掌控)—— 设置页入口,不经对话改;清除走 guardrail。 ===== */
+/** ★仅限**文本内容位**(转 &<>,不转 ")。当前唯一消费者 openHistoryManager 把会话文本渲染进 <div> 文本位 —— 安全。
+ *  ⚠ 若将来把它挪进**属性位**(如 data-x="${_mgrEsc(v)}"),漏 `"` 即成注入缺口 → 届时必须换平台唯一 cEsc(&<>")。
+ *  会话文本 r.text 可含 AI 派生的外部内容:文本位惰性,属性位不是。(评审第56轮 [建议]3) */
 function _mgrEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function _mgrTime(ts){ try{ return new Date(+ts||0).toLocaleString(); }catch(_e){ return ''; } }
 async function openHistoryManager(){

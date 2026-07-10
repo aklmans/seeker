@@ -4,9 +4,20 @@
  *  **零新后端**:复用既有 `rt.memory.*`(list/remove/clear/undo)与 `rt.docs.*`(list/add/remove/clear/undo)。
  *
  *  ★红线(§4-3 破坏性 · §4-4 转义):
- *   - **破坏性一律可撤销**:记忆逐条删 = 删后 `toastUndo`(即时撤销);记忆清空 / 文档删 / 文档清空
- *     = `platform/guardrail` 的 `confirmDestructive`(预览 + 确认 + `onUndo` 撤销)。**逐字保留原行为**
- *     (逐条删不弹模态是原设计:单条低风险 + 即时可撤销;见 review-log 第56轮提请裁决)。
+ *   - **破坏性(§4-3)· 两档 + 撤销世代守卫**:
+ *     · **安全内核**:Agent/widget 触发的破坏性永远走 guardrail —— 而**模型根本无法删记忆**
+ *       (`memory` 工具 `op` enum 仅 `remember`/`recall`、无 `Permission::Destructive`,memory.rs:75/88),
+ *       故本页的删除**纯属用户 UI 发起**。
+ *     · **用户发起**:记忆逐条删 = 即时删 + `toastUndo`;记忆清空 / 文档删 / 文档清空 = `guardrail`
+ *       的 `confirmDestructive`(预览 + 确认 + `onUndo`),`!G` 时 fail-closed 早返。
+ *     · ★**撤销语义 = 撤销「最近一次销毁」,而非「撤销这一条」**(评审第56轮 [应改] 坐实):后端
+ *       `MemTrash`/`DocTrash` 各自是**单槽覆盖**(`*trash = snap`,data.rs:593/622;`memory_undo` 用
+ *       `mem::take` 取走并清空)。⇒ **任何新的销毁都会让本域先前的撤销立即过期**。本模块据此守卫:
+ *       ① 新销毁前**摘掉本域尚存的撤销 toast**(不留会还原错记录的死按钮);② 过期的撤销回调
+ *       **诚实拒绝**并提示,而非静默还原错记录。(修前实测:6.5s 内连删两条 → 第一条快照被覆盖、
+ *       其 toast 仍可点 → 还原的是第二条,第一条永久丢失。)
+ *       ⚠ **不得改 `toast.js` 共享原语**:notes/prompts/resumes 的撤销是**闭包快照、各自独立正确**,
+ *       做成全局互斥反而把它们改坏。世代守卫**只作用于本模块自己的两个 trash 域**(memory / docs)。
  *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
  *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
  *     **漏 `"`**,属性位有漂移风险,本刀一并收敛);② **`toast()` 路径**(`toast`→`el`→`template.innerHTML`
@@ -26,6 +37,18 @@ import { errText, toast, toastUndo } from './toast.js';
 
 const fmtTs = (ts) => { try { return new Date(+ts || 0).toLocaleString(); } catch (_e) { return ''; } };
 const emptyLine = (txt) => `<p style="color:var(--ink-3);font-size:12px;padding:12px 0;">${txt}</p>`;
+
+/* ── 撤销世代守卫(见模块头 §4-3):后端 MemTrash / DocTrash 各自单槽、只存「最近一次销毁」。
+      任一域发生新销毁 → 该域此前的撤销 affordance 立即过期。两域计数独立(后端两个 State 亦独立)。 */
+let memGen = 0, docGen = 0;
+let memUndoToast = null; // 记忆域当前在场的 toastUndo 元素(新销毁前摘掉,避免留下会还原错记录的死按钮)
+const dropToast = (t) => { if (t && t.isConnected) t.remove(); };
+const expiredUndo = () => toast(tt(
+  '该撤销已过期 —— 此后又发生了新的销毁(只能撤销最近一次)。',
+  'Undo expired — a newer deletion superseded it (only the most recent can be undone).'
+));
+/** toastUndo 无返回值:它同步 append 到 #toasts,故紧随其后的 lastElementChild 即本次的 toast。 */
+const lastToastEl = () => { const h = document.getElementById('toasts'); return h ? h.lastElementChild : null; };
 
 /* ─────────────────────────── 长期记忆 ─────────────────────────── */
 
@@ -49,11 +72,18 @@ export async function renderMemory(box) {
         + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}</div></div><button class="btn" data-memdel="${cEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
 
-    // 逐条删:即时删除 + toastUndo 撤销(原设计:单条低风险、即时可撤销,不弹模态)。
+    // 逐条删:即时删除 + toastUndo。★后端单槽:先摘掉尚存的旧撤销(它此刻即将失效),再以世代号守卫。
     [...box.querySelectorAll('[data-memdel]')].forEach((b) => (b.onclick = async () => {
+      dropToast(memUndoToast); memUndoToast = null;
+      const gen = ++memGen;
       try { await rt.memory.remove(b.dataset.memdel); } catch (_e) {}
       await refresh();
-      toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => { try { await rt.memory.undo(); } catch (_e) {} await refresh(); });
+      toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => {
+        if (gen !== memGen) return expiredUndo(); // 过期:诚实拒绝,绝不静默还原错记录
+        try { await rt.memory.undo(); } catch (_e) {}
+        await refresh();
+      });
+      memUndoToast = lastToastEl();
     }));
     const cb = box.querySelector('#ccMemClear');
     if (cb) cb.style.display = rows.length ? '' : 'none';
@@ -64,13 +94,23 @@ export async function renderMemory(box) {
   const cb = box.querySelector('#ccMemClear');
   if (cb) cb.onclick = async () => {
     if (!G || !G.confirmDestructive) return; // fail-closed
+    let gen = 0; // onConfirm 时登记世代;onUndo 据此判断是否已被更新的销毁取代
     await G.confirmDestructive({
       title: tt('清除全部长期记忆?', 'Clear all long-term memory?'),
-      detail: tt('将删除 AI 记住的全部内容。可在几秒内撤销。', 'Deletes everything AI remembers. Undoable for a few seconds.'),
+      detail: tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).'),
       confirmLabel: tt('清除', 'Clear'),
       undoText: tt('已清除长期记忆', 'Memory cleared'),
-      onConfirm: async () => { try { await rt.memory.clear(); } catch (_e) {} await refresh(); },
-      onUndo: async () => { try { await rt.memory.undo(); } catch (_e) {} await refresh(); },
+      onConfirm: async () => {
+        dropToast(memUndoToast); memUndoToast = null; // 清空即将覆盖单槽 → 旧的逐条撤销就此失效
+        gen = ++memGen;
+        try { await rt.memory.clear(); } catch (_e) {}
+        await refresh();
+      },
+      onUndo: async () => {
+        if (gen !== memGen) return expiredUndo();
+        try { await rt.memory.undo(); } catch (_e) {}
+        await refresh();
+      },
     });
   };
 }
@@ -111,16 +151,18 @@ export async function renderDocs(box) {
       : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
 
     // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
+    // ★DocTrash 与 MemTrash 同款单槽 → 同一世代守卫(承评审第56轮 [建议]1「修 (a) 时一并对齐」)。
     [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = () => {
       if (!G || !G.confirmDestructive) return; // fail-closed
       const d = rows.find((x) => String(x.docId) === String(b.dataset.docdel));
+      let gen = 0;
       G.confirmDestructive({
         title: tt('删除文档?', 'Delete doc?'),
         detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : ''),
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
-        onConfirm: async () => { try { await rt.docs.remove(b.dataset.docdel); } catch (_e) {} await refresh(); },
-        onUndo: async () => { try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
+        onConfirm: async () => { gen = ++docGen; try { await rt.docs.remove(b.dataset.docdel); } catch (_e) {} await refresh(); },
+        onUndo: async () => { if (gen !== docGen) return expiredUndo(); try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
       });
     }));
     const cb = q('#ccDocClear');
@@ -172,13 +214,14 @@ export async function renderDocs(box) {
   const clr = q('#ccDocClear');
   if (clr) clr.onclick = () => {
     if (!G || !G.confirmDestructive) return; // fail-closed
+    let gen = 0;
     G.confirmDestructive({
       title: tt('清空全部文档?', 'Clear all docs?'),
-      detail: tt('将删除知识库里的全部文档。可在几秒内撤销。', 'Removes every doc. Undoable for a few seconds.'),
+      detail: tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).'),
       confirmLabel: tt('清空', 'Clear'),
       undoText: tt('已清空知识库', 'Knowledge cleared'),
-      onConfirm: async () => { try { await rt.docs.clear(); } catch (_e) {} await refresh(); },
-      onUndo: async () => { try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
+      onConfirm: async () => { gen = ++docGen; try { await rt.docs.clear(); } catch (_e) {} await refresh(); },
+      onUndo: async () => { if (gen !== docGen) return expiredUndo(); try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
     });
   };
 }
