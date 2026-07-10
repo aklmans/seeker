@@ -1896,3 +1896,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **订正评审一处过时信息**:它写「三条都不阻塞 ①(大快照 spill)」—— **① 已在 `2081df6` 落地**(撤销债末刀),故三条本就在 ① 之后。
 
 **撤销债 arc + 全部派生 [建议] 清零。下一步**:P2(jobseek 6 aiRun 真化 / notes→记忆知识库 / prompts→Skills)或绿地(Skills/Project/Scheduled)。
+
+### 第66轮签字附带的两条义务 · commit `225670a` · ⏳ 待审
+- **义务① · 显式豁免 §4-3,不靠沉默**:`repair` 不走 guardrail 的论证已写进 **`MEM_REPAIR_SQL` 头注**(Rust)+ **`MemoryApi.repairCorrupt`**(types.d.ts)+ **CLAUDE.md §4-3**。核心:**guardrail 的判据是「用户有没有可失去之物」,不是「是不是写操作」** —— 被覆盖的旧值 app 内**没有任何代码路径能观测到**(`int_lossy` 早已显示为 0 / AI 召回的 SELECT 不含此列 / 快照读不了它);修复是**存储向显示收敛**,且幂等。三处均写明:**不得援引它作为「可观测的写操作也可跳过 guardrail」的先例**。模型无法触发 repair(UI 按钮,无对应 Capability)⇒ 安全内核未触碰。
+- **义务② · 点名有损分支 —— 我先去量了,并订正评审一处、把它缩小**:评审说「REAL 分支归 0 **一个比特都没丢**」——**不成立**。实测 SQLite INTEGER 亲和性:`1.0`/`1e3`/`'123'`/`'1.0'` 都被存成 `integer`,**只有带小数的才留成 `real`** ⇒ 残留的 REAL 完全可能是**合理的 epoch 毫秒**(`1752105600000.5`),归 0 会丢掉**整个日期**。⇒ 改为 REAL 走 `CAST(… AS INTEGER)`(保住日期、只截亚毫秒)+ `BETWEEN` 防 CAST 饱和成 `i64::MAX` 假时间戳;**只有非数值 TEXT**(格式未知、解析即猜)退到 `DEFAULT 0`。**唯一有损的一支由「所有非整数时间戳」缩小为「非数值文本时间戳」**,且它今日 UI 也已显示为 0。toast 文案随之对齐。
+- **顺手修**:`types.d.ts` 里 `UndoPrecheck` 的文档注释被 `RepairResult` 挤开、悬空挂在别人头上(我早先编辑留下的伤),已归位。
+- **验**:新测试 `repair_preserves_real_timestamps_and_only_zeroes_unparseable_text`(**点名跑过**;先钉死亲和性前提,再断言 REAL 日期保住 / 非数值 TEXT → 0 / 超范围 REAL → 0 不饱和 / 合法整数一个字节不碰)。**变异测试**:CASE 退回「一律归 0」→ 「REAL 日期必须保住」变红。cargo test **119/0**(118→119);clippy/fmt 净;tsc 51→51;真机 2.02s boot 零 panic。
+
+**★评审第66轮签字**:撤销债 arc 及其派生 [建议] **确认清零(第56–66 轮)**。评审并确认了我对它的两处订正(真相表推翻它 [应改] 的一半;`2081df6` 已落地故三条本就在 ① 之后)。
+**★评审建议的下一步次序**:① **`app-tool 契约` 方案先行**(它是钥匙:一把解开 jobseek 6 aiRun 真化,并清掉「路线 B 封顶」与 `jobseek.rs` #6 i18n 两笔结构债;路线 A 在第51轮被判 [应改],必须先有设计好的契约)→ ② 并行热身 **notes → 记忆/知识库**(P2 里唯一无阻塞项)→ ③ 契约落地后 jobseek 真化 → ④ Skills 方案 → prompts→Skills → assets 退役。**不建议先做绿地**(后端零基础,会写出契约落地后要重新接管的代码)。
