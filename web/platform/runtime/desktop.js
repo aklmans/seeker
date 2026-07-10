@@ -176,9 +176,13 @@ export function createDesktopRuntime() {
       //   ★刀2b-2:undo 的 token **必填** —— 后端 `take(&str)` 已删掉「取最近一次」的 affordance,
       //   故一次撤销只能作用于它自己那一次销毁(还原错记录在类型层面不可能)。
       clear: () => invoke('memory_clear'),
-      // 预检:这次清空是否可撤销(供确认弹窗在用户做决定前说真话 · 评审第62轮 [应改])
+      // 预检:这次清空是否可撤销 + **为什么不能**(`{undoable, reason}`;reason ∈ ok|corrupt|too_large)。
+      // 供确认弹窗在用户做决定前说真话(评审第62轮 [应改];第64轮③ 加 corrupt 理由)。
       clearUndoable: () => invoke('memory_clear_undoable'),
       remove: (id) => invoke('memory_remove', { id }),
+      // ★逃生口(第64轮③):销毁一条**不可映射(已损坏)**的记忆 —— 按 rowid 删,不快照、不发 token。
+      //   后端**拒绝销毁健康行**(结构性守卫),故它不是「绕过快照直接删」的后门。
+      removeCorrupt: (rowid) => invoke('memory_remove_corrupt', { rowid }),
       undo: (token) => invoke('memory_undo', { token }),
     },
 

@@ -183,8 +183,10 @@ export function createWebRuntime() {
       //   undo 返回 0 ⇒ restoreFn 如实上报 false ⇒ toast.js 不报「已撤销」。
       //   (第61轮 [建议]2:降级路径如实上报,安全性不让「web 端不可达」这个偶然前提承重。)
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
-      clearUndoable: () => Promise.resolve(true), // web 端本无行 ⇒ 估算 0 字节 ⇒ 可撤销(与桌面判据同源)
+      // web 端本无行 ⇒ 无损坏行、估算 0 字节 ⇒ 可撤销(与桌面判据同源、同形)
+      clearUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }),
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }),
+      removeCorrupt: () => Promise.resolve({ deleted: 0, undoToken: null }), // 无行可损坏 ⇒ 诚实 no-op
       undo: (_token) => Promise.resolve(0), // 环内无此次销毁 ⇒ 还原 0 条(前端据此 staleUndo,不报「已撤销」)
     },
 
@@ -193,9 +195,9 @@ export function createWebRuntime() {
       add: () => notImpl('rt.docs.add', 'web'),
       list: () => Promise.resolve([]),
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
-      removeUndoable: () => Promise.resolve(true), // web 端本无行 ⇒ 估算 0 字节 ⇒ 可撤销(与桌面判据同源)
+      removeUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }), // 同形:{undoable, reason}
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
-      clearUndoable: () => Promise.resolve(true),
+      clearUndoable: () => Promise.resolve({ undoable: true, reason: 'ok' }),
       undo: (_token) => Promise.resolve(0),
       pdfText: () => notImpl('rt.docs.pdfText', 'web'),
     },

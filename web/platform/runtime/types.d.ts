@@ -204,9 +204,26 @@ export interface CapabilityApi {
 
 /** 长期记忆条目(查看用 · **不含 embedding**)。 */
 export interface MemoryEntry {
+  /** 健康行的主键;**损坏行的 id 可能不可映射**(如 BLOB),此时它只是有损文本,不可用作删除键。 */
   id: string;
   fact: string;
   ts: number;
+  /** SQLite rowid —— **损坏行唯一可靠的删除键**(走 `removeCorrupt`)。 */
+  rowid: number;
+  /** 该行不可映射(坏数据)⇒ **无法生成撤销快照** ⇒ 删除它必须走 guardrail + 明告不可撤销。 */
+  corrupt: boolean;
+}
+
+/**
+ * 一次销毁**能否撤销**,以及**为什么不能** —— 供确认弹窗在用户做决定**之前**说真话,
+ * 并说对**理由**(「内容过大」与「数据已损坏」对用户是两件事)。
+ *
+ * ★`reason` 由后端给,前端只负责说人话;拿不到(命令失败)⇒ **保守按不可撤销告知**。
+ */
+export interface UndoPrecheck {
+  undoable: boolean;
+  /** `'ok'` | `'corrupt'`(有不可映射行) | `'too_large'`(超撤销环字节上限) */
+  reason: 'ok' | 'corrupt' | 'too_large' | string;
 }
 
 /**
@@ -226,8 +243,15 @@ export interface MemoryApi {
   list(): Promise<MemoryEntry[]>;
   clear(): Promise<DestroyResult>;
   /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
-  clearUndoable(): Promise<boolean>;
+  clearUndoable(): Promise<UndoPrecheck>;
   remove(id: string): Promise<DestroyResult>;
+  /**
+   * **逃生口**:销毁一条不可映射(已损坏)的记忆 —— 按 `rowid` 删,**不快照、不发 token**。
+   *
+   * ★后端**拒绝销毁健康行**(结构性守卫)⇒ 这不是「绕过快照直接删」的后门。
+   * 不变式:**健康行永远有快照可撤销;只有不可快照的行才可能被无撤销地销毁,且必经 guardrail 确认。**
+   */
+  removeCorrupt(rowid: number): Promise<DestroyResult>;
   /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原条数;
    *  token 已失效(被撤回过 / 被更新的销毁挤出上限)→ `0`,**绝不静默成功**。 */
   undo(token: string): Promise<number>;
@@ -239,6 +263,8 @@ export interface DocInfo {
   name: string;
   chunks: number;
   ts: number;
+  /** 本篇含不可映射(坏数据)片段 ⇒ 删除它无法撤销(预检会给出 `reason:'corrupt'`)。 */
+  corrupt: boolean;
 }
 
 /** RAG-over-docs(#2):加文档(后端切块+嵌入)/ 列出 / 删一篇 / 清空 / 按 token 撤销。网页端降级。 */
@@ -247,10 +273,10 @@ export interface DocsApi {
   list(): Promise<DocInfo[]>;
   remove(docId: string): Promise<DestroyResult>;
   /** 预检:删这一篇是否可撤销(评审第64轮 [应改]:对话框在**建立时**就承诺可撤销,故须先问)。 */
-  removeUndoable(docId: string): Promise<boolean>;
+  removeUndoable(docId: string): Promise<UndoPrecheck>;
   clear(): Promise<DestroyResult>;
   /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
-  clearUndoable(): Promise<boolean>;
+  clearUndoable(): Promise<UndoPrecheck>;
   /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原片段数;
    *  token 已失效 → `0`,**绝不静默成功**。 */
   undo(token: string): Promise<number>;

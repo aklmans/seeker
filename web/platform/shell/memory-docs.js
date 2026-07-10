@@ -46,6 +46,14 @@
  *       (记忆清空 / 文档删 / 文档清空)**各自先问预检**,不可撤销就**连 `onUndo` 都不传** ⇒ 那行提示不出现;
  *       第四条(记忆逐条删)走 `toastUndo`,**事后**提示、事前无承诺,天然无此问题。
  *       预检问不到 ⇒ **保守按不可撤销告知**。**「一条只在 3/4 条销毁路径上成立的不变式,不是不变式。」**
+ *     · ★★**不可映射行(坏数据)的逃生口**(评审第64轮次序 ③):`fact` 存了 BLOB、`created_at` 存了 TEXT……
+ *       这类行无法完整快照。不变式由此锐化一格:**旧「销毁 ⇔ 快照完整」→ 新「提供撤销 ⇔ 快照完整」**——
+ *       损坏行**允许销毁**,但必须走 guardrail 确认 + 明告「无法撤销」+ 不给撤销按钮。
+ *       ⚠ **逃生口的第一步不是「能删」,而是「能看见」**:修前后端 `memory_entries` 会整体报错 ⇒ 本模块
+ *       `catch` 成空数组 ⇒ 用户看到「AI 还没有记住任何内容。」,而 AI 的 recall 照常读得到整张表。
+ *       **这个视图的全部意义就是用户掌控,它却在说谎**(§4-2)。现在后端逐行标 `corrupt` 并给 `rowid`。
+ *       ⚠ 损坏行走 `rt.memory.removeCorrupt(rowid)`(其 `id` 本身可能不可映射,不能当删除键);
+ *       后端**拒绝销毁健康行** ⇒ 它不是「绕过快照直接删」的后门。文档侧同理(坏片段 ⇒ 该篇删除不可撤销)。
  *     · ★**即时删除按钮在 await 窗口内必须不可重入**:逻辑闸 `memBusy` + 物理闸 `disabled`(见下)。
  *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
  *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
@@ -114,6 +122,32 @@ const noTokenUnreachable = () => {
 };
 
 /**
+ * 读一次**只读预检**(`{undoable, reason}`)。命令失败 / 形状不对 ⇒ **保守按「不可撤销」告知**
+ * (决策点宁可少承诺,绝不多承诺)。
+ * @param {() => Promise<any>} fn 只读预检命令(`rt.*.clearUndoable` / `rt.docs.removeUndoable`)
+ * @returns {Promise<{undoable: boolean, reason: string}>}
+ */
+async function precheck(fn) {
+  try {
+    const r = await fn();
+    if (r && typeof r === 'object' && typeof r.undoable === 'boolean') {
+      return { undoable: r.undoable, reason: String(r.reason || 'unknown') };
+    }
+    return { undoable: false, reason: 'unknown' };
+  } catch (_e) {
+    return { undoable: false, reason: 'unknown' };
+  }
+}
+
+/** 「为什么不能撤销」—— 理由由后端给,前端只负责说人话。「内容过大」与「数据已损坏」对用户是两件事。
+ *  @param {string} reason `'corrupt'` | `'too_large'` | 其它(含预检失败的 `'unknown'`) */
+const whyNotUndoable = (reason) => {
+  if (reason === 'corrupt') return tt('其中含已损坏的记录(无法生成撤销快照)。', 'It contains corrupted records (no undo snapshot is possible).');
+  if (reason === 'too_large') return tt('内容过大,无法生成撤销快照。', 'Too large to snapshot.');
+  return tt('无法确认能否撤销。', 'Unable to confirm whether this can be undone.');
+};
+
+/**
  * 由销毁命令的返回 `{ deleted, undoToken }` 决定**这次销毁能否提供撤销**,
  * 并把**撤销所需的 token** 交出去(刀2b-2:token 是撤销的唯一凭据)。
  *
@@ -154,7 +188,8 @@ export async function renderMemory(box) {
     body.innerHTML = rows.length
       // r.fact = 用户主动写入的内容,可能含 PII → cEsc 后只呈现给用户;r.id 落 data-* 属性位 → cEsc 转 " 封越狱。
       ? `<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ', 'What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地', ' · local only')}</p>`
-        + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}</div></div><button class="btn" data-memdel="${cEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+        // ★损坏行:标出来 + 删除键改用 rowid(其 id 可能不可映射);删除走 guardrail 逃生口,不给撤销。
+        + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}${r.corrupt ? ` · <span style="color:var(--accent);">${tt('已损坏 · 删除不可撤销', 'CORRUPTED · delete cannot be undone')}</span>` : ''}</div></div><button class="btn" ${r.corrupt ? `data-memcorrupt="${cEsc(String(r.rowid))}"` : `data-memdel="${cEsc(r.id)}"`} style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
 
     // 逐条删:即时删除 + toastUndo(token 必填 ⇒ 每次撤销只作用于它自己那一次)。摘旧撤销 + 世代号 = **UX 策略**,非安全。
@@ -204,6 +239,34 @@ export async function renderMemory(box) {
         frozen.forEach((x) => { if (x.isConnected) x.disabled = false; }); // refresh 失败时解禁旧按钮
       }
     }));
+    // ★逃生口:损坏行 = 无法快照 ⇒ 不可撤销 ⇒ **必须走 guardrail 确认闸**(§4-3:做不到可靠撤销就走确认)。
+    //   不传 `onUndo` ⇒ 对话框不印「执行后可撤销。」,也不会出现按钮;`onConfirm` 返 false 双重收口。
+    [...box.querySelectorAll('[data-memcorrupt]')].forEach((b) => (b.onclick = async () => {
+      if (memBusy) return;
+      if (!G || !G.confirmDestructive) { toast(tt('该端暂不支持', 'Not supported here')); return; } // fail-closed
+      const rowid = Number(b.dataset.memcorrupt);
+      await G.confirmDestructive({
+        title: tt('删除已损坏的记录?', 'Delete corrupted record?'),
+        detail: tt(
+          '这条记录已损坏,无法生成撤销快照。删除后无法撤销。',
+          'This record is corrupted and cannot be snapshotted. Deleting it CANNOT be undone.'
+        ),
+        confirmLabel: tt('删除', 'Delete'),
+        onConfirm: async () => {
+          memBusy = true;
+          try {
+            const res = await rt.memory.removeCorrupt(rowid);
+            const n = res && typeof res.deleted === 'number' ? res.deleted : 0;
+            toast(n > 0
+              ? tt('已删除该已损坏的记录(无法撤销)', 'Corrupted record deleted (cannot be undone)')
+              : tt('没有可删除的内容', 'Nothing to delete'));
+            await refresh();
+          } catch (e) { toast(errText(e)); } // 后端拒绝(如「该记录未损坏」)如实浮出,绝不静默
+          finally { memBusy = false; }
+          return false; // 永不提供撤销:没有快照,就没有可还原之物
+        },
+      });
+    }));
     const cb = box.querySelector('#ccMemClear');
     if (cb) cb.style.display = rows.length ? '' : 'none';
   };
@@ -221,13 +284,14 @@ export async function renderMemory(box) {
     let gen = 0, token = null; // token = 撤销凭据;null ⇒ 无可撤销之物(onUndo 据此拒绝)
     // ★预检(评审第62轮 [应改]):确认文案必须在**用户做决定之前**说真话 ——
     //   超出后端环的字节上限时,这次清空**不可撤销**;绝不能先承诺「可在几秒内撤销」、销毁后才改口。
-    let undoable = true;
-    try { undoable = await rt.memory.clearUndoable(); } catch (_e) { undoable = false; } // 问不到 ⇒ 保守按不可撤销告知
+    // 理由由后端给(too_large / corrupt),前端说人话;问不到 ⇒ 保守按不可撤销告知。
+    const pc = await precheck(() => rt.memory.clearUndoable());
+    const undoable = pc.undoable;
     await G.confirmDestructive({
       title: tt('清除全部长期记忆?', 'Clear all long-term memory?'),
       detail: undoable
         ? tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).')
-        : tt('将删除 AI 记住的全部内容。内容过大,清除后无法撤销。', 'Deletes everything AI remembers. Too large to snapshot — this CANNOT be undone.'),
+        : tt('将删除 AI 记住的全部内容。', 'Deletes everything AI remembers. ') + whyNotUndoable(pc.reason) + tt('清除后无法撤销。', ' This CANNOT be undone.'),
       confirmLabel: tt('清除', 'Clear'),
       undoText: tt('已清除长期记忆', 'Memory cleared'),
       // ★销毁**之后**才知道有没有可还原之物 ⇒ 返回 `false` 让 guardrail **根本不给撤销按钮**
@@ -304,7 +368,7 @@ export async function renderDocs(box) {
     // d.name = 用户填的名 / 文件名(可能是外部语料标题)→ cEsc;d.docId 落 data-* 属性位 → cEsc。
     body.innerHTML = rows.length
       ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ', 'Docs · ')}${rows.length}</div>`
-        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}</div></div><button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}${d.corrupt ? ` · <span style="color:var(--accent);">${tt('含已损坏片段 · 删除不可撤销', 'CORRUPTED chunks · delete cannot be undone')}</span>` : ''}</div></div><button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
 
     // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
@@ -316,12 +380,12 @@ export async function renderDocs(box) {
       // ★单篇预检(评审第64轮 [应改] · 队首):guardrail 在**建对话框时**就据 `onUndo` 是否存在印出
       //   「执行后可撤销。」—— 若等 onConfirm 执行时才发现整篇超上限,那句话**已经出口**了。
       //   与两条 clear 路径同款,「决策点不得承诺做不到的撤销」由此在**全部四条销毁路径**上成立。
-      let undoable = true;
-      try { undoable = await rt.docs.removeUndoable(b.dataset.docdel); } catch (_e) { undoable = false; } // 问不到 ⇒ 保守
+      const pc = await precheck(() => rt.docs.removeUndoable(b.dataset.docdel)); // 问不到 ⇒ 保守
+      const undoable = pc.undoable;
       G.confirmDestructive({
         title: tt('删除文档?', 'Delete doc?'),
         detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : '')
-          + (undoable ? '' : tt(' · 内容过大,删除后无法撤销。', ' · Too large to snapshot — this CANNOT be undone.')),
+          + (undoable ? '' : ' · ' + whyNotUndoable(pc.reason) + tt('删除后无法撤销。', ' This CANNOT be undone.')),
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
         onConfirm: async () => {
@@ -398,13 +462,13 @@ export async function renderDocs(box) {
     if (!G || !G.confirmDestructive) return; // fail-closed
     let gen = 0, token = null;
     // ★预检同 renderMemory 清空路径:确认文案在用户做决定之前说真话(评审第62轮 [应改])。
-    let undoable = true;
-    try { undoable = await rt.docs.clearUndoable(); } catch (_e) { undoable = false; }
+    const pc = await precheck(() => rt.docs.clearUndoable());
+    const undoable = pc.undoable;
     G.confirmDestructive({
       title: tt('清空全部文档?', 'Clear all docs?'),
       detail: undoable
         ? tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).')
-        : tt('将删除知识库里的全部文档。内容过大,清空后无法撤销。', 'Removes every doc. Too large to snapshot — this CANNOT be undone.'),
+        : tt('将删除知识库里的全部文档。', 'Removes every doc. ') + whyNotUndoable(pc.reason) + tt('清空后无法撤销。', ' This CANNOT be undone.'),
       confirmLabel: tt('清空', 'Clear'),
       undoText: tt('已清空知识库', 'Knowledge cleared'),
       onConfirm: async () => {

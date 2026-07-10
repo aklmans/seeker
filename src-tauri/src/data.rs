@@ -507,18 +507,73 @@ pub fn memory_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>)>, 
     Ok(out)
 }
 
-/// 读记忆条目 `(id, fact, ts)` 供用户在设置页查看/清除 —— **不含 embedding**(隐私 + 体积:
-/// 只回事实文本,绝不外泄向量字节)。按时间倒序。
+// ── 不可映射行(「坏数据」)的识别与逃生口 ────────────────────────────────
+//
+// ★背景(评审第61轮记债 → 第64轮裁定为下一刀):`fact` 存了 BLOB、`created_at` 存了 TEXT ……
+// 这类行**无法完整快照** ⇒ fail-closed 之下 `remove`/`clear` 双双报错 ⇒ **app 内无逃生口**。
+// 红线只要求「**永不谎报撤销**」,并未要求拒绝销毁 ⇒ 不变式锐化一格:
+//   旧:**销毁** ⇔ 快照完整      新:**提供撤销** ⇔ 快照完整
+// 即:损坏行**允许销毁**,但必须走 guardrail 确认 + 明告「无法撤销」+ 不给撤销按钮。
+//
+// ★★落码时实测到一个比「删不掉」更坏的后果(记债里没写):`memory_entries` 也会整体报错
+// ⇒ 前端 `catch` 成空数组 ⇒ 用户看到「AI 还没有记住任何内容。」;而 `memory_all`(recall 那条路)
+// **照常返回全部记忆**。⇒ 用户被告知「没有记忆」,AI 却仍然记得。**这个视图的全部意义就是用户掌控,
+// 它却在说谎**(§4-2)。`doc_list` 同理(`MAX(created_at)` 为 TEXT 时整表列不出,而 `doc_chunks_all`
+// 照常召回)。故逃生口的第一步不是「能删」,而是「**能看见**」—— 看不见的行没法点删除。
+//
+/// 与 rusqlite `FromSql` 的接受集**逐列等价**的 SQL 谓词:用 `typeof()` 判定,**不物化任何行**
+/// (故可安全用于 `clear` 的物化前预检)。等价性由 `typeof_predicate_matches_rusqlite_acceptance`
+/// 逐形态钉死(含阳性对照:少判一列就会与 rusqlite 分歧)。
+///
+/// 对应 `MemRow = (String, String, Vec<f32>, i64)`:`String` 只收 Text;`Option<Vec<u8>>` 只收 Blob/Null;
+/// `Option<i64>` 只收 Integer/Null(**Real 不收** —— 实测 `created_at=1.5` 会让映射失败)。
+const MEM_CORRUPT_PRED: &str = "typeof(id)<>'text' OR typeof(fact)<>'text' OR typeof(embedding) NOT IN ('blob','null') OR typeof(created_at) NOT IN ('integer','null')";
+
+/// 同上,对应 `DocRow = (String, String, String, String, Vec<f32>, i64)`。
+const DOC_CORRUPT_PRED: &str = "typeof(id)<>'text' OR typeof(doc_id)<>'text' OR typeof(doc_name)<>'text' OR typeof(text)<>'text' OR typeof(embedding) NOT IN ('blob','null') OR typeof(created_at) NOT IN ('integer','null')";
+
+/// **宽容**读一列文本:BLOB / 数字 / NULL 一律不报错(损坏行也要能被用户看见,才可能被删掉)。
+/// 仅用于**给人看**的列表,绝不用于快照 —— 快照仍严格 fail-closed(有损转换不是忠实快照)。
+fn text_lossy(r: &rusqlite::Row, i: usize) -> rusqlite::Result<String> {
+    use rusqlite::types::ValueRef;
+    Ok(match r.get_ref(i)? {
+        ValueRef::Null => String::new(),
+        ValueRef::Integer(v) => v.to_string(),
+        ValueRef::Real(v) => v.to_string(),
+        ValueRef::Text(b) | ValueRef::Blob(b) => String::from_utf8_lossy(b).into_owned(),
+    })
+}
+
+/// **宽容**读一列整数:非 Integer(含 TEXT / REAL / NULL)一律归 0(schema `DEFAULT 0`)。
+fn int_lossy(r: &rusqlite::Row, i: usize) -> rusqlite::Result<i64> {
+    use rusqlite::types::ValueRef;
+    Ok(match r.get_ref(i)? {
+        ValueRef::Integer(v) => v,
+        _ => 0,
+    })
+}
+
+/// 读记忆条目 `(id, fact, ts, rowid, corrupt)` 供用户查看/清除 —— **不含 embedding**(隐私 + 体积:
+/// 只回事实文本,绝不外泄向量字节)。按时间倒序。**永不因一行坏数据而整体失败**(见上 ★★)。
+///
+/// `rowid`:损坏行的 `id` 本身可能不可映射(如 BLOB),无法作为删除键 ⇒ 前端用 `rowid` 走
+/// `memory_remove_corrupt`。健康行仍按 `id` 走可撤销的常规删除。
 pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
-    let mut stmt = conn
-        .prepare("SELECT id, fact, created_at FROM memories ORDER BY created_at DESC")
-        .map_err(|e| e.to_string())?;
+    let sql = format!(
+        "SELECT rowid, id, fact, created_at, ({MEM_CORRUPT_PRED}) AS corrupt FROM memories ORDER BY created_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| {
-            let id: String = r.get(0)?;
-            let fact: String = r.get(1)?;
-            let ts: i64 = r.get::<_, Option<i64>>(2)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化(见 memory_snapshot_one 头注)
-            Ok(serde_json::json!({ "id": id, "fact": fact, "ts": ts }))
+            let rowid: i64 = r.get(0)?;
+            let corrupt: i64 = r.get(4)?;
+            Ok(serde_json::json!({
+                "id": text_lossy(r, 1)?,
+                "fact": text_lossy(r, 2)?,
+                "ts": int_lossy(r, 3)?,
+                "rowid": rowid,
+                "corrupt": corrupt != 0,
+            }))
         })
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -526,6 +581,83 @@ pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
         out.push(r.map_err(|e| e.to_string())?);
     }
     Ok(out)
+}
+
+/// 表内**不可映射行**的条数(SQL 谓词,零物化)。
+fn mem_corrupt_count(conn: &Connection) -> Result<i64, String> {
+    conn.query_row(
+        &format!("SELECT COUNT(*) FROM memories WHERE ({MEM_CORRUPT_PRED})"),
+        [],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 同上;`doc_id = Some(id)` 只数这一篇。
+fn doc_corrupt_count(conn: &Connection, doc_id: Option<&str>) -> Result<i64, String> {
+    match doc_id {
+        Some(did) => conn.query_row(
+            &format!("SELECT COUNT(*) FROM doc_chunks WHERE doc_id = ?1 AND ({DOC_CORRUPT_PRED})"),
+            params![did],
+            |r| r.get(0),
+        ),
+        None => conn.query_row(
+            &format!("SELECT COUNT(*) FROM doc_chunks WHERE ({DOC_CORRUPT_PRED})"),
+            [],
+            |r| r.get(0),
+        ),
+    }
+    .map_err(|e| e.to_string())
+}
+
+/// 一次销毁**能否撤销**,以及**为什么不能** —— 决策点必须说真话,而且要说对**理由**
+/// (「内容过大」与「数据已损坏」对用户是两件事,后者还提示该行需要处理)。
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct UndoPrecheck {
+    pub undoable: bool,
+    /// `"ok"` | `"corrupt"`(有不可映射行,快照不可能完整)| `"too_large"`(超环字节上限)
+    pub reason: &'static str,
+}
+impl UndoPrecheck {
+    fn ok() -> Self {
+        Self {
+            undoable: true,
+            reason: "ok",
+        }
+    }
+    fn no(reason: &'static str) -> Self {
+        Self {
+            undoable: false,
+            reason,
+        }
+    }
+}
+
+/// 记忆整表清空的预检。**`corrupt` 优先于 `too_large`**:有损坏行时快照根本不可能完整,
+/// 字节是否超限无关紧要,且「已损坏」对用户更可操作。
+fn memory_clear_precheck(conn: &Connection, cap: usize) -> Result<UndoPrecheck, String> {
+    if mem_corrupt_count(conn)? > 0 {
+        return Ok(UndoPrecheck::no("corrupt"));
+    }
+    if memory_clear_undo_bytes(conn)? > cap {
+        return Ok(UndoPrecheck::no("too_large"));
+    }
+    Ok(UndoPrecheck::ok())
+}
+
+/// 文档销毁的预检(`doc_id = None` → 整库清空;`Some` → 单篇)。判据同 memory 侧。
+fn doc_precheck(
+    conn: &Connection,
+    cap: usize,
+    doc_id: Option<&str>,
+) -> Result<UndoPrecheck, String> {
+    if doc_corrupt_count(conn, doc_id)? > 0 {
+        return Ok(UndoPrecheck::no("corrupt"));
+    }
+    if doc_undo_bytes(conn, doc_id)? > cap {
+        return Ok(UndoPrecheck::no("too_large"));
+    }
+    Ok(UndoPrecheck::ok())
 }
 
 // ── 长期记忆的用户掌控(#4 · 查看/清除/撤销入口)──────────────────────────
@@ -735,7 +867,7 @@ pub struct MemTrash(pub Mutex<UndoRing<MemRow>>);
 /// ★`deleted` 支撑前端不变式「**提供撤销 ⇔ 销毁确已发生**」(第60轮 [建议]1);
 /// ★`undoToken` 支撑刀2b-2 的**精确撤销**,并让「**无 token ⇒ 不提供撤销**」成为**结构性事实**,
 ///   而不再是前端约定。
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug)]
 pub struct DestroyResult {
     pub deleted: usize,
     #[serde(rename = "undoToken")]
@@ -808,11 +940,15 @@ fn memory_clear_inner(
     ring: &Mutex<UndoRing<MemRow>>,
 ) -> Result<DestroyResult, String> {
     let cap = ring.lock().unwrap().max_bytes();
-    let undoable = memory_clear_undo_bytes(conn)? <= cap;
+    // ★预检与本函数**共用同一判据**(`memory_clear_precheck`)⇒「预检说可撤销 ⇒ stash 必接受」。
+    //   `reason=corrupt`(有不可映射行)⇒ **不物化、不发 token,但照常销毁** —— 这就是逃生口:
+    //   一行坏数据不得把整库锁死。红线只要求永不谎报撤销(确认弹窗已在决策点如实告知)。
+    //   `undoable=true` 时快照仍严格 fail-closed:承诺了可撤销就必须真能还原,取不到就 Err、不销毁。
+    let undoable = memory_clear_precheck(conn, cap)?.undoable;
     let snap = if undoable {
         memory_rows_full(conn)?
     } else {
-        Vec::new() // 超上限:不物化
+        Vec::new() // 超上限 / 有损坏行:不物化
     };
     let n = conn
         .execute("DELETE FROM memories", [])
@@ -830,10 +966,10 @@ fn memory_clear_inner(
 pub fn memory_clear_undoable(
     db: State<'_, Db>,
     trash: State<'_, MemTrash>,
-) -> Result<bool, String> {
+) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    Ok(memory_clear_undo_bytes(&conn)? <= cap)
+    memory_clear_precheck(&conn, cap)
 }
 
 /// 快照一条记忆行(含 embedding)。**行不存在 → 空 Vec;行存在但映射失败 → `Err`(fail-closed)。**
@@ -926,6 +1062,55 @@ pub fn memory_remove(
 /// **`token` 必填**(刀2b-2:`UndoRing::take(&str)` 已在类型层面删掉「取最近一次」的 affordance;
 /// 且 token 取自进程级序号、跨环唯一)⇒ 一次撤销**只能**作用于它自己那一次销毁。
 /// **token 已被淘汰 / 未知 / 已被取走 / 环为空 ⇒ 返回 `0`,绝不静默成功** —— 前端据 `n===0` 如实上报
+/// **逃生口**:销毁一条**不可映射(已损坏)**的记忆 —— 按 `rowid` 删,**不快照、不发 token**。
+///
+/// ★★结构性守卫(本命令存在的关键):**它拒绝销毁健康行。**
+/// 否则这就成了一个「绕过快照直接删」的后门 —— 任何调用点(将来的重构 / 别的页面)都能拿它
+/// 无声地摧毁一条本可撤销的记忆。加了守卫之后,不变式在**类型之外**也成立:
+///   **健康行永远有快照可撤销;只有不可快照的行才可能被无撤销地销毁,且必经 guardrail 确认。**
+/// 行不存在 → `deleted = 0`(诚实 no-op,与 `memory_remove` 同);行存在且健康 → `Err`。
+///
+/// 不触碰撤销环:不 stash、不淘汰任何既有条目(环不变式①③ 不受影响)。
+#[tauri::command]
+pub fn memory_remove_corrupt(db: State<'_, Db>, rowid: i64) -> Result<DestroyResult, String> {
+    let conn = db.0.lock().unwrap();
+    memory_remove_corrupt_inner(&conn, rowid)
+}
+
+/// 命令体本身(评审第60轮 [建议]3:命令只取锁转调,测试直调 inner —— **测试要守生产代码,不是重抄它**)。
+fn memory_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyResult, String> {
+    let corrupt: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM memories WHERE rowid = ?1 AND ({MEM_CORRUPT_PRED})"),
+            params![rowid],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if corrupt == 0 {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE rowid = ?1",
+                params![rowid],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if exists > 0 {
+            return Err("该记录未损坏:请走常规删除(可撤销),不得绕过快照。".into());
+        }
+        return Ok(DestroyResult {
+            deleted: 0,
+            undo_token: None,
+        }); // 行已不在 ⇒ 诚实 no-op
+    }
+    let n = conn
+        .execute("DELETE FROM memories WHERE rowid = ?1", params![rowid])
+        .map_err(|e| e.to_string())?;
+    Ok(DestroyResult {
+        deleted: n,
+        undo_token: None, // 不可完整快照 ⇒ 没有可还原之物 ⇒ 绝不发 token
+    })
+}
+
 /// 「该撤销已失效」并 `return false`,`toast.js` 遂不报「已撤销」。
 #[tauri::command]
 pub fn memory_undo(
@@ -989,17 +1174,32 @@ pub fn doc_chunks_all(conn: &Connection) -> Result<Vec<(String, String, Vec<f32>
 #[tauri::command]
 pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
     let conn = db.0.lock().unwrap();
-    let mut stmt = conn
-        .prepare("SELECT doc_id, doc_name, COUNT(*) AS chunks, MAX(created_at) AS ts FROM doc_chunks GROUP BY doc_id ORDER BY ts DESC")
-        .map_err(|e| e.to_string())?;
+    doc_list_inner(&conn)
+}
+
+/// 命令体(供单测直调;命令只取锁转调)。
+fn doc_list_inner(conn: &Connection) -> Result<Vec<Value>, String> {
+    // ★逃生口(③):**列表永不因一个坏片段而整体失败**。实测 `MAX(created_at)` 为 TEXT 时原实现整表列不出,
+    //   而 `doc_chunks_all`(RAG 召回那条路)照常返回 —— 用户看到「知识库为空」,AI 却仍在检索它。
+    //   `ts` 只取 Integer 型的最大值;`corrupt` = 本篇是否含不可映射片段(该篇的删除将不可撤销)。
+    let sql = format!(
+        "SELECT doc_id, doc_name, COUNT(*) AS chunks, \
+         MAX(CASE WHEN typeof(created_at)='integer' THEN created_at ELSE 0 END) AS ts, \
+         MAX(CASE WHEN ({DOC_CORRUPT_PRED}) THEN 1 ELSE 0 END) AS corrupt \
+         FROM doc_chunks GROUP BY doc_id ORDER BY ts DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| {
-            let id: String = r.get(0)?;
-            let name: String = r.get(1)?;
             let chunks: i64 = r.get(2)?;
-            // MAX(created_at) 在整组皆 NULL 时返回 NULL;doc_chunks 的 schema 亦 DEFAULT 0 → 归一化
-            let ts: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0);
-            Ok(serde_json::json!({ "docId": id, "name": name, "chunks": chunks, "ts": ts }))
+            let corrupt: i64 = r.get(4)?;
+            Ok(serde_json::json!({
+                "docId": text_lossy(r, 0)?,
+                "name": text_lossy(r, 1)?,
+                "chunks": chunks,
+                "ts": int_lossy(r, 3)?,
+                "corrupt": corrupt != 0,
+            }))
         })
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -1121,11 +1321,12 @@ fn doc_remove_inner(
     //   且与 `doc_remove_undoable` 用**同一个上限** ⇒「预检说可撤销 ⇒ stash 必接受」。
     //   销毁照常发生:红线只要求**永不谎报撤销**,并未要求拒绝销毁。
     let cap = ring.lock().unwrap().max_bytes();
-    let undoable = doc_undo_bytes(conn, Some(doc_id))? <= cap;
+    // 预检与本函数共用同一判据(超上限 / 有不可映射行 ⇒ 不物化、不发 token,但**照常销毁** = 逃生口)。
+    let undoable = doc_precheck(conn, cap, Some(doc_id))?.undoable;
     let snap = if undoable {
-        doc_snapshot(conn, Some(doc_id))? // doc_snapshot 本就传播错误(fail-closed)
+        doc_snapshot(conn, Some(doc_id))? // 承诺可撤销 ⇒ 快照仍严格 fail-closed
     } else {
-        Vec::new() // 超上限:不物化、不发 token、不淘汰既有条目(环不变式①③)
+        Vec::new() // 超上限 / 有损坏片段:不物化、不发 token、不淘汰既有条目(环不变式①③)
     };
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
@@ -1150,11 +1351,11 @@ fn doc_clear_inner(
     ring: &Mutex<UndoRing<DocRow>>,
 ) -> Result<DestroyResult, String> {
     let cap = ring.lock().unwrap().max_bytes();
-    let undoable = doc_undo_bytes(conn, None)? <= cap;
+    let undoable = doc_precheck(conn, cap, None)?.undoable;
     let snap = if undoable {
         doc_snapshot(conn, None)?
     } else {
-        Vec::new() // 超上限:不物化(2 GiB 知识库不得先分配 2 GiB 再被环拒绝)
+        Vec::new() // 超上限:不物化(2 GiB 知识库不得先分配 2 GiB 再被环拒绝);有损坏片段:同样不物化
     };
     let n = conn
         .execute("DELETE FROM doc_chunks", [])
@@ -1168,10 +1369,13 @@ fn doc_clear_inner(
 
 /// 预检:这次「清空知识库」是否可撤销?供确认弹窗说真话(评审第62轮 [应改])。
 #[tauri::command]
-pub fn doc_clear_undoable(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<bool, String> {
+pub fn doc_clear_undoable(
+    db: State<'_, Db>,
+    trash: State<'_, DocTrash>,
+) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    Ok(doc_undo_bytes(&conn, None)? <= cap)
+    doc_precheck(&conn, cap, None)
 }
 
 /// 预检:这次「删除单篇文档」是否可撤销?(评审第64轮 [应改] · 队首)
@@ -1184,10 +1388,10 @@ pub fn doc_remove_undoable(
     db: State<'_, Db>,
     trash: State<'_, DocTrash>,
     doc_id: String,
-) -> Result<bool, String> {
+) -> Result<UndoPrecheck, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    Ok(doc_undo_bytes(&conn, Some(&doc_id))? <= cap)
+    doc_precheck(&conn, cap, Some(&doc_id))
 }
 
 /// 撤销**指定 token 的那一次**文档销毁(删一篇 / 清空):从 DocTrash 的环里按 token 取出并还原
@@ -1682,6 +1886,301 @@ mod tests {
             bound_factor1 < actual,
             "阳性对照失效:系数 1 的上界 {bound_factor1} 未低于实际 {actual} —— 断言红不起来"
         );
+    }
+
+    // ═══ 逃生口(评审第64轮次序 ③)· 不可映射行 ═══════════════════════════
+
+    /// ★★这条测试是整个逃生口的**地基**:SQL 的 `typeof()` 谓词必须与 rusqlite `FromSql` 的接受集
+    /// **逐形态等价**。若谓词比 rusqlite 宽松,预检会说「可撤销」而 stash 时快照失败 ⇒ 决策点谎报;
+    /// 若比它严格,健康行会被误判为损坏 ⇒ 被推去走「不可撤销」的逃生口(白白丢掉撤销)。
+    ///
+    /// **阳性对照**:`WEAK_PRED` 少判 `created_at` 一列 —— 对 `created_at='abc'` 它说「没坏」,
+    /// 而 rusqlite 映射失败 ⇒ 二者分歧。断言这个分歧**确实存在**,证明本测试能分辨谓词的对错。
+    #[test]
+    fn typeof_predicate_matches_rusqlite_acceptance() {
+        const WEAK_PRED: &str = "typeof(id)<>'text' OR typeof(fact)<>'text' OR typeof(embedding) NOT IN ('blob','null')";
+        let cases: [(&str, &str, bool); 6] = [
+            (
+                "healthy",
+                "INSERT INTO memories VALUES ('m','f',NULL,1)",
+                false,
+            ),
+            (
+                "created_at=TEXT",
+                "INSERT INTO memories VALUES ('m','f',NULL,'abc')",
+                true,
+            ),
+            (
+                "created_at=REAL",
+                "INSERT INTO memories VALUES ('m','f',NULL,1.5)",
+                true,
+            ),
+            (
+                "fact=BLOB",
+                "INSERT INTO memories VALUES ('m',X'00FF',NULL,1)",
+                true,
+            ),
+            (
+                "id=BLOB",
+                "INSERT INTO memories VALUES (X'00FF','f',NULL,1)",
+                true,
+            ),
+            (
+                "embedding=TEXT",
+                "INSERT INTO memories VALUES ('m','f','notablob',1)",
+                true,
+            ),
+        ];
+        let mut weak_disagreed = false;
+        for (label, insert, expect_corrupt) in cases {
+            let mut conn = Connection::open_in_memory().unwrap();
+            let tmp = std::env::temp_dir().join("seeker-test-typeof");
+            migrate(&mut conn, &tmp).unwrap();
+            conn.execute(insert, []).unwrap();
+
+            let pred_says_bad = super::mem_corrupt_count(&conn).unwrap() > 0;
+            let rusqlite_fails = super::memory_rows_full(&conn).is_err();
+            assert_eq!(
+                pred_says_bad, rusqlite_fails,
+                "[{label}] typeof 谓词判「损坏」={pred_says_bad},而 rusqlite 映射失败={rusqlite_fails} —— 两者必须一致"
+            );
+            assert_eq!(
+                pred_says_bad, expect_corrupt,
+                "[{label}] 期望 corrupt={expect_corrupt}"
+            );
+
+            // 阳性对照:弱化谓词(漏判 created_at)在 created_at 两例上与 rusqlite 分歧
+            let weak_bad: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM memories WHERE ({WEAK_PRED})"),
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            if (weak_bad > 0) != rusqlite_fails {
+                weak_disagreed = true;
+            }
+        }
+        assert!(
+            weak_disagreed,
+            "阳性对照失效:弱化谓词竟与 rusqlite 处处一致 —— 本测试分辨不出谓词的对错,是死靶"
+        );
+    }
+
+    /// ★逃生口的第一步不是「能删」,而是「**能看见**」—— 看不见的行没法点删除。
+    /// 并钉死那条**用户掌控的谎言**:修前 `memory_entries` 报错(前端 catch 成空列表 ⇒ 用户被告知
+    /// 「AI 还没有记住任何内容」),而 `memory_all`(recall)照常返回全部记忆。
+    #[test]
+    fn corrupt_row_stays_visible_while_recall_still_reads_the_table() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-visible");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "good", "用户偏好远程岗位", &[0.1]).unwrap();
+        conn.execute("INSERT INTO memories VALUES ('bad','坏行',NULL,'abc')", [])
+            .unwrap();
+
+        // 列表:两条都在,坏的那条被标出来
+        let entries = super::memory_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 2, "一行坏数据不得让整张列表消失");
+        let bad = entries.iter().find(|e| e["fact"] == "坏行").unwrap();
+        let good = entries
+            .iter()
+            .find(|e| e["fact"] == "用户偏好远程岗位")
+            .unwrap();
+        assert_eq!(bad["corrupt"], serde_json::json!(true));
+        assert_eq!(good["corrupt"], serde_json::json!(false));
+        assert_eq!(
+            bad["ts"],
+            serde_json::json!(0),
+            "非 Integer 的 created_at 归一化为 0"
+        );
+        assert!(
+            bad["rowid"].as_i64().unwrap() > 0,
+            "损坏行须给出 rowid 作删除键(其 id 未必可映射)"
+        );
+
+        // 这就是修前的谎言:recall 那条路一直读得到整张表
+        assert_eq!(
+            super::memory_all(&conn).unwrap().len(),
+            1,
+            "recall 仍读得到健康行"
+        );
+        // 且 embedding 绝不出现在给人看的条目里(隐私红线,顺带守住)
+        assert!(entries.iter().all(|e| e.get("embedding").is_none()));
+    }
+
+    /// ★★逃生口的**结构性守卫**:`memory_remove_corrupt` 拒绝销毁健康行。
+    /// 否则它就是一个「绕过快照直接删」的后门 —— 不变式「健康行永远可撤销」会被它无声掏空。
+    #[test]
+    fn remove_corrupt_refuses_healthy_rows_and_never_touches_the_ring() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-forced");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "good", "健康行", &[0.1]).unwrap();
+        conn.execute("INSERT INTO memories VALUES ('bad','坏行',NULL,'abc')", [])
+            .unwrap();
+
+        let ring: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
+        let prev = ring.lock().unwrap().stash(vec![mrow("PREV", 0)]).unwrap();
+
+        let rowid = |id: &str| -> i64 {
+            conn.query_row(
+                "SELECT rowid FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        let good_rowid = rowid("good");
+        let bad_rowid = rowid("bad");
+
+        // ① 健康行 → 拒绝(**且行还在**)
+        let err = super::memory_remove_corrupt_inner(&conn, good_rowid).unwrap_err();
+        assert!(err.contains("未损坏"), "健康行必须被拒:{err}");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM memories WHERE id='good'", [], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            1,
+            "被拒之后健康行必须原封不动"
+        );
+
+        // ② 不存在的 rowid → 诚实 no-op(0 条),不报错
+        let r0 = super::memory_remove_corrupt_inner(&conn, 999_999).unwrap();
+        assert_eq!(r0.deleted, 0);
+        assert!(r0.undo_token.is_none());
+
+        // ③ 损坏行 → 销毁发生、**不发 token**
+        let r = super::memory_remove_corrupt_inner(&conn, bad_rowid).unwrap();
+        assert_eq!(
+            r.deleted, 1,
+            "逃生口必须真的能删(红线只禁谎报撤销,不禁销毁)"
+        );
+        assert!(r.undo_token.is_none(), "不可完整快照 ⇒ 绝不发 token");
+        assert_eq!(
+            super::memory_entries(&conn).unwrap().len(),
+            1,
+            "只删掉了那一条"
+        );
+
+        // ④ 全程不碰撤销环
+        let g = ring.lock().unwrap();
+        assert_eq!(g.len(), 1);
+        assert!(g.has(&prev), "逃生口不得淘汰既有撤销条目");
+
+        // ⑤ 坏行删掉之后,健康行的常规删除**恢复可撤销**(整库解锁)
+        drop(g);
+        let r2 = super::memory_remove_inner(&conn, &ring, "good").unwrap();
+        assert_eq!(r2.deleted, 1);
+        assert!(r2.undo_token.is_some(), "坏行清掉后,健康行必须重新可撤销");
+    }
+
+    /// 整表逃生口:有损坏行时 `clear` **照常销毁**、不物化、不发 token,且预检的**理由**是 `corrupt`
+    /// (不是 `too_large` —— 决策点不仅要说真话,还要说对理由)。
+    #[test]
+    fn clear_with_corrupt_row_destroys_without_snapshot_and_precheck_says_corrupt() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-clearcorrupt");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "good", "健康行", &[0.1]).unwrap();
+        conn.execute("INSERT INTO memories VALUES ('bad','坏行',NULL,'abc')", [])
+            .unwrap();
+
+        let ring: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
+        let prev = ring.lock().unwrap().stash(vec![mrow("PREV", 0)]).unwrap();
+        let cap = ring.lock().unwrap().max_bytes();
+
+        let pc = super::memory_clear_precheck(&conn, cap).unwrap();
+        assert_eq!(
+            pc,
+            super::UndoPrecheck {
+                undoable: false,
+                reason: "corrupt"
+            }
+        );
+
+        let r = super::memory_clear_inner(&conn, &ring).unwrap();
+        assert_eq!(r.deleted, 2, "一行坏数据不得把整库锁死(修前这里是 Err)");
+        assert!(r.undo_token.is_none(), "没有完整快照 ⇒ 绝不发 token");
+        let g = ring.lock().unwrap();
+        assert!(g.has(&prev), "不得淘汰既有撤销条目");
+
+        // 反面(阳性对照):库里没有坏行时,预检说 ok、clear 确实发 token
+        drop(g);
+        super::memory_add(&conn, "x", "健康", &[0.1]).unwrap();
+        assert_eq!(
+            super::memory_clear_precheck(&conn, cap).unwrap(),
+            super::UndoPrecheck {
+                undoable: true,
+                reason: "ok"
+            }
+        );
+        assert!(super::memory_clear_inner(&conn, &ring)
+            .unwrap()
+            .undo_token
+            .is_some());
+    }
+
+    /// docs 侧同款(**同一缺陷不得因所在支路不同而两种待遇** —— 第64轮裁词)。
+    /// 列表宽容、单篇/整库预检说 `corrupt`、销毁照常发生且不发 token。
+    #[test]
+    fn docs_escape_hatch_mirrors_memory_for_corrupt_chunks() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-doccorrupt");
+        migrate(&mut conn, &tmp).unwrap();
+        super::doc_chunks_insert(&conn, "ok", "健康文档", &[("片段".into(), vec![0.1])]).unwrap();
+        super::doc_chunks_insert(&conn, "bad", "坏文档", &[("片段".into(), vec![0.1])]).unwrap();
+        conn.execute(
+            "UPDATE doc_chunks SET created_at='abc' WHERE doc_id='bad'",
+            [],
+        )
+        .unwrap();
+
+        // 列表:两篇都在(修前整表列不出,而 doc_chunks_all 照常召回 = 同一个谎言)
+        let docs = super::doc_list_inner(&conn).unwrap();
+        assert_eq!(docs.len(), 2, "一个坏片段不得让整个知识库消失");
+        assert_eq!(
+            super::doc_chunks_all(&conn).unwrap().len(),
+            2,
+            "召回那条路一直读得到"
+        );
+        let bad = docs.iter().find(|d| d["docId"] == "bad").unwrap();
+        let ok = docs.iter().find(|d| d["docId"] == "ok").unwrap();
+        assert_eq!(bad["corrupt"], serde_json::json!(true));
+        assert_eq!(ok["corrupt"], serde_json::json!(false));
+
+        let ring: Mutex<super::UndoRing<super::DocRow>> = Mutex::new(Default::default());
+        let cap = ring.lock().unwrap().max_bytes();
+        // 单篇预检:坏的说 corrupt、好的说 ok(**逐篇**,不被别人的坏数据牵连)
+        assert_eq!(
+            super::doc_precheck(&conn, cap, Some("bad")).unwrap().reason,
+            "corrupt"
+        );
+        assert_eq!(
+            super::doc_precheck(&conn, cap, Some("ok")).unwrap(),
+            super::UndoPrecheck {
+                undoable: true,
+                reason: "ok"
+            }
+        );
+        // 整库预检:被坏片段拉成 corrupt
+        assert_eq!(
+            super::doc_precheck(&conn, cap, None).unwrap().reason,
+            "corrupt"
+        );
+
+        // 删坏的那篇:销毁发生、不发 token
+        let r = super::doc_remove_inner(&conn, &ring, "bad").unwrap();
+        assert_eq!(r.deleted, 1);
+        assert!(r.undo_token.is_none());
+        // 删健康那篇:仍可撤销(阳性对照)
+        let r2 = super::doc_remove_inner(&conn, &ring, "ok").unwrap();
+        assert!(r2.undo_token.is_some(), "健康文档必须仍然可撤销");
     }
 
     /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
