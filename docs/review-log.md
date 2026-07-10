@@ -1924,3 +1924,22 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:空态无按钮 · 待迁入计数 · 同意弹窗四句话逐条断言 · 首行作文档名 · **自愈**(删一篇 ⇒ 那条重新待迁入,另一条仍标已在)· **幂等**(add 调用数不增)· **失败路径**(带出真实原因、无假成功)· **§4-4**(`<img onerror>` 开头的笔记:笔记页惰性、弹窗只渲染条数、**存储层收原文**、**该名进能力中心知识库列表时被 `cEsc` 挡住**)。tsc 51→51 且 **notes.js 零 error**;真机 1.86s boot 零 panic。
 - **harness 自查(第四次同族)**:`added[0] === PAYLOAD` 首版失败 —— 不是代码问题,是 `ASSETS_NOTES` 是**模块状态、跨 eval 存活**。reload 后重跑。
 - **诚实边界**:迁移是**复制**,两份内容此后各自独立(改笔记不同步文档)。assets 退役时再决定是否收敛为单一来源。
+
+### ★ 第67轮独立复核 = notes 迁移 🏁 通过 + 契约方案 §(i) 有事实错误(已修)+ 两处落地
+**评审这轮订正的是我 §(i) 的地基,而且它去读 `desktop.js:140` 才发现——「先量再改」这条,对方案、对代码、对评审的裁决,一样。**
+
+#### 安全 · query_data / memory recall 进模型必框定 · commit `ef3e900` · ⏳ 待审
+- **评审请我核的既存不对称,我核实为活缺口**:`complete` = `ai_chat` 完整工具循环(含 `memory(remember)` 写)· `invoke_raw` 结果一律 `(to_model_text, true)` 回灌、**唯独 MCP 带框定** · `jobs.jd` 是 JD 全文 ⇒ `query_data(jobs)` **今天就把外部文本无框定送进模型**。一份注入 JD → 模型调 `memory(remember)` → `LongTermMemory.contribute` 每轮自动注入 = **持久化上下文投毒**。
+- **修**:`Output::Untrusted(Value)` 变体(可信度是**每次输出**属性、非能力静态属性 —— memory 的 remember 可信 / recall 不可信),`to_model_text` 对它**自带框定**(抽 `frame_untrusted` 与 MCP 共用)。**★回灌处零改动**(`Ok(out) => to_model_text()` 兜底自动框定 ⇒ 未来消费者默认安全);`cap_invoke`(前端直调、不进模型)返裸数据。
+- **★★同刀自查抓出我自己写的死靶**(「断言必须能红」的反面,又犯):源码守卫用 `include_str!` 扫「query_data 走 Untrusted」,但断言的 needle 就写在测试自己里 ⇒ `contains` 永真、守卫永不红。修:`prod()` 只扫生产代码(截到 `#[cfg(test)]` 之前)。**并证明修后能红**:query_data 改回 Json → 守卫 FAILED。
+- **验**:三新测试点名跑过,**两条最承重的各经变异证伪**(去框定 → 框定测试红;query_data 改回 Json → 源码守卫红);122/0(119→122);clippy/fmt 净;真机 boot 零 panic。**诚实边界**:invoke 需 AppHandle 不可纯单测(同 show_widget 边界)⇒ 源码守卫 + `to_model_text` 纯函数测两面夹 + e2e 真机。
+
+#### notes→知识库 [建议] · commit `c31c62c` · ⏳ 待审
+- 评审订正我「保守 = 假设一篇都不在」:**那是假设最宽松,会诱导用户造重复副本**(`docs.add` 不拒绝)。**真保守是拒绝行动**:`docs.list()` 抛错 ⇒ `docsStatusKnown=false` ⇒ 迁入按钮 `disabled` + 提示重试;既不谎称「已在知识库」也不制造重复。验:已知态按钮可点(阳性对照)→ 抛错后禁用 + 提示 + 不误标 → 盲态 add=0 → 恢复后重新可点。
+
+#### 契约方案 §(i) 改写 + 五裁决记录 · commit(本条 docs)
+- **§(i) 事实错误已修**:`rt.ai.complete` 不是补全,是完整工具循环 ⇒ (i) **不是零改动**,需「`ai_chat` 加 `tools:false` 档 + JD 的 Untrusted 框定」(后者已由 `ef3e900` 为 query_data/recall 落地,同一红线)。
+- **五个未决问题评审全裁,已记入方案 §8**:①隔离用 **iframe**(但**不可复用 `buildSrcDoc`** —— 它的 `BRIDGE` 有 `window.seeker.action` 回父通道;计算沙箱要独立最小 srcDoc、无 action 通道)②`compute` = 沙箱 JS 模块 ③超时 = 标准工具错误 + `ok:false`,绝不返空/静默重试 ④`reads` **必填**(省略=注册被拒,绝不给默认语义)、`实际可读 = 静态 QUERYABLE ∩ D3 ∩ tool.reads` ⑤破坏性 app-tool **结构上不可能**(隔离上下文无 `rt`),破坏性走既有 `confirmDestructive` 规格通道。
+- **★方法论(评审归纳,已在 §4-⑧)**:**先量,再改 —— 对方案、对代码、对评审的裁决,都一样。** 我两次量对(aiRun 零调用 / notes 隐私域),评审这轮读 `desktop.js:140` 推翻了我的 §(i);而 `ef3e900` 我又在自己的守卫测试里写出死靶、自查修红。**没有谁的判断免于「先量」。**
+
+**下一刀(评审建议)**:(i) + `ai_chat` 的 `tools:false` 无工具档 + JD Untrusted 框定(一刀,小;JD 框定部分已落)→ 然后 T0 协议骨架。
