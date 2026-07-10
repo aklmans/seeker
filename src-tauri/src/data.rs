@@ -535,6 +535,21 @@ type MemRow = (String, String, Vec<f32>, i64); // (id, fact, embedding, created_
 #[derive(Default)]
 pub struct MemTrash(pub Mutex<Vec<MemRow>>);
 
+/// **只有「确有行被销毁」时才覆盖撤销槽** —— no-op 销毁(行已不存在 / 库本就空)**绝不清空** trash。
+///
+/// ★评审第57/58轮 [应改] 的后端根因:原先四处销毁命令都无条件 `*trash = snap`。当 `snap` 为空
+/// (重复删同一 id、或清空一个已空的库)时,**上一次销毁的快照被清成 `[]`** ⇒ `undo` 用
+/// `mem::take` 取到空集、还原 0 条,而前端旧 `doUndo` 还报「已撤销」= **静默永久丢数据 + 假成功提示**。
+/// 与前端不变式「**提供撤销 ⇔ 销毁确已发生**」严格对称(见 web/platform/shell/memory-docs.js 模块头)。
+///
+/// 判据用 `snap.is_empty()` 而非「DELETE 影响行数」:trash 的语义是**可供还原的行**,
+/// 存一个空快照既无意义、又摧毁前一次的可还原状态。
+fn stash_if_destroyed<T>(slot: &Mutex<Vec<T>>, snap: Vec<T>) {
+    if !snap.is_empty() {
+        *slot.lock().unwrap() = snap;
+    }
+}
+
 /// 读全量记忆行(含 embedding + 时间)——内部用(快照),绝不经命令外泄向量。
 fn memory_rows_full(conn: &Connection) -> Result<Vec<MemRow>, String> {
     let mut stmt = conn
@@ -590,18 +605,12 @@ pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usi
     let n = conn
         .execute("DELETE FROM memories", [])
         .map_err(|e| e.to_string())?;
-    *trash.0.lock().unwrap() = snap;
+    stash_if_destroyed(&trash.0, snap); // 清空一个已空的库 = no-op,不得摧毁上一次的撤销槽
     Ok(n)
 }
 
-/// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。
-#[tauri::command]
-pub fn memory_remove(
-    db: State<'_, Db>,
-    trash: State<'_, MemTrash>,
-    id: String,
-) -> Result<(), String> {
-    let conn = db.0.lock().unwrap();
+/// 快照一条记忆行(含 embedding)。行不存在 → 空 Vec(= no-op 删除的信号)。抽出以便单测走**真查询**。
+fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, String> {
     let mut stmt = conn
         .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
         .map_err(|e| e.to_string())?;
@@ -616,10 +625,21 @@ pub fn memory_remove(
         .map_err(|e| e.to_string())?
         .filter_map(|x| x.ok())
         .collect();
-    drop(stmt);
+    Ok(snap)
+}
+
+/// 删除一条长期记忆。**删前把该行(含 embedding)快照进后端 trash**,供撤销。
+#[tauri::command]
+pub fn memory_remove(
+    db: State<'_, Db>,
+    trash: State<'_, MemTrash>,
+    id: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().unwrap();
+    let snap = memory_snapshot_one(&conn, &id)?;
     conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    *trash.0.lock().unwrap() = snap;
+    stash_if_destroyed(&trash.0, snap); // ★重复删同一 id ⇒ snap 空 ⇒ 不得把上一次的快照清成 []
     Ok(())
 }
 
@@ -768,7 +788,7 @@ pub fn doc_remove(
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
         .map_err(|e| e.to_string())?;
-    *trash.0.lock().unwrap() = snap;
+    stash_if_destroyed(&trash.0, snap); // ★与 memory_remove 同构(评审 [建议]C:doc_remove 一并覆盖)
     Ok(n)
 }
 
@@ -780,7 +800,7 @@ pub fn doc_clear(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<usize,
     let n = conn
         .execute("DELETE FROM doc_chunks", [])
         .map_err(|e| e.to_string())?;
-    *trash.0.lock().unwrap() = snap;
+    stash_if_destroyed(&trash.0, snap); // 清空一个已空的知识库 = no-op,不得摧毁上一次的撤销槽
     Ok(n)
 }
 
@@ -867,6 +887,78 @@ fn prune_auto_backups(backups_dir: &Path, keep: usize) {
 mod tests {
     use super::{migrate, now_ms, schema_version, table_for, MIGRATIONS};
     use rusqlite::Connection;
+
+    /// ★评审第57/58轮 [应改] 的后端根因单测:**no-op 销毁不得清空撤销槽**。
+    /// 含**阳性对照**——先证旧的「无条件覆盖」确会把上一次的快照清成空(缺陷真实、测试能捕获),
+    /// 再证 `stash_if_destroyed` 挡住它。
+    #[test]
+    fn noop_destroy_must_not_clobber_undo_slot() {
+        use std::sync::Mutex;
+        type Row = (String, i64);
+
+        // ── 阳性对照:旧行为 `*slot = snap` 无条件覆盖 ⇒ 空快照把 A 清掉
+        let old: Mutex<Vec<Row>> = Mutex::new(Vec::new());
+        *old.lock().unwrap() = vec![("A".into(), 1)]; // 第一次真销毁
+        *old.lock().unwrap() = Vec::new(); // 第二次 no-op 删除(空快照)
+        assert!(
+            old.lock().unwrap().is_empty(),
+            "阳性对照:旧的无条件覆盖确会清空撤销槽(A 的快照永久丢失)"
+        );
+
+        // ── 阴性:新守卫下,空快照不得覆盖
+        let slot: Mutex<Vec<Row>> = Mutex::new(Vec::new());
+        super::stash_if_destroyed(&slot, vec![("A".into(), 1)]);
+        super::stash_if_destroyed(&slot, Vec::new()); // no-op 删除
+        assert_eq!(
+            slot.lock().unwrap().as_slice(),
+            &[("A".to_string(), 1)],
+            "no-op 销毁不得清空撤销槽"
+        );
+
+        // 真销毁仍正常覆盖(撤销语义 = 撤销最近一次销毁)
+        super::stash_if_destroyed(&slot, vec![("B".into(), 2)]);
+        assert_eq!(slot.lock().unwrap()[0].0, "B", "真销毁应覆盖为最近一次");
+    }
+
+    /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
+    #[test]
+    fn repeated_memory_delete_keeps_first_snapshot_and_undo_restores_it() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups");
+        migrate(&mut conn, &tmp).unwrap();
+        conn.execute(
+            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('A','fact A',NULL,1)",
+            [],
+        )
+        .unwrap();
+
+        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
+
+        // 第一次删 A(真销毁)→ 快照进槽
+        let snap1 = super::memory_snapshot_one(&conn, "A").unwrap();
+        assert_eq!(snap1.len(), 1, "A 存在,快照应有 1 行");
+        conn.execute("DELETE FROM memories WHERE id = 'A'", [])
+            .unwrap();
+        super::stash_if_destroyed(&slot, snap1);
+
+        // 第二次删 A(行已不存在 = no-op)→ 空快照,**不得清槽**
+        let snap2 = super::memory_snapshot_one(&conn, "A").unwrap();
+        assert!(snap2.is_empty(), "A 已删,第二次快照应为空");
+        conn.execute("DELETE FROM memories WHERE id = 'A'", [])
+            .unwrap();
+        super::stash_if_destroyed(&slot, snap2);
+        assert_eq!(slot.lock().unwrap().len(), 1, "重复删除后撤销槽仍应保有 A");
+
+        // 撤销:取走槽内内容并还原 → A 回来了(还原行数 > 0 ⇒ 前端不会谎报)
+        let rows = std::mem::take(&mut *slot.lock().unwrap());
+        let n = super::memory_restore_rows(&conn, &rows).unwrap();
+        assert_eq!(n, 1, "撤销应真还原 1 行");
+        let back: String = conn
+            .query_row("SELECT fact FROM memories WHERE id = 'A'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(back, "fact A", "A 应按原内容还原");
+    }
 
     #[test]
     fn migrate_upgrades_to_latest_and_promotes_actions_state() {
