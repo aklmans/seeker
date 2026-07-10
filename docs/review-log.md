@@ -1664,3 +1664,11 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★评审对残留风险的判词(记之)**:本契约的**默认值是「成功」** ⇒ 任何消费者在失败路径上**忘记 `return false` 就会静默说谎**。这是「零回归 opt-in」的**必然代价**(唯一不破坏现存消费者的设计),故接受;但它把重量压在 **JSDoc 义务 + 评审纪律**上。已写进 JSDoc 并在调用点加 ⚠。
 
 **★刀1/2 收官(第59轮通过 + 2 必落已落 + 2 记债)。契约形状获准 ⇒ 可起刀2(keyed trash)。** 评审预告刀2 复核重点:① **TTL 与撤销窗口同源常量**(`toast.js:20` 的 `6500` 与 `guardrail:125` 的 `undoMs||6000` **硬编码且互不相同**;后端 TTL 若漂移 = 新 §4-3 ★违例,**且这次 `toast.js` 会静默、用户什么也看不到**);② `if !snap.is_empty()` 覆盖 `memory_remove` **与** `doc_remove`;③ keyed token 下 `memory_undo(token)` 的失败**必须走 `return false` + 自报**,别退回默认「成功」;④ 四个闭包消费者在新后端下**逐字零回归**(真模块导出 + 双向阳性对照)。
+
+### 刀2a/2 · 后端根因之一:no-op 销毁不得清空撤销槽 · commit `b475325` · ⏳ 待审
+评审第57轮定位、第58轮 [建议]C 要求「`memory_remove` **与** `doc_remove` 一并覆盖」,并指明**这是独立的最小修复、应先落并单测**。本刀落之(keyed trash + TTL = 刀2b)。
+- **★根因**:四处销毁命令都**无条件** `*trash.0.lock().unwrap() = snap;`。当 `snap` 为空(重复删同一 id、或清空一个已空的库)时,**上一次销毁的快照被清成 `[]`** ⇒ `memory_undo`/`doc_undo` 用 `mem::take` 取到空集、还原 0 条,而前端旧 `doUndo` 还报「已撤销」= **静默永久丢数据 + 假成功提示**。
+- **★修**:抽 `stash_if_destroyed(slot, snap)` 纯 helper —— **只有 `snap` 非空(确有行被销毁)才覆盖撤销槽**。**四处全覆盖**:评审只点名 `remove` 两处,**exec 判定 `clear` 两处同构**(清空一个已空的库同样是 no-op,照样摧毁上一次逐条删的撤销槽)⇒ 一并加固。判据用 `snap.is_empty()` 而非 DELETE 影响行数:**trash 的语义是「可供还原的行」**,存一个空快照既无意义、又摧毁前一次的可还原状态。**与前端不变式「提供撤销 ⇔ 销毁确已发生」严格对称。**
+- **可测性**:命令取 Tauri `State`、不可直接单测 ⇒ 把**决策抽成纯 helper**;并把 `memory_remove` 内联的单行快照抽为 `memory_snapshot_one(conn, id)`(镜像既有 `doc_snapshot` 的形状),使单测走**真查询**而非重抄一遍 SQL。
+- **验(★含阳性对照)**:`noop_destroy_must_not_clobber_undo_slot` —— **阳性**:复刻旧的无条件 `*slot = snap`,空快照确会把 A 的快照清空(永久丢失);**阴性**:`stash_if_destroyed` 挡住;真销毁仍正常覆盖(撤销语义 = 最近一次)。`repeated_memory_delete_keeps_first_snapshot_and_undo_restores_it`(**评审点名的复现**):建库插 A → 删 A(快照进槽)→ **再删 A(no-op,空快照)** → 槽仍保有 A → `mem::take` + `memory_restore_rows` 还原 1 行、fact 逐字相符。**两测试点名跑过、非从总数推断**;cargo test **86 passed / 0 failed**(84→86);clippy `-D warnings` 净;fmt 净;真机 3.52s boot 零 panic。
+- **★诚实边界**:本刀只消除**根因之一**(no-op 覆盖)。**单槽语义仍在** —— 连删两条**不同**记录时,第一条快照仍被第二条**正当覆盖**(「撤销最近一次」),前端靠世代守卫诚实拒绝。根治 = **刀2b**(keyed trash + token + **TTL 与前端撤销窗口同源常量**)。
