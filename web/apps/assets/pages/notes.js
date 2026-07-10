@@ -3,18 +3,46 @@
  *  数据:ASSETS_NOTES(空启动);持久化走平台通用引擎 persistColl/hydrateColl('assets_notes')+ rt.db.remove;
  *  水合经 seeker-rt-ready(classic 解析期注册,同第5轮时序法)。
  *  红线:用户输入进 DOM 前一律 anEsc 转义;删除走 toastUndo 可撤销(§4-3 反焦虑)。
+ *
+ *  ★★**「迁入知识库」是一次隐私域升级,必须知情同意**(§4-2):
+ *   · `assets` 整应用 `aiReadable: 'default-off'` —— 本文件同目录的 manifest 写明了理由:
+ *     **「笔记是自由文本兜底容器、可能承载敏感个人信息」**,故需用户在应用管理页显式授权才进 AI 可读集。
+ *   · 而**知识库(`doc_chunks`)是 `Kind::Context`** —— 经 `contribute_all` → `build_context_message`
+ *     **自动进模型上下文**(`src-tauri/src/ai.rs:411`),**没有 per-app 闸**。
+ *   ⇒ 把笔记迁进知识库 = 把内容从「默认不可读、需授权」搬到「**无需授权、自动被召回**」。
+ *   ⇒ 因此**绝不能是一个静默按钮**:迁移前必须把这句话原原本本讲给用户,并告诉他怎么撤回
+ *     (能力中心 → 知识库 → 删除,那条路已在撤销债 arc 里彻底加固:可撤销、决策点说真话)。
+ *   ⇒ 迁移本身**非破坏性**:笔记原样留在本地,只是**多了一份**进了知识库。故不走 guardrail
+ *     (guardrail 的判据是「用户有没有可失去之物」—— 这里他不失去,只是**多暴露**;所以要的是
+ *     **知情同意**,不是撤销闸)。**别把两者搞混。**
+ *
  *  ★批7:平台基元改 import;renderNotes 由 assets/manifest.js import 消费(唯一外部消费者)→ 不再上 window 桥。
  *    (内联 onclick "closeModal()" 仍按 window 解析——modal.js 运行时桥仍在。shell-globals.d.ts 仍服务两 manifest 的 tt 等 ambient,留待账本清空批10。) */
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { IC } from '../../../platform/shell/icons.js';
-import { toast, toastUndo } from '../../../platform/shell/toast.js';
+import { errText, toast, toastUndo } from '../../../platform/shell/toast.js';
 import { openModal, closeModal } from '../../../platform/shell/modal.js';
 import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
 
-/** @type {Array<{id:string, text:string, updated:number}>} */
+/** @type {Array<{id:string, text:string, updated:number, docId?:string}>} */
 const ASSETS_NOTES = [];
+
+/** 本次渲染时,知识库里实际存在的 docId 集合 —— 用它判断一条笔记「是否真的还在知识库里」,
+ *  而不是只看本地的 `docId` 字段(用户可能已在能力中心把那篇文档删了)。**自愈,不留悬挂引用。** */
+let LIVE_DOC_IDS = new Set();
+
+/** 笔记 → 知识库文档的标题:取首行(截断),空则退回时间戳。
+ *  @param {{text:string, updated:number}} n */
+function noteDocName(n) {
+  const first = String(n.text || '').split('\n')[0].trim();
+  return first ? first.slice(0, 40) : tt('笔记 · ', 'Note · ') + new Date(n.updated || 0).toLocaleString();
+}
+
+/** 这条笔记是否已在知识库里(本地有 docId **且**该文档确实还在)。
+ *  @param {{docId?:string}} n */
+const inKnowledge = (n) => !!n.docId && LIVE_DOC_IDS.has(n.docId);
 
 /** @param {unknown} s @returns {string} */
 function anEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -29,16 +57,21 @@ export function renderNotes(){
         <div style="display:flex;align-items:baseline;gap:10px;">
           <span class="mono" style="font-size:10.5px;color:var(--ink-3);">${new Date(n.updated||0).toLocaleString()}</span>
           <span style="flex:1;"></span>
+          ${inKnowledge(n)?`<span class="mono" style="font-size:10px;color:var(--accent);">${tt('已在知识库','IN KNOWLEDGE')}</span>`:''}
           <button class="btn" data-anedit="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
           <button class="btn" data-andel="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('删除','Delete')}</button>
         </div>
         <p style="margin:8px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;">${anEsc(n.text)}</p>
       </div>`).join('')
     : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有笔记。随手记下想法、片段与线索 —— 只存本地;授权后 AI 也能检索引用。','No notes yet. Jot down ideas, snippets, leads — local-only; with your grant the AI can reference them.')}</p></div>`;
+  const pending=ASSETS_NOTES.filter(n=>!inKnowledge(n)).length;
   host.innerHTML=frontis('NOTES', tt('笔记','Notes'))
-    +`<div class="sec" style="border-bottom:none;padding-bottom:6px;"><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button></div>`
+    +`<div class="sec" style="border-bottom:none;padding-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button>`
+    +(pending?`<button class="btn" id="anToKb">${tt('迁入知识库','Add to knowledge')} · ${pending}</button>`:'')
+    +`</div>`
     +list+signFoot();
   const add=$('#anAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openNoteModal('');
+  const kb=$('#anToKb'); if(kb) /** @type {HTMLElement} */(kb).onclick=()=>openMigrateModal();
   $$('#page-notes [data-anedit]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>openNoteModal(/** @type {HTMLElement} */(b).dataset.anedit||''); });
   $$('#page-notes [data-andel]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
     const id=/** @type {HTMLElement} */(b).dataset.andel; const i=ASSETS_NOTES.findIndex(x=>x.id===id); if(i<0) return;
@@ -47,6 +80,57 @@ export function renderNotes(){
     renderNotes();
     toastUndo(tt('已删除笔记','Note deleted'), ()=>{ ASSETS_NOTES.splice(i,0,snap); persistNotes(); renderNotes(); });
   };});
+}
+
+/**
+ * 刷新「哪些笔记真的还在知识库里」。**不看本地 docId,看后端实际有哪些文档** ——
+ * 用户可能已在能力中心把某篇删了,那条笔记应当重新变成「可迁入」。**自愈,不留悬挂引用。**
+ * 拿不到列表(web 端降级 / 后端出错)⇒ **保守当作「一篇都不在」**:宁可让用户看到「可迁入」
+ * 再被后端如实拒绝,也不要谎称「已在知识库」。
+ */
+async function refreshLiveDocIds(){
+  try{
+    const rt=/** @type {any} */(window).SeekerRT;
+    const rows=await rt.docs.list();
+    LIVE_DOC_IDS=new Set((rows||[]).map((/** @type {any} */d)=>String(d.docId)));
+  }catch(_e){ LIVE_DOC_IDS=new Set(); }
+}
+
+/**
+ * ★★知情同意闸(§4-2)—— 见文件头。**迁移非破坏性,故不走 guardrail;但它扩大 AI 可读面,
+ * 故必须在用户点下去之前把后果讲清,并告诉他怎么撤回。**
+ */
+function openMigrateModal(){
+  const pending=ASSETS_NOTES.filter(n=>!inKnowledge(n));
+  if(!pending.length){ toast(tt('没有待迁入的笔记','Nothing to add')); return; }
+  openModal(`<div class="modal-head"><div><p class="eyebrow">— KNOWLEDGE</p><h2 style="margin-top:5px;">${tt('把笔记迁入知识库?','Add notes to knowledge?')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body" style="font-size:13.5px;line-height:1.85;color:var(--ink-2);">
+      <p style="margin:0 0 10px;">${tt(`将把 ${pending.length} 条笔记加入知识库(原笔记保留,不会被删除)。`,`Adds ${pending.length} note(s) to the knowledge base. Your notes are kept, not deleted.`)}</p>
+      <p style="margin:0 0 10px;"><strong>${tt('这会扩大 AI 能读到的范围。','This widens what the AI can read.')}</strong>${tt('笔记本身默认不进 AI 可读集(需要你在应用管理页授权);而知识库是 AI 的自动召回上下文 —— 迁入后,AI 无需任何授权即可检索到这些内容。','Notes are AI-unreadable by default (you grant access in the app manager). The knowledge base, however, is auto-recalled context — once added, the AI can retrieve this content without any further grant.')}</p>
+      <p style="margin:0;color:var(--ink-3);font-size:12.5px;">${tt('随时可在「能力中心 → 知识库」删除它们(可撤销)。','You can remove them anytime in Capabilities → Knowledge (undoable).')}</p>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="anKbGo">${tt('迁入','Add')}</button></div>`);
+  const go=$('#anKbGo'); if(go) /** @type {HTMLElement} */(go).onclick=async ()=>{
+    /** @type {HTMLButtonElement} */(go).disabled=true;                    // 物理闸:await 窗口内不可重入
+    go.textContent=tt('迁入中…','Adding…');
+    const rt=/** @type {any} */(window).SeekerRT;
+    let done=0, failed=0; let firstErr='';
+    for(const n of pending){
+      try{
+        const r=await rt.docs.add(noteDocName(n), n.text);
+        if(r&&r.docId){ n.docId=String(r.docId); done++; }               // 幂等键:下次跳过
+        else failed++;
+      }catch(e){ failed++; if(!firstErr) firstErr=errText(e); }
+    }
+    if(done) persistNotes();
+    closeModal();
+    await refreshLiveDocIds();
+    renderNotes();
+    // 如实上报:成功几条、失败几条、第一条失败的**真实原因**(如未配置嵌入模型 / 网页端不支持)
+    if(done) toast(tt('已迁入 ','Added ')+done+tt(' 条笔记到知识库','note(s) to knowledge'));
+    if(failed) toast(tt('有 ','')+failed+tt(' 条未能迁入','  note(s) could not be added')+(firstErr?' · '+firstErr:''));
+    if(!done&&!failed) toast(tt('没有待迁入的笔记','Nothing to add'));
+  };
 }
 
 /** @param {string} id 空串 = 新建 */
@@ -65,6 +149,10 @@ function openNoteModal(id){
 }
 
 window.addEventListener('seeker-rt-ready', async ()=>{
-  try{ await hydrateColl('assets_notes', ASSETS_NOTES); if(currentPage()==='notes') renderNotes(); }
+  try{
+    await hydrateColl('assets_notes', ASSETS_NOTES);
+    await refreshLiveDocIds();               // 「已在知识库」以后端实况为准,不认本地 docId 的一面之词
+    if(currentPage()==='notes') renderNotes();
+  }
   catch(e){ console.error('[assets] hydrate notes', e); }
 });
