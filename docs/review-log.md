@@ -1784,3 +1784,27 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
   - tsc 无新增(61→61;guardrail 与 types.d.ts 零 error)· `node --check` 净 · Rust 未动 94/0 · 真机 WKWebView **2.14s boot 零 panic、进程存活**。
 - **记债(不扩范围)**:`doc_remove` **无单篇预检**(后端只有 `doc_clear_undoable`)⇒ 事前的「执行后可撤销。」在「执行时才发现整篇超上限」的罕见情形下仍是一句事前承诺(按钮不会出现、toast 如实,但话已出口)。正解:补 `doc_remove_undoable`,与两条 clear 路径同款。代码处已标注。
 - **剩余后续刀**(第63轮次序):③ 不可映射行的**逃生口** → ① 大快照 **spill 到磁盘**。
+
+### ★★ 第64轮独立复核 = 🏁 **撤销债 arc 签字收口**(第56–64 轮)+ 1 [应改] + 3 [建议]
+评审裁定核心不变式「还原错记录结构上不可能」**现在是真话**:token 取自进程级 `UNDO_TOKEN_SEQ` · `take(&str)` 只按 token 定位 · `token: String` 必填 · 前端 `offerUndo` 返回 token 本身 ⇒ **没有 token 就在类型上无法提供撤销**。
+- **验收清单三条全过**;评审特别记下:①我先独立复核它的两句判断才动手(代码上确实撞号;preview 里故意发同号验证「今天不可达、挡住它的是约定」);②我顺手清掉四处它没点名、但已变假的陈述;③**我没有假设它给的阳性对照(系数 2→1)会成立,而是做了变异测试** —— 结果发现 fixture 必须是「多条小行」,否则载荷主导时系数 1 也能过、测试成死靶。评审:「**这正是外审存在的意义反向生效**,而且我错了一半。」
+- **★评审的收口定义**:「那五道闸还在,但现在**删掉任何一道都不会产生错还原** —— 这就是收口的定义。」
+- **★方法论遗产(评审点名收进 `reviewer-onboarding.md` §4)**:**控制组必须能亮,断言必须能红。** 不触发的控制组 / 缓存的旧模块 / 命中失败文案的子串断言 / 载荷主导的字节 fixture —— **同一族**。**测试没先失败过,就什么都没证明。**(已落 §4 新增 ⑥⑦ 两节。)
+
+#### 后续刀③(队首)· `doc_remove` 单篇预检 · commit `47c27ad` · ⏳ 待审
+- **★评审裁 Q1 = 算 §4-3 ★ 的决策点谎报,且排在 ③ 之前**。链条:`doc_remove` 无条件传 `onUndo` → guardrail **在建对话框时**就印出「执行后可撤销。」(guardrail:116)→ 用户据此确认 → `onConfirm` 执行时才发现整篇超上限 → 返 `false` → 按钮不出现 → 事后 toast。**话已经出口了。** 与第62轮判 [应改] 的 clear 路径同一类、同一机制,**定级必须一致**。评审:**「一条只在 3/4 条销毁路径上成立的不变式,不是不变式。」** 可达性亦严格高于 ③(单篇 >64 MiB ≈ 上万 chunk,用户加得出来;③ 需坏库,app 写路径造不出来)。
+- **落法**:`doc_clear_undo_bytes` → `doc_undo_bytes(conn, doc_id: Option<&str>)`;新命令 `doc_remove_undoable(doc_id)`;两端 runtime;前端**先问预检再开对话框**,不可撤销 ⇒ detail 明说 + **连 `onUndo` 都不传**。**顺带修同支路的瞬时分配**(第62轮问题4 只修了 clear):`doc_remove_inner` 原先**先物化整篇再让环拒绝**,现改为先量后物化,与预检共用同一 `max_bytes()`。
+- **★同刀订正两处 Rust 假陈述**(评审未点名):`memory_undo` 头注仍写「`token=None` → 撤销最近一次(向后兼容)」(该分支已在类型层面不存在);`doc_undo` 头注仍写「撤销**最近一次** … → **清空 trash**」(单槽时代的话)。
+- **★★同刀修一处被 tsc 噪声底掩盖了三刀的类型漂移**(自查):`runtime/types.d.ts` 的 `MemoryApi`/`DocsApi` 自刀2b-1 起就在说谎(`remove(): Promise<void>` / `undo(): Promise<number>` 无 token、无 `DestroyResult`、无 `clearUndoable`)。tsc **一直在报**(TS2353/TS2322),但淹没在 61 条基线里 —— 而我历刀的判据是「**无新增** error」,**必要而不充分**:当基线里就有我正在改的文件的 error 时,「无新增」什么也没证明。补齐后 **tsc 61 → 51**(runtime/ 全清)。已收为 standing(§4-⑥)。
+- **验**:两 Rust 新测试**点名跑过**;`doc_remove_precheck_is_per_doc...` 的阳性对照经**变异测试**证明能证伪生产代码(去掉 SQL 的 `WHERE doc_id` → 断言变红「小文档不得因『别的文档很大』而被判不可撤销」,还原 → 绿);96/0(94→96);clippy/fmt 净;真机 1.83s boot 零 panic;preview 真模块 e2e(先调 `removeUndoable('d1')` → 超上限:对话框只说「无法撤销」、不印「执行后可撤销」、无按钮、toast 如实;**阳性对照·正常删除**:印提示 + 给按钮)。
+- ⇒ **「决策点不得承诺做不到的撤销」现已在全部四条销毁路径上成立**(三条 guardrail 路径各自先问预检;第四条走 `toastUndo`,事后提示、事前无承诺)。
+
+#### 后续刀④ · 死闸响亮化 + `succeeded` 去重 + guardrail 容忍缺省 `onConfirm` · commit `d99558f` · ⏳ 待审
+- **★Q2 裁决 · 两个选项(留/删)评审都不选,正解是「改响亮」**:`if (!token) return;` 守的分支结构上不可达,但它是**静默 `return`**。推演其唯一可能的作用 —— 没有它:某次重构让 token 变假 → `undo(undefined)` → 后端 `token: String` 反序列化报错 → `toast(errText)` → **响亮**;有它:直接 return → 用户点撤销**一声不吭**。⇒ **这道闸唯一可能的效果,是把一次响亮的失败变成一次沉默的失败** —— 正是整条 arc 消灭的那个东西。改 `noTokenUnreachable()`(`console.error` + `staleUndo()` + `return false`),三处全改。**无论可达与否,它只能让事情更响,永远不会更静。**
+- **[建议]六 · `succeeded` 有两份拷贝** ⇒ 抽 `platform/outcome.js`(零依赖叶子,**零 import / 零副作用 / 零 i18n** ⇒ 无环、不移动 module-eval 求值序)。放 `platform/` 根而非 `platform/shell/`:**`guardrail/` 不该为一个纯谓词去依赖 `shell/`**(层级方向)。**一份契约,一条规则,一处代码。**
+- **★[建议]四 · guardrail 容忍缺省 `onConfirm` —— 我偏离了评审给的落法并说明理由**:评审指出 mcp 传的 `onConfirm: () => {}` 现在**承重**(有人「清理」掉它 ⇒ TypeError ⇒ 每次 MCP 批准打一条 `[guardrail] 执行失败`),属实;它建议 `? await opts.onConfirm() : undefined`(⇒ `executed=true`)。**我改为 fail-closed**:`opts.onConfirm ? succeeded(await opts.onConfirm()) : false` —— `undefined` 会让「什么都没执行」也印出撤销按钮,与本 arc 核心不变式相悖。对 mcp(空实现 + **无 `onUndo`**)两者等价、陷阱一样消掉;但对将来「有 onUndo 却漏了 onConfirm」的调用点,fail-closed 才是对的那一边。
+- **★留痕订正(评审第五节 · 覆盖声明本身也要为真)**:我上一刀说「零回归靠 AST 机械核实」——**该审计器查字面量 `onConfirm:` 属性,看不见 spread 路径**(`widget-actions.js:29` 的 `{...spec, source}`)。结论仍是无活回归,但**挡住它的不是我的审计器**,而是 `WidgetActionSpec.onConfirm` 的必填约束 + registry 的 `typeof spec.onConfirm === 'function'` 守卫。与第49轮「tokenizer 须 spread-aware」同族。(本刀的 fail-closed 缺省处理顺带给这条 spread 路径兜了底。)
+- **★Q3 裁决 · 不拆 `resolve`**(评审给的理由比我写的更硬):两条通道回答两个正交问题给两类消费者 —— `resolve` → 「用户批准了吗」(mcp 当 `approved` 回传后端);`onConfirm` 返回值 → 「销毁发生了吗」(闸 `showUndo`)。合并 = **模型外部工具调用路径上的安全语义反转**。
+- **验**:响亮化(伪造旧行为 guardrail 强制走进不可达分支 ⇒ `console.error` 含「不变式破坏」+ 用户可见 toast + 返回 `false` + **exact「已撤销」= 0**);共享谓词(两处均 import、本地拷贝已删;`toastUndo` 与 `guardrail` 的 `undefined` 路径均为**活靶**、`0` 路径均静默/无按钮);缺省 `onConfirm`(不抛、不给按钮、`resolve(true)`;mcp 形状 `approved=true` 照旧);tsc 51→51(三文件零 error)、AST 审计仍 0 回归面、Rust 96/0、真机 boot 零 panic。
+
+**下一刀次序(评审裁定)**:③ **不可映射行的逃生口**(一行坏数据同时 brick 掉逐条删与整库清空;可达性≈0 但后果 = 记忆功能整体不可管理;**若有用户报「某条记忆删不掉」立刻插队**)→ ① **大快照 spill 到磁盘**(已由预检如实披露,从「谎报」降为「能力缺口」)。
