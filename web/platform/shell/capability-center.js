@@ -7,12 +7,12 @@
  *     只在此 UI 呈现给用户,**绝不进模型上下文**(模型侧读若将来要做,须走「静态最小投影」新红线,见 proposal §7)。
  *   - **写**(增删连接器 / 填密钥 / 启停)= 设置类,走各自管理面、不经对话;本刀 P1-a 只做**只读总览 + 归属 + 入口**,
  *     深度管理(Connector 提一等公民、记忆/知识库查删)= P1-b/c。 */
+import { cEsc } from './copilot-chrome.js'; // ★评审第54轮 [建议]:复用平台唯一转义器(&<>"),不再造 bespoke esc(防漂移;将来若挪进属性位,漏 " 即成注入缺口)
 import { $ } from './dom.js';
 import { tt } from './i18n.js';
 import { frontis, signFoot } from './nav.js';
 
-// 用户数据(连接器名 / 能力 id)进 DOM 前逐字转义(纵深防御:虽是用户自填配置,仍防意外 HTML)。
-const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// 用户数据(连接器名 / 能力 id)进 DOM 前逐字转义(纵深防御:虽是用户自填配置/平台定义 id,仍防意外 HTML)。
 const rt = () => window.SeekerRT;
 
 // 域块骨架:统一 eyebrow/标题/副说明 + 异步填充容器(id)。
@@ -75,7 +75,7 @@ function populate() {
         : s.enabled
           ? (s.connected ? `<span style="color:var(--status-done,#5a8);">${s.toolCount} ${tt('工具', 'tools')}</span>` : `<span style="color:var(--ink-3);">${tt('连接中…', 'Connecting…')}</span>`)
           : `<span style="color:var(--ink-3);">${tt('已停用', 'Disabled')}</span>`;
-      return itemRow(`${tag} <span style="font-weight:500;">${esc(s.name)}</span> · ${status}`);
+      return itemRow(`${tag} <span style="font-weight:500;">${cEsc(s.name)}</span> · ${status}`);
     }).join('');
   });
 
@@ -86,7 +86,7 @@ function populate() {
     return caps.map((c) => {
       const ok = !!c.available;
       const badge = `<span style="color:${ok ? 'var(--status-done,#5a8)' : 'var(--ink-3)'};font-size:12px;">${ok ? tt('可用', 'Ready') : tt('不可用', 'Unavailable')}</span>`;
-      return itemRow(`<span class="mono" style="font-size:12.5px;color:var(--ink-2);">${esc(c.id)}</span> · ${badge}`);
+      return itemRow(`<span class="mono" style="font-size:12.5px;color:var(--ink-2);">${cEsc(c.id)}</span> · ${badge}`);
     }).join('');
   });
 
