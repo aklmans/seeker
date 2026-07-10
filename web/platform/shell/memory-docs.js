@@ -42,6 +42,13 @@ const emptyLine = (txt) => `<p style="color:var(--ink-3);font-size:12px;padding:
       任一域发生新销毁 → 该域此前的撤销 affordance 立即过期。两域计数独立(后端两个 State 亦独立)。 */
 let memGen = 0, docGen = 0;
 let memUndoToast = null; // 记忆域当前在场的 toastUndo 元素(新销毁前摘掉,避免留下会还原错记录的死按钮)
+/* ★重入守卫(评审第57轮 [应改]):记忆逐条删是**唯一的即时删除路径** —— 按钮在 `await remove()`+`await refresh()`
+   期间仍留在 DOM 里可点。双击会让后端 `memory_remove` 第二次以**空快照**覆盖单槽(`*trash = snap`,snap=[],
+   data.rs:600-623 删 0 行也覆盖)⇒ 撤销还原 0 条,而 `toast.js:17` 的 doUndo **不 await restoreFn、无条件报
+   「已撤销」** ⇒ 静默永久丢数据 + 假的成功提示。
+   对比:guardrail 的确认按钮先 `close()` 再 await onConfirm(guardrail/index.js:122-124),DOM 同步移除
+   ⇒ 文档域天然不可重入。故守卫只需加在本路径。 */
+let memBusy = false;
 const dropToast = (t) => { if (t && t.isConnected) t.remove(); };
 const expiredUndo = () => toast(tt(
   '该撤销已过期 —— 此后又发生了新的销毁(只能撤销最近一次)。',
@@ -73,17 +80,28 @@ export async function renderMemory(box) {
       : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
 
     // 逐条删:即时删除 + toastUndo。★后端单槽:先摘掉尚存的旧撤销(它此刻即将失效),再以世代号守卫。
-    [...box.querySelectorAll('[data-memdel]')].forEach((b) => (b.onclick = async () => {
-      dropToast(memUndoToast); memUndoToast = null;
-      const gen = ++memGen;
-      try { await rt.memory.remove(b.dataset.memdel); } catch (_e) {}
-      await refresh();
-      toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => {
-        if (gen !== memGen) return expiredUndo(); // 过期:诚实拒绝,绝不静默还原错记录
-        try { await rt.memory.undo(); } catch (_e) {}
-        await refresh();
-      });
-      memUndoToast = lastToastEl();
+    // ★重入守卫(见模块头):await 窗口内的第二次点击会以空快照覆盖单槽 ⇒ 逻辑闸(memBusy)+ 物理闸(disabled)。
+    const memBtns = () => [...box.querySelectorAll('[data-memdel]')];
+    memBtns().forEach((b) => (b.onclick = async () => {
+      if (memBusy) return;
+      memBusy = true;
+      const frozen = memBtns();
+      frozen.forEach((x) => { x.disabled = true; }); // disabled 按钮不触发 click:双击 / 交错删都被物理挡住
+      try {
+        dropToast(memUndoToast); memUndoToast = null;
+        const gen = ++memGen;
+        try { await rt.memory.remove(b.dataset.memdel); } catch (_e) {}
+        await refresh(); // 重渲出全新(enabled)按钮
+        toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => {
+          if (gen !== memGen) return expiredUndo(); // 过期:诚实拒绝,绝不静默还原错记录
+          try { await rt.memory.undo(); } catch (_e) {}
+          await refresh();
+        });
+        memUndoToast = lastToastEl();
+      } finally {
+        memBusy = false;
+        frozen.forEach((x) => { if (x.isConnected) x.disabled = false; }); // refresh 失败时解禁旧按钮
+      }
     }));
     const cb = box.querySelector('#ccMemClear');
     if (cb) cb.style.display = rows.length ? '' : 'none';
@@ -101,10 +119,13 @@ export async function renderMemory(box) {
       confirmLabel: tt('清除', 'Clear'),
       undoText: tt('已清除长期记忆', 'Memory cleared'),
       onConfirm: async () => {
-        dropToast(memUndoToast); memUndoToast = null; // 清空即将覆盖单槽 → 旧的逐条撤销就此失效
-        gen = ++memGen;
-        try { await rt.memory.clear(); } catch (_e) {}
-        await refresh();
+        memBusy = true; // 与逐条删互斥(guardrail 确认按钮先 close() 再 await,故自身不可重入)
+        try {
+          dropToast(memUndoToast); memUndoToast = null; // 清空即将覆盖单槽 → 旧的逐条撤销就此失效
+          gen = ++memGen;
+          try { await rt.memory.clear(); } catch (_e) {}
+          await refresh();
+        } finally { memBusy = false; }
       },
       onUndo: async () => {
         if (gen !== memGen) return expiredUndo();
