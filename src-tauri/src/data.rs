@@ -875,24 +875,30 @@ pub struct DestroyResult {
 }
 
 /// 读全量记忆行(含 embedding + 时间)——内部用(快照),绝不经命令外泄向量。
+/// **记忆行的唯一映射函数**(与 `map_doc_row` 同款先例)—— `memory_rows_full` / `memory_snapshot_one` /
+/// `memory_row_state` 三处共用。
+///
+/// ★评审第65轮:「**这行能不能快照**」的权威答案就是**快照代码本身**,不是它的代理谓词。
+/// 把它抽成一个函数,`memory_row_state` 遂能直接问它,而不是重抄一份列清单(那是「重抄被测代码」的同族)。
+/// `created_at` 的 `Option<i64>.unwrap_or(0)` = 第61轮裁决 A 的全域映射(schema `DEFAULT 0`,忠实归一化)。
+fn map_mem_row(r: &rusqlite::Row) -> rusqlite::Result<MemRow> {
+    let id: String = r.get(0)?;
+    let fact: String = r.get(1)?;
+    let blob: Option<Vec<u8>> = r.get(2)?;
+    let ts: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0);
+    Ok((
+        id,
+        fact,
+        blob.map(|b| blob_to_vec(&b)).unwrap_or_default(),
+        ts,
+    ))
+}
+
 fn memory_rows_full(conn: &Connection) -> Result<Vec<MemRow>, String> {
     let mut stmt = conn
         .prepare("SELECT id, fact, embedding, created_at FROM memories")
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| {
-            let id: String = r.get(0)?;
-            let fact: String = r.get(1)?;
-            let blob: Option<Vec<u8>> = r.get(2)?;
-            let ts: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化
-            Ok((
-                id,
-                fact,
-                blob.map(|b| blob_to_vec(&b)).unwrap_or_default(),
-                ts,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], map_mem_row).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r.map_err(|e| e.to_string())?);
@@ -1004,13 +1010,7 @@ fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, Strin
         .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
         .map_err(|e| e.to_string())?;
     let it = stmt
-        .query_map(params![id], |r| {
-            let i: String = r.get(0)?;
-            let f: String = r.get(1)?;
-            let b: Option<Vec<u8>> = r.get(2)?;
-            let t: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化(见头注 ★全域映射)
-            Ok((i, f, b.map(|x| blob_to_vec(&x)).unwrap_or_default(), t))
-        })
+        .query_map(params![id], map_mem_row)
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for r in it {
@@ -1078,29 +1078,55 @@ pub fn memory_remove_corrupt(db: State<'_, Db>, rowid: i64) -> Result<DestroyRes
 }
 
 /// 命令体本身(评审第60轮 [建议]3:命令只取锁转调,测试直调 inner —— **测试要守生产代码,不是重抄它**)。
+/// 一行相对于**快照映射**的三态。判定权威 = `map_mem_row`(快照本身用的那一个),不是任何代理谓词。
+#[derive(Debug, PartialEq)]
+enum RowState {
+    Missing,
+    /// 可完整快照 ⇒ 必须走**可撤销**的常规删除
+    Healthy,
+    /// 不可映射 ⇒ 没有可还原之物 ⇒ 允许经逃生口销毁(guardrail 已在决策点告知不可撤销)
+    Unmappable,
+}
+
+/// 「这一行能不能被快照?」—— **让快照代码自己回答**(评审第65轮 [建议]强)。
+///
+/// ★为什么不用 `MEM_CORRUPT_PRED`:那道谓词若比 rusqlite `FromSql` **更严**,
+/// `memory_remove_corrupt` 会把一条**健康、可快照**的记忆无快照、无撤销地销毁 —— 静默且不可逆。
+/// 于是「谓词 ≡ rusqlite」成了**安全属性**,而它是一份**跨依赖版本**的维护负债
+/// (rusqlite 某次升级改了强制转换语义,谓词就悄悄变严)。改用快照当裁判后,
+/// 等价性从**安全属性降级为展示属性**(仅用于列表打标 + clear 预检,两处都是咨询性的)。
+///
+/// ★★我与评审给的落法有一处**刻意分歧**:它写 `Err(_) => DELETE`。**那会把一次瞬时 DB 错误
+/// (sqlite BUSY / 磁盘 / 语句失败)读成「这行坏了」而销毁它。** 故此处严格区分
+/// 「**取行/语句失败**」(向上传播 Err,绝不销毁)与「**行取到了、但列转换失败**」(才是 Unmappable)。
+fn memory_row_state(conn: &Connection, rowid: i64) -> Result<RowState, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE rowid = ?1")
+        .map_err(|e| e.to_string())?; // 语句失败 ⇒ 传播,不判定
+    let mut rows = stmt.query(params![rowid]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        // 取行失败 ⇒ 传播
+        None => Ok(RowState::Missing),
+        // 行已在手:此处 map_mem_row 的 Err **只可能**是列转换失败 ⇒ 才是「不可映射」
+        Some(r) => Ok(match map_mem_row(r) {
+            Ok(_) => RowState::Healthy,
+            Err(_) => RowState::Unmappable,
+        }),
+    }
+}
+
 fn memory_remove_corrupt_inner(conn: &Connection, rowid: i64) -> Result<DestroyResult, String> {
-    let corrupt: i64 = conn
-        .query_row(
-            &format!("SELECT COUNT(*) FROM memories WHERE rowid = ?1 AND ({MEM_CORRUPT_PRED})"),
-            params![rowid],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if corrupt == 0 {
-        let exists: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM memories WHERE rowid = ?1",
-                params![rowid],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        if exists > 0 {
-            return Err("该记录未损坏:请走常规删除(可撤销),不得绕过快照。".into());
+    match memory_row_state(conn, rowid)? {
+        // 行已不在 ⇒ 诚实 no-op(与 memory_remove 的 deleted=0 同语义,不是错误)
+        RowState::Missing => {
+            return Ok(DestroyResult {
+                deleted: 0,
+                undo_token: None,
+            })
         }
-        return Ok(DestroyResult {
-            deleted: 0,
-            undo_token: None,
-        }); // 行已不在 ⇒ 诚实 no-op
+        // ★结构性守卫:健康行必须走可撤销的常规删除,绝不经此路无快照销毁
+        RowState::Healthy => return Err("该记录未损坏:请走常规删除(可撤销),不得绕过快照。".into()),
+        RowState::Unmappable => {}
     }
     let n = conn
         .execute("DELETE FROM memories WHERE rowid = ?1", params![rowid])
@@ -1890,9 +1916,12 @@ mod tests {
 
     // ═══ 逃生口(评审第64轮次序 ③)· 不可映射行 ═══════════════════════════
 
-    /// ★★这条测试是整个逃生口的**地基**:SQL 的 `typeof()` 谓词必须与 rusqlite `FromSql` 的接受集
-    /// **逐形态等价**。若谓词比 rusqlite 宽松,预检会说「可撤销」而 stash 时快照失败 ⇒ 决策点谎报;
-    /// 若比它严格,健康行会被误判为损坏 ⇒ 被推去走「不可撤销」的逃生口(白白丢掉撤销)。
+    /// SQL 的 `typeof()` 谓词与 rusqlite `FromSql` 的接受集**逐形态等价**。
+    ///
+    /// ★评审第65轮之后,这条等价性是**展示属性**,不再是安全属性:`memory_remove_corrupt` 的守卫已改由
+    /// `memory_row_state`(=快照映射本身)裁决,谓词只用于**列表打标**与 **clear 预检**(两处都是咨询性的)。
+    /// 谓词若与 rusqlite 漂移,后果是「行的 corrupt 标记 / 预检理由不准」,**而不是「健康行被无撤销地销毁」**。
+    /// 故本测试仍然要跑(它守着 UI 的诚实),但**它不再是安全边界**。
     ///
     /// **阳性对照**:`WEAK_PRED` 少判 `created_at` 一列 —— 对 `created_at='abc'` 它说「没坏」,
     /// 而 rusqlite 映射失败 ⇒ 二者分歧。断言这个分歧**确实存在**,证明本测试能分辨谓词的对错。
@@ -1964,6 +1993,120 @@ mod tests {
         assert!(
             weak_disagreed,
             "阳性对照失效:弱化谓词竟与 rusqlite 处处一致 —— 本测试分辨不出谓词的对错,是死靶"
+        );
+    }
+
+    /// ★★守卫的**真正判据**(评审第65轮 [建议]强):`memory_row_state` 直接问 `map_mem_row`
+    /// (快照代码本身),不问任何代理谓词。三态必须准确,且**瞬时 DB 错误绝不能被读成「这行坏了」**。
+    #[test]
+    fn row_state_asks_the_snapshot_itself_not_a_proxy_predicate() {
+        let cases: [(&str, &str); 5] = [
+            (
+                "created_at=TEXT",
+                "INSERT INTO memories VALUES ('m','f',NULL,'abc')",
+            ),
+            (
+                "created_at=REAL",
+                "INSERT INTO memories VALUES ('m','f',NULL,1.5)",
+            ),
+            (
+                "fact=BLOB",
+                "INSERT INTO memories VALUES ('m',X'00FF',NULL,1)",
+            ),
+            (
+                "id=BLOB",
+                "INSERT INTO memories VALUES (X'00FF','f',NULL,1)",
+            ),
+            (
+                "embedding=TEXT",
+                "INSERT INTO memories VALUES ('m','f','notablob',1)",
+            ),
+        ];
+        for (label, insert) in cases {
+            let mut conn = Connection::open_in_memory().unwrap();
+            let tmp = std::env::temp_dir().join("seeker-test-rowstate");
+            migrate(&mut conn, &tmp).unwrap();
+            conn.execute(insert, []).unwrap();
+            let rowid: i64 = conn
+                .query_row("SELECT rowid FROM memories LIMIT 1", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(
+                super::memory_row_state(&conn, rowid).unwrap(),
+                super::RowState::Unmappable,
+                "[{label}] 快照映射失败 ⇒ Unmappable"
+            );
+        }
+
+        // 健康行 → Healthy(阳性对照:三态判据能分辨,不是恒返 Unmappable)
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-rowstate-ok");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "good", "健康行", &[0.1]).unwrap();
+        let good: i64 = conn
+            .query_row("SELECT rowid FROM memories WHERE id='good'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            super::memory_row_state(&conn, good).unwrap(),
+            super::RowState::Healthy
+        );
+        // 不存在 → Missing(≠ Unmappable:绝不能把「行不在」当成「行坏了」而去 DELETE)
+        assert_eq!(
+            super::memory_row_state(&conn, 999_999).unwrap(),
+            super::RowState::Missing
+        );
+
+        // ★★瞬时 DB 错误(表被删 ⇒ prepare 失败)必须**传播为 Err**,绝不判成 Unmappable。
+        //   评审给的落法 `Err(_) => DELETE` 会在此把一次 sqlite 故障读成「这行坏了」而销毁它。
+        conn.execute("DROP TABLE memories", []).unwrap();
+        assert!(
+            super::memory_row_state(&conn, good).is_err(),
+            "语句/取行失败必须向上传播,不得被判定为 Unmappable"
+        );
+    }
+
+    /// ★★守卫**不再依赖谓词**:即便 `MEM_CORRUPT_PRED` 把健康行错标为损坏(前端遂渲染出逃生口按钮),
+    /// 后端仍必须拒绝销毁它 —— 因为裁判是快照,不是谓词。
+    /// (此处用「谓词说坏、快照说好」的真实分歧做断言:健康行的谓词判定为 false,故直接断言二者结论不同源。)
+    #[test]
+    fn guard_refuses_healthy_row_even_if_a_predicate_would_call_it_corrupt() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-guard-source");
+        migrate(&mut conn, &tmp).unwrap();
+        super::memory_add(&conn, "good", "健康行", &[0.1]).unwrap();
+        let rowid: i64 = conn
+            .query_row("SELECT rowid FROM memories WHERE id='good'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        // 模拟一个「过严的谓词」(把一切都判成损坏)——它若还是判据,健康行就会被无撤销销毁。
+        let over_strict: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE rowid = ?1 AND 1=1",
+                rusqlite::params![rowid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            over_strict, 1,
+            "过严谓词确实会把这条健康行判成『损坏』(活靶)"
+        );
+
+        // 而真正的判据是快照:它说 Healthy ⇒ 守卫拒绝,行仍在。
+        assert_eq!(
+            super::memory_row_state(&conn, rowid).unwrap(),
+            super::RowState::Healthy
+        );
+        assert!(super::memory_remove_corrupt_inner(&conn, rowid)
+            .unwrap_err()
+            .contains("未损坏"));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1,
+            "健康行必须原封不动"
         );
     }
 
