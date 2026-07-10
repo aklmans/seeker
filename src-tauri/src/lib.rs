@@ -73,6 +73,7 @@ pub fn run() {
             data::doc_remove,
             data::doc_clear,
             data::doc_clear_undoable,
+            data::doc_remove_undoable,
             data::doc_undo,
             mcp::mcp_probe,
             mcp::mcp_list,

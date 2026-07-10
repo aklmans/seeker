@@ -1,7 +1,9 @@
 /** 平台 · 长期记忆 + 知识库(RAG 文档)管理 —— P1-c:从 `settings.js` 的两个 module-private 模态
  *  (`openMemoryManager` / `openDocsManager`)**搬迁**至能力中心,提为一等公民内联视图。
  *
- *  **零新后端**:复用既有 `rt.memory.*`(list/remove/clear/undo)与 `rt.docs.*`(list/add/remove/clear/undo)。
+ *  搬迁时**零新后端**;此后为「决策点诚实」加了三个**只读预检**命令
+ *  (`rt.memory.clearUndoable` / `rt.docs.clearUndoable` / `rt.docs.removeUndoable`)—— 它们不销毁任何东西,
+ *  只回答「这次销毁能不能撤销」,供确认弹窗在**用户做决定之前**说真话。
  *
  *  ★红线(§4-3 破坏性 · §4-4 转义):
  *   - **破坏性(§4-3)· 两档 + 撤销世代守卫**:
@@ -39,9 +41,11 @@
  *       返回 `false`(无 token = 没有可还原之物)⇒ **按钮根本不出现**。此前 guardrail 无条件 `showUndo`,
  *       `onUndo` 只能靠 `if (!token) return;` 早返 ⇒ 用户点下去**一声不吭** —— 而整条撤销 arc 的主题
  *       正是**失败必须出声**。那行早返如今**结构上不可达**,留 1 行作纵深。
- *       ⚠ 两条 `clear` 路径更进一步:**预检说不可撤销 ⇒ 连 `onUndo` 都不传** ⇒ guardrail 的
- *       「执行后可撤销。」提示(它由 `opts.onUndo` 是否存在驱动)也不会印出来 —— 否则同一个对话框会
- *       一边说「无法撤销」、一边说「执行后可撤销」。**事前不承诺做不到的事。**
+ *     · ★★**决策点不得承诺做不到的撤销 —— 现已在全部四条销毁路径上成立**(第64轮 [应改] 收口):
+ *       guardrail 在**建对话框时**就据 `opts.onUndo` 是否存在印出「执行后可撤销。」⇒ 三条 guardrail 路径
+ *       (记忆清空 / 文档删 / 文档清空)**各自先问预检**,不可撤销就**连 `onUndo` 都不传** ⇒ 那行提示不出现;
+ *       第四条(记忆逐条删)走 `toastUndo`,**事后**提示、事前无承诺,天然无此问题。
+ *       预检问不到 ⇒ **保守按不可撤销告知**。**「一条只在 3/4 条销毁路径上成立的不变式,不是不变式。」**
  *     · ★**即时删除按钮在 await 窗口内必须不可重入**:逻辑闸 `memBusy` + 物理闸 `disabled`(见下)。
  *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
  *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
@@ -244,7 +248,7 @@ export async function renderMemory(box) {
         // 变体(f)(第62轮):`memGen` **刷新即归零**而环**跨刷新存活** ⇒「刷新后 memGen=0、环里躺着上一次销毁」
         //   真实可达。⚠ 今日 `!token` 已**结构上不可达**(onConfirm 返回 false ⇒ 按钮根本不出现);
         //   留 1 行作纵深,且它也不再是「挡住还原错记录」的那道闸(token 必填,`undo(null)` 发不出去)。
-        if (!token) return;
+        if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
         if (gen !== memGen) return expiredUndo(); // 策略闸:只撤销最近一次
         let n;
         try { n = await rt.memory.undo(token); } catch (e) { toast(errText(e)); return; }
@@ -292,19 +296,21 @@ export async function renderDocs(box) {
 
     // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
     // ★DocTrash 与 MemTrash 同款(各自独立的有界环、token 跨环唯一)→ 同一**策略**闸:只撤销最近一次。
-    [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = () => {
+    [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = async () => { // async:预检需 await
       if (!G || !G.confirmDestructive) return; // fail-closed
       const d = rows.find((x) => String(x.docId) === String(b.dataset.docdel));
       let gen = 0, token = null; // token 必需:它既是撤销凭据,也是「无可撤销之物」的唯一判据(见 renderMemory 同注)
+      // ★单篇预检(评审第64轮 [应改] · 队首):guardrail 在**建对话框时**就据 `onUndo` 是否存在印出
+      //   「执行后可撤销。」—— 若等 onConfirm 执行时才发现整篇超上限,那句话**已经出口**了。
+      //   与两条 clear 路径同款,「决策点不得承诺做不到的撤销」由此在**全部四条销毁路径**上成立。
+      let undoable = true;
+      try { undoable = await rt.docs.removeUndoable(b.dataset.docdel); } catch (_e) { undoable = false; } // 问不到 ⇒ 保守
       G.confirmDestructive({
         title: tt('删除文档?', 'Delete doc?'),
-        detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : ''),
+        detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : '')
+          + (undoable ? '' : tt(' · 内容过大,删除后无法撤销。', ' · Too large to snapshot — this CANNOT be undone.')),
         confirmLabel: tt('删除', 'Delete'),
         undoText: tt('已删除文档', 'Doc deleted'),
-        // ⚠ **无单篇预检**(后端只有 `doc_clear_undoable`,没有 `doc_remove_undoable`)⇒ 事前的
-        //   「执行后可撤销。」在「执行时才发现整篇超上限」的罕见情形下仍是一句**事前承诺**。
-        //   `offerUndo` 会如实 toast「已删除;内容过大,无法撤销」,且 `false` 令按钮不出现 —— 但承诺已出口。
-        //   **记债**:补 `doc_remove_undoable` 预检,与两条 clear 路径同款。此刀不扩范围。
         onConfirm: async () => {
           try {
             token = offerUndo(
@@ -318,14 +324,14 @@ export async function renderDocs(box) {
           return !!token; // false ⇒ guardrail 不给撤销按钮(不再是「有按钮但一声不吭」)
         },
         // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
-        onUndo: async () => {
+        onUndo: undoable ? async () => {
           if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
           if (gen !== docGen) return expiredUndo(); // 策略闸:只撤销最近一次
           let n;
           try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }
           await refresh();
           if (typeof n === 'number' && n === 0) staleUndo();
-        },
+        } : undefined,
       });
     }));
     const cb = q('#ccDocClear');
@@ -403,7 +409,7 @@ export async function renderDocs(box) {
       },
       // ★同 renderMemory 清空:预检说不可撤销 ⇒ 连 onUndo 都不传 ⇒ 对话框不会印出「执行后可撤销。」。
       onUndo: undoable ? async () => {
-        if (!token) return; // 结构上不可达;留 1 行作纵深
+        if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
         if (gen !== docGen) return expiredUndo(); // 策略闸:只撤销最近一次
         let n;
         try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }

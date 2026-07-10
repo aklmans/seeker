@@ -209,13 +209,28 @@ export interface MemoryEntry {
   ts: number;
 }
 
-/** 长期记忆的用户掌控(#4):查看 / 清除全部 / 删一条。网页端降级为空。 */
+/**
+ * 一次销毁的结果:**实际销毁条数** + **撤销凭据**。
+ *
+ * ★`undoToken === null` ⇒ **没有可还原之物**(no-op 销毁,或快照超后端撤销环的字节上限而未入环)
+ *   ⇒ 前端**不得提供撤销**。这条不变式(「提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原」)由类型承载:
+ *   `undo(token: string)` 的 token 必填,拿不到 token 就无法调用。
+ */
+export interface DestroyResult {
+  deleted: number;
+  undoToken: string | null;
+}
+
+/** 长期记忆的用户掌控(#4):查看 / 清除全部 / 删一条 / 按 token 撤销。网页端降级为空。 */
 export interface MemoryApi {
   list(): Promise<MemoryEntry[]>;
-  clear(): Promise<number>;
-  remove(id: string): Promise<void>;
-  /** 撤销最近一次清除/单删(后端 trash 还原,向量不出后端)。返回还原条数。 */
-  undo(): Promise<number>;
+  clear(): Promise<DestroyResult>;
+  /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
+  clearUndoable(): Promise<boolean>;
+  remove(id: string): Promise<DestroyResult>;
+  /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原条数;
+   *  token 已失效(被撤回过 / 被更新的销毁挤出上限)→ `0`,**绝不静默成功**。 */
+  undo(token: string): Promise<number>;
 }
 
 /** 一篇文档(列表用 · 不含 embedding / 全文)。 */
@@ -226,14 +241,19 @@ export interface DocInfo {
   ts: number;
 }
 
-/** RAG-over-docs(#2):加文档(后端切块+嵌入)/ 列出 / 删一篇 / 清空。网页端降级。 */
+/** RAG-over-docs(#2):加文档(后端切块+嵌入)/ 列出 / 删一篇 / 清空 / 按 token 撤销。网页端降级。 */
 export interface DocsApi {
   add(name: string, text: string): Promise<{ docId: string; name: string; chunks: number }>;
   list(): Promise<DocInfo[]>;
-  remove(docId: string): Promise<number>;
-  clear(): Promise<number>;
-  /** 撤销最近一次删/清(后端 DocTrash 还原,向量不出后端)。返回还原片段数。 */
-  undo(): Promise<number>;
+  remove(docId: string): Promise<DestroyResult>;
+  /** 预检:删这一篇是否可撤销(评审第64轮 [应改]:对话框在**建立时**就承诺可撤销,故须先问)。 */
+  removeUndoable(docId: string): Promise<boolean>;
+  clear(): Promise<DestroyResult>;
+  /** 预检:这次清空是否可撤销 —— 供确认弹窗在用户做决定**之前**说真话。 */
+  clearUndoable(): Promise<boolean>;
+  /** 撤销**它自己那一次**销毁(后端按 token 从有界环取出还原,向量不出后端)。返回还原片段数;
+   *  token 已失效 → `0`,**绝不静默成功**。 */
+  undo(token: string): Promise<number>;
   /** 块3b:从 PDF(data-URL 或 base64)提取纯文本(纯本地,不出网)。供 AI 录入把 PDF 转文本;扫描件取不到字会 reject。 */
   pdfText(dataBase64: string): Promise<string>;
 }

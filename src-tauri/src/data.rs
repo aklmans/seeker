@@ -921,12 +921,12 @@ pub fn memory_remove(
     memory_remove_inner(&conn, &trash.0, &id)
 }
 
-/// 撤销一次记忆销毁,返回**实际还原条数**。
+/// 撤销**指定 token 的那一次**记忆销毁,返回**实际还原条数**。
 ///
-/// `token = Some(t)` → **精确撤销那一次**(尚在环内);`token = None` → 撤销**最近一次**
-/// (向后兼容:刀2b-1 的前端仍不带 token 调用)。
-/// **token 已被淘汰 / 未知 / 环为空 ⇒ 返回 `0`,绝不静默成功** —— 前端据 `n===0` 如实上报
-/// 「没有可撤销的内容」并 `return false`,`toast.js` 遂不报「已撤销」。
+/// **`token` 必填**(刀2b-2:`UndoRing::take(&str)` 已在类型层面删掉「取最近一次」的 affordance;
+/// 且 token 取自进程级序号、跨环唯一)⇒ 一次撤销**只能**作用于它自己那一次销毁。
+/// **token 已被淘汰 / 未知 / 已被取走 / 环为空 ⇒ 返回 `0`,绝不静默成功** —— 前端据 `n===0` 如实上报
+/// 「该撤销已失效」并 `return false`,`toast.js` 遂不报「已撤销」。
 #[tauri::command]
 pub fn memory_undo(
     db: State<'_, Db>,
@@ -1021,15 +1021,22 @@ impl UndoBytes for DocRow {
             + self.4.capacity() * std::mem::size_of::<f32>()
     }
 }
-/// **物化前**估算「清空知识库的快照会占多少环字节」(上界)。与 memory 侧同纪律。
-fn doc_clear_undo_bytes(conn: &Connection) -> Result<usize, String> {
-    let (payload, rows): (i64, i64) = conn
-        .query_row(
-            "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(doc_id AS BLOB)) + LENGTH(CAST(doc_name AS BLOB)) + LENGTH(CAST(text AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM doc_chunks",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .map_err(|e| e.to_string())?;
+/// **物化前**估算「这次文档销毁的快照会占多少环字节」(上界)。与 memory 侧同纪律。
+///
+/// `doc_id = None` → 整库(`doc_clear`);`Some(id)` → 单篇(`doc_remove`)。
+///
+/// ★评审第64轮 [应改]:`doc_remove` 原先**既无预检、又先物化整篇再让环拒绝** —— 与第62轮问题4
+/// (`doc_clear` 的瞬时分配)是**同一缺陷换了一条支路**。评审原话:
+/// **「一条只在 3/4 条销毁路径上成立的不变式,不是不变式。」**
+fn doc_undo_bytes(conn: &Connection, doc_id: Option<&str>) -> Result<usize, String> {
+    const SUMS: &str = "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(doc_id AS BLOB)) + LENGTH(CAST(doc_name AS BLOB)) + LENGTH(CAST(text AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM doc_chunks";
+    let (payload, rows): (i64, i64) = match doc_id {
+        Some(did) => conn.query_row(&format!("{SUMS} WHERE doc_id = ?1"), params![did], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        }),
+        None => conn.query_row(SUMS, [], |r| Ok((r.get(0)?, r.get(1)?))),
+    }
+    .map_err(|e| e.to_string())?;
     Ok(undo_bytes_upper_bound(
         payload,
         rows,
@@ -1110,7 +1117,16 @@ fn doc_remove_inner(
     ring: &Mutex<UndoRing<DocRow>>,
     doc_id: &str,
 ) -> Result<DestroyResult, String> {
-    let snap = doc_snapshot(conn, Some(doc_id))?; // doc_snapshot 本就传播错误(fail-closed)
+    // ★第64轮 [应改]:先用 SQL 量字节,超上限则**根本不物化**(一篇上万 chunk 的大语料不得先分配再被环拒绝),
+    //   且与 `doc_remove_undoable` 用**同一个上限** ⇒「预检说可撤销 ⇒ stash 必接受」。
+    //   销毁照常发生:红线只要求**永不谎报撤销**,并未要求拒绝销毁。
+    let cap = ring.lock().unwrap().max_bytes();
+    let undoable = doc_undo_bytes(conn, Some(doc_id))? <= cap;
+    let snap = if undoable {
+        doc_snapshot(conn, Some(doc_id))? // doc_snapshot 本就传播错误(fail-closed)
+    } else {
+        Vec::new() // 超上限:不物化、不发 token、不淘汰既有条目(环不变式①③)
+    };
     let n = conn
         .execute("DELETE FROM doc_chunks WHERE doc_id = ?1", params![doc_id])
         .map_err(|e| e.to_string())?;
@@ -1134,7 +1150,7 @@ fn doc_clear_inner(
     ring: &Mutex<UndoRing<DocRow>>,
 ) -> Result<DestroyResult, String> {
     let cap = ring.lock().unwrap().max_bytes();
-    let undoable = doc_clear_undo_bytes(conn)? <= cap;
+    let undoable = doc_undo_bytes(conn, None)? <= cap;
     let snap = if undoable {
         doc_snapshot(conn, None)?
     } else {
@@ -1155,10 +1171,28 @@ fn doc_clear_inner(
 pub fn doc_clear_undoable(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<bool, String> {
     let conn = db.0.lock().unwrap();
     let cap = trash.0.lock().unwrap().max_bytes();
-    Ok(doc_clear_undo_bytes(&conn)? <= cap)
+    Ok(doc_undo_bytes(&conn, None)? <= cap)
 }
 
-/// 撤销最近一次文档销毁(删一篇 / 清空):从 DocTrash 还原(原 id / embedding / 时间无损)→ 清空 trash。
+/// 预检:这次「删除单篇文档」是否可撤销?(评审第64轮 [应改] · 队首)
+///
+/// 与 `doc_clear_undoable` 同款,只是 `WHERE doc_id = ?1`。**存在的理由是决策点诚实**:
+/// guardrail 在**建对话框时**就据 `onUndo` 是否存在印出「执行后可撤销。」——
+/// 若等到 `onConfirm` 执行时才发现整篇超上限,那句话**已经出口**了。
+#[tauri::command]
+pub fn doc_remove_undoable(
+    db: State<'_, Db>,
+    trash: State<'_, DocTrash>,
+    doc_id: String,
+) -> Result<bool, String> {
+    let conn = db.0.lock().unwrap();
+    let cap = trash.0.lock().unwrap().max_bytes();
+    Ok(doc_undo_bytes(&conn, Some(&doc_id))? <= cap)
+}
+
+/// 撤销**指定 token 的那一次**文档销毁(删一篇 / 清空):从 DocTrash 的环里按 token 取出并还原
+/// (原 id / embedding / 时间无损)。**token 必填**(刀2b-2);未命中(已淘汰 / 未知 / 已被取走)
+/// ⇒ 还原 0 条,绝不静默成功。
 #[tauri::command]
 pub fn doc_undo(
     db: State<'_, Db>,
@@ -1541,6 +1575,112 @@ mod tests {
         assert!(
             bound_factor1 < actual,
             "阳性对照失效:系数 1 的上界 {bound_factor1} 竟未低于实际 {actual} —— 断言红不起来,本测试是死靶"
+        );
+    }
+
+    /// ★评审第64轮 [应改](队首)· **`doc_remove` 的单篇预检**:与 `doc_clear` 同款,不可让同一缺陷
+    /// 因所在支路不同而两种待遇。三条性质一起钉:
+    ///  ① **预检与 `doc_remove_inner` 结论一致**(同一个 `max_bytes()`);
+    ///  ② 超上限 ⇒ 销毁照常发生、**不发 token**、**不淘汰既有条目**、且**根本不物化**快照;
+    ///  ③ **只量这一篇**(`WHERE doc_id`)—— 阳性对照:另一篇很大时不得把这一篇也判成不可撤销。
+    #[test]
+    fn doc_remove_precheck_is_per_doc_and_matches_its_own_removal() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-docprecheck");
+        migrate(&mut conn, &tmp).unwrap();
+
+        // small = 一个微小片段;big = 带 4096 个 f32(16 KiB)的片段
+        super::doc_chunks_insert(&conn, "small", "小文档", &[("s".into(), vec![0.5])]).unwrap();
+        let big_emb: Vec<f32> = (0..4096).map(|i| i as f32).collect();
+        super::doc_chunks_insert(&conn, "big", "大文档", &[("b".into(), big_emb)]).unwrap();
+
+        // 上限 = 恰好装得下 small 那一篇的真实入环开销
+        let small_cost = {
+            let mut probe: super::UndoRing<super::DocRow> =
+                super::UndoRing::with_bounds(8, usize::MAX);
+            probe
+                .stash(super::doc_snapshot(&conn, Some("small")).unwrap())
+                .unwrap();
+            probe.total_bytes()
+        };
+        let ring: Mutex<super::UndoRing<super::DocRow>> =
+            Mutex::new(super::UndoRing::with_bounds(8, small_cost));
+        let prev = ring
+            .lock()
+            .unwrap()
+            .stash(super::doc_snapshot(&conn, Some("small")).unwrap())
+            .unwrap();
+        let cap = ring.lock().unwrap().max_bytes();
+
+        // ③ 逐篇量:big 超限、small 不超限。**阳性对照** —— 若 SQL 漏了 `WHERE doc_id`,
+        //    small 会把 big 的字节也算进来而被判不可撤销,本断言即红。
+        assert!(
+            super::doc_undo_bytes(&conn, Some("big")).unwrap() > cap,
+            "大文档应判为不可撤销"
+        );
+        assert!(
+            super::doc_undo_bytes(&conn, Some("small")).unwrap() <= cap,
+            "小文档不得因『别的文档很大』而被判不可撤销(WHERE doc_id 漏了就会这样)"
+        );
+        // 反面:整库口径确实把两篇都算上 ⇒ 超限(证明 None 与 Some 走的是不同集合)
+        assert!(super::doc_undo_bytes(&conn, None).unwrap() > cap);
+
+        // ①② 删 big:销毁发生、不发 token、不淘汰 PREV
+        let r = super::doc_remove_inner(&conn, &ring, "big").unwrap();
+        assert_eq!(r.deleted, 1, "销毁照常发生(红线不要求拒绝销毁)");
+        assert!(r.undo_token.is_none(), "超上限 ⇒ 不发 token ⇒ 前端不给撤销");
+        {
+            let g = ring.lock().unwrap();
+            assert_eq!(g.len(), 1, "超上限的 remove 不得淘汰既有条目");
+            assert!(g.has(&prev), "PREV 那一次必须原封不动");
+        }
+
+        // ① 反面:删 small(预检说可撤销)⇒ 确实发 token
+        let r2 = super::doc_remove_inner(&conn, &ring, "small").unwrap();
+        assert_eq!(r2.deleted, 1);
+        assert!(
+            r2.undo_token.is_some(),
+            "预检说可撤销 ⇒ stash 必接受(两处同一个 max_bytes)"
+        );
+    }
+
+    /// ★与 memory 侧同款:`doc_remove` 的**预检估计 ≥ stash 实际**,否则「预检说可撤销 → 承诺 →
+    /// 执行 → stash 拒绝」= 决策点谎报复发。阳性对照:系数取 1 必然低估(Vec 容量摊还翻倍)。
+    #[test]
+    fn doc_remove_precheck_upper_bound_is_never_below_actual_stash_bytes() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-docbound");
+        migrate(&mut conn, &tmp).unwrap();
+        // 多个**小片段**:让 Vec 槽位 + 结构体开销主导(载荷主导时系数 1 也能过 ⇒ 测试成死靶)
+        let chunks: Vec<(String, Vec<f32>)> =
+            (0..17).map(|i| (format!("c{i}"), vec![0.5])).collect();
+        super::doc_chunks_insert(&conn, "d1", "文档", &chunks).unwrap();
+
+        let bound = super::doc_undo_bytes(&conn, Some("d1")).unwrap();
+        let (payload, n_rows): (i64, i64) = conn
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(doc_id AS BLOB)) + LENGTH(CAST(doc_name AS BLOB)) + LENGTH(CAST(text AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM doc_chunks WHERE doc_id = 'd1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        let bound_factor1 = (payload.max(0) as usize)
+            + (n_rows.max(0) as usize) * std::mem::size_of::<super::DocRow>()
+            + 256;
+
+        let mut ring: super::UndoRing<super::DocRow> = super::UndoRing::with_bounds(8, usize::MAX);
+        ring.stash(super::doc_snapshot(&conn, Some("d1")).unwrap())
+            .unwrap();
+        let actual = ring.total_bytes();
+
+        assert!(
+            bound >= actual,
+            "预检上界 {bound} 必须 ≥ stash 实际 {actual}"
+        );
+        assert!(
+            bound_factor1 < actual,
+            "阳性对照失效:系数 1 的上界 {bound_factor1} 未低于实际 {actual} —— 断言红不起来"
         );
     }
 

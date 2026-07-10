@@ -193,6 +193,7 @@ export function createWebRuntime() {
       add: () => notImpl('rt.docs.add', 'web'),
       list: () => Promise.resolve([]),
       remove: () => Promise.resolve({ deleted: 0, undoToken: null }), // 与桌面同形(刀2b-1)
+      removeUndoable: () => Promise.resolve(true), // web 端本无行 ⇒ 估算 0 字节 ⇒ 可撤销(与桌面判据同源)
       clear: () => Promise.resolve({ deleted: 0, undoToken: null }),
       clearUndoable: () => Promise.resolve(true),
       undo: (_token) => Promise.resolve(0),

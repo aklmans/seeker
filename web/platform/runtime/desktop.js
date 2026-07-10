@@ -187,6 +187,9 @@ export function createDesktopRuntime() {
       add: (name, text) => invoke('doc_add', { name, text }),
       list: () => invoke('doc_list'),
       remove: (docId) => invoke('doc_remove', { docId }), // → { deleted, undoToken }
+      // 预检:删这一篇是否可撤销(评审第64轮 [应改]:guardrail 建对话框时就印「执行后可撤销。」,
+      // 故必须在**弹窗之前**问,而不是等 onConfirm 执行时才发现整篇超上限——那时话已出口)。
+      removeUndoable: (docId) => invoke('doc_remove_undoable', { docId }),
       clear: () => invoke('doc_clear'), // → { deleted, undoToken }
       clearUndoable: () => invoke('doc_clear_undoable'),
       undo: (token) => invoke('doc_undo', { token }), // token 必填(后端 DocTrash 环按 token 还原,向量不出后端)
