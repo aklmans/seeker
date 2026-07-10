@@ -546,13 +546,19 @@ type MemRow = (String, String, Vec<f32>, i64); // (id, fact, embedding, created_
 const UNDO_RING_MAX_ENTRIES: usize = 8;
 const UNDO_RING_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-/// 快照占用的近似字节(含 embedding 向量),用于环的字节判据。
+/// 一行快照**堆上**占用的字节(String / Vec 的实际 `capacity`,含 embedding 向量)。
+///
+/// ★评审第62轮:原实现用 `len()` 且不计结构体开销 ⇒ **账面 < 真实** ⇒ `UNDO_RING_MAX_BYTES`
+/// 成了一条**假上限**(小行时结构开销占比可达 2–3×)。**一个低估的账本不是上限**;
+/// 而把「这是下界」写进注释 = 记录一条假不变式(本 arc 第七次)。**别记录,修好它。**
+/// 故改用 `capacity()`;元组本体 / 环条目 / token 的开销由 `stash` 统一计入(见下),避免重复计数。
 pub(crate) trait UndoBytes {
-    fn undo_bytes(&self) -> usize;
+    /// 仅**堆上**载荷。元组本体(`size_of::<T>()`)按 `Vec` 槽位由 `stash` 计入。
+    fn heap_bytes(&self) -> usize;
 }
 impl UndoBytes for MemRow {
-    fn undo_bytes(&self) -> usize {
-        self.0.len() + self.1.len() + self.2.len() * 4 + std::mem::size_of::<i64>()
+    fn heap_bytes(&self) -> usize {
+        self.0.capacity() + self.1.capacity() + self.2.capacity() * std::mem::size_of::<f32>()
     }
 }
 
@@ -605,11 +611,16 @@ impl<T: UndoBytes> UndoRing<T> {
         if rows.is_empty() {
             return None; // 不变式①
         }
-        let bytes: usize = rows.iter().map(|r| r.undo_bytes()).sum();
+        // ★真实口径(评审第62轮):堆载荷(capacity)+ Vec 槽位 + 环条目本体 + token 串的堆。
+        //   不重复计数:元组本体只在「Vec 槽位」里算一次。
+        let token = format!("u{}", self.next);
+        let bytes = rows.iter().map(|r| r.heap_bytes()).sum::<usize>()
+            + rows.capacity() * std::mem::size_of::<T>()
+            + std::mem::size_of::<UndoEntry<T>>()
+            + token.capacity();
         if bytes > self.max_bytes {
             return None; // 不变式③:一次 clear 撑不爆环,也不谎报可撤销
         }
-        let token = format!("u{}", self.next);
         self.next += 1;
         self.entries.push_back(UndoEntry {
             token: token.clone(),
@@ -640,6 +651,12 @@ impl<T: UndoBytes> UndoRing<T> {
         Some(e.rows)
     }
 
+    /// 本环的字节上限 —— `*_clear_inner` 的预检据此决定「是否值得物化快照」,
+    /// 保证「预检说可撤销」与「stash 会接受」用的是**同一个上限**。
+    fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+
     #[cfg(test)]
     fn len(&self) -> usize {
         self.entries.len()
@@ -652,6 +669,39 @@ impl<T: UndoBytes> UndoRing<T> {
     fn has(&self, token: &str) -> bool {
         self.entries.iter().any(|e| e.token == token)
     }
+}
+
+/// 环条目的固定开销上界(条目本体 + token 串 + Vec 槽位余量)。
+const UNDO_ENTRY_OVERHEAD: usize = 256;
+
+/// 把 SQL 量到的载荷字节 + 行数 换算成「入环会占多少字节」的**上界**。
+///
+/// ★取 2× 是刻意的**保守上界**:`String`/`Vec` 的 `capacity` 可能超 `len`(摊还增长最多 2×)。
+/// 只有 `估算 ≥ 实际` 才能保证「预检说可撤销 ⇒ stash 一定接受」——
+/// 否则用户在**确认之前**被告知可撤销、销毁之后才发现不能,正是 §4-3 ★所禁的决策点谎报。
+/// 代价:载荷超过约 `上限/2` 时保守地判为不可撤销。**保守拒绝优于失信承诺。**
+fn undo_bytes_upper_bound(payload: i64, rows: i64, row_size: usize) -> usize {
+    (payload.max(0) as usize) * 2 + (rows.max(0) as usize) * row_size * 2 + UNDO_ENTRY_OVERHEAD
+}
+
+/// **物化前**估算「清空记忆的快照会占多少环字节」(上界)。
+///
+/// ★评审第62轮:原先 `clear` 先把整表(含 embedding)物化进 RAM,**之后**才由环按上限拒绝
+/// ⇒ 一个 2 GiB 的库会先分配 2 GiB(可能 OOM),再被礼貌地拒绝。**上限只约束保留,不约束瞬时分配。**
+/// 故改为先用 SQL 量字节(`LENGTH(CAST(... AS BLOB))` 取字节而非字符数;BLOB 的 `LENGTH` 即字节)。
+fn memory_clear_undo_bytes(conn: &Connection) -> Result<usize, String> {
+    let (payload, rows): (i64, i64) = conn
+        .query_row(
+            "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(fact AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM memories",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(undo_bytes_upper_bound(
+        payload,
+        rows,
+        std::mem::size_of::<MemRow>(),
+    ))
 }
 
 #[derive(Default)]
@@ -723,16 +773,44 @@ pub fn memory_clear(
     trash: State<'_, MemTrash>,
 ) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
-    let snap = memory_rows_full(&conn)?;
+    memory_clear_inner(&conn, &trash.0)
+}
+
+/// 清空记忆的**真实逻辑**(抽出以便单测覆盖真实命令体 · 第60轮 [建议]3 纪律)。
+///
+/// ★超上限时**根本不物化快照**(评审第62轮):既不把整库 embedding 拉进 RAM,也不发 token;
+/// 前端据「无 token」不提供撤销。销毁照常发生 —— 红线只要求**永不谎报撤销**,并未要求拒绝销毁。
+fn memory_clear_inner(
+    conn: &Connection,
+    ring: &Mutex<UndoRing<MemRow>>,
+) -> Result<DestroyResult, String> {
+    let cap = ring.lock().unwrap().max_bytes();
+    let undoable = memory_clear_undo_bytes(conn)? <= cap;
+    let snap = if undoable {
+        memory_rows_full(conn)?
+    } else {
+        Vec::new() // 超上限:不物化
+    };
     let n = conn
         .execute("DELETE FROM memories", [])
         .map_err(|e| e.to_string())?;
     // 清空一个已空的库 = no-op ⇒ 空快照不入环、不发 token(不变式①),旧条目不受影响。
-    let undo_token = trash.0.lock().unwrap().stash(snap);
+    let undo_token = ring.lock().unwrap().stash(snap);
     Ok(DestroyResult {
         deleted: n,
         undo_token,
     })
+}
+
+/// 预检:这次「清空记忆」是否可撤销?**供确认弹窗在用户做决定之前说真话**(评审第62轮 [应改])。
+#[tauri::command]
+pub fn memory_clear_undoable(
+    db: State<'_, Db>,
+    trash: State<'_, MemTrash>,
+) -> Result<bool, String> {
+    let conn = db.0.lock().unwrap();
+    let cap = trash.0.lock().unwrap().max_bytes();
+    Ok(memory_clear_undo_bytes(&conn)? <= cap)
 }
 
 /// 快照一条记忆行(含 embedding)。**行不存在 → 空 Vec;行存在但映射失败 → `Err`(fail-closed)。**
@@ -912,15 +990,30 @@ pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
 /// 暂存"最近一次文档销毁(删一篇 / 清空)"的整行(含 embedding),供 doc_undo 还原。进程内、重启即失。
 type DocRow = (String, String, String, String, Vec<f32>, i64); // (id, doc_id, doc_name, text, embedding, created_at)
 impl UndoBytes for DocRow {
-    fn undo_bytes(&self) -> usize {
-        self.0.len()
-            + self.1.len()
-            + self.2.len()
-            + self.3.len()
-            + self.4.len() * 4
-            + std::mem::size_of::<i64>()
+    fn heap_bytes(&self) -> usize {
+        self.0.capacity()
+            + self.1.capacity()
+            + self.2.capacity()
+            + self.3.capacity()
+            + self.4.capacity() * std::mem::size_of::<f32>()
     }
 }
+/// **物化前**估算「清空知识库的快照会占多少环字节」(上界)。与 memory 侧同纪律。
+fn doc_clear_undo_bytes(conn: &Connection) -> Result<usize, String> {
+    let (payload, rows): (i64, i64) = conn
+        .query_row(
+            "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(doc_id AS BLOB)) + LENGTH(CAST(doc_name AS BLOB)) + LENGTH(CAST(text AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM doc_chunks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(undo_bytes_upper_bound(
+        payload,
+        rows,
+        std::mem::size_of::<DocRow>(),
+    ))
+}
+
 #[derive(Default)]
 pub struct DocTrash(pub Mutex<UndoRing<DocRow>>);
 
@@ -1009,16 +1102,37 @@ fn doc_remove_inner(
 #[tauri::command]
 pub fn doc_clear(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<DestroyResult, String> {
     let conn = db.0.lock().unwrap();
-    let snap = doc_snapshot(&conn, None)?;
+    doc_clear_inner(&conn, &trash.0)
+}
+
+/// 清空知识库的**真实逻辑**;超上限时**根本不物化快照**(与 memory_clear_inner 同纪律)。
+fn doc_clear_inner(
+    conn: &Connection,
+    ring: &Mutex<UndoRing<DocRow>>,
+) -> Result<DestroyResult, String> {
+    let cap = ring.lock().unwrap().max_bytes();
+    let undoable = doc_clear_undo_bytes(conn)? <= cap;
+    let snap = if undoable {
+        doc_snapshot(conn, None)?
+    } else {
+        Vec::new() // 超上限:不物化(2 GiB 知识库不得先分配 2 GiB 再被环拒绝)
+    };
     let n = conn
         .execute("DELETE FROM doc_chunks", [])
         .map_err(|e| e.to_string())?;
-    // 清空一个已空的知识库 = no-op ⇒ 空快照不入环、不发 token(不变式①)。
-    let undo_token = trash.0.lock().unwrap().stash(snap);
+    let undo_token = ring.lock().unwrap().stash(snap);
     Ok(DestroyResult {
         deleted: n,
         undo_token,
     })
+}
+
+/// 预检:这次「清空知识库」是否可撤销?供确认弹窗说真话(评审第62轮 [应改])。
+#[tauri::command]
+pub fn doc_clear_undoable(db: State<'_, Db>, trash: State<'_, DocTrash>) -> Result<bool, String> {
+    let conn = db.0.lock().unwrap();
+    let cap = trash.0.lock().unwrap().max_bytes();
+    Ok(doc_clear_undo_bytes(&conn)? <= cap)
 }
 
 /// 撤销最近一次文档销毁(删一篇 / 清空):从 DocTrash 还原(原 id / embedding / 时间无损)→ 清空 trash。
@@ -1161,24 +1275,106 @@ mod tests {
         assert!(!ring.has(&t1), "最旧的应被淘汰");
         assert!(ring.has(&t2) && ring.has(&t3));
 
-        // ── 字节判据:每条 = 1 + 4*5 + 8 = 29 字节;上限 70 ⇒ 最多容 2 条
-        use super::UndoBytes;
-        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(100, 70);
-        assert_eq!(mrow("a", 5).undo_bytes(), 29, "字节口径须与环一致");
+        // ── 字节判据:先量出「一条」的真实入环开销(口径含 capacity + 结构体 + 环条目 + token),
+        //    再据此设上限 ⇒ 测试不写死魔数,口径改了也不会假绿。
+        let one = {
+            let mut probe: super::UndoRing<super::MemRow> =
+                super::UndoRing::with_bounds(100, usize::MAX);
+            probe.stash(vec![mrow("a", 5)]).unwrap();
+            probe.total_bytes()
+        };
+        assert!(one > 0);
+        let mut ring: super::UndoRing<super::MemRow> =
+            super::UndoRing::with_bounds(100, one * 2 + one / 2); // 恰好容 2 条
         let a = ring.stash(vec![mrow("a", 5)]).unwrap();
         let b = ring.stash(vec![mrow("b", 5)]).unwrap();
         let c = ring.stash(vec![mrow("c", 5)]).unwrap();
-        assert!(ring.total_bytes() <= 70, "字节上限必须成立");
+        assert!(ring.total_bytes() <= one * 2 + one / 2, "字节上限必须成立");
+        assert_eq!(ring.len(), 2, "字节判据应把最旧的淘汰掉");
         assert!(!ring.has(&a), "字节判据应淘汰最旧");
         assert!(ring.has(&b) && ring.has(&c));
 
         // ── 不变式③:单次快照超字节上限 ⇒ 不入环、不发 token、旧条目不受影响
-        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(10, 50);
-        let keep = ring.stash(vec![mrow("k", 0)]).unwrap(); // 9 字节
-        let huge = ring.stash(vec![mrow("h", 100)]); // 1 + 400 + 8 = 409 > 50
+        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(10, one);
+        let keep = ring.stash(vec![mrow("k", 0)]).unwrap();
+        let huge = ring.stash(vec![mrow("h", 10_000)]); // 远超 one
         assert!(huge.is_none(), "超上限快照不得入环、不得发 token");
         assert_eq!(ring.len(), 1, "超限快照不得淘汰既有条目");
         assert!(ring.has(&keep));
+    }
+
+    /// ★评审第62轮 [应改] + 问题4:`clear` **必须在物化前**用 SQL 估算;超上限则
+    /// **根本不快照**(不把整库 embedding 拉进 RAM)、**不发 token**、**不淘汰既有条目**;
+    /// 且 `*_clear_undoable()` 的预检结论必须与 `clear` 的实际行为**一致**
+    /// —— 否则确认弹窗会在用户**做决定之前**承诺一个做不到的撤销。
+    #[test]
+    fn clear_over_byte_cap_skips_snapshot_and_matches_its_own_precheck() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups");
+        migrate(&mut conn, &tmp).unwrap();
+
+        // 一条带 4KiB embedding 的记忆(1024 个 f32)
+        let emb: Vec<u8> = (0..1024u32)
+            .flat_map(|i| (i as f32).to_le_bytes())
+            .collect();
+        conn.execute(
+            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('m1','fact',?1,1)",
+            rusqlite::params![emb],
+        )
+        .unwrap();
+
+        // 量出「一条最小条目」的真实入环开销(新口径含 String/Vec 头 + 环条目 + token),
+        // 上限恰设为它 ⇒ PREV 装得下,而带 4KiB embedding 的整表快照必然超限。
+        let one_small = {
+            let mut probe: super::UndoRing<super::MemRow> =
+                super::UndoRing::with_bounds(8, usize::MAX);
+            probe.stash(vec![mrow("PREV", 0)]).unwrap();
+            probe.total_bytes()
+        };
+        let ring: Mutex<super::UndoRing<super::MemRow>> =
+            Mutex::new(super::UndoRing::with_bounds(8, one_small));
+        // 环里先躺着一条「上一次销毁」——它绝不能被淘汰,也绝不能被错还原
+        let prev = ring.lock().unwrap().stash(vec![mrow("PREV", 0)]).unwrap();
+
+        // 预检:应判为不可撤销(与下面 clear 的行为一致)
+        let cap = ring.lock().unwrap().max_bytes();
+        let est = super::memory_clear_undo_bytes(&conn).unwrap();
+        assert!(est > cap, "该库的快照应超过环上限");
+
+        // clear:销毁照常发生,但**不发 token**、**不淘汰 PREV**
+        let r = super::memory_clear_inner(&conn, &ring).unwrap();
+        assert_eq!(r.deleted, 1, "销毁照常发生(红线不要求拒绝销毁)");
+        assert!(
+            r.undo_token.is_none(),
+            "超上限 ⇒ 不发 token ⇒ 前端不提供撤销"
+        );
+        let g = ring.lock().unwrap();
+        assert_eq!(g.len(), 1, "超上限的 clear 不得淘汰既有条目");
+        assert!(g.has(&prev), "PREV 那一次必须原封不动");
+        drop(g);
+
+        // 反面:上限足够大时,预检说可撤销,clear 也确实发 token
+        let mut conn2 = Connection::open_in_memory().unwrap();
+        migrate(&mut conn2, &tmp).unwrap();
+        conn2
+            .execute(
+                "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('m1','fact',NULL,1)",
+                [],
+            )
+            .unwrap();
+        let ring2: Mutex<super::UndoRing<super::MemRow>> = Mutex::new(Default::default());
+        let cap2 = ring2.lock().unwrap().max_bytes();
+        assert!(
+            super::memory_clear_undo_bytes(&conn2).unwrap() <= cap2,
+            "小库预检应判为可撤销"
+        );
+        let r2 = super::memory_clear_inner(&conn2, &ring2).unwrap();
+        assert_eq!(r2.deleted, 1);
+        assert!(
+            r2.undo_token.is_some(),
+            "预检说可撤销 ⇒ clear 必须真的发 token"
+        );
     }
 
     /// ★跨进程契约:`DestroyResult` 必须序列化为 `{ deleted, undoToken }`。

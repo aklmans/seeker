@@ -10,12 +10,16 @@
  *       故本页的删除**纯属用户 UI 发起**。
  *     · **用户发起**:记忆逐条删 = 即时删 + `toastUndo`;记忆清空 / 文档删 / 文档清空 = `guardrail`
  *       的 `confirmDestructive`(预览 + 确认 + `onUndo`),`!G` 时 fail-closed 早返。
- *     · ★**撤销语义 = 撤销「最近一次销毁」,而非「撤销这一条」**(评审第56轮 [应改] 坐实):后端
- *       `MemTrash`/`DocTrash` 各自是**单槽覆盖**(`*trash = snap`,data.rs:593/622;`memory_undo` 用
- *       `mem::take` 取走并清空)。⇒ **任何新的销毁都会让本域先前的撤销立即过期**。本模块据此守卫:
- *       ① 新销毁前**摘掉本域尚存的撤销 toast**(不留会还原错记录的死按钮);② 过期的撤销回调
- *       **诚实拒绝**并提示,而非静默还原错记录。(修前实测:6.5s 内连删两条 → 第一条快照被覆盖、
- *       其 toast 仍可点 → 还原的是第二条,第一条永久丢失。)
+ *     · ★**撤销语义 = 撤销「最近一次销毁」,而非「撤销这一条」** —— **理由已随刀2b-1 改变,勿照旧解读**:
+ *       · 第56轮起的旧理由(**已不成立**):后端曾是**单槽覆盖**,新销毁会把上一次的快照冲掉。
+ *       · **今日理由**(刀2b-1):后端已是**有界环 `UndoRing`**,多次销毁**各自留存**并各有 token;
+ *         但**本模块尚未把 token 穿进撤销回调** ⇒ `rt.*.undo()` 不带 token ⇒ 后端取**环顶(最近一次)**。
+ *       ⇒ 语义仍是「撤销最近一次」,故世代守卫仍必需:① 新销毁前**摘掉本域尚存的撤销 toast**
+ *       (不留会还原错记录的死按钮);② 过期的撤销回调**诚实拒绝**,而非静默还原错记录。
+ *       ⚠ **`undo()` 不带 token 是一个明确的临时不安全 affordance**(评审第62轮):旧单槽下第二次撤销
+ *       只会还原 0 条(诚实的 no-op);**环下它会还原环顶 = 别人的那一次销毁**。今天挡住它的全是**前端**闸
+ *       (`done` / 世代 / `dropToast` / `offerUndo`)—— 纵深防御被迫承重。**刀2b-2 必须把 `None` 这个
+ *       affordance 删掉**(`token` 必填、未命中即还原 0 条),届时「还原错记录」才**结构上不可能**。
  *       ⚠ **不得改 `toast.js` 共享原语**:notes/prompts/resumes 的撤销是**闭包快照、各自独立正确**,
  *       做成全局互斥反而把它们改坏。世代守卫**只作用于本模块自己的两个 trash 域**(memory / docs)。
  *     · ★**提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原**(第58轮 [建议]A + 第60轮 [建议]1 + 刀2b-1):
@@ -51,14 +55,19 @@ import { errText, toast, toastUndo } from './toast.js';
 const fmtTs = (ts) => { try { return new Date(+ts || 0).toLocaleString(); } catch (_e) { return ''; } };
 const emptyLine = (txt) => `<p style="color:var(--ink-3);font-size:12px;padding:12px 0;">${txt}</p>`;
 
-/* ── 撤销世代守卫(见模块头 §4-3):后端 MemTrash / DocTrash 各自单槽、只存「最近一次销毁」。
-      任一域发生新销毁 → 该域此前的撤销 affordance 立即过期。两域计数独立(后端两个 State 亦独立)。 */
+/* ── 撤销世代守卫(见模块头 §4-3):后端 MemTrash / DocTrash 现为**各自独立的有界环 `UndoRing`**
+      (刀2b-1;不再是单槽)。环里多次销毁各自留存,但**本模块尚未穿 token** ⇒ `undo()` 取环顶(最近一次)
+      ⇒ 语义仍是「撤销最近一次」,故任一域发生新销毁 → 该域此前的撤销 affordance 立即过期。
+      两域计数独立(后端两个环亦独立 ⇒ 文档销毁**结构上**动不了记忆环顶)。 */
 let memGen = 0, docGen = 0;
 let memUndoToast = null; // 记忆域当前在场的 toastUndo 元素(新销毁前摘掉,避免留下会还原错记录的死按钮)
 /* ★重入守卫(评审第57轮 [应改]):记忆逐条删是**唯一的即时删除路径** —— 按钮在 `await remove()`+`await refresh()`
-   期间仍留在 DOM 里可点。双击会让后端 `memory_remove` 第二次以**空快照**覆盖单槽(`*trash = snap`,snap=[],
-   data.rs:600-623 删 0 行也覆盖)⇒ 撤销还原 0 条,而 `toast.js:17` 的 doUndo **不 await restoreFn、无条件报
-   「已撤销」** ⇒ 静默永久丢数据 + 假的成功提示。
+   期间仍留在 DOM 里可点。
+   · 当年(单槽):双击让 `memory_remove` 第二次以空快照**覆盖**单槽 ⇒ 撤销还原 0 条,而 `toast.js` 的 doUndo
+     无条件报「已撤销」⇒ 静默丢数据 + 假成功。**该根因已在刀2a(空快照不入环 + fail-closed)与刀1(撤销结果
+     契约)消除。**
+   · 今日(环):双击的第二次是 no-op 销毁 ⇒ `deleted=0` ⇒ `offerUndo` 拒 ⇒ 不再丢数据。但重入仍会造成
+     **重复的后端往返与并存的撤销 affordance**,且逻辑闸是 `dropToast`/世代推进的前提。**故守卫保留。**
    对比:guardrail 的确认按钮先 `close()` 再 await onConfirm(guardrail/index.js:122-124),DOM 同步移除
    ⇒ 文档域天然不可重入。故守卫只需加在本路径。 */
 let memBusy = false;
@@ -111,8 +120,8 @@ export async function renderMemory(box) {
         + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}</div></div><button class="btn" data-memdel="${cEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
       : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
 
-    // 逐条删:即时删除 + toastUndo。★后端单槽:先摘掉尚存的旧撤销(它此刻即将失效),再以世代号守卫。
-    // ★重入守卫(见模块头):await 窗口内的第二次点击会以空快照覆盖单槽 ⇒ 逻辑闸(memBusy)+ 物理闸(disabled)。
+    // 逐条删:即时删除 + toastUndo。未穿 token ⇒ `undo()` 取环顶 ⇒ 先摘掉尚存的旧撤销(它此刻即将失效),再以世代号守卫。
+    // ★重入守卫(见模块头):await 窗口内的第二次点击会造成重复往返与并存的撤销 ⇒ 逻辑闸(memBusy)+ 物理闸(disabled)。
     const memBtns = () => [...box.querySelectorAll('[data-memdel]')];
     memBtns().forEach((b) => (b.onclick = async () => {
       if (memBusy) return;
@@ -121,7 +130,7 @@ export async function renderMemory(box) {
       frozen.forEach((x) => { x.disabled = true; }); // disabled 按钮不触发 click:双击 / 交错删都被物理挡住
       try {
         // 先摘旧撤销:保守选择 —— 避免 await 窗口内旧撤销与本次 remove 并发。
-        // 若 remove 失败,memGen 不推进 ⇒ 后端 trash 仍是上一条,Mod+Z(lastUndo)仍能正确还原它,无数据损害。
+        // 若 remove 失败,memGen 不推进 ⇒ 环顶仍是上一次销毁,Mod+Z(lastUndo)仍能正确还原它,无数据损害。
         dropToast(memUndoToast); memUndoToast = null;
         // ★不变式(评审第58轮 [建议]A):**提供撤销 ⇔ 销毁确已发生**。
         //   原 `catch(_e){}` 吞错后仍 ++memGen + 给撤销 ⇒ remove 失败时 trash 还是上一条,
@@ -147,7 +156,7 @@ export async function renderMemory(box) {
             let n;
             try { n = await rt.memory.undo(); } catch (e) { toast(errText(e)); return false; }
             await refresh();
-            if (typeof n === 'number' && n === 0) { // 后端真还原 0 条(如单槽被覆盖)⇒ 绝不可报「已撤销」
+            if (typeof n === 'number' && n === 0) { // 后端真还原 0 条(环内已无此次销毁)⇒ 绝不可报「已撤销」
               toast(tt('没有可撤销的内容', 'Nothing to undo'));
               return false;
             }
@@ -172,10 +181,20 @@ export async function renderMemory(box) {
     // gen = 世代;ok = 销毁确已发生。★guardrail 在 onConfirm 之后**无条件** showUndo(guardrail:125),
     //   故 onConfirm 失败时仍会给出撤销按钮 ⇒ onUndo 必须自行拒绝。
     //   ⚠ 只靠 gen 不够:失败时不推进世代,则 gen(0) === memGen(0) 会**误判为有效**,必须有显式 ok。
+    //   ★★评审第62轮补的可达变体(**别把 `!ok` 并进 gen 判据**):`memGen` 是**前端模块级、刷新即归零**,
+    //     而**环是后端状态、跨刷新存活** ⇒「刷新后 memGen=0 而环里躺着 A」是真实可达状态。
+    //     此时一次超限 clear(ok=false、不推进世代)恰好命中 `gen(0)===memGen(0)` ——
+    //     **`if (!ok) return;` 是唯一挡住「撤销取走环顶的 A」的那道闸,不是冗余。**
     let gen = 0, ok = false;
+    // ★预检(评审第62轮 [应改]):确认文案必须在**用户做决定之前**说真话 ——
+    //   超出后端环的字节上限时,这次清空**不可撤销**;绝不能先承诺「可在几秒内撤销」、销毁后才改口。
+    let undoable = true;
+    try { undoable = await rt.memory.clearUndoable(); } catch (_e) { undoable = false; } // 问不到 ⇒ 保守按不可撤销告知
     await G.confirmDestructive({
       title: tt('清除全部长期记忆?', 'Clear all long-term memory?'),
-      detail: tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).'),
+      detail: undoable
+        ? tt('将删除 AI 记住的全部内容。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Deletes everything AI remembers. Undoable for a few seconds (only the most recent destruction).')
+        : tt('将删除 AI 记住的全部内容。内容过大,清除后无法撤销。', 'Deletes everything AI remembers. Too large to snapshot — this CANNOT be undone.'),
       confirmLabel: tt('清除', 'Clear'),
       undoText: tt('已清除长期记忆', 'Memory cleared'),
       onConfirm: async () => {
@@ -192,7 +211,7 @@ export async function renderMemory(box) {
             );
           } catch (e) { toast(errText(e)); }
           if (ok) { // 提供撤销 ⇔ 销毁确已发生
-            dropToast(memUndoToast); memUndoToast = null; // 清空已覆盖单槽 → 旧的逐条撤销就此失效
+            dropToast(memUndoToast); memUndoToast = null; // 清空已入环成为新环顶 → 未穿 token 的旧撤销就此失效
             gen = ++memGen;
           }
           await refresh();
@@ -247,7 +266,7 @@ export async function renderDocs(box) {
       : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
 
     // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
-    // ★DocTrash 与 MemTrash 同款单槽 → 同一世代守卫(承评审第56轮 [建议]1「修 (a) 时一并对齐」)。
+    // ★DocTrash 与 MemTrash 同款(各自独立的有界环、均未穿 token)→ 同一世代守卫(承第56轮 [建议]1)。
     [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = () => {
       if (!G || !G.confirmDestructive) return; // fail-closed
       const d = rows.find((x) => String(x.docId) === String(b.dataset.docdel));
@@ -325,12 +344,17 @@ export async function renderDocs(box) {
 
   // 清空全部 = 破坏性 → guardrail。
   const clr = q('#ccDocClear');
-  if (clr) clr.onclick = () => {
+  if (clr) clr.onclick = async () => { // async:预检需 await(确认文案在用户决定前说真话)
     if (!G || !G.confirmDestructive) return; // fail-closed
     let gen = 0, ok = false;
+    // ★预检同 renderMemory 清空路径:确认文案在用户做决定之前说真话(评审第62轮 [应改])。
+    let undoable = true;
+    try { undoable = await rt.docs.clearUndoable(); } catch (_e) { undoable = false; }
     G.confirmDestructive({
       title: tt('清空全部文档?', 'Clear all docs?'),
-      detail: tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).'),
+      detail: undoable
+        ? tt('将删除知识库里的全部文档。可在几秒内撤销(仅能撤销最近一次销毁)。', 'Removes every doc. Undoable for a few seconds (only the most recent destruction).')
+        : tt('将删除知识库里的全部文档。内容过大,清空后无法撤销。', 'Removes every doc. Too large to snapshot — this CANNOT be undone.'),
       confirmLabel: tt('清空', 'Clear'),
       undoText: tt('已清空知识库', 'Knowledge cleared'),
       onConfirm: async () => {
