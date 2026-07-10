@@ -1549,3 +1549,15 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
   - **exec 自我订正**:首版一条断言设计有误(读回 `innerHTML` 查 `&quot;`)——**文本节点序列化本就不转义 `"`,该断言证不了转义器**;已改为直测 cEsc + 属性位越狱测试。
 
 **★P1-a 收官(通过 + [建议] 已落)。下一步 P1-b:Connector-MCP 提一等公民** —— 若引入模型侧 connector 状态读,**[应改]A 静态最小投影即到期**(须挡住 url/command/env,兑现 lock-note 印刷承诺);评审届时比照 D3:拿投影函数做正向断言 + 对抗性核实模型上下文里到底有什么。
+
+**用户拍板(2026-07-09)**:**P1-b 只做搬迁、不碰模型侧** ⇒ 零模型暴露继续靠结构性缺席守住,[应改]A **不到期**,lock-note 印刷承诺不被打脸。
+
+### P1-b · Connector(MCP)从设置模态搬迁、提为一等公民内联视图 · commit `9641945` · ⏳ 待审
+**红线承载刀**(密钥→钥匙串 / guardrail 删除 / 知情同意 / 属性位转义)。连接器管理不再埋在设置页深处的模态,成为能力中心里的一等公民视图。**零新后端**(复用 `rt.mcp.*`)。
+- **改动(3 文件,+13/−198 净删 185 行)**:新增 `connectors.js` 的 `renderConnectors(box)`——由 `settings.js` 的 module-private 模态 `openMcpManager`(146-322)搬迁,**模态外壳 → 内联宿主,逻辑逐字保留**(增删启停/令牌/env/测试连接/传输模式切换);`capability-center.js` 的 Connector 段:只读总览 → 调 `renderConnectors`;`settings.js` 删 `openMcpManager`(**179 行,含其 2 个 bespoke 转义器 `esc`/`escA`;escA 9 处全在块内,已断言核实**),「扩展 · MCP 工具」→「扩展 · 连接器」**指路行**(`#mgrMcp`→`go('capability')`,保知情同意文案 + 老用户发现性)。
+- **★红线逐字保留**:①**密钥(§4-2)**——令牌/env 值只经 `rt.mcp.setAuth`/`setEnv` **直送系统钥匙串**,前端只见 `configured/empty`、绝不持明文(列表只渲染 `authConfigured` 与 `envConfigured[].status`;token 输入 `password`+`autocomplete=off`);②**破坏性(§4-3)**——删除走 `platform/guardrail` `confirmDestructive`;③**知情同意(§4-4)**——本地=在本机跑程序/远程=连你填的端点、只加可信来源、AI 每次调用先问你、返回内容当不可信数据;④**转义**——两个 bespoke `esc`/`escA` → **平台唯一 `cEsc`(`&<>"`)**,含 `data-*` **属性位**(承第54轮 [建议];原 escA 正是为属性位而设,cEsc 是其超集)。
+- **★读/写界不变**:本视图仍是「给人看」前端面 —— 端点/命令/密钥状态只呈现给**用户**、**永不进模型上下文** ⇒ **[应改]A 静态最小投影仍不到期**,零模型暴露继续靠**结构性缺席**守住(兑现 lock-note 印刷承诺)。
+- **★请评审裁的一处判断(exec 主动提请)· `s.error` 呈现**:第54轮评审曾把「capability-center **不**渲染 `s.error`」列为「附带发现的好防御」(避免 MCP 错误体=外部不可信内容进 DOM)。但**原设置页模态本就渲染 `esc(s.error)`**(便于用户排错)。本刀作为**忠实搬迁**,**保留了该呈现**(改用 `cEsc` 转义)。取舍:转义后无 XSS(已对抗验证 `<script>` 惰性)、永不进模型、且删掉会**静默劣化用户排错能力**(非零逻辑改动)。**请裁**:保留(现状)是否妥?还是应按 §4-4「外部内容标注 Untrusted」再加视觉标注?(后者是逻辑改动,故未自行扩范围。)
+- **验**:node×3 净;**import/export 完整性(ruling④)**全解析、`openMcpManager`/`escA` 残留 0、`IC`/`openModal` 仍在用(非死 import)。preview 净方法 · **正向断言**(管理表单 + 模式切换×2 + 知情同意 lock-note + 列表容器 + token=password/autocomplete=off + **其余四域仍在=无 import link 死**;设置页删 179 行后**仍渲染**、指路行→`go('capability')` 落地即见管理面、**无旧模态**);**★对抗性核实**:①恶意 server 名**同落 text 位与 `data-*` 属性位** → **无 `[onmouseover]` 越狱**、`data-mcpdel`/`data-cn`/`data-cv` **精确回环**(证 cEsc 替换 escA 忠实且安全)、command 的 `<img onerror>` 与 error 的 `<script>` **全惰性**、无 img/script 元素;②**删除红线** → guardrail **被咨询**、确认前 `rt.mcp.remove` **未被调用**、`onConfirm` 后才调。0 console;截图证一等公民管理面 + 注入载荷渲染为惰性字面文本;**真机 WKWebView 6.13s boot 零 panic**。
+- **诚实边界**:web 端 `rt.mcp.*` 降级(list→[]、add/probe→notImpl),故**真连接器增删/钥匙串写入路径待桌面覆盖**;本轮红线以「桩 + 对抗性断言」验证契约面(guardrail 咨询序、密钥不回显、转义),真钥匙串落地由既有 `mcp_set_auth` 后端保证(未改)。
+- **下一步 P1-c**:记忆 + 知识库薄视图(已有后端 `memory_*`/`doc_*`)。
