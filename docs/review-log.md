@@ -1943,3 +1943,18 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★方法论(评审归纳,已在 §4-⑧)**:**先量,再改 —— 对方案、对代码、对评审的裁决,都一样。** 我两次量对(aiRun 零调用 / notes 隐私域),评审这轮读 `desktop.js:140` 推翻了我的 §(i);而 `ef3e900` 我又在自己的守卫测试里写出死靶、自查修红。**没有谁的判断免于「先量」。**
 
 **下一刀(评审建议)**:(i) + `ai_chat` 的 `tools:false` 无工具档 + JD Untrusted 框定(一刀,小;JD 框定部分已落)→ 然后 T0 协议骨架。
+
+### 块(i) · 无工具生成原语 + 出题真化 · commits `27fdbe0` `157447c` · ⏳ 待审
+承评审第67轮下一刀 + 用户裁定(不拉 contribute / 先接一处 / 出题 / 喂 JD 全文)。
+
+#### 原语 `ai_generate`(`27fdbe0`,站点无关)
+- **结构性 fail-closed(前置③ 最强读法)**:`ai_generate` 命令与 `run_generate` **都不接收 registry/mcp/history** ⇒ 作用域**根本没有工具**。「带工具」是 `ai_chat`、「不带」是本命令 = **两个显式档**,task 拼写错误漏不出工具(结构性缺席,非运行时 flag)。同 `ai_extract` 先例。无 contribute(用户裁定:生成=(指令+数据)确定性变换)、无历史、保留 system_prompt。空工具表下模型捏造 tool_calls ⇒ **拒绝执行**。
+- **JD 框定做成一等参数(前置②)**:`build_generate_user` 对 `untrusted` **必 `frame_untrusted`**,调用点漏不掉。
+- 复用 `stream_round`(流式+重试);两端 runtime:desktop `rt.ai.generate` 复用 aiStream 订阅、invoke ai_generate;web 抛 NotImpl。
+- **验**:2 新测试点名跑过,**各变异证伪**(去框定→红;签名加 registry→红);源码守卫只扫生产段(排 `#[cfg(test)]`,避死靶);124/0。
+
+#### 站点 · 出题真化 `ivGenerate`(`157447c`)
+- **★选出题而非面试反馈(量出来的,推翻「反馈 blast radius 最小」的预估)**:反馈的 `ivScore` 数值分数是整个面试子系统承重结构(整轮平均/练习记录/总评);出题是 text-in-text-out、不喂分数 schema ⇒ 最小。**先量再改,对评审的预估也适用。**
+- **可信/不可信分离**:岗位+简历概要(用户自撰=可信)进 `instruction`;**JD 全文走 `untrusted`** ⇒ 后端必框定(前置② 由参数结构杜绝「拼接处漏框定」)。真·无工具流式 → `<pre>`(`textContent` 转义)→ `parseGenQuestions` 去编号取 3 题入 IV_BANK。**诚实降级**:`aiChatAvailable()` 假 ⇒ 回落原 mock,绝不假装。**失败出声**:onError 铺真实报错。§4-4:模型输出进 DOM 处处 `cEsc`(已核实)。
+- **验**(preview 真模块 + 伪造 `__TAURI__` 走真路径):JD 进 untrusted **不进 instruction**、`task=interview`、3 行解析成 3 题、**注入 JD 的 `<img onerror>` 流式期与结果卡都不执行**;降级路径**绝不调真 generate**、回落 mock 仍出题。**★harness 自查**:降级测首现「0 题」= **eval 上下文定时器节流**把 aiRun 嵌套 setTimeout 拉长(隔离测 1 步+5s 正常、Math.random 正常),给足 6s 墙钟全绿。tsc 51→51、Rust 124/0、真机 1.89s boot 零 panic。
+- **诚实边界**:端到端真模型需桌面+BYO(preview 以 stub 验契约面)。**记债**:`ivStartRound` 整轮种题仍 mock;面试反馈(需先解决分数 schema 承重)/ 简历改写真化各单出一刀。
