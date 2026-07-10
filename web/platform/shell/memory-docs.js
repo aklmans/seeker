@@ -1,0 +1,184 @@
+/** 平台 · 长期记忆 + 知识库(RAG 文档)管理 —— P1-c:从 `settings.js` 的两个 module-private 模态
+ *  (`openMemoryManager` / `openDocsManager`)**搬迁**至能力中心,提为一等公民内联视图。
+ *
+ *  **零新后端**:复用既有 `rt.memory.*`(list/remove/clear/undo)与 `rt.docs.*`(list/add/remove/clear/undo)。
+ *
+ *  ★红线(§4-3 破坏性 · §4-4 转义):
+ *   - **破坏性一律可撤销**:记忆逐条删 = 删后 `toastUndo`(即时撤销);记忆清空 / 文档删 / 文档清空
+ *     = `platform/guardrail` 的 `confirmDestructive`(预览 + 确认 + `onUndo` 撤销)。**逐字保留原行为**
+ *     (逐条删不弹模态是原设计:单条低风险 + 即时可撤销;见 review-log 第56轮提请裁决)。
+ *   - **转义不变式**(覆盖两条 sink,勿声明为假):用户/外部内容进 DOM **一律** `cEsc`(`&<>"`)——
+ *     ① `innerHTML` 渲染(含 `data-memdel` / `data-docdel` **属性位**;原 `_mgrEsc`/`esc` 只转 `&<>`、
+ *     **漏 `"`**,属性位有漂移风险,本刀一并收敛);② **`toast()` 路径**(`toast`→`el`→`template.innerHTML`
+ *     是 HTML sink,见 toast.js:9 / dom.js:9)—— **原 `openDocsManager` 把用户填的文档名裸拼进 toast
+ *     = 自 XSS,本刀修复**(承第55轮 [应改] 同款纪律)。
+ *   - **唯一有意免转义处**:`guardrail.confirmDestructive` 的 `detail` 走 `textContent`
+ *     (`platform/guardrail/index.js:71`),传裸名安全 —— 勿"顺手"加转义(会把 `&amp;` 显给用户)。
+ *
+ *  ★数据性质(措辞须精确,勿过度声称):
+ *   - **长期记忆 / 知识库文档本就是 Agent 的上下文** —— AI **会**读取它们(`LongTermMemory` / `DocContext`
+ *     能力),这是设计意图,非泄露。本视图让用户**查看与删除**它们(掌控权)。
+ *   - 记忆内容可能含用户主动写入的 PII;文档内容可能是外部(不可信)语料 —— 二者进 DOM 全 `cEsc`。
+ *   - 本视图本身是**「给人看」的前端面**,不把任何东西额外喂进模型上下文。 */
+import { cEsc } from './copilot-chrome.js';
+import { tt } from './i18n.js';
+import { errText, toast, toastUndo } from './toast.js';
+
+const fmtTs = (ts) => { try { return new Date(+ts || 0).toLocaleString(); } catch (_e) { return ''; } };
+const emptyLine = (txt) => `<p style="color:var(--ink-3);font-size:12px;padding:12px 0;">${txt}</p>`;
+
+/* ─────────────────────────── 长期记忆 ─────────────────────────── */
+
+/** 记忆视图:列表(内容 + 时间)+ 逐条删(即时 + toastUndo 撤销)+ 清除全部(guardrail 预览确认撤销)。 */
+export async function renderMemory(box) {
+  if (!box) return;
+  const rt = window.SeekerRT;
+  const G = window.SeekerGuardrail;
+
+  box.innerHTML = `<div id="ccMemBody" style="max-width:660px;">${tt('加载中…', 'Loading…')}</div>
+    <div style="margin-top:10px;"><button class="btn" id="ccMemClear" style="display:none;padding:4px 12px;font-size:11px;">${tt('清除全部记忆', 'Clear all memory')}</button></div>`;
+
+  const refresh = async () => {
+    let rows = [];
+    try { rows = await rt.memory.list(); } catch (_e) {}
+    const body = box.querySelector('#ccMemBody');
+    if (!body) return;
+    body.innerHTML = rows.length
+      // r.fact = 用户主动写入的内容,可能含 PII → cEsc 后只呈现给用户;r.id 落 data-* 属性位 → cEsc 转 " 封越狱。
+      ? `<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ', 'What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地', ' · local only')}</p>`
+        + rows.map((r) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${cEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${fmtTs(r.ts)}</div></div><button class="btn" data-memdel="${cEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+      : emptyLine(tt('AI 还没有记住任何内容。', 'Nothing remembered yet.'));
+
+    // 逐条删:即时删除 + toastUndo 撤销(原设计:单条低风险、即时可撤销,不弹模态)。
+    [...box.querySelectorAll('[data-memdel]')].forEach((b) => (b.onclick = async () => {
+      try { await rt.memory.remove(b.dataset.memdel); } catch (_e) {}
+      await refresh();
+      toastUndo(tt('已删除该记忆', 'Memory deleted'), async () => { try { await rt.memory.undo(); } catch (_e) {} await refresh(); });
+    }));
+    const cb = box.querySelector('#ccMemClear');
+    if (cb) cb.style.display = rows.length ? '' : 'none';
+  };
+  await refresh();
+
+  // 清除全部 = 破坏性 → guardrail(预览 + 确认 + 撤销)。
+  const cb = box.querySelector('#ccMemClear');
+  if (cb) cb.onclick = async () => {
+    if (!G || !G.confirmDestructive) return; // fail-closed
+    await G.confirmDestructive({
+      title: tt('清除全部长期记忆?', 'Clear all long-term memory?'),
+      detail: tt('将删除 AI 记住的全部内容。可在几秒内撤销。', 'Deletes everything AI remembers. Undoable for a few seconds.'),
+      confirmLabel: tt('清除', 'Clear'),
+      undoText: tt('已清除长期记忆', 'Memory cleared'),
+      onConfirm: async () => { try { await rt.memory.clear(); } catch (_e) {} await refresh(); },
+      onUndo: async () => { try { await rt.memory.undo(); } catch (_e) {} await refresh(); },
+    });
+  };
+}
+
+/* ─────────────────────────── 知识库(RAG 文档)─────────────────────────── */
+
+/** 知识库视图:添加(粘贴 / 选 .txt·.md)+ 列表(名/片段数/时间)+ 逐条删 + 清空(均走 guardrail)。 */
+export async function renderDocs(box) {
+  if (!box) return;
+  const rt = window.SeekerRT;
+  const G = window.SeekerGuardrail;
+
+  box.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-width:560px;">
+      <input class="input" id="ccDocName" placeholder="${tt('文档名称(如 字节后端 JD)', 'Doc name (e.g. ByteDance JD)')}">
+      <textarea class="input" id="ccDocText" rows="4" placeholder="${tt('粘贴文档内容,或从下方选 .txt / .md 文件', 'Paste text, or pick a .txt/.md file below')}" style="resize:vertical;font-family:inherit;"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-accent" id="ccDocAddBtn">${tt('添加到知识库', 'Add to knowledge')}</button>
+        <button class="btn" id="ccDocFileBtn">${tt('选文件 .txt/.md', 'Pick .txt/.md')}</button>
+        <input type="file" id="ccDocFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
+        <span class="mono" id="ccDocHint" style="font-size:11px;color:var(--ink-mute);"></span>
+      </div>
+    </div>
+    <div id="ccDocList" style="max-width:660px;">${tt('加载中…', 'Loading…')}</div>
+    <div style="margin-top:10px;"><button class="btn" id="ccDocClear" style="display:none;padding:4px 12px;font-size:11px;">${tt('清空全部', 'Clear all')}</button></div>`;
+
+  const q = (sel) => box.querySelector(sel);
+
+  const refresh = async () => {
+    let rows = [];
+    try { rows = await rt.docs.list(); } catch (_e) {}
+    const body = q('#ccDocList');
+    if (!body) return;
+    // d.name = 用户填的名 / 文件名(可能是外部语料标题)→ cEsc;d.docId 落 data-* 属性位 → cEsc。
+    body.innerHTML = rows.length
+      ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ', 'Docs · ')}${rows.length}</div>`
+        + rows.map((d) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${cEsc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段', 'chunks')} · ${fmtTs(d.ts)}</div></div><button class="btn" data-docdel="${cEsc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除', 'Delete')}</button></div>`).join('')
+      : emptyLine(tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。', 'Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.'));
+
+    // 逐条删 = 破坏性 → guardrail(预览 + 确认 + 撤销)。detail 走 textContent,故传裸名安全。
+    [...box.querySelectorAll('[data-docdel]')].forEach((b) => (b.onclick = () => {
+      if (!G || !G.confirmDestructive) return; // fail-closed
+      const d = rows.find((x) => String(x.docId) === String(b.dataset.docdel));
+      G.confirmDestructive({
+        title: tt('删除文档?', 'Delete doc?'),
+        detail: (tt('将从知识库删除:', 'Remove from knowledge: ')) + (d ? d.name : ''),
+        confirmLabel: tt('删除', 'Delete'),
+        undoText: tt('已删除文档', 'Doc deleted'),
+        onConfirm: async () => { try { await rt.docs.remove(b.dataset.docdel); } catch (_e) {} await refresh(); },
+        onUndo: async () => { try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
+      });
+    }));
+    const cb = q('#ccDocClear');
+    if (cb) cb.style.display = rows.length ? '' : 'none';
+  };
+  await refresh();
+
+  const addBtn = q('#ccDocAddBtn'), nameI = q('#ccDocName'), textI = q('#ccDocText'), hint = q('#ccDocHint');
+  if (addBtn) addBtn.onclick = async () => {
+    const text = ((textI && textI.value) || '').trim();
+    if (!text) { toast(tt('请先粘贴内容或选文件', 'Paste text or pick a file first')); return; }
+    const name = ((nameI && nameI.value) || '').trim();
+    addBtn.disabled = true;
+    const old = addBtn.textContent;
+    addBtn.textContent = tt('添加中…', 'Adding…');
+    try {
+      const r = await rt.docs.add(name, text);
+      // ★toast = HTML sink(el→template.innerHTML):文档名是用户输入 → 必须 cEsc。
+      //   原 settings.js:129 裸拼 = 自 XSS,本刀修复(同第55轮 [应改] 纪律)。
+      const shown = (r && r.name) || name || tt('未命名', 'Untitled');
+      toast(tt('已加入「', 'Added "') + cEsc(shown) + '」 · ' + ((r && r.chunks) || 0) + tt(' 片段', ' chunks'));
+      if (nameI) nameI.value = '';
+      if (textI) textI.value = '';
+      if (hint) hint.textContent = '';
+      await refresh();
+    }
+    catch (e) { toast(errText(e)); }
+    finally { addBtn.disabled = false; addBtn.textContent = old; }
+  };
+
+  const fileBtn = q('#ccDocFileBtn'), fileI = q('#ccDocFile');
+  if (fileBtn && fileI) {
+    fileBtn.onclick = () => fileI.click();
+    fileI.onchange = () => {
+      const f = fileI.files && fileI.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (textI) textI.value = String(reader.result || '');
+        if (nameI && !nameI.value) nameI.value = f.name.replace(/\.(txt|md)$/i, '');
+        if (hint) hint.textContent = f.name; // textContent,安全
+      };
+      reader.readAsText(f);
+      fileI.value = '';
+    };
+  }
+
+  // 清空全部 = 破坏性 → guardrail。
+  const clr = q('#ccDocClear');
+  if (clr) clr.onclick = () => {
+    if (!G || !G.confirmDestructive) return; // fail-closed
+    G.confirmDestructive({
+      title: tt('清空全部文档?', 'Clear all docs?'),
+      detail: tt('将删除知识库里的全部文档。可在几秒内撤销。', 'Removes every doc. Undoable for a few seconds.'),
+      confirmLabel: tt('清空', 'Clear'),
+      undoText: tt('已清空知识库', 'Knowledge cleared'),
+      onConfirm: async () => { try { await rt.docs.clear(); } catch (_e) {} await refresh(); },
+      onUndo: async () => { try { await rt.docs.undo(); } catch (_e) {} await refresh(); },
+    });
+  };
+}

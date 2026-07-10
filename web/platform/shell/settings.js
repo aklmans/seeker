@@ -19,7 +19,7 @@ import { openModal } from './modal.js';
 import { currentPage, frontis, go, renderTopActions, rerenderPages, signFoot } from './nav.js';
 import { isDesktop } from './shell-keys.js';
 import { clearAllDataFlow, saveSettings, setState, settingsPersistOn } from './shell-state.js';
-import { errText, toast, toastUndo } from './toast.js';
+import { errText, toast } from './toast.js'; // ★P1-c:toastUndo 随记忆管理搬迁至 memory-docs.js,此处已无消费者
 let settingsState={tab:'basic'};
 const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
@@ -58,88 +58,6 @@ async function openHistoryManager(){
       onUndo:async()=>{ for(const s of snaps){ try{ await rt.db.upsert('messages', s); }catch(_e){} } await render(); },
     });
   };
-}
-async function openMemoryManager(){
-  const rt=window.SeekerRT, G=window.SeekerGuardrail;
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('长期记忆','Long-term memory')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body" id="memBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
-    <div class="modal-foot"><button class="btn" id="memClear">${tt('清除全部记忆','Clear all memory')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
-  const render=async()=>{
-    let rows=[]; try{ rows=await rt.memory.list(); }catch(_e){}
-    const body=m.querySelector('#memBody'); if(!body) return;
-    if(!rows.length) body.innerHTML=`<p style="color:var(--ink-3);padding:18px 0;text-align:center;">${tt('AI 还没有记住任何内容。','Nothing remembered yet.')}</p>`;
-    else body.innerHTML=`<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('AI 记住的内容 · 共 ','What AI remembers · ')}${rows.length}${tt(' 条 · 仅存本地',' · local only')}</p>`+rows.map(r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;"><div style="font-size:13px;color:var(--ink-2);line-height:1.55;">${_mgrEsc(r.fact)}</div><div style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-mute);margin-top:3px;">${_mgrTime(r.ts)}</div></div><button class="btn" data-memdel="${_mgrEsc(r.id)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Delete')}</button></div>`).join('');
-    [...m.querySelectorAll('[data-memdel]')].forEach(b=>b.onclick=async()=>{ try{ await rt.memory.remove(b.dataset.memdel); }catch(_e){} await render(); toastUndo(tt('已删除该记忆','Memory deleted'), async()=>{ try{ await rt.memory.undo(); }catch(_e){} await render(); }); });
-    const cb=m.querySelector('#memClear'); if(cb) cb.style.display=rows.length?'':'none';
-  };
-  await render();
-  const cb=m.querySelector('#memClear');
-  if(cb) cb.onclick=async()=>{
-    if(!G||!G.confirmDestructive) return;
-    await G.confirmDestructive({
-      title:tt('清除全部长期记忆?','Clear all long-term memory?'),
-      detail:tt('将删除 AI 记住的全部内容。可在几秒内撤销。','Deletes everything AI remembers. Undoable for a few seconds.'),
-      confirmLabel:tt('清除','Clear'),
-      undoText:tt('已清除长期记忆','Memory cleared'),
-      onConfirm:async()=>{ try{ await rt.memory.clear(); }catch(_e){} await render(); },
-      onUndo:async()=>{ try{ await rt.memory.undo(); }catch(_e){} await render(); },
-    });
-  };
-}
-async function openDocsManager(){
-  const rt=window.SeekerRT, G=window.SeekerGuardrail;
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— KNOWLEDGE</p><h2 style="margin-top:5px;">${tt('知识库 · 文档','Knowledge · docs')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body">
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-        <input class="input" id="docName" placeholder="${tt('文档名称(如 字节后端 JD)','Doc name (e.g. ByteDance JD)')}">
-        <textarea class="input" id="docText" rows="4" placeholder="${tt('粘贴文档内容,或从下方选 .txt / .md 文件','Paste text, or pick a .txt/.md file below')}" style="resize:vertical;font-family:inherit;"></textarea>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="btn btn-accent" id="docAddBtn">${tt('添加到知识库','Add to knowledge')}</button>
-          <button class="btn" id="docFileBtn">${tt('选文件 .txt/.md','Pick .txt/.md')}</button>
-          <input type="file" id="docFile" accept=".txt,.md,text/plain,text/markdown" style="display:none">
-          <span class="mono" id="docHint" style="font-size:11px;color:var(--ink-mute);"></span>
-        </div>
-      </div>
-      <div id="docList">${tt('加载中…','Loading…')}</div>
-    </div>
-    <div class="modal-foot"><button class="btn" id="docClear">${tt('清空全部','Clear all')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
-  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const fmtTs=ts=>{try{return new Date(+ts||0).toLocaleString();}catch(_e){return '';}};
-  const render=async()=>{
-    let rows=[]; try{ rows=await rt.docs.list(); }catch(_e){}
-    const body=m.querySelector('#docList'); if(!body) return;
-    body.innerHTML = rows.length
-      ? `<div class="mc-lbl" style="margin-bottom:8px;">${tt('已加入文档 · 共 ','Docs · ')}${rows.length}</div>`+rows.map(d=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${esc(d.name)}</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;">${d.chunks} ${tt('片段','chunks')} · ${fmtTs(d.ts)}</div></div><button class="btn" data-docdel="${esc(d.docId)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Delete')}</button></div>`).join('')
-      : `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('知识库为空 —— 加入 JD / 笔记 / 调研,AI 答题时会自动检索相关片段。','Empty — add JDs / notes / research; the AI auto-retrieves relevant chunks when answering.')}</p>`;
-    [...m.querySelectorAll('[data-docdel]')].forEach(b=>b.onclick=()=>{
-      if(!G||!G.confirmDestructive) return;
-      const d=rows.find(x=>String(x.docId)===String(b.dataset.docdel));
-      G.confirmDestructive({ title:tt('删除文档?','Delete doc?'), detail:(tt('将从知识库删除:','Remove from knowledge: '))+(d?d.name:''), confirmLabel:tt('删除','Delete'), undoText:tt('已删除文档','Doc deleted'),
-        onConfirm:async()=>{ try{ await rt.docs.remove(b.dataset.docdel); }catch(_e){} await render(); },
-        onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } });
-    });
-    const cb=m.querySelector('#docClear'); if(cb) cb.style.display=rows.length?'':'none';
-  };
-  await render();
-  const addBtn=m.querySelector('#docAddBtn'), nameI=m.querySelector('#docName'), textI=m.querySelector('#docText'), hint=m.querySelector('#docHint');
-  if(addBtn) addBtn.onclick=async()=>{
-    const text=((textI&&textI.value)||'').trim(); if(!text){ toast(tt('请先粘贴内容或选文件','Paste text or pick a file first')); return; }
-    const name=((nameI&&nameI.value)||'').trim();
-    addBtn.disabled=true; const old=addBtn.textContent; addBtn.textContent=tt('添加中…','Adding…');
-    try{ const r=await rt.docs.add(name, text); toast(tt('已加入「','Added "')+((r&&r.name)||name||tt('未命名','Untitled'))+'」 · '+((r&&r.chunks)||0)+tt(' 片段',' chunks')); if(nameI)nameI.value=''; if(textI)textI.value=''; if(hint)hint.textContent=''; await render(); }
-    catch(e){ toast(errText(e)); }
-    finally{ addBtn.disabled=false; addBtn.textContent=old; }
-  };
-  const fileBtn=m.querySelector('#docFileBtn'), fileI=m.querySelector('#docFile');
-  if(fileBtn&&fileI){ fileBtn.onclick=()=>fileI.click();
-    fileI.onchange=()=>{ const f=fileI.files&&fileI.files[0]; if(!f) return; const reader=new FileReader();
-      reader.onload=()=>{ if(textI) textI.value=String(reader.result||''); if(nameI&&!nameI.value) nameI.value=f.name.replace(/\.(txt|md)$/i,''); if(hint) hint.textContent=f.name; };
-      reader.readAsText(f); fileI.value=''; }; }
-  const clr=m.querySelector('#docClear');
-  if(clr) clr.onclick=()=>{ if(!G||!G.confirmDestructive) return;
-    G.confirmDestructive({ title:tt('清空全部文档?','Clear all docs?'), detail:tt('将删除知识库里的全部文档。可在几秒内撤销。','Removes every doc. Undoable for a few seconds.'), confirmLabel:tt('清空','Clear'), undoText:tt('已清空知识库','Knowledge cleared'),
-      onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); },
-      onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } }); };
 }
 
 export function renderSettings(){
@@ -213,9 +131,9 @@ export function renderSettings(){
     <!-- 「演示空状态 · 查看引导态」行(showEmptyState=jobseek 符号)已随批11B 末件迁入 jobseek 的 data extend(dataResumeRowHTML,extendHTML('data') 位),平台不再裸读 apps 符号。 -->
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
     ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
-    ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
-    ${row(tt('知识库 · 文档','Knowledge · docs'),`<button class="btn" id="mgrDocs">${tt('管理文档','Manage docs')}</button>`)}
-    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除。<b>知识库文档</b>是你主动加入、供 AI 检索作答的语料(需配嵌入模型),其相关片段会用于回答 —— 同样只存本地、可随时删除。你掌控自己的数据。','Chat history and long-term memory stay local only. <b>AI cannot query your chat history</b> (only in-conversation context); review/clear volunteered memory here anytime. <b>Knowledge docs</b> are material you add for the AI to retrieve from (needs an embed model); relevant chunks are used in answers — also local-only and deletable anytime. You control your data.')}</span></div>
+    ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('去能力中心管理','Manage in Capability Center')}</button>`)}
+    ${row(tt('知识库 · 文档','Knowledge · docs'),`<button class="btn" id="mgrDocs">${tt('去能力中心管理','Manage in Capability Center')}</button>`)}
+    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可到<b>能力中心</b>查看或随时清除。<b>知识库文档</b>是你主动加入、供 AI 检索作答的语料(需配嵌入模型),其相关片段会用于回答 —— 同样只存本地、可在能力中心随时删除。你掌控自己的数据。','Chat history and long-term memory stay local only. <b>AI cannot query your chat history</b> (only in-conversation context); review or clear volunteered memory anytime in the <b>Capability Center</b>. <b>Knowledge docs</b> are material you add for the AI to retrieve from (needs an embed model); relevant chunks are used in answers — also local-only and deletable anytime in the Capability Center. You control your data.')}</span></div>
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('扩展 · 连接器','Extensions · Connectors')}</p></div>
     ${row(tt('MCP 服务器','MCP servers'),`<button class="btn" id="mgrMcp">${tt('去能力中心管理','Manage in Capability Center')}</button>`)}
     <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🧩</span><span>${tt('连接器(MCP)管理已移至<b>能力中心</b>,在那里统一查看与管理你接入的所有能力(增删启停 / 令牌 / 测试连接)。<b>本地服务器 = 在你电脑上运行一个程序;远程服务器 = 连接你填的 HTTP 端点</b>,请只加你信任的来源;鉴权令牌只存系统钥匙串、绝不外发;AI 每次调用其工具都会<b>先征得你同意</b>,返回内容被当作数据(不可信、防注入)。仅桌面端可用。','Connector (MCP) management has moved to the <b>Capability Center</b>, where every capability you connect is viewed and managed in one place (add / remove / enable, tokens, test connection). <b>A local server runs a program on your machine; a remote server connects to the HTTP endpoint you enter</b> — only add sources you trust. Auth tokens live only in the system keychain and never leave it; the AI <b>asks your permission every time</b> it calls a tool, and returned content is treated as untrusted data. Desktop only.')}</span></div>
@@ -275,8 +193,8 @@ function wireDataIO(){
   const exp=$('#dataExport'), expR=$('#dataExportRedacted'), imp=$('#dataImport'), impFile=$('#dataImportFile');
   if(!exp) return;
   const mh=$('#mgrHistory'); if(mh) mh.onclick=openHistoryManager;   // 历史与记忆掌控(#4),web/桌面皆可
-  const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
-  const md=$('#mgrDocs'); if(md) md.onclick=openDocsManager;          // RAG 知识库管理(#2)
+  const mm=$('#mgrMemory'); if(mm) mm.onclick=()=>go('capability');   // ★P1-c:记忆管理已搬迁至能力中心,此处只留指路
+  const md=$('#mgrDocs'); if(md) md.onclick=()=>go('capability');     // ★P1-c:知识库管理同上(RAG #2)
   const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=()=>go('capability');  // ★P1-b:连接器管理已搬迁至能力中心(一等公民),此处只留指路
   const cad=$('#clearAllData'); if(cad) cad.onclick=clearAllDataFlow;  // 真·清空所有数据(guardrail+备份+种子守卫;index.html 过渡全局)
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
