@@ -63,7 +63,10 @@ app/
    - 个人隐私字段(姓名/电话/邮箱…)存独立 `profile`,**AI 永不读取/修改**,从类型层面隔离(`profile` 仓库不提供"导出给 AI"的方法)。
    - **应用数据的 AI 可读走三层闸**:应用启用 ∩ manifest 默认(`aiReadable`)∩ 用户 per-app 授权;健康类应用 **default-off**。关应用 = 其集合即刻退出 AI 可读集。**强制点在能力层 `query_data` 的 invoke**——**非仅提示层暗示**(工具 `enum` 裁剪只是给模型的提示,模型越界发串仍被 invoke 独立硬拦)。**`QUERYABLE` 保持静态常量硬底**(`profile`/`messages`/`settings`/`secrets` 永不在内);D3 以 `静态 QUERYABLE ∩ 运行时可读集` 在其上**收紧、只窄不宽**——**永不能加入 `QUERYABLE` 之外的表**。故与既有 profile 隔离(`table_for`/`QUERYABLE` + 编译期不变量)的结构性强制**叠加、不削弱**:`profile` 永不 AI 可读,不受任何应用 `aiReadable` 影响。**⚠ 后续切勿把静态 `QUERYABLE` 重构成动态函数 —— 静态底是 profile 永不入的关键保证(第6轮审查钉死)。**
    - 设置**不能经对话修改**;Agent 只能引导去设置页。
-3. **反焦虑** —— 不用红色警告、不用倒计时施压;破坏性操作(删/清空/覆盖)一律**预览 + 确认 + 可撤销**,无论触发者是 Agent、widget 还是 UI,统一走 `platform/guardrail`。
+3. **反焦虑** —— 不用红色警告、不用倒计时施压。破坏性操作(删/清空/覆盖)**分两档**(第56轮裁定;旧写法「一律统一走 guardrail」与 notes/prompts/resumes/jobs 的既有逐条删相矛盾,是条会被代码证伪的声明):
+   - **安全内核(不可让步)** —— 凡**非用户直接发起**的破坏性(Agent / 模型 / widget 触发)**永远**走 `platform/guardrail`(预览 + 确认 + 可撤销)。能力层已结构性保证:破坏性能力须 `Permission::Destructive`,`invoke_raw` 拒绝自动执行、必走护栏。
+   - **用户 UI 发起** —— **清空 / 覆盖 / 批量仍走 guardrail**;**单条删除**若「低恢复成本」且**撤销可靠**,可用「即时删 + `toastUndo` 撤销」(不弹模态,反而更反焦虑)。现例:notes / prompts / resumes / jobs / 记忆 的逐条删。
+   - **★「可撤销」必须是真的**(第56轮 [应改] 用真数据丢失换来的判据):撤销的 **UI 语义必须与后端 trash 语义一致**。后端**单槽** trash(`MemTrash`/`DocTrash`:`*trash = snap` 覆盖写、`undo` 用 `mem::take`)只能承诺「**撤销最近一次销毁**」—— **绝不可**给每行一个假装独立的撤销按钮,否则窗口内连删两条会**静默永久丢数据 + 还原错记录**。落码前先读后端 trash 是单槽还是 keyed;做不到可靠撤销就走 guardrail 确认闸。**别声明做不到的不变式。**
 4. **不可信代码沙箱化** —— show_widget 等 LLM 生成 UI:`iframe sandbox="allow-scripts"` + srcDoc 内 CSP(`default-src 'none'`)+ 父窗口零信任 + MessageChannel 专属端口;外部内容(RAG/MCP/JD)标注 `Untrusted` 防注入。
 5. **设计语言统一** —— 暖橙节制(仅句号/标号/CTA/选中/进度/竖线)、0.5px 边框、系统字体栈、Mono 大写标签、衬线斜体标题 + 暖橙句号。沿用原型 CSS token,**不要自创视觉**。
 6. **中英 i18n** —— 沿用原型的 `tt()/L()/T()` 机制;新增 UI 文案需双语。
