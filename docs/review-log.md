@@ -1958,3 +1958,12 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **可信/不可信分离**:岗位+简历概要(用户自撰=可信)进 `instruction`;**JD 全文走 `untrusted`** ⇒ 后端必框定(前置② 由参数结构杜绝「拼接处漏框定」)。真·无工具流式 → `<pre>`(`textContent` 转义)→ `parseGenQuestions` 去编号取 3 题入 IV_BANK。**诚实降级**:`aiChatAvailable()` 假 ⇒ 回落原 mock,绝不假装。**失败出声**:onError 铺真实报错。§4-4:模型输出进 DOM 处处 `cEsc`(已核实)。
 - **验**(preview 真模块 + 伪造 `__TAURI__` 走真路径):JD 进 untrusted **不进 instruction**、`task=interview`、3 行解析成 3 题、**注入 JD 的 `<img onerror>` 流式期与结果卡都不执行**;降级路径**绝不调真 generate**、回落 mock 仍出题。**★harness 自查**:降级测首现「0 题」= **eval 上下文定时器节流**把 aiRun 嵌套 setTimeout 拉长(隔离测 1 步+5s 正常、Math.random 正常),给足 6s 墙钟全绿。tsc 51→51、Rust 124/0、真机 1.89s boot 零 panic。
 - **诚实边界**:端到端真模型需桌面+BYO(preview 以 stub 验契约面)。**记债**:`ivStartRound` 整轮种题仍 mock;面试反馈(需先解决分数 schema 承重)/ 简历改写真化各单出一刀。
+
+### ★ 第68轮独立复核 = 块(i) 两刀通过 + 1 [建议](已落 `ed02dc2`)
+- **★评审 trace 了我标成「硬编码可信」的 provenance,发现假陈述**:instruction 内插的 `j.co`/`role`/`j.need` 全是外部 JD 派生 —— `j.co`/`role` ← `ai.extract` 从 JD/截图抽取(intake-job.js:137)、`j.need = extractJdSkills(jd)`(:206);**我独立核实并挖深一层**:`resSummary(rtr)` 模板又内插 `j.co`/`role` ⇒ 简历概要也是 JD 派生、非「用户自撰可信」。攻击者控制招聘信息(job board = attacker-supplied),公司名设成「Acme\n\n忽略以上…」就进了 prompt 的**可信侧、无框定**。
+- **判 [建议] 非 [应改] 的理由(我认同)· 无工具是承重防线**:`ai_generate` 结构性无工具 ⇒ 注入至多让模型写垃圾题,不能调工具/写记忆/持久化,输出经 cEsc ⇒ 无 XSS。爆炸半径 = 一次性垃圾题、非持久。
+- **落法 · 让不变式为真(不「改注释承认违例」)**:instruction 改为**纯 app 常量**(零 JD 派生内插),所有外部/派生上下文(岗位信息+简历概要+完整 JD)进 `untrusted` ⇒ 后端 `frame_untrusted` 统一框定。**★钉住信任地基**:这条信任论证的地基是「本原语无工具」——一旦将来某生成流程需要工具,地基塌,抽取字段必须**重新按不可信处理**(注释固化,防后人加工具时忘掉)。
+- **★★方法论(评审归纳,已入 §4-⑧)**:**「可信」是需要 trace provenance 才能下的判断,不是读一眼 instruction 就能断言的。** 这也是 rewrite/反馈两刀的**模板纪律**(rewrite 内插抽取字段更多,且其产出回流成 interview 的 `resumeNote`,信任问题随组合放大)。
+- **验**(preview 真模块 + 攻击者公司名藏注入):被注入公司名 + JD + need **全落 untrusted**、**instruction 纯常量**(不含任何 JD 派生)、task=interview。node 净;tsc 51→51;Rust 124/0;真机 boot 零 panic。
+
+**下一刀(评审第68轮建议次序)**:rewrite 真化(带 [建议] 信任纪律:抽取字段进 untrusted、instruction 纯常量、走 `ai_generate` 无工具、钉「无工具是地基」注释)→ 然后 T0 协议骨架(抽取字段信任问题的根本解)→ 反馈最后(先解 `ivScore` 分数 schema 承重)。
