@@ -515,7 +515,7 @@ pub fn memory_entries(conn: &Connection) -> Result<Vec<Value>, String> {
         .query_map([], |r| {
             let id: String = r.get(0)?;
             let fact: String = r.get(1)?;
-            let ts: i64 = r.get(2)?;
+            let ts: i64 = r.get::<_, Option<i64>>(2)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化(见 memory_snapshot_one 头注)
             Ok(serde_json::json!({ "id": id, "fact": fact, "ts": ts }))
         })
         .map_err(|e| e.to_string())?;
@@ -560,7 +560,7 @@ fn memory_rows_full(conn: &Connection) -> Result<Vec<MemRow>, String> {
             let id: String = r.get(0)?;
             let fact: String = r.get(1)?;
             let blob: Option<Vec<u8>> = r.get(2)?;
-            let ts: i64 = r.get(3)?;
+            let ts: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化
             Ok((
                 id,
                 fact,
@@ -621,6 +621,21 @@ pub fn memory_clear(db: State<'_, Db>, trash: State<'_, MemTrash>) -> Result<usi
 /// 故改为**与三个兄弟一致地传播错误**(`memory_rows_full` / `doc_snapshot` 均 `r.map_err(…)?`;
 /// 本函数曾是四者里唯一的异类)。映射失败 → 在 `DELETE` **之前**返回 `Err` ⇒ 什么也没销毁、槽未被动、
 /// 前端 `ok=false` 不推进世代不给撤销。**此后 `snap.is_empty()` 才真正 ⟺「0 行被销毁」,`is_empty()` 判据才名副其实。**
+///
+/// ★★全域映射 vs fail-closed 的界线(评审第61轮裁决 A):**纯 fail-closed 会把正确性 bug 换成可用性 bug**
+/// —— 一行 `created_at=NULL` 的记忆将**永远删不掉**。裁决的原则是:
+///   **全域映射只在 schema 自己定义了默认值的地方合法;其余一律 fail-closed。**
+///   · `created_at INTEGER **DEFAULT 0**` ⇒ `NULL → 0` 是**忠实归一化**(不是猜值):快照仍**完整表示**
+///     将被销毁的那一行,撤销能按 schema 原意还原 ⇒ 不变式不受损。**故五处 `created_at` 读全部归一化**
+///     (`memory_entries` / `memory_rows_full` / 本函数 / `doc_list` 的 `MAX(created_at)` / `map_doc_row`)——
+///     **必须一起改**,否则「坏行能删、整库不能清」的不对称会换个方向复活。
+///   · 反之 `fact TEXT NOT NULL` / `id TEXT PRIMARY KEY`:schema **没有**为「非文本的 fact」定义默认值。
+///     把它们也弄成全域 = **凭空造值** ⇒ 快照不再忠实表示被销毁的行 ⇒ trash 的意义被掏空。**此处 fail-closed 必须保留。**
+///
+/// ★残留(评审第61轮记债,留后续刀):真·不可映射的行(如 `fact` 存了整数)仍会让 `memory_remove`(该行)
+/// 与 `memory_clear`(整表)永久失败,用户在 app 内**无逃生口**。正解是把不变式再锐化一格 ——
+/// 从「**销毁 ⇔ 快照完整**」改为「**提供撤销 ⇔ 快照完整**」:不可快照的行**允许销毁,但走 guardrail 确认 +
+/// 明确告知「此行已损坏,删除后无法撤销」、且不提供撤销按钮**。红线只要求**永不谎报撤销**,并未要求拒绝销毁。
 fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, String> {
     let mut stmt = conn
         .prepare("SELECT id, fact, embedding, created_at FROM memories WHERE id = ?1")
@@ -630,7 +645,7 @@ fn memory_snapshot_one(conn: &Connection, id: &str) -> Result<Vec<MemRow>, Strin
             let i: String = r.get(0)?;
             let f: String = r.get(1)?;
             let b: Option<Vec<u8>> = r.get(2)?;
-            let t: i64 = r.get(3)?;
+            let t: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化(见头注 ★全域映射)
             Ok((i, f, b.map(|x| blob_to_vec(&x)).unwrap_or_default(), t))
         })
         .map_err(|e| e.to_string())?;
@@ -739,7 +754,8 @@ pub fn doc_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
             let id: String = r.get(0)?;
             let name: String = r.get(1)?;
             let chunks: i64 = r.get(2)?;
-            let ts: i64 = r.get(3)?;
+            // MAX(created_at) 在整组皆 NULL 时返回 NULL;doc_chunks 的 schema 亦 DEFAULT 0 → 归一化
+            let ts: i64 = r.get::<_, Option<i64>>(3)?.unwrap_or(0);
             Ok(serde_json::json!({ "docId": id, "name": name, "chunks": chunks, "ts": ts }))
         })
         .map_err(|e| e.to_string())?;
@@ -758,13 +774,14 @@ pub struct DocTrash(pub Mutex<Vec<DocRow>>);
 
 fn map_doc_row(r: &rusqlite::Row) -> rusqlite::Result<DocRow> {
     let blob: Option<Vec<u8>> = r.get(4)?;
+    let ts: i64 = r.get::<_, Option<i64>>(5)?.unwrap_or(0); // schema DEFAULT 0 → NULL 归一化(与 memory 侧四处一致)
     Ok((
         r.get(0)?,
         r.get(1)?,
         r.get(2)?,
         r.get(3)?,
         blob.map(|b| blob_to_vec(&b)).unwrap_or_default(),
-        r.get(5)?,
+        ts,
     ))
 }
 
@@ -1000,10 +1017,58 @@ mod tests {
         assert_eq!(back, "fact A", "A 应按原内容还原");
     }
 
-    /// ★评审第60轮 [建议]2:`memory_snapshot_one` 曾用 `.filter_map(|x| x.ok())` **吞掉映射错误**。
-    /// 行存在但映射失败(schema `created_at INTEGER DEFAULT 0` —— **DEFAULT ≠ NOT NULL**,NULL 可表示)
-    /// ⇒ 旧语义 `snap=[]` 而 `DELETE` 仍删掉该行 ⇒ 跳过 stash ⇒ 槽里留着**上一次**的快照
-    /// ⇒ 撤销**还原错的记录**且报「已撤销」。修后须 **fail-closed:提前 Err、什么也不销毁、槽不被动**。
+    /// ★评审第61轮裁决 A:`created_at` 为 **NULL** 时归一化为 `0`(schema `DEFAULT 0` 的忠实归一化)
+    /// ⇒ 该行**可被完整快照、可被删除、撤销能按 `ts=0` 还原**。
+    /// **阳性对照**:直接以严格 `i64` 读同一值必须失败 —— 证明归一化确实在做事;若生产代码改回 `i64`,
+    /// 快照即 `Err`、本测试转红。
+    #[test]
+    fn null_created_at_is_normalized_and_row_stays_deletable_and_undoable() {
+        use std::sync::Mutex;
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups");
+        migrate(&mut conn, &tmp).unwrap();
+        conn.execute(
+            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('B','fact B',NULL,NULL)",
+            [],
+        )
+        .unwrap();
+
+        // 阳性对照:严格 i64 读 NULL 必失败(若生产代码改回 i64,快照 → Err,本测试转红)
+        let strict = conn.query_row("SELECT created_at FROM memories WHERE id='B'", [], |r| {
+            r.get::<_, i64>(0)
+        });
+        assert!(
+            strict.is_err(),
+            "阳性对照:严格 i64 读 NULL 必须失败,否则本测试不在检验归一化"
+        );
+
+        // 归一化后:可完整快照,ts 归 0
+        let snap =
+            super::memory_snapshot_one(&conn, "B").expect("NULL created_at 应归一化、不得 Err");
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].3, 0, "NULL 应按 schema DEFAULT 0 归一化为 0");
+
+        // 可删除(不再被 fail-closed 挡住 = 可用性回归已消)
+        let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
+        let n = super::memory_remove_inner(&conn, &slot, "B").expect("坏时间戳的行仍应可删");
+        assert_eq!(n, 1);
+        assert_eq!(slot.lock().unwrap().len(), 1, "快照完整 ⇒ 应入撤销槽");
+
+        // 撤销:按 ts=0 还原
+        let rows = std::mem::take(&mut *slot.lock().unwrap());
+        assert_eq!(super::memory_restore_rows(&conn, &rows).unwrap(), 1);
+        let ts: i64 = conn
+            .query_row("SELECT created_at FROM memories WHERE id='B'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(ts, 0, "撤销应按 schema 原意还原为 0");
+    }
+
+    /// ★评审第60轮 [建议]2 + 第61轮裁决 A:**其余列**(schema 未定义默认值)仍须 **fail-closed**。
+    /// 用 `created_at='abc'` —— INTEGER 亲和列存非数字文本会**保持 TEXT**(已在 SQL 层实证),
+    /// 故连 `Option<i64>` 也映射不了 ⇒ 提前 `Err`、什么也不销毁、槽不被动。
+    /// (原用 `NULL` 作 fixture;裁决 A 后 NULL 已可映射,**该 fixture 会使本测试空跑**,故更换。)
     #[test]
     fn unmappable_row_fails_closed_and_never_clobbers_or_deletes() {
         use std::sync::Mutex;
@@ -1015,9 +1080,9 @@ mod tests {
         let slot: Mutex<Vec<super::MemRow>> = Mutex::new(Vec::new());
         *slot.lock().unwrap() = vec![("A".into(), "fact A".into(), vec![], 1)];
 
-        // B 存在但 created_at 为 NULL ⇒ 逐行映射失败(DEFAULT 不等于 NOT NULL,NULL 可写入)
+        // B 存在但 created_at 是非数字文本 ⇒ 即便归一化也映射不了(真·不可映射)
         conn.execute(
-            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('B','fact B',NULL,NULL)",
+            "INSERT INTO memories (id, fact, embedding, created_at) VALUES ('B','fact B',NULL,'abc')",
             [],
         )
         .unwrap();
@@ -1025,7 +1090,7 @@ mod tests {
         // 阳性对照:确认该行确实映射失败(证明用例打到了真实故障面,而非空跑)
         assert!(
             super::memory_snapshot_one(&conn, "B").is_err(),
-            "created_at=NULL 应使逐行映射失败(用例必须真的触发故障)"
+            "created_at='abc' 应使逐行映射失败(用例必须真的触发故障)"
         );
 
         // fail-closed:删除应报错

@@ -179,7 +179,10 @@ export function createWebRuntime() {
     memory: {
       list: () => Promise.resolve([]),
       clear: () => Promise.resolve(0),
-      remove: () => Promise.resolve(),
+      // ★评审第61轮 [建议]2:返回 0(销毁 0 条)而非 undefined —— 与 clear/undo/docs 四兄弟统一。
+      //   前端「提供撤销 ⇔ 销毁确已发生」据 n===0 收口,故降级路径**如实上报 0**,
+      //   安全性不必让「web 端不可达」这个偶然前提承重。
+      remove: () => Promise.resolve(0),
       undo: () => Promise.resolve(0),
     },
 
