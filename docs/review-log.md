@@ -1708,3 +1708,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **验**:四测试**点名跑过**(`null_created_at_is_normalized...` / `unmappable_row_fails_closed...` / `repeated_memory_delete...` / `noop_destroy...`);cargo test **88 passed / 0 failed**(87→88);clippy `-D warnings` 净;fmt 净;`node --check` web.js 净;preview 实测六个 web stub 全返回 `0`;真机 WKWebView 4.08s boot 零 panic。
 
 **★刀2a 全线收官(第60/61轮闭环)。TTL 方向已定(有界环)。下一刀 = 刀2b(keyed trash · chip `task_196c6897`)。** 评审刀2b 复核重点:① 四个闭包消费者逐字零回归(真模块导出 + 双向阳性对照);② token 失效 → `return false` + 自报,绝不退回默认「成功」;③ **`clear` 的整表快照要有字节上限**(环的淘汰判据 = 条数 ∧ 字节,两者取先到);④ **环内快照与 `stash_if_destroyed` 的关系:入环即「已销毁且可还原」,空快照永不入环** —— 把这条不变式带进新结构,别在重写中丢掉。
+
+### 刀2b-1/2 · 后端有界环 + undo token(取代单槽 trash)· commit `14423e9` · ⏳ 待审
+承评审第60轮裁决(**有界环取代时间 TTL**)。用户拍板拆两刀:本刀 = 后端环 + token;**刀2b-2 = 前端穿 token**。
+- **★为何有界环而非时间 TTL**(评审裁决,已写进 `data.rs` 头注):①刀1 后撤销失败已由「后端权威拒绝 → restoreFn 上报 `false` → toast 静默」兜住,**无假成功** ⇒ TTL 漂移**降级为 UX 问题**;②**正确性绝不能依赖跨进程时钟一致**,没有时钟就没有时钟漂移;③真正要 bound 的是**内存**(快照含 embedding,`clear` 的快照可能是整表)⇒ **条数 ∧ 字节才是直接杠杆**,先到者触发淘汰。
+- **★`UndoRing<T>`**(`MemTrash`/`DocTrash` 由 `Mutex<Vec<Row>>` → `Mutex<UndoRing<Row>>`),**三条不变式从单槽时代原样带进新结构**(评审第61轮点名「别在重写中丢掉」):①**空快照永不入环**(no-op 销毁不发 token、**不淘汰任何条目**);②**入环即「已销毁且可还原」**;③**单次快照超字节上限 ⇒ 不入环、不发 token**。上限 8 条 ∧ 64 MiB;`with_bounds` 供单测注入小上限。
+- **命令签名**:四个销毁命令 `usize` → `DestroyResult { deleted, undoToken }`;`memory_undo`/`doc_undo(token: Option<String>)` —— `Some`=精确撤销那一次,`None`=撤销最近一次(**向后兼容**,刀2b-1 前端仍不带 token)。**token 已淘汰 / 未知 / 环空 ⇒ 返回 `0`,绝不静默成功**。
+- **★★本刀引入的新危险,已在同刀堵死(否则又是一条「还原错记录」)**:`deleted>0` 但 `undoToken=null`(快照超上限未入环)时,**环顶是上一次销毁** ⇒ 若前端仍给撤销,`undo()` 会取走**别人的那一次**。故新增 `offerUndo()`,把不变式锐化为 **「提供撤销 ⇔ 销毁确已发生 ∧ 快照完整可还原」**,四条销毁路径全部经它收口 ⇒ **「无 token ⇒ 不提供撤销」由后端结构性保证,不再是前端约定**(正是评审第61轮所说「让它成为结构性事实」)。
+- **两端 runtime 同形**:desktop `{deleted, undoToken}`;web 降级 `{deleted:0, undoToken:null}`(如实上报,不让「web 不可达」这个偶然前提承重);`undo` 两端均返回还原条数。
+- **验**:Rust 新增两测试**点名跑过** —— `undo_ring_evicts_by_count_and_bytes_and_rejects_oversized`(条数判据 / 字节判据 / **超限不入环不发 token 且不淘汰既有条目**)、`undo_ring_takes_by_token_not_just_newest`(**环的价值兑现**:精确取较旧那一次;未知 token → `None`;不带 token → 取最近一次;环空 → `None`)。三个 DB 级测试**移植到环 API 并加强**:no-op 删除现同时断言「不发 token」「不淘汰旧条目」;fail-closed 测试断言「失败的删除不得污染环」;`noop_destroy...` **保留阳性对照**(旧单槽无条件覆盖确会清空)并新增「**环同时保有 A 与 B 两次销毁**」——单槽时代做不到。cargo test **90 passed / 0 failed**(88→90);clippy `-D warnings` 净;fmt 净;真机 6.54s boot 零 panic。**preview 三场景**:①**超限(deleted>0, token=null)→ 不给撤销、提示「无法撤销」、`PREV` 未被取走**;②正常 → 给撤销、真还原、报「已撤销」,且 `undo` 仍不带 token(刀2b-1 语义);③no-op → 不给撤销(第60轮不变式未回归)。web 四个销毁 stub 与桌面同形。
+- **★诚实边界**:本刀**未穿 token** —— 前端撤销仍调 `undo()`(=撤销最近一次),**环的精确撤销能力由单测覆盖、尚未被 UI 使用**。穿线 + 「token 失效 → `return false` + 自报」= **刀2b-2**。
+- **刀2b-2 待办(评审预告的复核重点)**:① 四个闭包消费者逐字零回归(真模块导出 + 双向阳性对照);② token 失效 → `return false` + 自报,绝不退回默认「成功」;③ `clear` 整表快照的字节上限(**本刀已落**:不变式③);④ 环内快照与「空快照永不入环」的关系(**本刀已落**:不变式①)。
