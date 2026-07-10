@@ -11,6 +11,7 @@ use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
@@ -568,6 +569,20 @@ struct UndoEntry<T> {
     bytes: usize,
 }
 
+/// **进程级**撤销 token 序号 —— 全局唯一,**跨环不重号**。
+///
+/// ★评审第63轮 [应改](本 arc 第八次「勿声明假不变式」,且它就出现在收官宣言里):
+/// 原实现给每个环一个 `next: u64`、都从 1 起 ⇒ `MemTrash` 的首个 token 是 `"u1"`,
+/// `DocTrash` 的首个 token **也是** `"u1"`。**token 不自带环身份。**
+/// 于是「还原错记录在类型层面不可能」只在**环内**为真:一旦某个 token 被交给**另一个环**的
+/// `undo`(复制粘贴 / 将来的重构错配),`position()` 会命中**同序号的另一次销毁**并静默还原它。
+/// 今天不可达(四条路径各自捕获自己的 token、命令与环由类型绑定),**但挡住它的是前端约定,不是结构**。
+///
+/// 改为进程级单调序号后:**任意两条环条目的 token 永不相同** ⇒ 错配的 token 必然 `position()` 落空
+/// → `None` → 还原 0 条 → 前端 `staleUndo()` 如实上报。失败从「静默还原错域」变成「响亮拒绝」,
+/// 且对未来新增的第三个环**天然免疫**(无需记得给它挑一个没被占用的前缀)。
+static UNDO_TOKEN_SEQ: AtomicU64 = AtomicU64::new(1);
+
 /// **有界撤销环**:保留最近若干次销毁的快照,按「条数 ∧ 字节」双判据淘汰最旧。
 ///
 /// ★不变式(从单槽时代的 `stash_if_destroyed` **原样带进新结构**,别在重写中丢掉 —— 评审第61轮点名):
@@ -576,10 +591,11 @@ struct UndoEntry<T> {
 ///  ② **入环即「已销毁且可还原」**:环里躺着的每一条,都是确实被销毁、且能被完整还原的行。
 ///  ③ **单次快照超字节上限 ⇒ 不入环、不发 token**:前端据「无 token」**不提供撤销**,
 ///     而不是给一个还原不了的按钮 —— 同「提供撤销 ⇔ 快照完整」的锐化方向。
+///  ④ **token 全局唯一**(评审第63轮):序号取自进程级 `UNDO_TOKEN_SEQ`,**不是**每个环自己的计数器
+///     ⇒ 一个环的 token 永不命中另一个环的条目(见 `UNDO_TOKEN_SEQ` 注释)。
 pub struct UndoRing<T> {
     entries: VecDeque<UndoEntry<T>>,
     bytes: usize,
-    next: u64,
     max_entries: usize,
     max_bytes: usize,
 }
@@ -589,7 +605,6 @@ impl<T> Default for UndoRing<T> {
         Self {
             entries: VecDeque::new(),
             bytes: 0,
-            next: 1,
             max_entries: UNDO_RING_MAX_ENTRIES,
             max_bytes: UNDO_RING_MAX_BYTES,
         }
@@ -613,7 +628,8 @@ impl<T: UndoBytes> UndoRing<T> {
         }
         // ★真实口径(评审第62轮):堆载荷(capacity)+ Vec 槽位 + 环条目本体 + token 串的堆。
         //   不重复计数:元组本体只在「Vec 槽位」里算一次。
-        let token = format!("u{}", self.next);
+        // token 取自**进程级**序号(不变式④):跨环唯一 ⇒ 错配的 token 只会落空,绝不命中别的环。
+        let token = format!("u{}", UNDO_TOKEN_SEQ.fetch_add(1, Ordering::Relaxed));
         let bytes = rows.iter().map(|r| r.heap_bytes()).sum::<usize>()
             + rows.capacity() * std::mem::size_of::<T>()
             + std::mem::size_of::<UndoEntry<T>>()
@@ -621,7 +637,6 @@ impl<T: UndoBytes> UndoRing<T> {
         if bytes > self.max_bytes {
             return None; // 不变式③:一次 clear 撑不爆环,也不谎报可撤销
         }
-        self.next += 1;
         self.entries.push_back(UndoEntry {
             token: token.clone(),
             rows,
@@ -646,7 +661,12 @@ impl<T: UndoBytes> UndoRing<T> {
     /// (旧单槽下只会还原 0 条,是诚实的 no-op)⇒ **失效模式从 no-op 升级为「还原更早的销毁」**。
     /// 当时挡住它的全是**前端**闸(`toastUndo.done` / `guardrail.showUndo.done` / 世代 / `dropToast`),
     /// 纵深防御被迫承重。删掉 `None` 之后:每次撤销都**只能**作用于它自己那一次销毁 ⇒
-    /// **「还原错记录」在类型层面不可能**,前端闸退回纯纵深防御。
+    /// **「还原错记录」在环内不可能**(跨环由不变式④ 的全局唯一 token 保证)。
+    ///
+    /// ★连带后果(评审第63轮 Q2,**别误读前端注释**):前端的 `memGen`/`docGen` 世代守卫与 `dropToast`
+    /// 由此**从「安全」降为「策略」**——一个陈旧的撤销 toast 点下去,要么精确还原它自己那一次(正确),
+    /// 要么 token 已失效被诚实拒绝;**两种结果都不是「还原错记录」**。它们如今只在执行一条产品选择:
+    /// 「只有最近一次可撤销」。(而 `toastUndo.done` 仍为另外四个闭包消费者**承重** —— 别一起降级。)
     fn take(&mut self, token: &str) -> Option<Vec<T>> {
         let idx = self.entries.iter().position(|e| e.token == token)?;
         let e = self.entries.remove(idx)?;
@@ -1431,6 +1451,97 @@ mod tests {
         assert_eq!(ring.take(&tb).unwrap()[0].0, "B");
         // 环空 → 任何 token 都 None
         assert!(ring.take(&tb).is_none());
+    }
+
+    /// ★不变式④(评审第63轮 [应改])· **token 跨环唯一 —— 一个环的 token 永不命中另一个环的条目**。
+    ///
+    /// 修前:每个环各有 `next: u64` 且都从 1 起 ⇒ `MemTrash` 与 `DocTrash` 的首个 token **同为 `"u1"`**
+    /// ⇒ 把记忆的 token 传给 `doc_undo` 会**静默还原一次用户没要求撤销的文档销毁**。
+    /// (今天不可达,因为四条前端路径各自捕获自己的 token —— 但那是**约定**,不是结构。)
+    /// 修后:序号取自进程级 `UNDO_TOKEN_SEQ` ⇒ 错配的 token 必然落空 → `None` → 还原 0 条 → `staleUndo()`。
+    ///
+    /// **阳性对照**:`local_next` 复刻旧的「每环自己从 1 起」——同一断言下它必定相撞,证明缺陷真实、断言能红。
+    #[test]
+    fn undo_tokens_never_collide_across_independent_rings() {
+        // 阳性对照:旧口径(每环自己的计数器)—— 两个独立环的首个 token 相同。
+        let local_next_mem = 1u64;
+        let local_next_doc = 1u64;
+        assert_eq!(
+            format!("u{local_next_mem}"),
+            format!("u{local_next_doc}"),
+            "阳性对照:旧的每环计数器确会撞号(缺陷真实)"
+        );
+
+        // 生产口径:两个**类型不同、实例独立**的环,token 仍全局唯一。
+        let mut mem: super::UndoRing<super::MemRow> = Default::default();
+        let mut doc: super::UndoRing<super::DocRow> = Default::default();
+        let tm = mem.stash(vec![mrow("A", 0)]).unwrap();
+        let td = doc
+            .stash(vec![(
+                "c1".into(),
+                "d1".into(),
+                "JD".into(),
+                "文本".into(),
+                vec![],
+                0,
+            )])
+            .unwrap();
+        assert_ne!(tm, td, "两个环的 token 不得重号");
+
+        // ★结构性后果:把记忆的 token 交给文档环 → 落空,绝不还原「同序号的另一次销毁」。
+        assert!(doc.take(&tm).is_none(), "错配的 token 必须落空,而非命中");
+        assert!(mem.take(&td).is_none(), "反向亦然");
+        // 各自的 token 仍正常工作。
+        assert_eq!(mem.take(&tm).unwrap()[0].0, "A");
+        assert_eq!(doc.take(&td).unwrap()[0].1, "d1");
+    }
+
+    /// ★评审第63轮 [建议] · **预检估计 ≥ stash 实际** —— 否则第62轮 [应改](决策点谎报)原样复发:
+    /// 预检说可撤销 → 确认文案承诺 → clear 执行 → stash 因超限拒绝 → 无 token → 「内容过大,无法撤销」。
+    ///
+    /// 两处用的是**两套账**:预检是 SQL 侧估计(`payload*2 + rows*row_size*2 + OVERHEAD`),
+    /// stash 是真实 `capacity` 口径。它们只共用同一个 `max_bytes()`,**估计式并不相同** ⇒ 必须钉死方向。
+    ///
+    /// **阳性对照**:`bound_factor1` 复刻「系数取 1」的版本。行数足够时 `Vec` 的摊还增长
+    /// (`memory_rows_full` 用 `push`,容量按 4→8→16→32 翻倍)会让 `rows.capacity() > rows.len()`,
+    /// 系数 1 遂**低估** ⇒ 断言必红。证明这条测试守的是生产代码,不是它自己。
+    #[test]
+    fn clear_precheck_upper_bound_is_never_below_actual_stash_bytes() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join("seeker-test-backups-bound");
+        migrate(&mut conn, &tmp).unwrap();
+        // 多条**小行**:让「Vec 槽位 + 结构体开销」而非载荷主导 —— 正是第62轮假上限的失效面。
+        for i in 0..17 {
+            super::memory_add(&conn, &format!("m{i}"), "x", &[0.5, 0.25]).unwrap();
+        }
+
+        let bound = super::memory_clear_undo_bytes(&conn).unwrap();
+        let rows = super::memory_rows_full(&conn).unwrap();
+        let (payload, n_rows): (i64, i64) = conn
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(fact AS BLOB)) + LENGTH(COALESCE(embedding, x''))), 0), COUNT(*) FROM memories",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        // 阳性对照:系数取 1(= 忘了 capacity 可超 len)——必须低于实际,否则本测试是死靶。
+        let bound_factor1 = (payload.max(0) as usize)
+            + (n_rows.max(0) as usize) * std::mem::size_of::<super::MemRow>()
+            + 256;
+
+        // 实际入环字节 = 生产 `stash` 自己算的那个数(上限设成天文数字,保证必入环)。
+        let mut ring: super::UndoRing<super::MemRow> = super::UndoRing::with_bounds(8, usize::MAX);
+        ring.stash(rows).unwrap();
+        let actual = ring.total_bytes();
+
+        assert!(
+            bound >= actual,
+            "预检上界 {bound} 必须 ≥ stash 实际 {actual},否则「预检说可撤销 → stash 拒绝」= 决策点谎报"
+        );
+        assert!(
+            bound_factor1 < actual,
+            "阳性对照失效:系数 1 的上界 {bound_factor1} 竟未低于实际 {actual} —— 断言红不起来,本测试是死靶"
+        );
     }
 
     /// 重复删同一 id:trash 仍保有第一次的快照,且 `memory_restore_rows` 能把它还原(评审点名的复现)。
