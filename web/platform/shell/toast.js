@@ -4,6 +4,7 @@
 //     改「收进 runLastUndo() 访问器、不外露 mutable 值」+ 同刀原子翻转其唯一消费者(index.html Mod+Z handler)。
 //   依赖 $/el(过渡 classic 全局,经共享全局词法环境解析);其余消费者按全局名调 → 逐字节零回归。
 import { $, el } from './dom.js';
+import { succeeded } from '../outcome.js'; /* 零依赖叶子:与 guardrail 共用同一条判据(第64轮 [建议]) */
 let lastUndo=null; /* 最近一次可撤销操作(供 Mod+Z);★模块内私有,不外露 mutable 值(防影子绑定/状态分裂) */
 export function toast(msg){
   const t=el(`<div class="toast">${msg}</div>`);
@@ -46,7 +47,6 @@ export function toastUndo(msg, restoreFn){
   const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
   $('#toasts').appendChild(t);
   let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
-  const succeeded=(v)=>v!==false&&v!==0;  /* undefined / 其它 → 成功;显式 false 或 0 → 失败 */
   let done=false;                         /* ★重入闸(同 guardrail.showUndo:34-36):opacity:0 的 toast 仍可点,300ms 内双击会跑两次 restoreFn */
   const doUndo=()=>{
     if(done)return; done=true;            /* 同步置位,先于 close/restoreFn/任何 await */

@@ -40,7 +40,7 @@
  *       ⚠ **guardrail 三条路径的撤销按钮由 `onConfirm` 的返回值决定**(第63轮 [建议]② 已落):
  *       返回 `false`(无 token = 没有可还原之物)⇒ **按钮根本不出现**。此前 guardrail 无条件 `showUndo`,
  *       `onUndo` 只能靠 `if (!token) return;` 早返 ⇒ 用户点下去**一声不吭** —— 而整条撤销 arc 的主题
- *       正是**失败必须出声**。那行早返如今**结构上不可达**,留 1 行作纵深。
+ *       正是**失败必须出声**。那行早返如今**结构上不可达**,并已改为**响亮**(`noTokenUnreachable`)。
  *     · ★★**决策点不得承诺做不到的撤销 —— 现已在全部四条销毁路径上成立**(第64轮 [应改] 收口):
  *       guardrail 在**建对话框时**就据 `opts.onUndo` 是否存在印出「执行后可撤销。」⇒ 三条 guardrail 路径
  *       (记忆清空 / 文档删 / 文档清空)**各自先问预检**,不可撤销就**连 `onUndo` 都不传** ⇒ 那行提示不出现;
@@ -99,6 +99,19 @@ const staleUndo = () => toast(tt(
   '该撤销已失效 —— 这次销毁已不在撤销环内(可能已被撤回,或被更新的销毁挤出)。',
   'Undo no longer available — that deletion is no longer in the undo ring.'
 ));
+
+/** 「拿不到 token 却出现了撤销按钮」—— `onConfirm` 返回 `false` 时 guardrail 根本不建按钮,
+ *  故此分支**结构上不可达**。它仍然留着,但**必须响亮**(评审第64轮 Q2):
+ *
+ *  一道守着不可达分支的**静默 `return`**,唯一可能的效果是:某次重构让 `token` 在活路径上变假时,
+ *  把一次**响亮的失败**(`undo(undefined)` → 后端 `token: String` 反序列化报错 → `toast(errText)`)
+ *  变成一次**沉默的失败**(直接 return,用户点了撤销一声不吭)—— 正是整条 arc 消灭的那个东西。
+ *  ⇒ 无论可达与否,它只能让事情更响,永远不会更静。 */
+const noTokenUnreachable = () => {
+  console.error('[memory-docs] 不变式破坏:onUndo 在没有 token 的情况下被调用(guardrail 本不该给出按钮)');
+  staleUndo();
+  return false;
+};
 
 /**
  * 由销毁命令的返回 `{ deleted, undoToken }` 决定**这次销毁能否提供撤销**,
@@ -248,7 +261,7 @@ export async function renderMemory(box) {
         // 变体(f)(第62轮):`memGen` **刷新即归零**而环**跨刷新存活** ⇒「刷新后 memGen=0、环里躺着上一次销毁」
         //   真实可达。⚠ 今日 `!token` 已**结构上不可达**(onConfirm 返回 false ⇒ 按钮根本不出现);
         //   留 1 行作纵深,且它也不再是「挡住还原错记录」的那道闸(token 必填,`undo(null)` 发不出去)。
-        if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
+        if (!token) return noTokenUnreachable(); // 结构上不可达 ⇒ 若真到了这里,**响亮**而非静默
         if (gen !== memGen) return expiredUndo(); // 策略闸:只撤销最近一次
         let n;
         try { n = await rt.memory.undo(token); } catch (e) { toast(errText(e)); return; }
@@ -325,7 +338,7 @@ export async function renderDocs(box) {
         },
         // ★走 guardrail.showUndo:不报成功、返回值不被解释(详见 renderMemory 清空路径同注 · [建议]3)。
         onUndo: undoable ? async () => {
-          if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
+          if (!token) return noTokenUnreachable(); // 结构上不可达 ⇒ 若真到了这里,**响亮**而非静默
           if (gen !== docGen) return expiredUndo(); // 策略闸:只撤销最近一次
           let n;
           try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }
@@ -409,7 +422,7 @@ export async function renderDocs(box) {
       },
       // ★同 renderMemory 清空:预检说不可撤销 ⇒ 连 onUndo 都不传 ⇒ 对话框不会印出「执行后可撤销。」。
       onUndo: undoable ? async () => {
-        if (!token) return; // 结构上不可达(onConfirm 返回 false ⇒ 无按钮);留 1 行作纵深
+        if (!token) return noTokenUnreachable(); // 结构上不可达 ⇒ 若真到了这里,**响亮**而非静默
         if (gen !== docGen) return expiredUndo(); // 策略闸:只撤销最近一次
         let n;
         try { n = await rt.docs.undo(token); } catch (e) { toast(errText(e)); return; }

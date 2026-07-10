@@ -6,6 +6,7 @@
  * 先预览要做什么 → 用户确认 → 执行 → 限时可撤销。不用红色恐吓,用「可撤销」消解紧张。
  * 不可信的 widget 只能**提议**(widget-action),真正执行前必过此门(见 capability/widgets/render.js)。
  */
+import { succeeded } from '../outcome.js'; // 零依赖叶子:与 toast.js 的 toastUndo 共用同一条判据(第64轮 [建议])
 
 /** @param {string} label @param {boolean} accent @returns {HTMLButtonElement} */
 function mkBtn(label, accent) {
@@ -51,6 +52,8 @@ function showUndo(text, onUndo, ms) {
  *   · **抛错** ⇒ 销毁是否发生**未知** ⇒ 同样不给按钮(承第58轮 [建议]A 的不变式:
  *     **提供撤销 ⇔ 销毁确已发生**)。失败因由由调用方自报 —— guardrail 在 i18n 之下,
  *     不持文案(同 `toastUndo` 把「报失败」归还 `restoreFn` 的分层理由)。
+ *   · **`onConfirm` 缺省**(契约上必填,此处仍容错)⇒ 什么都没执行 ⇒ 亦不给按钮。
+ *     判据本身 `succeeded()` 从 `platform/outcome.js` import —— 与 `toastUndo` **同一份代码**。
  *
  * ⚠ **`undefined` 而非 `true` 才是默认值**:这是「零回归 opt-in」的代价 —— 新写的失败路径**忘记
  *   `return false` 就会给出一个还原不了的按钮**。重量压在 JSDoc 义务 + 评审纪律上(同 `toastUndo`)。
@@ -138,14 +141,17 @@ export function confirmDestructive(opts) {
     cancel.onclick = () => { close(); resolve(false); };
     ok.onclick = async () => {
       close();
-      // executed 默认 true:块体箭头隐式返回 undefined ⇒ 判据恒真 ⇒ 现存 15 个调用点零回归。
-      // ★判据与 `toast.js` 的 `succeeded()` **逐字同款**(`v!==false && v!==0`),而非只判 `!== false`:
-      //   否则 `onConfirm: async () => (await rt.x.remove(id)).deleted` 返回 `0`(什么都没删)时,
-      //   两个姊妹原语会给出**相反**的结论。一份契约,一条规则。
+      // executed 默认 true:块体箭头隐式返回 undefined ⇒ `succeeded()` 恒真 ⇒ 现存 15 个调用点零回归。
+      // ★判据从 `platform/outcome.js` **import**,与 `toast.js` 的 `toastUndo` 共用同一份代码
+      //   (第64轮 [建议]:两份拷贝一旦漂移,后果正是「两个姊妹原语对同一返回值给出相反结论」)。
       let executed = true;
       try {
-        const v = await opts.onConfirm();
-        executed = v !== false && v !== 0;
+        // ★`onConfirm` 缺省 ⇒ **什么都没执行** ⇒ 不给撤销(提供撤销 ⇔ 销毁确已发生)。
+        //   评审第64轮 [建议] 提议 `? await opts.onConfirm() : undefined`(⇒ executed=true);
+        //   **我改为 fail-closed**:`undefined` 会让「没执行任何东西」也印出撤销按钮,与本 arc 的
+        //   核心不变式相悖。对 mcp/confirm.js(它传 `onConfirm: () => {}` 且**无 `onUndo`**)两者等价,
+        //   都消掉了「有人清理掉那个空实现 ⇒ TypeError ⇒ 每次 MCP 批准打一条 `[guardrail] 执行失败`」的陷阱。
+        executed = opts.onConfirm ? succeeded(await opts.onConfirm()) : false;
       } catch (e) {
         executed = false; // 销毁是否发生未知 ⇒ 绝不提供撤销(提供撤销 ⇔ 销毁确已发生)
         console.error('[guardrail] 执行失败', e);
