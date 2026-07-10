@@ -6,7 +6,7 @@ import { IV_BANK, IV_CATLABEL, IV_CATS, IV_RECORDS, MOD_ICON, RESUME, RESUME_TAI
 import { ivState, renderInterview } from './interview.js';
 import { openResumeModal } from './resume-modals.js';
 import { clearAllTailoredResumes, persistResume, removeResume } from './persistence.js';
-import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+import { aiChatAvailable, cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { persistColl } from '../../../platform/shell/data-store.js';
 import { $, $$, el } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
@@ -430,13 +430,54 @@ function ivRecordDetail(id){
         <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;color:var(--ink-3);margin:14px 0 4px;">↑ ${tt('可以更好','Could improve')}</p><ul style="margin:0;padding-left:18px;">${r.improve.map(g=>`<li style="font-size:13px;color:var(--ink-2);margin:5px 0;">${cEsc(g)}</li>`).join('')}</ul></div>
     </div>`);
 }
+/** 生成结果的最终渲染(mock 与真流式共用):把题目卡 + 「去题库练」按钮铺进 host。 */
+function ivGenResult(host, j, qs){
+  qs.forEach(q=>IV_BANK.unshift(q)); ivState.tab='bank'; setTimeout(renderInterview,30);
+  host.innerHTML=`<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 '+qs.length+' 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated '+qs.length+' new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" data-close>${tt('去题库练','Practice in bank')} →</button>`;
+  const c=host.querySelector('[data-close]'); if(c)c.onclick=()=>{const x=document.querySelector('.modal-back .x')||document.querySelector('.x'); if(x)x.click();};
+}
+/** 把模型输出(每行一题)解析成题目对象。去掉可能的编号/项目符号;cat 归 design(模型不产分类)。 */
+function parseGenQuestions(text, j){
+  return String(text||'').split('\n').map(l=>l.trim())
+    .map(l=>l.replace(/^[\s\-*•]*\d*[.、)]?\s*/,'')) // 去编号/项目符号(即便指令要求也可能出现)
+    .filter(l=>l.length>=8)
+    .slice(0,3)
+    .map((t,i)=>({ id:Date.now()+i+1, cat:'design', text:t, tags:(j.need||[]).slice(0,2), src:'AI' }));
+}
 export function ivGenerate(){
   const j=JOBS.find(x=>x.id===ivState.jobId);
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— AI</p><h2 style="margin-top:5px;">${tt('生成针对性面试题','Generate tailored questions')}</h2><div class="sub"><span>${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</span></div></div><button class="x">${IC.x}</button></div><div class="modal-body"><div id="genHost"></div></div>`);
-  aiRun($('#genHost',m),[tt('解析该岗位 JD 与你的针对性简历','Reading the JD & your tailored resume'),tt('定位简历里最可能被深挖的点','Finding the most probe-worthy points'),tt('生成 3 道针对性新题','Generating 3 tailored questions')],
-    ()=>{const qs=genQuestionsFor(j,3); qs.forEach(q=>IV_BANK.unshift(q)); ivState.tab='bank'; setTimeout(renderInterview,30);
-      return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" data-close>${tt('去题库练','Practice in bank')} →</button>`;
-    },{label:tt('AI 出题中…','Generating questions…')});
+  const host=$('#genHost',m);
+  const rt=window.SeekerRT;
+  // ★门控(诚实降级):AI 不可用(web 端 / 未配模型)→ 走 mock,不假装真化(同 aiChatAvailable 先例)。
+  if(!aiChatAvailable() || !rt || !rt.ai || typeof rt.ai.generate!=='function'){
+    aiRun(host,[tt('解析该岗位 JD 与你的针对性简历','Reading the JD & your tailored resume'),tt('定位简历里最可能被深挖的点','Finding the most probe-worthy points'),tt('生成 3 道针对性新题','Generating 3 tailored questions')],
+      ()=>{const qs=genQuestionsFor(j,3); qs.forEach(q=>IV_BANK.unshift(q)); ivState.tab='bank'; setTimeout(renderInterview,30);
+        return `<p style="font-size:14px;color:var(--ink);margin:0 0 12px;">${tt('已生成 3 道针对 <b>'+cEsc(j.co)+'</b> 的新题,加入题库顶部 ✓','Generated 3 new questions for <b>'+cEsc(j.co)+'</b>, added to the top of the bank ✓')}</p>${qs.map(q=>`<div style="border:0.5px solid var(--border);padding:12px 14px;margin-bottom:8px;"><span class="q-cat ai">${IV_CATLABEL[q.cat]}</span><p style="font-size:13.5px;color:var(--ink);margin:8px 0 0;line-height:1.55;">${cEsc(q.text)}</p></div>`).join('')}<button class="btn btn-accent" style="margin-top:8px;" data-close>${tt('去题库练','Practice in bank')} →</button>`;
+      },{label:tt('AI 出题中…','Generating questions…')});
+    return;
+  }
+  // ★真·无工具流式生成(块(i)):可信指令 + JD 全文走 untrusted(后端 frame_untrusted 必框定,前置②)。
+  host.innerHTML=`<div class="ai-panel" style="margin-top:4px;"><div class="ai-bar"><span class="dot"></span><span class="lbl"><b>AI</b> ${tt('出题中…','Generating…')}</span></div><pre id="genStream" style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-sans);font-size:13px;color:var(--ink-2);line-height:1.7;margin:12px 0 0;padding:0 2px;"></pre></div>`;
+  const streamEl=host.querySelector('#genStream');
+  const role=j.role.split('·')[0].trim();
+  const rtr=RESUME_TAILORED[j.id];
+  const resumeNote=rtr?(tt('候选人已有针对该岗位的简历,概要:','Candidate has a tailored resume; summary: ')+resSummary(rtr)):tt('候选人尚无针对性简历,请出通用但对岗位有区分度的题。','Candidate has no tailored resume yet — ask general but role-discriminating questions.');
+  // 可信指令(平台/应用自持,硬编码);候选人简历概要是用户自撰=可信,放指令里。JD=外部不可信,走 untrusted。
+  const instruction=tt(
+    '你是资深技术面试官。为「'+j.co+' · '+role+'」这个岗位出恰好 3 道高质量面试题,聚焦:候选人简历里最可能被深挖的点、一道系统设计题、以及岗位关键技能('+((j.need||[]).slice(0,4).join('、')||'后端工程')+')的差距。'+resumeNote+'\n要求:每道题独占一行,只输出题目本身,不要编号、不要小标题、不要额外解释。',
+    'You are a senior technical interviewer. Produce exactly 3 high-quality interview questions for "'+j.co+' · '+role+'", focusing on: the most probe-worthy points in the candidate\'s resume, one system-design question, and gaps in the role\'s key skills ('+((j.need||[]).slice(0,4).join(', ')||'backend engineering')+'). '+resumeNote+'\nRules: one question per line, output only the questions themselves — no numbering, no headers, no extra explanation.'
+  );
+  let acc='';
+  rt.ai.generate({ task:'interview', instruction, untrusted: j.jd||'' }, {
+    onToken:(t)=>{ acc+=t; if(streamEl)streamEl.textContent=acc; }, // textContent 天然转义 ⇒ 流式安全
+    onError:(e)=>{ if(streamEl)streamEl.textContent=errText(e); }, // 如实报错,绝不假装成功
+    onDone:()=>{
+      const qs=parseGenQuestions(acc,j);
+      if(!qs.length){ if(streamEl)streamEl.textContent=tt('未能从模型输出解析出题目,请重试。','Could not parse questions from the model output — please retry.'); return; }
+      ivGenResult(host,j,qs);
+    },
+  });
 }
 export function ivAddQuestion(){
   const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— NEW</p><h2 style="margin-top:5px;">${tt('添加我自己的题','Add my own question')}</h2></div><button class="x">${IC.x}</button></div>
