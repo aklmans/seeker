@@ -141,185 +141,6 @@ async function openDocsManager(){
       onConfirm:async()=>{ try{ await rt.docs.clear(); }catch(_e){} await render(); },
       onUndo:async()=>{ try{ await rt.docs.undo(); }catch(_e){} await render(); } }); };
 }
-// MCP 服务器管理(#2 C4):本地(stdio)/ 远程(http)增删启停 + 测试连接 + 令牌(进钥匙串)。
-// 知情同意「本地会运行程序 / 远程会连端点」。删走 guardrail;令牌只进钥匙串,前端不持明文。
-async function openMcpManager(){
-  const rt=window.SeekerRT, G=window.SeekerGuardrail;
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— EXTENSIONS</p><h2 style="margin-top:5px;">${tt('MCP 服务器','MCP servers')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body">
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;">
-        <div style="display:flex;gap:10px;align-items:center;">
-          <span class="mono" style="font-size:10px;color:var(--ink-3);letter-spacing:.06em;">${tt('类型','TYPE')}</span>
-          <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:6px;overflow:hidden;">
-            <button class="mcp-mode" data-mode="stdio" style="border:0;background:transparent;padding:5px 16px;font-size:12px;cursor:pointer;">${tt('本地','Local')}</button>
-            <button class="mcp-mode" data-mode="http" style="border:0;border-left:0.5px solid var(--border);background:transparent;padding:5px 16px;font-size:12px;cursor:pointer;">${tt('远程','Remote')}</button>
-          </div>
-        </div>
-        <input class="input" id="mcpName" placeholder="${tt('名称(如 filesystem)','Name (e.g. filesystem)')}">
-        <div id="mcpLocal" style="display:flex;flex-direction:column;gap:8px;">
-          <input class="input" id="mcpCmd" placeholder="${tt('命令(如 npx 或 node)','Command (e.g. npx or node)')}">
-          <input class="input" id="mcpArgs" placeholder="${tt('参数,空格分隔(如 -y @modelcontextprotocol/server-filesystem ./docs)','Args, space-separated')}">
-        </div>
-        <div id="mcpRemote" style="display:none;flex-direction:column;gap:8px;">
-          <input class="input" id="mcpUrl" placeholder="${tt('端点 URL(如 https://example.com/mcp)','Endpoint URL (e.g. https://example.com/mcp)')}">
-          <input class="input" id="mcpToken" type="password" autocomplete="off" placeholder="${tt('鉴权令牌(可选 · 只存系统钥匙串)','Auth token (optional · system keychain only)')}">
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="btn btn-accent" id="mcpAddBtn">${tt('添加服务器','Add server')}</button>
-          <button class="btn" id="mcpTestBtn">${tt('测试连接','Test connection')}</button>
-          <span class="mono" id="mcpHint" style="font-size:11px;color:var(--ink-mute);"></span>
-        </div>
-      </div>
-      <div class="lock-note" style="margin:2px 0 14px;"><span class="li">🧩</span><span>${tt('本地 = 在本机运行该程序;远程 = 连接你填的 HTTP 端点。只加你信任的来源;令牌只存系统钥匙串、绝不外发;AI 调用其工具时每次都会先问你,返回内容当作数据(不可信、防注入)。','Local runs the program on your machine; Remote connects to the HTTP endpoint you enter. Only add trusted sources; tokens live only in the system keychain and never leave it; the AI asks before each tool call and treats returned content as untrusted data.')}</span></div>
-      <div id="mcpList">${tt('加载中…','Loading…')}</div>
-    </div>
-    <div class="modal-foot"><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
-  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const escA=s=>esc(s).replace(/"/g,'&quot;');
-  const parseArgs=s=>String(s||'').trim().split(/\s+/).filter(Boolean);
-  const val=id=>{const e=m.querySelector(id);return e?e.value.trim():'';};
-  const hint=m.querySelector('#mcpHint');
-  // 传输模式切换(选中态:暖橙文字 + 底线,不依赖 color-mix)。
-  let mode='stdio';
-  const setMode=mo=>{mode=mo;
-    const lo=m.querySelector('#mcpLocal'), re=m.querySelector('#mcpRemote');
-    if(lo)lo.style.display=mo==='stdio'?'flex':'none';
-    if(re)re.style.display=mo==='http'?'flex':'none';
-    [...m.querySelectorAll('.mcp-mode')].forEach(b=>{const on=b.dataset.mode===mo;
-      b.style.color=on?'var(--accent)':'var(--ink-3)'; b.style.fontWeight=on?'600':'400';
-      b.style.boxShadow=on?'inset 0 -2px 0 var(--accent)':'none';});
-    if(hint)hint.textContent='';
-  };
-  [...m.querySelectorAll('.mcp-mode')].forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
-  setMode('stdio');
-  const render=async()=>{
-    let rows=[]; try{ rows=await rt.mcp.list(); }catch(_e){}
-    const body=m.querySelector('#mcpList'); if(!body) return;
-    body.innerHTML = rows.length
-      ? rows.map(s=>{
-          const http=s.transport==='http';
-          const where=http?esc(s.url||''):(esc(s.command)+' '+esc((s.args||[]).join(' ')));
-          const ttag=`<span class="mono" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);border-radius:3px;padding:0 4px;">${http?tt('远程','REMOTE'):tt('本地','LOCAL')}</span>`;
-          const tools=(s.tools||[]).map(t=>esc(t.name)).join('、');
-          const status = s.error ? `<span style="color:var(--ink-3);">${tt('连接失败','Failed')}</span>`
-            : s.enabled ? (s.connected ? `<span style="color:var(--status-done);">${s.toolCount} ${tt('工具','tools')}</span>` : tt('连接中…','Connecting…'))
-            : `<span style="color:var(--ink-3);">${tt('已停用','Disabled')}</span>`;
-          const authLine = http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${s.authConfigured?('🔑 '+tt('令牌已配置','Token set')):tt('未配置令牌(无鉴权)','No token (unauthenticated)')}</div>` : '';
-          // stdio 环境变量状态:只列已配变量名(值只在钥匙串、前端不见)+ 可点 × 清除。
-          const envList=(s.envConfigured||[]).filter(e=>e&&e.status==='configured');
-          const envLine = !http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${envList.length
-            ? '🔑 '+envList.map(e=>`<span class="mono" style="font-size:10px;">${esc(e.var)}</span> <span data-mcpenvclear data-cn="${escA(s.name)}" data-cv="${escA(e.var)}" title="${tt('清除','Clear')}" style="cursor:pointer;color:var(--ink-3);padding:0 2px;">×</span>`).join('　')
-            : tt('未配置环境变量','No env vars')}</div>` : '';
-          return `<div style="padding:9px 0;border-bottom:0.5px solid var(--border);"><div style="display:flex;gap:10px;align-items:center;">
-            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${ttag} ${esc(s.name)} · ${status}</div>
-              <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${where}</div>
-              ${tools?`<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${tools}</div>`:''}
-              ${authLine}
-              ${envLine}
-              ${s.error?`<div style="font-size:11px;color:var(--ink-3);margin-top:3px;">${esc(s.error)}</div>`:''}</div>
-            ${http?`<button class="btn" data-mcpauth="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('令牌','Token')}</button>`:''}
-            ${!http?`<button class="btn" data-mcpenv="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('变量','Env')}</button>`:''}
-            <button class="btn" data-mcptoggle="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${s.enabled?tt('停用','Disable'):tt('启用','Enable')}</button>
-            <button class="btn" data-mcpdel="${escA(s.name)}" style="padding:4px 10px;font-size:11px;flex-shrink:0;">${tt('删除','Remove')}</button>
-          </div>
-          ${http?`<div class="mcp-authedit" data-for="${escA(s.name)}" style="display:none;gap:6px;margin-top:8px;">
-            <input class="input" type="password" autocomplete="off" placeholder="${tt('鉴权令牌(留空保存 = 清除)','Auth token (save empty = clear)')}" style="flex:1;">
-            <button class="btn btn-accent" data-mcpauthsave="${escA(s.name)}" style="padding:4px 12px;font-size:11px;flex-shrink:0;">${tt('保存','Save')}</button>
-          </div>`:''}
-          ${!http?`<div class="mcp-envedit" data-for="${escA(s.name)}" style="display:none;gap:6px;margin-top:8px;">
-            <input class="input" data-envvar autocomplete="off" placeholder="${tt('变量名(如 BRAVE_API_KEY)','Var name (e.g. BRAVE_API_KEY)')}" style="flex:1;">
-            <input class="input" type="password" data-envval autocomplete="off" placeholder="${tt('值(留空 = 清除该变量)','Value (empty = clear)')}" style="flex:1;">
-            <button class="btn btn-accent" data-mcpenvsave="${escA(s.name)}" style="padding:4px 12px;font-size:11px;flex-shrink:0;">${tt('保存','Save')}</button>
-          </div>`:''}
-          </div>`;
-        }).join('')
-      : `<p style="color:var(--ink-3);padding:14px 0;text-align:center;">${tt('还没有 MCP 服务器。添加一个,让 AI 用上外部工具(每次调用都会先问你)。','No MCP servers yet. Add one to give the AI external tools — it asks before each call.')}</p>`;
-    [...m.querySelectorAll('[data-mcptoggle]')].forEach(b=>b.onclick=async()=>{
-      const s=rows.find(x=>x.name===b.dataset.mcptoggle); if(!s) return;
-      try{ await rt.mcp.setEnabled(s.name, !s.enabled); }catch(e){ toast(errText(e)); } await render();
-    });
-    [...m.querySelectorAll('[data-mcpdel]')].forEach(b=>b.onclick=()=>{
-      if(!G||!G.confirmDestructive) return;
-      G.confirmDestructive({ title:tt('删除 MCP 服务器?','Remove MCP server?'), detail:(tt('将移除并断开:','Remove and disconnect: '))+b.dataset.mcpdel, confirmLabel:tt('删除','Remove'),
-        onConfirm:async()=>{ try{ await rt.mcp.remove(b.dataset.mcpdel); }catch(_e){} await render(); } });
-    });
-    // 令牌:展开/收起行内输入 → setAuth(留空保存 = 清除)。令牌直送钥匙串。
-    const findEdit=name=>[...m.querySelectorAll('.mcp-authedit')].find(x=>x.dataset.for===name);
-    [...m.querySelectorAll('[data-mcpauth]')].forEach(b=>b.onclick=()=>{
-      const box=findEdit(b.dataset.mcpauth); if(box) box.style.display = box.style.display==='none'?'flex':'none';
-    });
-    [...m.querySelectorAll('[data-mcpauthsave]')].forEach(b=>b.onclick=async()=>{
-      const name=b.dataset.mcpauthsave, box=findEdit(name), inp=box&&box.querySelector('input');
-      const has=!!(inp&&inp.value.trim());
-      try{ await rt.mcp.setAuth(name, (inp&&inp.value)||''); toast(has?tt('令牌已保存','Token saved'):tt('令牌已清除','Token cleared')); }
-      catch(e){ toast(errText(e)); }
-      await render();
-    });
-    // 环境变量(stdio):展开行内「名 + 值」→ setEnv(值直送钥匙串;留空 = 清除该变量)。
-    const findEnvEdit=name=>[...m.querySelectorAll('.mcp-envedit')].find(x=>x.dataset.for===name);
-    [...m.querySelectorAll('[data-mcpenv]')].forEach(b=>b.onclick=()=>{
-      const box=findEnvEdit(b.dataset.mcpenv); if(box) box.style.display = box.style.display==='none'?'flex':'none';
-    });
-    [...m.querySelectorAll('[data-mcpenvsave]')].forEach(b=>b.onclick=async()=>{
-      const name=b.dataset.mcpenvsave, box=findEnvEdit(name);
-      const vn=box&&box.querySelector('[data-envvar]'), vv=box&&box.querySelector('[data-envval]');
-      const varName=(vn&&vn.value.trim())||''; if(!varName){ toast(tt('请填变量名','Enter a var name')); return; }
-      const hasVal=!!(vv&&vv.value.trim());
-      try{ await rt.mcp.setEnv(name, varName, (vv&&vv.value)||''); toast((hasVal?tt('已保存 ','Saved '):tt('已清除 ','Cleared '))+varName); }
-      catch(e){ toast(errText(e)); }
-      await render();
-    });
-    [...m.querySelectorAll('[data-mcpenvclear]')].forEach(el=>el.onclick=async()=>{
-      const name=el.dataset.cn, varName=el.dataset.cv;
-      try{ await rt.mcp.setEnv(name, varName, ''); toast(tt('已清除 ','Cleared ')+varName); }
-      catch(e){ toast(errText(e)); }
-      await render();
-    });
-  };
-  await render();
-  const addBtn=m.querySelector('#mcpAddBtn');
-  if(addBtn) addBtn.onclick=async()=>{
-    const name=val('#mcpName');
-    if(!name){ toast(tt('请填名称','Enter a name')); return; }
-    addBtn.disabled=true;
-    try{
-      if(mode==='http'){
-        const url=val('#mcpUrl'); if(!url){ toast(tt('请填端点 URL','Enter endpoint URL')); return; }
-        await rt.mcp.add(name, { url });
-        const token=val('#mcpToken');
-        if(token){ try{ await rt.mcp.setAuth(name, token); }catch(e){ toast(errText(e)); } }
-      } else {
-        const cmd=val('#mcpCmd'); if(!cmd){ toast(tt('请填命令','Enter command')); return; }
-        await rt.mcp.add(name, { command:cmd, args:parseArgs(val('#mcpArgs')) });
-      }
-      toast(tt('已添加 ','Added ')+name);
-      ['#mcpName','#mcpCmd','#mcpArgs','#mcpUrl','#mcpToken'].forEach(id=>{const e=m.querySelector(id); if(e)e.value='';});
-      if(hint)hint.textContent='';
-      await render();
-    }
-    catch(e){ toast(errText(e)); }
-    finally{ addBtn.disabled=false; }
-  };
-  const testBtn=m.querySelector('#mcpTestBtn');
-  if(testBtn) testBtn.onclick=async()=>{
-    testBtn.disabled=true; if(hint)hint.textContent=tt('连接中…','Connecting…');
-    try{
-      let r;
-      if(mode==='http'){
-        const url=val('#mcpUrl'); if(!url){ if(hint)hint.textContent=''; toast(tt('请先填 URL','Enter URL first')); return; }
-        const token=val('#mcpToken');
-        r=await rt.mcp.probe({ url, token: token||undefined });
-      } else {
-        const cmd=val('#mcpCmd'); if(!cmd){ if(hint)hint.textContent=''; toast(tt('请先填命令','Enter command first')); return; }
-        r=await rt.mcp.probe({ command:cmd, args:parseArgs(val('#mcpArgs')) });
-      }
-      if(hint)hint.textContent=tt('成功 · ','OK · ')+r.toolCount+tt(' 个工具',' tools');
-      toast(tt('连接成功 · ','Connected · ')+r.toolCount+tt(' 工具',' tools'));
-    }
-    catch(e){ if(hint)hint.textContent=''; toast(errText(e)); }
-    finally{ testBtn.disabled=false; }
-  };
-}
 
 export function renderSettings(){
   setState.theme=document.documentElement.dataset.theme;
@@ -395,9 +216,9 @@ export function renderSettings(){
     ${row(tt('长期记忆','Long-term memory'),`<button class="btn" id="mgrMemory">${tt('查看与清除','View & clear')}</button>`)}
     ${row(tt('知识库 · 文档','Knowledge · docs'),`<button class="btn" id="mgrDocs">${tt('管理文档','Manage docs')}</button>`)}
     <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🔒</span><span>${tt('会话历史与长期记忆都只存在本地。<b>AI 不会查询你的会话历史</b>(只在当轮对话内拿上下文);长期记忆里若有你主动写出的信息,可在此查看或随时清除。<b>知识库文档</b>是你主动加入、供 AI 检索作答的语料(需配嵌入模型),其相关片段会用于回答 —— 同样只存本地、可随时删除。你掌控自己的数据。','Chat history and long-term memory stay local only. <b>AI cannot query your chat history</b> (only in-conversation context); review/clear volunteered memory here anytime. <b>Knowledge docs</b> are material you add for the AI to retrieve from (needs an embed model); relevant chunks are used in answers — also local-only and deletable anytime. You control your data.')}</span></div>
-    <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('扩展 · MCP 工具','Extensions · MCP tools')}</p></div>
-    ${row(tt('MCP 服务器','MCP servers'),`<button class="btn" id="mgrMcp">${tt('管理服务器','Manage servers')}</button>`)}
-    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🧩</span><span>${tt('MCP 让 AI 接入外部工具(文件 / 数据库 / API…)。<b>本地服务器 = 在你电脑上运行一个程序;远程服务器 = 连接你填的 HTTP 端点</b>,请只加你信任的来源;鉴权令牌只存系统钥匙串、绝不外发;AI 每次调用其工具都会<b>先征得你同意</b>,返回内容被当作数据(不可信、防注入)。仅桌面端可用。','MCP lets the AI use external tools (files / databases / APIs). <b>A local server runs a program on your machine; a remote server connects to the HTTP endpoint you enter</b> — only add sources you trust. Auth tokens live only in the system keychain and never leave it; the AI <b>asks your permission every time</b> it calls a tool, and returned content is treated as untrusted data. Desktop only.')}</span></div>
+    <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('扩展 · 连接器','Extensions · Connectors')}</p></div>
+    ${row(tt('MCP 服务器','MCP servers'),`<button class="btn" id="mgrMcp">${tt('去能力中心管理','Manage in Capability Center')}</button>`)}
+    <div class="lock-note" style="margin:6px 0 14px;max-width:640px;"><span class="li">🧩</span><span>${tt('连接器(MCP)管理已移至<b>能力中心</b>,在那里统一查看与管理你接入的所有能力(增删启停 / 令牌 / 测试连接)。<b>本地服务器 = 在你电脑上运行一个程序;远程服务器 = 连接你填的 HTTP 端点</b>,请只加你信任的来源;鉴权令牌只存系统钥匙串、绝不外发;AI 每次调用其工具都会<b>先征得你同意</b>,返回内容被当作数据(不可信、防注入)。仅桌面端可用。','Connector (MCP) management has moved to the <b>Capability Center</b>, where every capability you connect is viewed and managed in one place (add / remove / enable, tokens, test connection). <b>A local server runs a program on your machine; a remote server connects to the HTTP endpoint you enter</b> — only add sources you trust. Auth tokens live only in the system keychain and never leave it; the AI <b>asks your permission every time</b> it calls a tool, and returned content is treated as untrusted data. Desktop only.')}</span></div>
     ${row(tt('清空所有数据','Clear all data'),`<button class="btn" id="clearAllData">${tt('清空','Clear')}</button>`)}
   </div>`;
   sections.about=`<p class="seclabel">— ABOUT</p><h2 class="sectitle">${tt('关于','About')}<span class="dot">.</span></h2>
@@ -456,7 +277,7 @@ function wireDataIO(){
   const mh=$('#mgrHistory'); if(mh) mh.onclick=openHistoryManager;   // 历史与记忆掌控(#4),web/桌面皆可
   const mm=$('#mgrMemory'); if(mm) mm.onclick=openMemoryManager;
   const md=$('#mgrDocs'); if(md) md.onclick=openDocsManager;          // RAG 知识库管理(#2)
-  const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=openMcpManager;       // MCP server 管理(#2 C4)
+  const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=()=>go('capability');  // ★P1-b:连接器管理已搬迁至能力中心(一等公民),此处只留指路
   const cad=$('#clearAllData'); if(cad) cad.onclick=clearAllDataFlow;  // 真·清空所有数据(guardrail+备份+种子守卫;index.html 过渡全局)
   const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
   if(!on){

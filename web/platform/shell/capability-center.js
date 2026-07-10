@@ -7,6 +7,7 @@
  *     只在此 UI 呈现给用户,**绝不进模型上下文**(模型侧读若将来要做,须走「静态最小投影」新红线,见 proposal §7)。
  *   - **写**(增删连接器 / 填密钥 / 启停)= 设置类,走各自管理面、不经对话;本刀 P1-a 只做**只读总览 + 归属 + 入口**,
  *     深度管理(Connector 提一等公民、记忆/知识库查删)= P1-b/c。 */
+import { renderConnectors } from './connectors.js'; // ★P1-b:Connector 管理从 settings.js 模态搬迁至此,提为一等公民
 import { cEsc } from './copilot-chrome.js'; // ★评审第54轮 [建议]:复用平台唯一转义器(&<>"),不再造 bespoke esc(防漂移;将来若挪进属性位,漏 " 即成注入缺口)
 import { $ } from './dom.js';
 import { tt } from './i18n.js';
@@ -63,21 +64,14 @@ async function fill(id, fn) {
 }
 
 function populate() {
-  // ── Connector(MCP):名称 + 传输类型 + 状态/工具数(只读总览;深度管理 = P1-b)。
-  fill('cc-connector', async () => {
-    const rows = await rt().mcp.list();
-    if (!rows.length) return emptyLine(tt('还没有连接器。到「设置 · 扩展」添加,让 Agent 用上外部工具。', 'No connectors yet. Add one under Settings · Extensions to give the Agent external tools.'));
-    return rows.map((s) => {
-      const http = s.transport === 'http';
-      const tag = `<span class="mono" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);border-radius:3px;padding:0 4px;">${http ? tt('远程', 'REMOTE') : tt('本地', 'LOCAL')}</span>`;
-      const status = s.error
-        ? `<span style="color:var(--ink-3);">${tt('连接失败', 'Failed')}</span>`
-        : s.enabled
-          ? (s.connected ? `<span style="color:var(--status-done,#5a8);">${s.toolCount} ${tt('工具', 'tools')}</span>` : `<span style="color:var(--ink-3);">${tt('连接中…', 'Connecting…')}</span>`)
-          : `<span style="color:var(--ink-3);">${tt('已停用', 'Disabled')}</span>`;
-      return itemRow(`${tag} <span style="font-weight:500;">${cEsc(s.name)}</span> · ${status}`);
-    }).join('');
-  });
+  // ── Connector(MCP):**一等公民管理视图**(P1-b 从 settings.js 模态搬迁;增删启停 / 令牌 / env / 测试连接)。
+  //    仍是「给人看」的前端面:端点/命令/密钥状态只呈现给用户,永不进模型(见页顶 lock-note 承诺)。
+  (async () => {
+    const box = $('#cc-connector');
+    if (!box) return;
+    try { await renderConnectors(box); }
+    catch (_e) { box.innerHTML = emptyLine(tt('桌面端可用(网页端不支持此项)', 'Desktop only (unavailable on web)')); }
+  })();
 
   // ── 工具 · 能力:注册表条目(id + 可用性)。读平台 cap_list = 平台读平台、无 platform→app import([建议]C)。
   fill('cc-tools', async () => {
