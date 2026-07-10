@@ -1575,3 +1575,20 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **评审逐条坐实**:#1 搬迁忠实(模式切换/令牌展开收起/env 清除 ×/add 令牌二段写/probe http-vs-stdio,**7 个 data-* handler 全在、无静默丢分支**);#2 红线三条逐字存活(令牌/env 只经 setAuth·setEnv 送钥匙串、值永不回显、token input=password+autocomplete=off;删除**结构性**只在 `onConfirm` 内调 `rt.mcp.remove`、`!G` fail-closed 早返;知情同意五要素双语全);#3 属性位严密(`cEsc` 与旧 `escA` **charset 全等**,8 处属性位全 cEsc,`"` 封 `" onmouseover=` 越狱、`<>` 封标签越狱,`data-cn/cv` 经 dataset 读回非 innerHTML、无再注入);#5 删除面干净(`escA` 全消、`esc`/`IC`/`openModal`/`go` 仍被用非死 import、`settings→nav` 边本就存在**无新环**);#6 载序净(connectors 仅被 capability-center import、copilot-chrome 不反向 import ⇒ **无环**;顶层只 `parseArgs` const + 导出 async fn、`cEsc` 惰性用 ⇒ **无 parse-time/TDZ**)。
 
 **★P1-b 收官([应改] 已落、#4 已裁)。下一步 P1-c:记忆 + 知识库薄视图** —— 评审预告重点复核:**删除同样走 guardrail(预览+确认+撤销)**、记忆/文档内容(**可能含用户 PII / 外部不可信**)进 DOM 全 `cEsc`、**不进模型**。
+
+**用户拍板(2026-07-09)**:P1-b [应改] 修复的双向对照证据自足 → **直接起 P1-c,与 P1-b 闭环一并送审**(省一轮往返)。
+
+### P1-c · 长期记忆 + 知识库从设置模态搬迁、提为一等公民视图(P1 a+b+c 收齐)· commit `2644af2` · ⏳ 待审
+**破坏性 + PII 承载刀**(评审第55轮已预告重点)。**零新后端**(复用 `rt.memory.*` / `rt.docs.*`)。
+- **改动(3 文件,新增 1 模块 + 净删 80 行)**:新增 `memory-docs.js` 的 `renderMemory(box)`/`renderDocs(box)`——由 `settings.js` 的 `openMemoryManager`(62-88)+ `openDocsManager`(89-143)搬迁,模态外壳 → 内联宿主;capability-center 记忆/知识库段:计数总览 → 真管理面;settings 删两模态(82 行)+ **摘已无消费者的 `toastUndo` import**,两行改指路 → `go('capability')`,lock-note 指向能力中心。**会话历史仍留设置**(非能力中心域;`_mgrEsc`/`_mgrTime`/`openModal`/`IC` 因它存活、非死 import,已断言核实)。
+- **★破坏性红线(§4-3)逐字保留**:记忆**逐条删 = 即时删 + `toastUndo` 撤销**(原设计:单条低风险、即时可撤销、不弹模态);记忆清空 / 文档删 / 文档清空 = `guardrail.confirmDestructive`(预览 + 确认 + `onUndo` 撤销),且 `!G` **fail-closed 早返**。
+- **★转义(§4-4)· 顺手修掉两处搬迁前既存缺陷**:
+  1. **修复自 XSS**:原 `settings.js:129` 把**用户填的文档名裸拼进 toast**;`toast`→`el`→`template.innerHTML` 是 HTML sink ⇒ 文档名 `<img onerror=…>` 可在**顶层上下文**执行。本刀 `cEsc` 收口(同第55轮 [应改] 纪律)。
+  2. **收敛属性位转义**:原 `_mgrEsc`(:29)与 docs 局部 `esc`(:106)**只转 `&<>`、漏 `"`**,却用于 `data-memdel`/`data-docdel` **属性位**(今日 id 由后端生成故未爆,但正是第54轮 [建议] 警告的漂移)。全改平台唯一 `cEsc`(`&<>"`)。
+  3. 记忆内容可能含**用户 PII**、文档名可能是**外部语料标题** → 进 DOM 全 `cEsc`;`guardrail` 的 `detail` 走 `textContent`,故传裸名安全(已在模块头标注、并警告勿"顺手"加转义)。
+- **★lock-note 措辞订正(exec 自查,承第55轮「勿声明假不变式」教训)**:页顶原文「AI **只能**看到「有哪些工具、各自做什么」」—— 记忆/知识库成为本页真实视图后,该句**过度声称**:**长期记忆与 RAG 文档本就是 Agent 的上下文、AI 会读取它们**(`LongTermMemory`/`DocContext` 能力),这是设计意图非泄露。改为精确表述:AI 能看到工具及其用途 + 你写入的记忆与知识库(**本就是 Agent 上下文、可在此查删**);AI **永远看不到**连接端点、启动命令、任何密钥。**「印刷承诺」由此与事实对齐**(P1-b 的端点/命令/密钥承诺不受影响、仍为真)。
+- **验**:node×4 净;import/export 完整性全解析;settings 残留 0、`toastUndo` 死 import 已摘、`_mgrEsc`/`_mgrTime`/`openModal`/`IC`/`errText` 仍在用;`memory-docs` **仅被 capability-center import、copilot-chrome 不反向 import ⇒ 无环**。preview **正向断言**(记忆/文档均为管理视图:删/清/加表单齐;设置页删 82 行后仍渲染;两条指路行落地即见管理面;会话历史仍在设置;lock-note 已改精确措辞)。**★对抗性核实**:①PII/文档名含 `<img onerror>` + `data-*` 属性位含 `" onmouseover=` → **全惰性、无 img 元素、无属性越狱、`data-memdel`/`data-docdel` 精确回环**;②**破坏性时序**:记忆逐条删→`remove` 被调 + `toastUndo` 提供且点撤销**真调 `undo`**;记忆清空/文档删/文档清空 → guardrail **被咨询**、**确认前后端未被调用**、`onConfirm` 后才调、`onUndo` 存在且真调;③**toast sink 双向对照**——以**真模块导出** `m.toast` 做阳性对照(裸 payload → `onerror` 触发、img 成型 = **sink 属实、控制组有效**),`cEsc` 后同 payload 惰性;`docs.add` 路径修后不再执行。0 console;**真机 WKWebView 6.12s boot 零 panic**。
+- **★exec 自我订正(近失,主动披露)**:首版阳性对照用 `window.toast` —— **该桥在 3.y 已摘**(`typeof window.toast === 'undefined'`),`|| (()=>{})` 兜底使控制组**空跑**、返回假阴性(`CTL=false`)。**一个不触发的控制组什么都证明不了**,若照单采信就等于"对着死靶验证"。已改用**真模块导出**重跑、确认控制组真触发后,才采信阴性结果。**教训入 standing:阳性对照必须先证明自己会失败。**
+- **诚实边界**:web 端 `rt.docs.add` 等降级 ⇒ 真嵌入/落库路径待桌面覆盖;本轮以桩 + 对抗断言验契约面(guardrail 咨询序、撤销真调、转义、toast sink)。
+
+**★P1 = a+b+c 收齐**(能力中心框 + Connector + 记忆/知识库,三者皆有后端)。设置页的三个管理模态已收敛为能力中心的统一管理面;绿地(Skills/Project/Scheduled)各自单出方案,未套「已建」光环。
