@@ -1768,3 +1768,19 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 
 **★★撤销债 arc 全线收口**:刀1(`toastUndo` 契约)+ 刀2a(no-op 守卫 · fail-closed 快照 · 全域映射 · 据条数收口)+ 刀2b-1(有界环 · token 签发 · 决策点说真话 · 真字节上限)+ 刀2b-2(token 必填)+ 收尾刀(token 跨环唯一)。**「还原错记录」不再靠前端五道闸挡住,而是结构上不可能 —— 环内靠 `take(&str)`,环间靠全局唯一序号。安全性从五道前端闸,搬进了类型系统。**
 **后续刀(评审裁的次序,均不阻塞 P2)**:② guardrail `onConfirm: () => Promise<boolean>` —— **先做**(最便宜,且消掉本 arc 残留的最后一处「沉默」:超限 clear 后 guardrail 仍给按钮,点下去 `if (!token) return;` 一声不吭,而整条 arc 的主题就是「失败必须出声」);③ 不可映射行的**逃生口**(一行坏数据同时 brick 掉逐条删与整库清空;可达性≈0 但后果是记忆功能整体不可管理 —— **若有用户报「某条记忆删不掉」,立刻插队**);① 大快照 **spill 到磁盘**(已由预检如实披露,从「谎报」降为「能力缺口」,等知识库功能成熟再做)。
+
+### 撤销债 后续刀② · guardrail `onConfirm` 返回值契约 · commit `4780bd3` · ⏳ 待审
+承第63轮 Q3 裁的次序(②先做)。**消掉整条撤销 arc 残留的最后一处「沉默」**:超上限 clear 之后 guardrail 无条件 `showUndo`,按钮照样出现,点下去被 `if (!token) return;` 早返 —— 一声不吭,而 arc 的主题正是**失败必须出声**。
+- **契约(与 `toast.js` 的 `toastUndo` 逐字同款)**:`onConfirm` 返回**显式 `false` 或 `0`** ⇒ 没有可还原之物 ⇒ **按钮根本不出现**;返回 `undefined`(块体箭头隐式返回)⇒ 视为已执行;**抛错** ⇒ 销毁是否发生未知 ⇒ 同样不给按钮(此前 `catch{console.error}` 吞错后**仍给按钮** —— 同缺陷类的最后一条支路,一并堵死)。
+- **★判据取 `v !== false && v !== 0`,不是只判 `!== false`**:preview 的 `C4_returnsZero` 暴露了两个姊妹原语的分歧 —— 否则 `onConfirm: async () => (await rt.x.remove(id)).deleted` 返回 `0` 时二者结论**相反**。**一份契约,一条规则。**
+- **★零回归 = AST 机械核实,不靠肉眼**:全仓 **15** 个 `onConfirm` 属性**全是块体箭头 / function 体** ⇒ 隐式返回 `undefined` ⇒ 判据恒真。审计脚本自带**阳性对照**(临时塞一个表达式体箭头 → 审计器点名;移除 → 归零)。
+- **★★同刀堵一处评审未点名的决策点自相矛盾**:`note.textContent = opts.onUndo ? '执行后可撤销。' : ''`(guardrail:99)只看 `onUndo` 是否存在 ⇒ 超上限 clear 的对话框**同时**印出「内容过大,清除后无法撤销。」(detail,第62轮修的)与「执行后可撤销。」(note)——**同一个对话框两句互相打脸**。修:两条 clear 路径**预检说不可撤销 ⇒ 连 `onUndo` 都不传** ⇒ 提示行自然消失(零新 API:`opts.onUndo` 本就是这行的开关)。
+- **★`resolve` 语义刻意不动**(函数头 ⚠⚠ 钉死):它是「**用户是否点了确认**」,**不是**「是否执行成功」。`capability/mcp/confirm.js:39` 把它直接当 `approved` 回传 `rt.mcp.confirmResolve` ⇒ 若合并成「执行成功」,一个返回 `false` 的 `onConfirm` 会把**用户的「允许」静默翻转成「拒绝」**。安全语义,两处标注勿改。
+- **§4-3 · 不给应用任何新权力**:应用本来就能通过**不声明 `onUndo`** 让销毁无从撤销;`false` 只是把同一个决定挪到执行之后(「有没有可还原之物」往往执行时才知道)。**不能**绕过确认闸。已写进 `WidgetActionSpec.onConfirm` 类型注释。
+- **验**(每条判据配一个**能亮**的控制组;真 `window.SeekerGuardrail` 实例 + `CTL_freshCode` 佐证跑的是新码):
+  - **原语面**:`undefined` → **仍给按钮**(阳性对照)· `false`/`0` → 无按钮 · `1` → 给按钮 · 抛错 → 无按钮 · `resolve` 恒为「用户点了确认」· 无 `onUndo` ⇒ 不印「执行后可撤销。」
+  - **安全消费者**(mcp/confirm.js 形状):确认 → `approved=true`;取消 → `approved=false`;两路均无游离撤销按钮。**MCP 允许/拒绝语义零漂移。**
+  - **真消费者端到端**(`renderMemory` 清空,真模块导出):①**超上限**(deleted=1, token=null)→ **无死按钮** + 对话框只说「无法撤销」**且不再印「执行后可撤销」** + toast 如实;②**阳性对照·正常 clear** → 按钮出现 + 对话框印「执行后可撤销」;③ no-op clear → 无按钮 + 「没有可清除的内容」。
+  - tsc 无新增(61→61;guardrail 与 types.d.ts 零 error)· `node --check` 净 · Rust 未动 94/0 · 真机 WKWebView **2.14s boot 零 panic、进程存活**。
+- **记债(不扩范围)**:`doc_remove` **无单篇预检**(后端只有 `doc_clear_undoable`)⇒ 事前的「执行后可撤销。」在「执行时才发现整篇超上限」的罕见情形下仍是一句事前承诺(按钮不会出现、toast 如实,但话已出口)。正解:补 `doc_remove_undoable`,与两条 clear 路径同款。代码处已标注。
+- **剩余后续刀**(第63轮次序):③ 不可映射行的**逃生口** → ① 大快照 **spill 到磁盘**。
