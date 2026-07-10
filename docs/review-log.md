@@ -1672,3 +1672,24 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **可测性**:命令取 Tauri `State`、不可直接单测 ⇒ 把**决策抽成纯 helper**;并把 `memory_remove` 内联的单行快照抽为 `memory_snapshot_one(conn, id)`(镜像既有 `doc_snapshot` 的形状),使单测走**真查询**而非重抄一遍 SQL。
 - **验(★含阳性对照)**:`noop_destroy_must_not_clobber_undo_slot` —— **阳性**:复刻旧的无条件 `*slot = snap`,空快照确会把 A 的快照清空(永久丢失);**阴性**:`stash_if_destroyed` 挡住;真销毁仍正常覆盖(撤销语义 = 最近一次)。`repeated_memory_delete_keeps_first_snapshot_and_undo_restores_it`(**评审点名的复现**):建库插 A → 删 A(快照进槽)→ **再删 A(no-op,空快照)** → 槽仍保有 A → `mem::take` + `memory_restore_rows` 还原 1 行、fact 逐字相符。**两测试点名跑过、非从总数推断**;cargo test **86 passed / 0 failed**(84→86);clippy `-D warnings` 净;fmt 净;真机 3.52s boot 零 panic。
 - **★诚实边界**:本刀只消除**根因之一**(no-op 覆盖)。**单槽语义仍在** —— 连删两条**不同**记录时,第一条快照仍被第二条**正当覆盖**(「撤销最近一次」),前端靠世代守卫诚实拒绝。根治 = **刀2b**(keyed trash + token + **TTL 与前端撤销窗口同源常量**)。
+
+### ★ 第60轮独立复核 = 🏁 通过 + 3 [建议] → 全落 `fdad069`
+- **评审确认**:扩大范围(四处)**正确**且 `clear` 两处**可证严格正确**(其快照函数 `memory_rows_full`/`doc_snapshot` 均传播错误 ⇒ `snap.is_empty() ⟺ SELECT 0 行 ⟺ DELETE 0 行`);抽取**确为零逻辑改动**(逐字一致,**连吞错也忠实搬了** —— 这正是它是先存缺陷的证明);**原子性前提成立**(`Db(Mutex<Connection>)` 单连接、命令体全程持锁,快照→DELETE 对其他命令原子)。刀1 收尾(假理由已删 + `done` 闸)亦确认。
+- **★★[建议]2(最重,已落)· `memory_snapshot_one` 吞错 ⇒ 本刀把良性缺陷转化成「还原错记录」的通路**:
+  - **坐实**:该函数用 `.filter_map(|x| x.ok())` **吞掉逐行映射错误**(先存缺陷,随 `memory_remove` 内联体忠实搬出);而 `DELETE` **不管映射成不成功都会删掉那行**。schema `created_at INTEGER DEFAULT 0` —— **DEFAULT ≠ NOT NULL**,NULL 可写入 ⇒ 行存在但映射失败。⇒ `snap.is_empty()` 实为「命中 0 行 **或** 命中的行全部映射失败」,**并不等价于「0 行被销毁」**。**它是四个快照函数里唯一吞错的异类**(3/4 已传播)。
+  - **★harm 方向被本刀反转**:旧码 `*slot = snap`(空)**清空**槽 ⇒ 撤销什么也不还原(丢 A,**但不还原错的**);刀2a 的 `stash_if_destroyed` **跳过** ⇒ 槽里留着**上一次**的快照 ⇒ 命令仍 `Ok` ⇒ 前端推进世代、给撤销 ⇒ 点下去**还原错的记录**,且 `n>0` ⇒ toast 报「已撤销」= **§4-3 三连违例**。评审判 [建议](吞错先存、非本刀引入),**但后果是本刀赋予的** —— exec 如实记为「本刀引入的后果」。
+  - **评审并指出「改用 DELETE 行数也不够」**:若 DELETE 影响 1 行而 snap 为 0(映射失败),你只是**知道**销毁了、却**无可还原之物**。**正解是 fail-closed:不能完整快照,就不销毁。**
+  - **落法**:与三兄弟一致地传播错误 ⇒ 映射失败在 `DELETE` **之前** 返回 `Err`,什么也没销毁、槽未被动、前端 `ok=false` 不推进世代不给撤销。**此后 `snap.is_empty()` 才真正 ⟺「0 行被销毁」,`is_empty()` 判据才名副其实。**
+  - **★并订正 exec 写的假注释**「行不存在 → 空 Vec(**= no-op 删除的信号**)」—— 空 Vec 也可能是「行存在但映射失败」。**这是本 arc 第五次「勿声明假不变式」。**
+- **★[建议]3(已落)· 测试重抄了命令体 ⇒ 守不住 `memory_remove` 本身**:原测试自写「snapshot → DELETE → stash」序列,**断言的是测试自己的代码** —— 有人把命令改回 `*trash = snap`、或把 stash 挪到 DELETE 之前,测试照样绿。**落法**:抽 `memory_remove_inner(conn, slot, id)` / `doc_remove_inner(...)`,命令只取锁转调,测试**直调 inner ⇒ 覆盖真实命令体**。**同族纪律:重抄被测代码的测试,证明的是测试、不是代码**(与「不触发的控制组什么都证明不了」同源)。
+- **★[建议]1(已落,并被 exec 扩到四条路径)· 「提供撤销 ⇔ 销毁确已发生」贯彻到条数**:评审只点名 `clear`(修后 clear-on-empty 会**保留** `trash=[A]`,而 guardrail 无条件给撤销 ⇒ 点下去还原一条 clear 根本没销毁的记录)。**exec 落地时发现更深的盲区**:`memory_remove` 返回 `()`,前端**无从判断销毁是否真发生**,该不变式在它身上**根本无法贯彻**。⇒ 把 `memory_remove` 返回值由 `()` 改为 `usize`(与 `doc_remove`/`memory_clear`/`doc_clear` 对齐),前端**四条路径**统一据 `n` 收口:`n===0` ⇒ 不推进世代、不给撤销、如实提示。web 端降级返回 `undefined` → 视为成功(那里本无行、不可达)。
+- **验**:Rust 三测试**点名跑过**(含新增 `unmappable_row_fails_closed_and_never_clobbers_or_deletes` —— **先断言 `memory_snapshot_one(...).is_err()` 证明用例真的打到故障面、非空跑**,再断言 fail-closed:B 未被删除、撤销槽仍是 A 未被污染);`repeated_memory_delete...` 现**直调 inner、覆盖真命令体**。cargo test **87 passed / 0 failed**(86→87);clippy `-D warnings` 净;fmt 净;真机 3.98s boot 零 panic。**前端双向对照**:阳性前提(桩 trash 里躺着 `PREV`)→ no-op 删除(n=0)⇒ **不给撤销**、提示「没有可删除的内容」、**PREV 未被还原**;真删除(n=1)⇒ 给撤销且**真还原 A**、报「已撤销」;clear-on-empty(n=0)⇒ 提示「没有可清除的内容」、guardrail 仍给按钮但 **`onUndo` 拒绝**、PREV 未被还原。
+
+### ★ TTL 裁决(评审第60轮 · **订正其自己第58轮的说法**)—— 刀2b 方向已改
+- **评审自我订正**:第58轮它说「TTL 会让 `toast.js` 谎报」。**刀1 落地后这条不再成立** —— token 过期 → `memory_undo(token)` 返回 Err/0 → restoreFn `return false` + 自报「已过期」→ `toast.js` **静默** ⇒ **没有假成功**。⇒ **TTL 与前端窗口的漂移已从「红线正确性问题」降级为「UX 问题」。**
+- **⇒ 别为同步 TTL 建开机下发通道**(为一个 UX 常量搭跨进程配置管道;更糟的是把「正确性」错误地寄托在**两侧时钟/常量一致**上)。**正确性绝不能依赖跨进程时钟一致** —— 唯一的正确性机制是「后端权威判过期 → restoreFn 如实上报」,刀1 已给。**exec 原拟的「后端权威 TTL + 开机下发 + 注入」方向作废。**
+- **目标不是「同源相等」而是「前端窗口 ≪ 后端保留窗口」**:相等是竞态(6499ms 点击、IPC 6510ms 到达 > TTL ⇒ 可见的按钮却失败)。留足余量 ⇒ **可见即可用**。
+- **★更优方案:干脆不要时间 TTL,改用有界环(按条数淘汰)**。①**没有时钟就没有时钟漂移**,整类问题消失;②真正要 bound 的是**内存**(快照含 embedding,`clear` 的快照可能是整表)—— **条数 + 总字节上限才是直接杠杆,时间不是**;③前端 6.5s 的 affordance 窗口天然限制实际使用;④「撤销最近一次」自然推广为「按 token 撤销尚在环内的那次」。
+- **不要把 TTL 走 `setToastLabels` 注入路**:labels 是纯呈现、零正确性含义;把 `toast.js` 的 `setTimeout` 变成 runtime 配置会暗示「前端窗口是权威」—— 恰恰相反。**保持 `toast.js` 为纯 UI 原语。**
+- **`6500` vs `6000` 卫生**:若要统一,新建**无依赖常量模块**(如 `platform/shell/undo-window.js` 只 export 常量),`toast.js` 与 `guardrail` 各自 import —— 叶子边、零环、零 runtime。**可做,非必须**;只要两者都 ≪ 后端保留窗口。
+- **刀2b 复核预告**:① 四个闭包消费者逐字零回归(真模块导出 + 双向阳性对照);② token 失效路径 `return false` + 自报,绝不退回默认「成功」;③ `clear` 的整表快照有**字节上限**(别让一次 clear 把 N 环撑爆)。
