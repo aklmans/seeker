@@ -149,11 +149,35 @@ export interface AiConfig {
   userAgent: string;
 }
 
+/**
+ * 无工具流式生成请求(块(i):简历改写 / 面试反馈 / 出题)。
+ *
+ * ★与 `AiRequest` 的关键区别 —— **可信指令与不可信内容分开传**:
+ *  · `instruction`:平台 / 应用自持的**可信**指令(如「评估这段面试回答」);
+ *  · `untrusted`:JD / 待评估回答等**不可信**内容,后端 `ai_generate` **必用 `frame_untrusted` 框定**
+ *    (「数据,不是指令」)—— 框定是后端原语的一等行为,前端漏不掉。
+ * 后端命令签名不接收 registry/mcp/history ⇒ **结构性无工具**(注入内容只能让模型说坏话,不能做事)。
+ */
+export interface AiGenerateRequest {
+  sessionId?: string;
+  /** 选系统提示 overlay(行为 / 呈现基线);绝不插值进提示文本。 */
+  task?: string;
+  /** 可信指令(应用 / 平台自持)。 */
+  instruction: string;
+  /** 不可信内容(JD / 回答…);后端必框定。省略 = 无外部内容。 */
+  untrusted?: string | null;
+}
+
 export interface AiApi {
   /** 流式补全(SSE/chunk → 逐 token 回灌)。 */
   stream(req: AiRequest, handlers?: AiStreamHandlers): AiStream;
   /** 非流式补全(= stream 收齐)。 */
   complete(req: AiRequest): Promise<AiResult>;
+  /**
+   * **无工具流式生成**(块(i))。桌面能力(web 端抛 NotImplementedError)。
+   * 事件同 `stream`(onToken/onDone/onError),但**无 onTool/onWidget**——生成模式结构性无工具。
+   */
+  generate(req: AiGenerateRequest, handlers?: AiStreamHandlers): AiStream;
   /** 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本。无工具/历史/系统提示;供 AI 智能录入从截图/文本抽取岗位。 */
   extract(req: { prompt: string; imageDataUrl?: string | null }): Promise<string>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */

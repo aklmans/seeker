@@ -32,12 +32,13 @@ function genSessionId() {
 }
 
 /**
- * 流式对话:**先订阅 ai_chunk/ai_done/ai_error,后 invoke ai_chat**(防丢首包)。
- * @param {import('./types').AiRequest} req
+ * 流式对话:**先订阅 ai_chunk/ai_done/ai_error,后 invoke**(防丢首包)。
+ * @param {import('./types').AiRequest | import('./types').AiGenerateRequest} req
  * @param {import('./types').AiStreamHandlers} [handlers]
+ * @param {(sessionId: string) => Promise<any>} [startInvoke] 缺省 = ai_chat(带工具);生成模式传 ai_generate 的 invoker
  * @returns {import('./types').AiStream}
  */
-function aiStream(req, handlers = {}) {
+function aiStream(req, handlers = {}, startInvoke) {
   const sessionId = req.sessionId || genSessionId();
   const ev = tauri().event;
   /** @type {Array<() => void>} */
@@ -96,8 +97,9 @@ function aiStream(req, handlers = {}) {
       }),
     ]);
 
-    // 不 await:ai_chat 在流结束时才 resolve;真正的结束信号走 ai_done/ai_error。
-    invoke('ai_chat', { sessionId, userText: req.userText, task: req.task || null })
+    // 不 await:命令在流结束时才 resolve;真正的结束信号走 ai_done/ai_error。
+    //   startInvoke 缺省 = ai_chat(带工具循环);生成模式传入 ai_generate 的 invoker(结构性无工具)。
+    (startInvoke ? startInvoke(sessionId) : invoke('ai_chat', { sessionId, userText: /** @type {import('./types').AiRequest} */ (req).userText, task: req.task || null }))
       .catch((/** @type {any} */ err) => {
         cleanup();
         rejectDone(err instanceof Error ? err : new Error(String(err)));
@@ -138,6 +140,17 @@ export function createDesktopRuntime() {
     ai: {
       stream: aiStream,
       complete: (req) => aiStream(req).done,
+      // ★块(i)·无工具流式生成(简历改写 / 面试反馈 / 出题)。走 ai_generate:后端命令签名**不接收
+      //   registry/mcp/history** ⇒ 结构性无工具(注入的外部内容只能让模型说坏话,不能让它做事)。
+      //   `untrusted`(JD / 待评估回答)在后端**必被 frame_untrusted 框定**(前置②,漏不掉)。
+      //   复用 aiStream 的事件订阅(ai_chunk/ai_done/ai_error);ai_tool/ai_widget 在生成模式不会触发。
+      generate: (req, handlers) => aiStream(req, handlers, (sessionId) =>
+        invoke('ai_generate', {
+          sessionId,
+          task: req.task || null,
+          instruction: req.instruction,
+          untrusted: req.untrusted ?? null,
+        })),
       // 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本;无工具/历史/系统提示。供 AI 智能录入。
       extract: (req) => invoke('ai_extract', { prompt: req.prompt, imageDataUrl: req.imageDataUrl ?? null }),
       getConfig: () => invoke('ai_config_get'),

@@ -49,6 +49,7 @@ pub fn run() {
             ai::ai_chat,
             ai::ai_cancel,
             ai::ai_extract,
+            ai::ai_generate,
             data::db_list,
             data::db_get,
             data::db_upsert,

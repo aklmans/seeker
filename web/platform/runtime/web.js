@@ -154,6 +154,7 @@ export function createWebRuntime() {
         throw new NotImplementedError('rt.ai.stream', 'web'); // → 浏览器→自有后端代理 @ #1
       },
       complete: () => notImpl('rt.ai.complete', 'web'),
+      generate: () => { throw new NotImplementedError('rt.ai.generate', 'web'); }, // 生成是桌面能力(同 stream)
       extract: () => notImpl('rt.ai.extract', 'web'),
       getConfig: () => notImpl('rt.ai.getConfig', 'web'),
       setConfig: () => notImpl('rt.ai.setConfig', 'web'),
