@@ -1,9 +1,9 @@
 // @ts-nocheck —— 原样搬自未经 tsc 的单体,保持零回归;逻辑模块化阶段(3.y)再逐步类型化。
 /** jobseek · 智能匹配(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- SMART MATCH (旗舰) ---------- */
-import { skillByName } from '../data-helpers.js';
-import { JOBS } from '../data.js';
-import { RESUME, aiRun, genPlanFromGap, genRewrites, planFor, topGapsOf } from './intake-action.js';
+import { JOBS, SKILLS } from '../data.js';
+import { RESUME, aiRun, genPlanFromGap, genRewrites, planFor } from './intake-action.js';
+import { computeMatch } from './match-result.js';
 import { aiResumeForJob, goInterview } from './job-actions.js';
 import { renderActions } from '../pages/actions.js';
 import { renderOverview } from '../pages/overview.js';
@@ -41,13 +41,16 @@ export function runMatch(){
     {label:'分析「'+cEsc(j.co)+' · '+cEsc(j.role.split('·')[0].trim())+'」中…', after:()=>{matchState.done=true;bindReadout(j);}});
 }
 function matchReadout(j){
-  const pct=Math.round(j.match*10);
-  const gaps=topGapsOf(j); const top=gaps[0]||j.plus[0]||'系统设计';
-  const strengths=j.need.filter(n=>{const s=skillByName(n);return s&&s.lvl>=3;});
+  // ★M1 智能匹配真化:分/缺口/强项由 computeMatch(**真实技能重叠**、确定性可复现)产,
+  //   即「综合匹配度 · 基于你的技能」——与用户 intake 自评滑块 j.match(主观)是不同的东西,**不覆盖** j.match/排序。
+  const m=computeMatch(j, SKILLS);
+  const pct=Math.round(m.score*10);
+  const gaps=m.gaps; const top=gaps[0]||(j.plus&&j.plus[0])||'系统设计';
+  const strengths=m.matched;
   const rw=genRewrites(j); const p=planFor(top);
   return `
   <div style="display:flex;gap:40px;align-items:flex-end;flex-wrap:wrap;">
-    <div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 6px;">${tt('综合匹配度','Overall match')}</p>
+    <div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 6px;">${tt('综合匹配度 · 基于你的技能','Overall match · based on your skills')}</p>
       <div class="score-big"><span class="v accent">${pct}</span><span class="u">/ 100</span></div></div>
     <div style="flex:1;min-width:200px;"><div class="bar" style="height:6px;"><i style="width:${pct}%;"></i></div>
       <p style="font-size:12.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.6;">${tt('你已具备 <b style="color:var(--status-done);">'+strengths.length+'</b> 项硬性要求,还可补充 <b style="color:var(--ink-2);">'+gaps.length+'</b> 项 —— 不是“不够格”,是“差临门一脚”。','You already meet <b style="color:var(--status-done);">'+strengths.length+'</b> hard requirements and can add <b style="color:var(--ink-2);">'+gaps.length+'</b> more — not “unqualified”, just “one step away”.')}</p></div>
