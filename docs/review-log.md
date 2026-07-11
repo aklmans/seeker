@@ -2126,3 +2126,20 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★盯点兑现**:①rewrites 确路由到**已真化 resumeGenerate**、非另造 ai_generate(按钮绑定不变)②信任分层/诚实降级**继承**(resumeGenerate 已有、零改动)③**无新增提交路径**(删预览、非加生成)。
 - **验**:node --check 净·tsc 51·npm 52·**preview 真机驱动 match 页**:**假 QPS(10w+/99.99%/P99)消失**、诚实 CTA 出「绝不虚构」、按钮在且绑 aiResumeForJob、0 console error·boot 0 panic。
 - **★★智能匹配「假」清零**:M1 分从「自评当客观」修为 computeMatch、[建议]① 消歧、M3(a) rewrites 退役假 QPS 指真化件。gaps/strengths/plan 本就真、j.match/排序是用户输入。**评审请核**:①genRewrites 退役 0 消费者(仅 match.js)②按钮 → resumeGenerate 未变、非另造 ③诚实 CTA 不过度声称(resumeGenerate 只写概要、事实不虚构,CTA 如实说)。**下一步**:M2/M3(b) 可选增强(非假修)/ Skills 契约方案(更大 P2)/ market-value polish 低优先。
+
+### ★ 第78轮独立复核 = M3(a) + [建议]① 🏁 两刀通过 + 1 [建议](modal 镜像,已落 `ee576f7`)
+**评审亲跑 npm 52/0;grep 全仓 genRewrites 仅剩一条注释、零函数零调用;智能匹配「假清零」里程碑坐实。**
+- **刀二 M3(a) 核实**:`genRewrites` 彻底退役(仅 intake-action.js:70 一注释)· CTA 措辞准不过度声称(「基于**真实**简历重写**概要**、事实字段用原数据、**绝不虚构**」= resumeGenerate 真实行为,第74轮验过:只写 summary、work/projects/edu 深拷 MASTER)· 按钮绑定不变(aiResumeForJob→已真化 resumeGenerate)· 删假预览比无预览更诚实、CTA+按钮无需再造预览(真预览会与「点开就是真生成」的按钮重复)。
+- **刀一 [建议]① 核实**:intake `SELF-ASSESSMENT·我的评估`+消歧注、overview `平均自评匹配` —— 两个高歧义点(源 + 孤立数)都标。
+- **★[建议](轻)已落 `ee576f7`**:岗位详情 modal 4 分组([jobs.js:95](web/apps/jobseek/pages/jobs.js#L95),4 分的**显示面**)本无 seclabel,而 intake(4 分的**来源面**)刚标了「我的评估」⇒ 显示面与来源面标注不一致。评审判此处靠分组语境(与兴趣/成长/机会并排,那三者显然主观)本不误导、但差一处一致性。**独立核实属实**后落:modal 4 分行加 `— SELF-ASSESSMENT · 我的评估` seclabel、镜像 intake ⇒ 气密+一致。纯静态标注、node/tsc/npm 净、真机 boot 0 panic。
+- **★里程碑**:智能匹配「假清零」(M1 分客观 + M3a 删假预览)+ 块(i) 三站点 ⇒ **jobseek 主要 mock 面清零**(用户最初「不是 AI-Native」反馈,核心流匹配/出题/改写/反馈都已真 AI 或诚实客观计算)。
+- **下一步(评审)**:M2/M3(b) 可选增强非假修;**Skills 契约方案其次**;market-value polish 低优先。
+
+### Skills 方案(设计级)· commit `b158fd8` + 第79轮独立复核 🏁 设计通过 + 2 [建议](已落 `1121d32`)
+`assets_prompts`(人肉复制)→ Skill(一点即运行、ai_chat 跑一轮)。三未决用户拍板(①ai_chat 带工具 ②新平台 `skills` 集合不进 QUERYABLE ③新契约 `platformSkills()` 不并 appCommands)+ S1 先行(契约+平台存储+能力中心管理,零迁移零调用)。
+- **★评审设计通过 · 承重决定全对**:归属 platform(修正 prompts-in-assets 错位,同第53轮 [建议]D)· **★skills 不进 QUERYABLE = 保静态底纪律**(profile/settings/messages/secrets/**skills** 平台配置集永不 AI 查,「错了就破 D3」的点钉对)· 红线守恒原理成立且正确推 S2 逐条验(别声明继承、要在 S2 逐条验)· 三拍板全对(ai_chat 含义:Skill 能触发 memory-write/app-tool/MCP、红线兜底合理;`platformSkills` 不并 `appCommands` = §1 分离正确,同第64轮别合并两通道)· S1 先行去风险(同 T0 契约先行)。
+- **★[建议]1(信任限本地自撰 + 红旗导入)已落 `1121d32`**:评审确认「指令(可信)vs 数据(不可信)」区分成立,**但载重前提是本地自撰**;未来 Skill 分享/导入=第三方指令,当用户可信命令运行=注入向量(红线守恒兜底但框定不该静默延伸第三方)。落 §4+§8:信任显式限「本地用户自撰」、红旗导入=改信任模型(首次运行须知情审阅);本雏形无导入。
+- **★[建议]2(S3 迁移非隐私同意闸)已落 `1121d32` + 我订正评审**:评审说「AI 可读面零变化」;**我核实订正**:`assets_prompts` **在 QUERYABLE**(capability.rs:369)、default-off=可读但默认关,`skills` **不进 QUERYABLE**=永不可读 ⇒ 迁移是**零或收窄**(非「零变化」)——若用户曾授权 assets 可读,迁移后这些内容 AI 不再可读。方向对(绝不扩大⇒不套 notes→KB 同意闸);落 §3+§6+§8:S3=知情通知(含「若曾授权、迁移后不再可读」)、复用幂等/自愈但不套「扩大 AI 可读」同意理由。
+- **①/②上轮(第78轮)已过;[建议]① modal 框定已落(见第78轮)**。
+- **★S1/S2 评审盯点(承接,S1 起刀时兑现)**:S1 —— skills 确不进 QUERYABLE(静态底,真模块导出/源守卫验)+ 不进 D3 可读集;能力中心 Skills 段管理不经对话(设置红线);name/description/prompt 进 DOM 全 cEsc;契约扩展 `platformSkills()` 走审。S2 —— **逐条验红线继承**(query_data D3 闸/profile 不可达/破坏性 guardrail/设置不可经对话改,真模块导出+双向阳性对照,别只声明继承);碰导入则落 [建议]1。
+- **下一步 = S1**(Skill 契约 + 平台 `skills` 存储 + 能力中心「Skills」管理段;零迁移零调用)。
