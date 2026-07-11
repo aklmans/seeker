@@ -47,15 +47,16 @@ interface Skill {
 
 - **★归属 = platform**(§1 铁律):Skill 是**跨应用的用户能力**(任何应用的 Agent 都能用),管理 UI 是平台管理面 ⇒ **Skill 存储 + 管理归 `platform/`,不塞 apps**。这修正 prompts 当初「塞进 assets 应用」的错位(proposal-agent-native.md 已点名「需求错位」)。
 - **存储**:平台 `skills` 集合(骨架列 + `data_json`,同弹性 schema)。**★不进 `QUERYABLE`**——Skill 是**用户指令**、非「AI 检索的数据」(与 prompts 当初的 `aiReadable` 数据语料用例分开;AI-引用留完整版、显式 opt-in)。
-- **迁移**:`assets_prompts`(名称+文本)→ 平台 `skills`(名称+prompt)。**知情**(数据从应用搬到平台能力,同 notes→知识库的知情同意纪律),幂等、原数据保留。
+- **迁移**:`assets_prompts`(名称+文本)→ 平台 `skills`(名称+prompt)。**幂等、原数据保留**;**知情通知**(你的 prompts 成了可一键运行的平台 Skills)—— **但不是隐私同意闸**(评审 [建议]2,详见 §6 S3:迁移绝不扩大 AI 可读面)。
 
 ---
 
 ## 4. 调用 + 信任
 
-- **调用**:Skill 进命令面板(`SeekerShell` 新契约 `platformSkills()` 或复用 appCommands 汇入);用户点 → Agent 以 `skill.prompt` 为 **instruction 跑一轮**(`ai_chat` 带工具循环,或 `ai_generate` 无工具——**取决于雏形是否允许 Skill 调工具**;雏形建议 `ai_chat`,让 Skill 能用平台既有工具如 query_data,但**不新绑 app-tool**)。
-- **★信任**:`skill.prompt` 是**用户自撰的指令**(用户亲手写、亲手点运行)⇒ **可信侧**(同用户在对话框打字),**不走 untrusted 框定**。与「面试答案/JD=不可信」区别:那是**待评估的外部/输入数据**,Skill 是**用户自己的指令**。
+- **调用**(拍板 §7):Skill 进命令面板(新契约 `SeekerShell.platformSkills()`,**不并 `appCommands`**);用户点 → Agent 以 `skill.prompt` 为 **instruction 跑一轮**,走 **`ai_chat`(带工具循环)** —— Skill 能用平台既有工具(如 query_data),但**不新绑 app-tool**(绑工具留完整版)。
+- **★信任(限定「本地用户自撰」)**:`skill.prompt` 是**用户亲手写、亲手点运行的本地指令** ⇒ **可信侧**(同用户在对话框打字),**不走 untrusted 框定**。与「面试答案/JD=不可信」区别:那是**待评估的外部/输入数据**,Skill 是**用户自己的指令**。
   - ⚠ **红线守恒**:Skill 运行走 `ai_chat` ⇒ 仍受 `ai_chat` 的全部结构性红线(query_data 的 D3 闸、profile 结构不可达、破坏性走 guardrail)。**Skill 不给用户任何新权力** —— 它只是把用户「本来就能打的指令」存下来一键重放。
+  - **★★信任前提 = 本地自撰;Skill 分享/导入会改变它**(评审 [建议]1):一旦出现「导入 Skill 包」,导入的 Skill 是**第三方写的指令**,把它当「用户可信命令」运行 = 注入向量。红线守恒是兜底(导入的恶意 Skill 仍被 D3/profile/guardrail 限死,爆炸半径 = 用户自己打那句能做的),**但可信框定绝不可静默延伸到第三方 Skill**:导入的 Skill **首次运行前须知情审阅**(「这是别人写的指令,确认运行?」)。**本雏形只做本地自撰、无导入** —— 此条是给未来功能钉的前提,别让它静默破坏信任模型(同 lock-note / seam 纪律)。
 - **设置不可经对话改**(§4-2):Skill 的**管理**(增删改)在能力中心 UI,**不经 Agent 对话**(同设置红线)。
 
 ---
@@ -74,7 +75,7 @@ interface Skill {
 |---|---|---|
 | **S1 · Skill 契约 + 平台存储** | `Skill` 类型 + 平台 `skills` 集合(rt.db,**不进 QUERYABLE**)+ 能力中心「Skills」段(增删改,平台管理面)。**无迁移、无调用**——先立契约与管理面。 | Skill CRUD 在能力中心;不进 D3;设置红线(管理不经对话) |
 | **S2 · Skill 可执行(命令面板 + 运行)** | Skill 进命令面板契约;点击 → `ai_chat`(skill.prompt 为 instruction);信任=可信侧、红线守恒。 | 用户点 Skill 即运行;红线不破(D3/profile/guardrail 继承 ai_chat) |
-| **S3 · prompts → Skills 迁移** | `assets_prompts` → 平台 `skills`(知情、幂等、原数据留);prompts 页留「已迁入 Skills」提示或转入口。 | 迁移知情+幂等+自愈(同 notes→知识库) |
+| **S3 · prompts → Skills 迁移** | `assets_prompts` → 平台 `skills`(幂等、原数据留);prompts 页留「已迁入 Skills」转入口。**★知情通知非同意闸**(评审 [建议]2):`assets_prompts` **在 QUERYABLE**、default-off(可读但默认关);`skills` **不进 QUERYABLE**、**永不可读** ⇒ 迁移**绝不扩大** AI 可读面(**零或收窄**:若用户曾授权 assets 可读,迁移后这些内容 AI 将**不再可读**)。复用 notes→KB 的**幂等/自愈机制**、但**不套它「扩大 AI 可读」的同意理由**(那不是这里的真实变化)。 | 幂等+自愈;知情通知(含「若曾授权、迁移后 AI 不再可读」);AI 可读面零或收窄、绝不扩大;不套假同意框 |
 | **S4 · assets 退役** | notes(→知识库,已完成)+ prompts(→Skills)都迁完 ⇒ assets 应用关闭(数据保留)。 | 关应用=下架 UI+AI,数据保留(D2) |
 | **(后续)· Skill 绑工具** | Skill `tools:[app-tool]`,建在 app-tool 契约上。 | 完整版,非本方案 |
 
@@ -95,4 +96,6 @@ interface Skill {
 
 - 本文**未落一行码**;§6 分期与 §2 契约都可能落码时被事实推翻——先量再改。
 - Skill 运行的端到端(真模型)需 BYO;preview 以 stub 验契约面。
+- **★信任模型限「本地用户自撰 Skill」**(§4):Skill 分享/导入是**改变信任模型的功能**,须在那时补「导入=知情审阅」,不可让可信框定静默延伸到第三方指令。**本雏形无导入**。
+- **★S3 迁移不扩大 AI 可读面**(§6):prompts(在 QUERYABLE、default-off)→ skills(不进 QUERYABLE、永不可读)= 零或收窄,故 S3 是**知情通知**、非隐私同意闸(别给用户一个不符实际变化的同意框)。
 - **不与 Notion/Obsidian 竞争**(prompts 当初「重造三方软件弱鸡版」的批评)——Skill 定位「Agent 可执行的用户指令」,不是笔记/文档管理。
