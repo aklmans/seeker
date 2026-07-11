@@ -2143,3 +2143,21 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **①/②上轮(第78轮)已过;[建议]① modal 框定已落(见第78轮)**。
 - **★S1/S2 评审盯点(承接,S1 起刀时兑现)**:S1 —— skills 确不进 QUERYABLE(静态底,真模块导出/源守卫验)+ 不进 D3 可读集;能力中心 Skills 段管理不经对话(设置红线);name/description/prompt 进 DOM 全 cEsc;契约扩展 `platformSkills()` 走审。S2 —— **逐条验红线继承**(query_data D3 闸/profile 不可达/破坏性 guardrail/设置不可经对话改,真模块导出+双向阳性对照,别只声明继承);碰导入则落 [建议]1。
 - **下一步 = S1**(Skill 契约 + 平台 `skills` 存储 + 能力中心「Skills」管理段;零迁移零调用)。
+
+### Skills S1 · 存储+契约+守卫(S1a `b69a979`)+ 能力中心管理面(S1b `4f380ed`)· ⏳ 待审
+承第79轮设计通过。S1 = 立契约 + 平台存储 + 管理面,**零迁移零调用**(运行/命令面板 = S2)。拆两刀。
+- **★先量抓到关键冲突(改了方案命名)**:`table_for`/`QUERYABLE`/web `COLLECTIONS` 里 `skills` **已被 jobseek 占用**(用户技能库 SKILLS、computeMatch 用)⇒ 方案写的「平台 `skills` 集合」**名字撞车**。平台 Skills 按 D1 前缀惯例改用 **`platform_skills`**(commit message 留档)。
+- **S1a(存储+契约+守卫 `b69a979`)**:
+  - **存储**:data.rs `table_for` + 迁移 v6 建 `platform_skills`(骨架列 + data_json 弹性 schema,db_* 可访问=管理面 CRUD);web.js `COLLECTIONS` + IndexedDB store(rt.db 双端)。
+  - **★红线(盯点①)= 不进 QUERYABLE = 永不 AI 可读**:capability.rs QUERYABLE **不加** platform_skills;守卫测试 `data_query_excludes_profile_and_secrets` 断言 `!is_queryable("platform_skills")` + 工具枚举不含它;table_for 测试断言可访问(与 jobseek `skills` 不混淆)。sanitize_readable 结构性剔除(静态底 ∩ D3 叠加)。
+  - **契约**:types.d.ts `Skill` 类型(id/name/description?/prompt/updated_at;信任=本地自撰、雏形 prompt-only)。
+  - **验**:cargo test 132/0(含扩展两守卫测试)· clippy 净 · tsc 51 基线 · 真机 boot 迁移 v6 0 panic。
+- **S1b(能力中心管理面 `4f380ed`)**:
+  - **skills.js**(新,平台 @ts-check):`renderSkills(box)` 列表 + 新建·编辑(模态)+ 逐条删(即时 + toastUndo);rt.db 直连 platform_skills(双端)。normSkill 防御性归一(非承重、轻量)。
+  - **红线**:①**管理不经对话**(盯点②,在能力中心 UI、无 Agent 路径改 Skill)②**cEsc**(盯点③,name/desc/prompt/id 进 DOM 全转义)③**删除可撤销**(§4-3,单条删返快照 + toastUndo 经 db.upsert 还原;**每次删各自闭包快照 + 按 id upsert 还原 ⇒ 非单槽、连删多条各自独立可靠**,异于 memory/docs 后端单槽)。
+  - **capability-center.js**:Skills 从「规划中」占位提为一等公民;cc-soon 仅剩 Project/定时任务。
+  - **★preview 真机驱动抓到真 bug并修**:web.js `COLLECTIONS` 加 platform_skills 不够 —— IndexedDB objectStore 只在 onupgradeneeded(版本升高)时建 ⇒ 升 `DB_VERSION` 2→3。**node/tsc/cargo/boot 都不覆盖 web IDB,唯 preview 端到端才暴露**(方法论:功能测必要,真机驱动抓结构测漏的)。
+  - **验**:node 净 · tsc 51 基线(skills.js @ts-check 净)· 真机 boot 0 panic。**preview 端到端(web 运行时,真实 handler)**:①新建流程(点「+新建」→模态→填表→保存→列表 1 条+存储 1 条)②**cEsc 红线**:name 注入 `<img onerror>` → 原样存储(数据)、渲染 `liveImgInjected=false`(未成元素)③删除→清零+toastUndo(消息内 name 亦 cEsc)→撤销→还原 1 条 ④cc-soon 已摘除 Skills。(视觉截图受 pane below-fold 异步内容重绘 flakiness 限制;DOM 级真实 handler 验证更强、已完整。)
+- **契约面(盯点④)**:S1 **无 SeekerShell 契约扩展** —— `platformSkills()` 命令面板契约是 S2(调用);S1 只加 `Skill` 数据类型 + `platform_skills` 存储。
+- **我的不确定(请评审裁)**:①normSkill 内联未测(判非承重、S1 无下游消费者;S2 prompt→instruction 才承重)—— 是否要求提取+测?②rt.db 直连(得网页持久)vs prompts 的 persistColl(桌面限定)—— 我选直连,妥否?③单条删用闭包快照+keyed upsert 还原(非 db_remove 返回值)—— 我判可靠(每条独立、非单槽),请核。
+- **下一步**:S2(命令面板 `platformSkills()` 契约 + 点击运行 = `ai_chat`;**评审重点盯点=逐条验红线继承**)。**建议 S2 前先与用户对齐是否继续。**
