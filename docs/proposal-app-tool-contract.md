@@ -194,6 +194,13 @@ T0 协议核已通过(`7638d6b`:四失败面显式建模、非空出口、pendin
 3. **【T2】输入 D3 闸 + Untrusted 框定在进沙箱前,输出 schema 校验在喂回模型前 —— 两处都在可信代码,绝不在沙箱里。** 这是第67轮判路线 C 成立的**全部依据**:协议核只搬运 `Value`、不校验形状(骨架,合理)。T2 接线时,进隔离上下文的数据须**已过 D3(静态 QUERYABLE ∩ 运行时集 ∩ tool.reads)+ 框定**(`ef3e900` 已交付「外部文本进模型必框定」的前提);沙箱回传结果须由**可信编排层(前端 orchestrator 或 Rust)按 output schema 校验**,在 `run_app_tool` 把它 `Ok(v)` 喂回模型**之前**。沙箱是不可信计算 ⇒ 校验点必在其外。**T2 方案须点名这两处强制归哪一刀拥有 —— 它决定「app-tool 不旁路 profile/D3」到底成不成立。**
 4. **【T3】迁 `jobseek_market_value` 不得丢 D3 双点闸。** 它现走 `invoke_raw` 的 D3 双点闸(第60轮验过:skills 不可读时工具**既不上架、调用也硬拒**);迁成 app-tool 后,**同等的 D3 强制必须由新路径接住**。验收:真模块导出 + 双向阳性对照(skills 可读→工具在架且返数;skills 不可读→工具不上架 ∧ 即便强调也被硬拒)。
 
+### ★ T1 通过后挂账(评审 T1 复核 · 更新 T2 约束)
+
+T1 计算沙箱已通过(`1cebfa4` + 硬化 `2b1d57f`:三墙隔离真实、无回父通道、fail-closed、deadline 封顶、**输出投影 strip-to-schema 把 I4 从 ⊇ 收紧到 =**、JS 单测 lane 守 I4)。评审据此**更新/补充** T2 约束:
+
+5. **【T2】app-tool 输出喂回模型前必 Untrusted 框定。** T1 的 `projectToSchema` 剥掉了**未声明字段**(结构性挡住 `{...row, score}` 的 over-return 泄漏);但**声明的 string 字段本身仍可能含外部/注入内容**(app-tool 是**在 D3 用户数据上算出来的**,rows 里的外部文本可经声明字段回流)。故喂回模型时须比照第67轮 `query_data` 的 `Output::Untrusted` **框定**——否则路线 C 关上的破口,会从「输出未框定」这条缝漏回来。**strip(挡未声明)+ 框定(标注已声明的外部内容)两道并用,缺一不可。**
+6. **【T2】deadline 前后端对齐,模型只看到一个超时。** 前端沙箱 `runComputeSandbox` ≤ `MAX_TIMEOUT_MS`(60s)settle;Rust `run_app_tool` 的 deadline 应 **≥ 前端上限**,否则 Rust 先超时、前端结果白算,且可能两个 timer 抢跑让模型看到两个超时。让**一个**超时错误抵达模型。
+
 ---
 
 ## 8. 未决问题 —— 评审第67轮已裁(记录在案)
