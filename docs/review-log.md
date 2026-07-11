@@ -2161,3 +2161,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **契约面(盯点④)**:S1 **无 SeekerShell 契约扩展** —— `platformSkills()` 命令面板契约是 S2(调用);S1 只加 `Skill` 数据类型 + `platform_skills` 存储。
 - **我的不确定(请评审裁)**:①normSkill 内联未测(判非承重、S1 无下游消费者;S2 prompt→instruction 才承重)—— 是否要求提取+测?②rt.db 直连(得网页持久)vs prompts 的 persistColl(桌面限定)—— 我选直连,妥否?③单条删用闭包快照+keyed upsert 还原(非 db_remove 返回值)—— 我判可靠(每条独立、非单槽),请核。
 - **下一步**:S2(命令面板 `platformSkills()` 契约 + 点击运行 = `ai_chat`;**评审重点盯点=逐条验红线继承**)。**建议 S2 前先与用户对齐是否继续。**
+
+### ★ 第80轮独立复核 = Skills S1 🏁 两刀通过 + 1 [建议](normSkill 抽+测,已落 `e0d0418`)
+**评审逐条核实 S1 盯点;★确认命名撞车的先量抓到的是安全 bug(非只撞库);三点不确定全裁。**
+- **★命名撞车 = 安全 bug(评审升格我的框定)**:`skills`(jobseek 技能库)**在 QUERYABLE 内** ⇒ 若照方案字面用 `skills`,平台 Skills 不仅撞库、更会**变 AI 可读**(正是这刀要保证「永不 AI 可读」的反面)。`platform_skills` 改名**同时堵撞库 + 安全洞**。先量抓到的是**安全相关** bug。
+- **S1 盯点全兑现**:①platform_skills 不进 QUERYABLE(守卫断言能红:谁加进两处即红)+ table_for 可持久不可查 = 「CRUD ∩ AI 不可读」正确分离(同 messages)②管理不经对话**由构造成立**(S1 无 platformSkills 契约 ⇒ agent 结构上无触达路径)③cEsc 存原文渲染转义(preview 注入验)④契约留 S2 正确不提前。
+- **★preview 抓 DB_VERSION 2→3 真 bug(评审背书归因)**:web IndexedDB objectStore 只在 onupgradeneeded 建 ⇒ 加 COLLECTIONS 不够须升版;node/tsc/cargo/boot 全不覆盖 web IDB，唯 preview 端到端暴露 =「功能测必要」实证。
+- **三点不确定裁决**:①**normSkill [建议] 现在抽+测**(评审:逻辑成立但与本项目 schema-first 纪律不一致——normIvFeedback/normMatchResult 都在 schema 刀就抽+测;判据=S2 prompt→instruction 是否信任 normSkill 输出,倾向前者)②**rt.db 直连 = 背书**(得网页+桌面都持久,优于 prompts 的 persistColl 桌面限定;DB_VERSION 机制也对)③**闭包快照删 = 背书**(每条独立、非单槽,正是第56轮为 notes/prompts 背书的模式;从根避开 memory/docs 56–63 轮单槽麻烦)。
+- **★[建议] 已落 `e0d0418`**:独立核实 normSkill 确是 S2 承重依赖后抽 `skill-model.js`(零 import @ts-check)= normSkill + skillRunnable(可运行判据);**指出与 ivScore/match 差异**:Skill 用户自撰(可信非 AI 产出)⇒ 不需 projectToSchema 式「防 AI 畸形」硬闸、只需归一化+predicate。入库测 npm 60/0(+8,含 fail-safe 全坏输入 + 零-import 源守卫)、**变异证红**(去 fail-safe → 2 测试转红)、真机 boot 0 panic。
+- **★★S2 = 红线承重刀,评审重点盯**:①**逐条验红线继承别只声明**(skill.prompt 走 ai_chat 后:query_data D3 闸仍在可复现/profile 不可达/破坏性 guardrail/设置不可经对话改,真模块导出+双向阳性对照)②信任=可信侧本地自撰、碰导入落第79轮 [建议]1(导入=知情审阅)③platformSkills() 契约必审、不并 appCommands(第79轮拍板③)④normSkill 已测(S2 承重门就位)。
+- **下一步 = S2**;**建议先与用户对齐是否继续**(S2 触及红线继承最重)。
