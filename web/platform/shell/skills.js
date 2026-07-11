@@ -1,16 +1,17 @@
 // @ts-check
-/** 平台 · Skills 管理面(proposal-skills.md S1b)—— 能力中心内联视图(非 app,§1:跨应用用户能力归平台)。
+/** 平台 · Skills 管理面(proposal-skills.md S1b + S2)—— 能力中心内联视图(非 app,§1:跨应用用户能力归平台)。
  *
- *  Skill = **用户自撰的具名指令** {name, description?, prompt}。存平台 `platform_skills` 集合(rt.db 双端:
- *  桌面 SQLite / 网页 IndexedDB)。S1 只做**管理**(增删改),**不做调用**(命令面板运行 = S2)。
+ *  Skill = **用户自撰的具名指令** {name, description?, prompt}。存平台 `platform_skills` 集合(经 skill-store 数据层,
+ *  rt.db 双端:桌面 SQLite / 网页 IndexedDB)。管理(增删改)在此;**运行**(S2)= 管理面「运行」按钮 / 命令面板 → runSkill。
  *
+ *  ★数据经 skill-store(非直连 rt.db):CRUD 同步更新缓存 ⇒ 命令面板 `platformSkills()` 即时可见(S2b)。
  *  ★红线:
  *   - **不进 QUERYABLE = 永不 AI 可读**(capability.rs;S1a 守卫测试证):Skill 是用户指令、非 AI 检索数据。
  *   - **管理不经对话**(§4-2 设置红线):增删改在此 UI,Agent 对话无法改 Skill(同 connector/记忆管理面)。
  *   - **转义**(§4-4):name/description/prompt 是用户输入、id 落 data-* 属性位 → 进 DOM 一律 `cEsc`(含 `"`)。
- *   - **删除可撤销**(§4-3 反焦虑):单条删 = `rt.db.remove`(返快照)+ `toastUndo`(经 `db.upsert` 还原);
- *     单条 + 可靠快照 ⇒ 不必 guardrail(同 prompts/notes/记忆 逐条删先例)。
- *   - **信任**:prompt 是**本地用户自撰指令** ⇒ 可信侧;untrusted 框定与红线守恒是 S2 运行时的事,S1 仅存储。
+ *   - **删除可撤销**(§4-3 反焦虑):单条删 = `removeSkill`(返快照)+ `toastUndo`(经 `saveSkill` 还原);
+ *     每条各自闭包快照 + keyed upsert ⇒ 非单槽、连删独立可靠(异于 memory/docs 后端单槽)。
+ *   - **信任 + 红线继承**:见 copilot-chrome `runSkill`(运行 = skill.prompt 走 agentSend 标准用户消息路径)。
  */
 import { cEsc, runSkill } from './copilot-chrome.js'; // runSkill(S2):管理面「运行」= 走 agentSend 标准路径(红线结构性继承)
 import { $, $$ } from './dom.js';
@@ -19,9 +20,7 @@ import { IC } from './icons.js';
 import { toast, toastUndo, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
 import { normSkill, skillRunnable } from './skill-model.js'; // 零 import fail-safe 归一化 + 可运行判据(node 可测;S2 prompt→instruction 依赖)
-
-const rt = () => /** @type {any} */ (window).SeekerRT;
-const COLL = 'platform_skills';
+import { hydrateSkills, listSkills, saveSkill, removeSkill } from './skill-store.js'; // ★S2b:数据层(缓存供命令面板同步 platformSkills)
 
 /** 生成稳定 id。 */
 function newId() {
@@ -33,9 +32,8 @@ function newId() {
  *  @param {HTMLElement} box */
 export async function renderSkills(box) {
   if (!box) return;
-  const rows = (await rt().db.list(COLL))
-    .map(normSkill)
-    .sort((/** @type {any} */ a, /** @type {any} */ b) => (b.updated_at || 0) - (a.updated_at || 0));
+  await hydrateSkills(); // 与存储对齐(缓存亦供命令面板;CRUD 走 skill-store 保持二者一致)
+  const rows = listSkills();
   const list = rows.length
     ? rows
         .map(
@@ -79,7 +77,7 @@ export async function renderSkills(box) {
  *  @param {HTMLElement} box @param {ReturnType<typeof normSkill>} snap */
 async function delSkill(box, snap) {
   try {
-    await rt().db.remove(COLL, snap.id);
+    await removeSkill(snap.id); // rt.db.remove + 缓存移除(命令面板即时不再列出)
   } catch (e) {
     toast(errText(e));
     return;
@@ -88,7 +86,7 @@ async function delSkill(box, snap) {
   // toast 消息经 el(innerHTML) 渲染 → name 须 cEsc(同 prompts/记忆 删除路径纪律)。
   toastUndo(tt('已删除「', 'Deleted "') + (cEsc(snap.name) || tt('未命名', 'untitled')) + tt('」', '"'), async () => {
     try {
-      await rt().db.upsert(COLL, snap);
+      await saveSkill(snap); // 闭包快照经 keyed upsert 还原(非单槽、连删独立可靠)+ 缓存回填
     } catch (e) {
       toast(errText(e));
       return;
@@ -97,17 +95,10 @@ async function delSkill(box, snap) {
   });
 }
 
-/** 新建·编辑模态(空 id = 新建)。写入走 rt.db.upsert('platform_skills', {id,name,description,prompt,updated_at})。
+/** 新建·编辑模态(空 id = 新建)。写入走 skill-store `saveSkill`({id,name,description,prompt,updated_at})。
  *  @param {HTMLElement} box @param {string} id */
 async function openSkillModal(box, id) {
-  let s = { name: '', description: '', prompt: '' };
-  if (id) {
-    try {
-      s = normSkill(await rt().db.get(COLL, id));
-    } catch (_e) {
-      /* 取不到就当新建填空 */
-    }
-  }
+  let s = normSkill(id ? listSkills().find((x) => x.id === id) : null); // 编辑读缓存(hydrateSkills 已对齐存储);新建 → 空
   openModal(
     `<div class="modal-head"><div><p class="eyebrow">— SKILL</p><h2 style="margin-top:5px;">${
       id ? tt('编辑 Skill', 'Edit skill') : tt('新建 Skill', 'New skill')
@@ -132,7 +123,7 @@ async function openSkillModal(box, id) {
       }
       const rec = { id: id || newId(), name, description, prompt, updated_at: Date.now() };
       try {
-        await rt().db.upsert(COLL, rec);
+        await saveSkill(rec); // rt.db.upsert + 缓存更新(命令面板即时可见新 Skill)
       } catch (e) {
         toast(errText(e));
         return;

@@ -12,6 +12,7 @@ import { IC } from './icons.js';
 import { go } from './nav.js';
 import { isDesktop } from './shell-keys.js';
 import { normSkill, skillRunnable } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径)
+import { listSkills } from './skill-store.js'; // ★Skills S2b:命令面板读同步缓存(skill-store 不 import 本文件 ⇒ 无环)
 
 // ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
 //   copClose = 无操作(无浮窗可关;各函数的导航/执行部分照常);copScroll = 滚动 Agent 视图(唯一活动 AI 面)。copEl/copOpen/copToggle/copAppend 已删(浮窗专属、零外部消费者)。
@@ -83,6 +84,19 @@ export function runSkill(skill){
   agentSend(s.prompt);                    // ★标准用户消息路径(红线结构性继承)
 }
 
+/* ★Skills S2b:命令面板契约 platformSkills() —— 平台级 Skills 命令项(CommandSpec[])。
+   ★不并 appCommands(第79轮拍板③):平台级 vs 应用级两条独立契约;cmdFilterList 各自收集、附加合并显示。
+   仅**可运行**的 Skill(有指令正文)入面板;点击 run → runSkill(走 agentSend 标准路径、红线结构性继承)。
+   读 skill-store 同步缓存(命令面板同步;缓存由 boot 水合 + CRUD 更新保持新鲜)。 */
+export function platformSkills(){
+  return listSkills().filter(skillRunnable).map(s=>({
+    cmd: '⚡',                                                      // Skill 标记(区别于 /命令);label 用用户自撰名
+    label: [s.name||tt('未命名技能','Untitled skill'), s.name||tt('未命名技能','Untitled skill')],
+    desc: s.description ? [s.description, s.description] : ['运行技能', 'Run skill'],
+    run: ()=>runSkill(s),
+  }));
+}
+
 /* ---- ★Cut 1b:copInit 删 —— Copilot 浮窗(copLaunch/copClose/copSend/copInput)+ 其开场白已随浮窗删除;Agent 窗口的接线在 agentInit、招呼语在 agentGreet(经 greeting('agent') 契约)。greeting('copilot')/copGreet 现无消费者(留作契约完整性 · 后续 P0 可清)。 ---- */
 
 /* ---- 辅助 chrome —— copGo(导航)/ agentChat(追加到 Agent 视图)/ agentCancel/ aiChatAvailable/ agentScroll。 ---- */
@@ -112,10 +126,11 @@ export function agentGreet(){
    命令数据经 SeekerShell.appCommands()(序3-d-7 契约,平台零 jobseek 命令 knowledge);依赖 $/$$/tt(序1)+ #cmdPop/#agentInput;agentInit(序3-d-10)运行时接线。 ---- */
 let cmdActive=0, cmdFiltered=[];
 export function cmdIsOpen(){const p=$('#cmdPop');return p&&p.classList.contains('open');}
-export function cmdFilterList(q){q=(q||'').toLowerCase().trim();const A=window.SeekerShell.appCommands();if(!q)return A.slice();return A.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
+export function cmdFilterList(q){q=(q||'').toLowerCase().trim();const A=window.SeekerShell.appCommands().concat(platformSkills());if(!q)return A;return A.filter(c=>c.cmd.toLowerCase().includes(q)||c.label.some(x=>x.toLowerCase().includes(q))||c.desc.some(x=>x.toLowerCase().includes(q)));}
 export function cmdRender(){
   const pop=$('#cmdPop');
-  pop.innerHTML=`<div class="cmd-hint">${tt('命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭','Commands · ↑↓ select · Enter run · Esc close')}</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${c.cmd}</span><span class="cl">${tt(c.label[0],c.label[1])}</span><span class="cd">${tt(c.desc[0],c.desc[1])}</span></div>`).join('');
+  // ★§4-4:cmd/label/desc 经 el(innerHTML) 渲染 → cEsc(Skills 命令项的 name/desc 是用户数据;app 命令硬编码文案 cEsc 为 no-op、零回归)。
+  pop.innerHTML=`<div class="cmd-hint">${tt('命令 · ↑↓ 选择 · Enter 执行 · Esc 关闭','Commands · ↑↓ select · Enter run · Esc close')}</div>`+cmdFiltered.map((c,i)=>`<div class="cmd-row ${i===cmdActive?'active':''}" data-ci="${i}"><span class="cc">${cEsc(c.cmd)}</span><span class="cl">${cEsc(tt(c.label[0],c.label[1]))}</span><span class="cd">${cEsc(tt(c.desc[0],c.desc[1]))}</span></div>`).join('');
   $$('#cmdPop [data-ci]').forEach(r=>r.onmousedown=(e)=>{e.preventDefault();cmdRun(+r.dataset.ci);});
 }
 export function cmdOpen(q){cmdFiltered=cmdFilterList(q);cmdActive=0;if(cmdFiltered.length){cmdRender();$('#cmdPop').classList.add('open');}else cmdClose();}
