@@ -12,13 +12,13 @@
  *     单条 + 可靠快照 ⇒ 不必 guardrail(同 prompts/notes/记忆 逐条删先例)。
  *   - **信任**:prompt 是**本地用户自撰指令** ⇒ 可信侧;untrusted 框定与红线守恒是 S2 运行时的事,S1 仅存储。
  */
-import { cEsc } from './copilot-chrome.js';
+import { cEsc, runSkill } from './copilot-chrome.js'; // runSkill(S2):管理面「运行」= 走 agentSend 标准路径(红线结构性继承)
 import { $, $$ } from './dom.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
 import { toast, toastUndo, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
-import { normSkill } from './skill-model.js'; // 零 import fail-safe 归一化(node 可测;S2 prompt→instruction 依赖)
+import { normSkill, skillRunnable } from './skill-model.js'; // 零 import fail-safe 归一化 + 可运行判据(node 可测;S2 prompt→instruction 依赖)
 
 const rt = () => /** @type {any} */ (window).SeekerRT;
 const COLL = 'platform_skills';
@@ -44,6 +44,7 @@ export async function renderSkills(box) {
           <span style="font-size:13.5px;color:var(--ink);font-weight:600;">${cEsc(s.name) || tt('(未命名)', '(untitled)')}</span>
           ${s.description ? `<span style="font-size:12px;color:var(--ink-3);">${cEsc(s.description)}</span>` : ''}
           <span style="flex:1;"></span>
+          ${skillRunnable(s) ? `<button class="btn btn-accent" data-skrun="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('运行', 'Run')}</button>` : ''}
           <button class="btn" data-skedit="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('编辑', 'Edit')}</button>
           <button class="btn" data-skdel="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('删除', 'Delete')}</button>
         </div>
@@ -51,12 +52,18 @@ export async function renderSkills(box) {
       </div>`
         )
         .join('')
-    : `<p style="color:var(--ink-3);font-size:12px;padding:8px 0;line-height:1.7;max-width:560px;">${tt('还没有 Skill。把你反复用的指令沉淀成技能 —— 本地保存,一点即运行(运行即将开放)。', 'No skills yet. Turn instructions you reuse into skills — stored locally, one-click run (coming soon).')}</p>`;
+    : `<p style="color:var(--ink-3);font-size:12px;padding:8px 0;line-height:1.7;max-width:560px;">${tt('还没有 Skill。把你反复用的指令沉淀成技能 —— 本地保存,一点即运行(Agent 会用它跑一轮)。', 'No skills yet. Turn instructions you reuse into skills — stored locally, one-click run (the Agent runs it for you).')}</p>`;
   box.innerHTML =
     `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="skAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建 Skill', '+ New skill')}</button></div>` +
     list;
   const add = $('#skAdd', box);
   if (add) /** @type {HTMLElement} */ (add).onclick = () => openSkillModal(box, '');
+  $$('[data-skrun]', box).forEach((b) => {
+    /** @type {HTMLElement} */ (b).onclick = () => {
+      const s = rows.find((/** @type {any} */ x) => x.id === /** @type {HTMLElement} */ (b).dataset.skrun);
+      if (s) runSkill(s); // 走 agentSend 标准路径 → ai_chat(红线结构性继承);无正文时 runSkill 内 skillRunnable 守卫 no-op
+    };
+  });
   $$('[data-skedit]', box).forEach((b) => {
     /** @type {HTMLElement} */ (b).onclick = () => openSkillModal(box, /** @type {HTMLElement} */ (b).dataset.skedit || '');
   });
@@ -108,7 +115,7 @@ async function openSkillModal(box, id) {
     <div class="modal-body">
       <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="skName" value="${cEsc(s.name)}" placeholder="${tt('如:把 JD 拆成硬性/软性要求', 'e.g. Split a JD into hard/soft requirements')}"></div>
       <div class="set-row" style="margin-top:10px;"><span class="sk">${tt('说明', 'Description')}</span><input class="input" id="skDesc" value="${cEsc(s.description)}" placeholder="${tt('一句话(可选)', 'One line (optional)')}"></div>
-      <textarea class="input" id="skPrompt" rows="8" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('指令正文 —— 你希望 Agent 执行的事(一点即运行,运行即将开放)。', 'Instruction body — what you want the Agent to do (one-click run, coming soon).')}">${cEsc(s.prompt)}</textarea>
+      <textarea class="input" id="skPrompt" rows="8" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('指令正文 —— 你希望 Agent 执行的事(保存后一点即运行)。', 'Instruction body — what you want the Agent to do (run it in one click after saving).')}">${cEsc(s.prompt)}</textarea>
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="skSave">${tt('保存', 'Save')}</button></div>`,
     true

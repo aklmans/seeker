@@ -11,6 +11,7 @@ import { T, tt } from './i18n.js';
 import { IC } from './icons.js';
 import { go } from './nav.js';
 import { isDesktop } from './shell-keys.js';
+import { normSkill, skillRunnable } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径)
 
 // ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
 //   copClose = 无操作(无浮窗可关;各函数的导航/执行部分照常);copScroll = 滚动 Agent 视图(唯一活动 AI 面)。copEl/copOpen/copToggle/copAppend 已删(浮窗专属、零外部消费者)。
@@ -67,6 +68,19 @@ export function agentSend(text, aiText){
   const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
   if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
+}
+
+/* ★Skills S2:运行一枚 Skill —— 归一后 prompt 走 agentSend(标准用户消息路径 → streamReply → ai_chat)。
+   ★★红线由**同一代码路径**结构性继承(非另造):skill.prompt 与用户打字走完全相同的 agentSend
+   (内含 `<` 转义显示 + frameQuery 框定)→ ai_chat 的 D3 闸 / profile 结构不可达 / 破坏性走 guardrail /
+   设置不可经对话改 全部照常。**Skill 不给新权力 = 把用户本就能打的那句指令一键重放。**
+   ★信任=可信侧(本地用户自撰指令,同用户在输入框打字),**不走 untrusted 框定**。
+   ★skillRunnable 守卫:无指令正文(草稿态)不运行(fail-safe,skill-model 单测覆盖)。 */
+export function runSkill(skill){
+  const s=normSkill(skill);
+  if(!skillRunnable(s)) return;          // 无指令正文 → 不运行(草稿态)
+  agentCollapse();                        // 收起页面画布 → 全屏对话,聚焦到 Agent 看它运行
+  agentSend(s.prompt);                    // ★标准用户消息路径(红线结构性继承)
 }
 
 /* ---- ★Cut 1b:copInit 删 —— Copilot 浮窗(copLaunch/copClose/copSend/copInput)+ 其开场白已随浮窗删除;Agent 窗口的接线在 agentInit、招呼语在 agentGreet(经 greeting('agent') 契约)。greeting('copilot')/copGreet 现无消费者(留作契约完整性 · 后续 P0 可清)。 ---- */

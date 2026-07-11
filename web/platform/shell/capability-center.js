@@ -46,7 +46,7 @@ export function renderCapabilityCenter() {
     block('cc-tools', 'TOOLS', tt('工具 · 能力', 'Tools & capabilities'), tt('Agent 可调用的能力(经工具循环、红线内执行)。', 'Capabilities the Agent can call (through the tool loop, within the red lines).')) +
     block('cc-memory', 'MEMORY', tt('长期记忆', 'Long-term memory'), tt('你主动写下、供 Agent 长期参考的信息。', 'Info you’ve volunteered for the Agent’s long-term context.')) +
     block('cc-docs', 'KNOWLEDGE', tt('知识库', 'Knowledge base'), tt('你加入、供检索作答的文档语料(需嵌入模型)。', 'Docs you’ve added for retrieval-augmented answers (needs an embed model).')) +
-    block('cc-skills', 'SKILLS', tt('技能', 'Skills'), tt('把你反复用的指令沉淀成可执行技能 —— 本地保存,一点即运行(运行即将开放)。AI 看不到 Skill 内容(它们是你的指令,不是检索数据)。', 'Turn instructions you reuse into executable skills — stored locally, one-click run (coming soon). The AI can’t see skill contents (they’re your instructions, not retrieval data).')) +
+    block('cc-skills', 'SKILLS', tt('技能', 'Skills'), tt('把你反复用的指令沉淀成可执行技能 —— 本地保存,一点即运行(Agent 会用它跑一轮)。AI 看不到 Skill 内容(它们是你的指令,不是检索数据)。', 'Turn instructions you reuse into executable skills — stored locally, one-click run (the Agent runs it for you). The AI can’t see skill contents (they’re your instructions, not retrieval data).')) +
     block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Project / 定时任务 —— 后端建设中,后续开放。', 'Project / Scheduled tasks — backend in progress, coming later.')) +
     `</div>` +
     signFoot();
