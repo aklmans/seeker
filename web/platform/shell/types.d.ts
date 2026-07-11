@@ -117,7 +117,45 @@ export interface WidgetActionSpec {
   undoMs?: number;
 }
 
-/** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI、数据保留)。 */
+/** app-tool `render(output)` 的返回:一段应用自建的**可信结构化 HTML**,由平台经三墙沙箱(同 show_widget)投画布。 */
+export interface AppToolWidget {
+  title?: string;
+  /** 应用据已投影的 output 渲染的 HTML(在前端执行,tt() 可用 ⇒ #6 双语债消失)。仍进三墙沙箱隔离渲染。 */
+  html: string;
+  minHeight?: number;
+}
+
+/**
+ * 应用声明的一枚 AI 工具(app-tool 契约)。平台据此:向模型暴露 schema、按 `reads` 取数、隔离执行 `compute`、
+ * 按 `output` 校验+投影、前端 `render` 呈现。见 docs/proposal-app-tool-contract.md(方案 C)。
+ *
+ * ★四不变式(平台强制、应用无从旁路):
+ *   - **I1 profile 结构不可达** —— `compute` 在三墙隔离上下文(null 起源 iframe + CSP)执行,无 rt / 无 window / 无网络;
+ *   - **I2 D3 不旁路** —— 取数由**平台**按 `reads` 走既有 `query_data` 闸,**实际可读 = 静态 QUERYABLE ∩ D3 运行时集 ∩ reads**;
+ *   - **I3 收规格不收执行** —— 隔离上下文无 rt ⇒ compute 无法改变任何东西(破坏性 app-tool **结构上不可能**);
+ *   - **I4 结果经校验** —— `output` 经 `projectToSchema` 校验+投影(只留声明字段),再 Untrusted 框定后喂回模型。
+ */
+export interface AppToolSpec {
+  /** 全局唯一;**必须 `<appId>_` 前缀**(与集合白名单同纪律,注册期强制)。即给模型看的工具名。 */
+  name: string;
+  /** 给模型看的一句话「何时用」。**必须应用自持的可信文案**(同 greeting 第50轮裁决;不得含用户/AI/RAG 派生内容)。 */
+  description: string;
+  /** 给模型看的入参 JSON Schema。 */
+  parameters: object;
+  /** 本工具要读的集合。**必填**(省略即拒,不给默认可读语义)、**必须 ⊆ manifest.collections**(注册期强制)。 */
+  reads: string[];
+  /**
+   * 纯函数 `(input, rows) => output`。**在三墙隔离上下文里执行**(见 capability/app-tools/sandbox.js):无 rt / window / 网络。
+   * ★**须自包含**:不得闭包引用模块作用域符号或 import —— 隔离上下文取不到,运行期 ReferenceError(平台以源码字符串注入沙箱)。
+   */
+  compute: (input: any, rows: any) => any;
+  /** 输出 JSON Schema。平台据此 **`projectToSchema` 校验+投影**(只留声明字段);校验失败 ⇒ 工具调用如实报错,绝不喂模型。 */
+  output: object;
+  /** 前端渲染器 `(output) => AppToolWidget`。在**前端**执行(tt() 可用),据已投影 output 产 widget 结构投画布。 */
+  render: (output: any) => AppToolWidget;
+}
+
+/** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI,数据保留)。 */
 export interface AppManifest {
   /** ^[a-z][a-z0-9]*$(嵌入集合前缀 / 设置键 / 钥匙串不经它)。 */
   id: string;
@@ -136,6 +174,8 @@ export interface AppManifest {
   pages: ShellPage[];
   /** 贡献的对话卡(kind → CardSpec)。 */
   cards?: Record<string, CardSpec>;
+  /** 贡献的 AI 工具(app-tool 契约;注册期校验 name 前缀 / reads ⊆ collections / compute·render 函数 / output schema)。 */
+  tools?: AppToolSpec[];
   /** 意图框定器:命中返回框定后的 AI 输入,未命中返回原文(与单体 frameQuery 同约)。 */
   frameQuery?: (text: string) => string;
   /** 降级 mock 回复器:AI 不可用时的本地应答(命中返回 HTML 串,未命中空串;与单体 copReply 同约)。 */
@@ -218,6 +258,8 @@ export interface SeekerShellApi {
   groups(): Record<string, LString>;
   /** 组合:启用应用贡献的卡(streamReply / hydrateMessages 消费)。 */
   cards(): Record<string, CardSpec>;
+  /** 组合:全部启用应用声明的 app-tool 并集(同 appCommands()——多应用汇总)。D3「上架」可读性过滤由消费方(工具循环接线)按运行时可读集施加。 */
+  appTools(): AppToolSpec[];
   /** 框定链:依注册序问各启用应用的 framer,首个改写生效;都未命中返回原文。 */
   frameQuery(text: string): string;
   /** 降级 mock 回复链:AI 不可用时问各启用应用的本地应答器,首个非空生效;都未命中返回空串。 */

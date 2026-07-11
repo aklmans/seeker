@@ -18,6 +18,7 @@
   /** @typedef {import('./types').CardSpec} CardSpec */
   /** @typedef {import('./types').CommandSpec} CommandSpec */
   /** @typedef {import('./types').AppSettingsSpec} AppSettingsSpec */
+  /** @typedef {import('./types').AppToolSpec} AppToolSpec */
 
   const LS_KEY = 'seeker-apps';
   /** @type {AppManifest[]} 注册序 */
@@ -78,7 +79,52 @@
         throw new Error('页面分组未声明:' + m.id + '.' + (p && p.id) + ' → group "' + (p && p.group) + '"');
       }
     });
+    validateTools(m);
     apps.push(m);
+  }
+
+  /**
+   * app-tool 注册期校验(契约 = 平台强制,不靠作者记得写对;同 reads 必填/undefined→拒 的 default-deny 纪律)。
+   * name 前缀 / reads 必填且 ⊆ collections / compute·render 函数 / parameters·output schema —— 任一违反即拒注册。
+   * @param {AppManifest} m
+   */
+  function validateTools(m) {
+    if (m.tools === undefined) return;
+    if (!Array.isArray(m.tools)) throw new Error('AppManifest.tools 必须是数组:' + m.id);
+    const prefix = m.id + '_';
+    const cols = new Set(m.collections || []);
+    const seen = new Set();
+    m.tools.forEach((t) => {
+      if (!t || typeof t.name !== 'string' || !t.name.startsWith(prefix)) {
+        throw new Error('app-tool.name 必须以 "' + prefix + '" 前缀:' + m.id + ' → ' + (t && t.name));
+      }
+      if (seen.has(t.name)) throw new Error('app-tool.name 应用内重复:' + t.name);
+      seen.add(t.name);
+      if (typeof t.description !== 'string' || !t.description.trim()) {
+        throw new Error('app-tool.description 必填(应用自持可信文案):' + t.name);
+      }
+      if (!t.parameters || typeof t.parameters !== 'object') {
+        throw new Error('app-tool.parameters 必须是 JSON Schema 对象:' + t.name);
+      }
+      // reads 必填(省略即拒,不给默认可读语义)且 ⊆ manifest.collections(运行时再 ∩ 静态 QUERYABLE ∩ D3)。
+      if (!Array.isArray(t.reads)) {
+        throw new Error('app-tool.reads 必填(数组;省略即拒):' + t.name);
+      }
+      const stray = t.reads.filter((c) => !cols.has(c));
+      if (stray.length) {
+        throw new Error('app-tool.reads 必须 ⊆ manifest.collections:' + t.name + ' 越界 ' + stray.join(','));
+      }
+      if (typeof t.compute !== 'function') {
+        throw new Error('app-tool.compute 必须是函数 (input,rows)=>output:' + t.name);
+      }
+      // output 必填(缺失 ⇒ I4 无从校验/投影 ⇒ 拒;同 sandbox.runComputeSandbox 的 fail-closed)。
+      if (!t.output || typeof t.output !== 'object') {
+        throw new Error('app-tool.output 必须是 JSON Schema 对象:' + t.name);
+      }
+      if (typeof t.render !== 'function') {
+        throw new Error('app-tool.render 必须是函数 (output)=>widget:' + t.name);
+      }
+    });
   }
 
   function list() {
@@ -187,6 +233,17 @@
     /** @type {Record<string, CardSpec>} */
     const out = {};
     enabledApps().forEach((a) => Object.assign(out, a.cards || {}));
+    return out;
+  }
+
+  /** @returns {AppToolSpec[]} 全部启用应用声明的 app-tool 并集(同 appCommands)。
+   *  ★仅问启用应用(关应用 = 工具即刻下架);D3「上架」可读性过滤(reads ∩ 运行时可读集)由消费方(工具循环接线 T2b)施加。 */
+  function appTools() {
+    /** @type {AppToolSpec[]} */
+    const out = [];
+    enabledApps().forEach((a) => {
+      if (Array.isArray(a.tools)) out.push(...a.tools);
+    });
     return out;
   }
 
@@ -399,6 +456,7 @@
     pages,
     groups,
     cards,
+    appTools,
     frameQuery,
     appReply,
     appSuggs,
