@@ -1977,3 +1977,10 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **诚实边界**:端到端需桌面+BYO。**记债**:项目 bullets 岗位向重写(用户已否决为默认)= 可选后续刀;面试反馈真化待(先解 `ivScore` 分数 schema);`ivStartRound` 整轮种题仍 mock。
 
 **块(i) 三站点进度**:出题 ✓(`157447c`+`ed02dc2`)· 简历改写 ✓(`d622b32`)· **面试反馈**待(需先解 `ivScore` 分数 schema 承重)。**下一刀次序(评审第68轮)**:T0 协议骨架(抽取字段信任问题的根本解;纯平台,四失败面各带阳性对照)→ 面试反馈(最后,解分数 schema)。
+
+### ★ 第69轮独立复核 = 简历改写真化 🏁 通过(无 [建议])+ 一刀清两处债
+- **★核心量准且落地是结构性的**:`genTailoredResume` 的 work/projects/edu 深拷自 MASTER、skills 集合运算、strengths/certs 取 MASTER，**只有 summary 是模板串**;`onDone` 里 `sm.content=summary; done(base)` **只替换 summary 一模块的 content**、其余模块对象原样带过。⇒ **「模型绝不虚构经历/数字/技能」不是指令承诺,是结构保证** —— 模型输出只能落进 summary 一格,事实字段是 MASTER 深拷贝、碰不到。否掉「重写 project bullets」正确(那把模型的手伸进用户事实性陈述)。
+- **★第68轮 [建议] 模板纪律不仅应用于 rewrite,还经 `ed02dc2` 回填了 interview**:diff 坐实——旧 interview 把 `j.co`/`role`/`need`/`resumeNote` 内插进可信 instruction(注释正是我点名的假标签「候选人简历概要是用户自撰=可信」),新版 instruction 零 JD 派生内插、全走 untrusted、注释改准。**我第68轮说的假标签被逐字改准。**
+- **★组合链两端焊死**:第68轮我标的链「rewrite 产出 summary → 回流 interview 的 resumeNote → 进面试指令可信侧」——现在 rewrite 的 summary 经 cEsc + 无工具,它作为 resumeCtx 进 interview 时走 untrusted。**组合放大通路被掐断,靠两处都归 untrusted,不靠「希望没人注入」。**
+- **★★下一刀裁决(评审)= T0 先于面试反馈**:面试反馈被 `ivScore` 承重结构挡着(整轮平均/IV_RECORDS 持久化/总评页渲染分数条)⇒ 它是「schema 刀之后的刀」,现在起=先撞墙。**T0 无阻塞且是根**:块(i) 三刀都在用「instruction 纯常量 + 派生进 untrusted + 无工具」的**手工纪律**防注入;**T0(app-tool 契约)才是把这套纪律变成结构** —— 隔离上下文无 rt、输入平台经 D3 供给、输出平台校验 ⇒ 抽取字段信任问题**从此不靠每个作者记得框定**。
+- **块(i) 进度**:出题 ✓ · 改写 ✓;面试反馈待(ivScore schema 前置)。**用户现在能在真机上看到 AI 真在改写简历概要、真在出题 —— 对「不是 AI-Native」那句反馈的第一份正面证据落地了。**
