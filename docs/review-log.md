@@ -2119,3 +2119,10 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **四裁决**:①**两个 match 数并存标注做一半→[建议]**(客观侧「基于你的技能」好,但主观 j.match 在列表/overview 仍只叫「匹配」会困惑)②**排序保 j.match = M1 正确的非破坏选择**(切客观留下游产品决定,两键都可复现)③打样公式 OK ④**normMatchResult 前瞻件接受但系于 M3(b) 真做**(只做 M3(a) 就删它)。
 - **★[建议]① 已落 `692b4b3`**:独立核实属实(量出 j.match 显示点)后落:intake `— SCORING`→`— SELF-ASSESSMENT · 我的评估`+消歧注;overview `平均匹配分`→`平均自评匹配`。主观自评与客观重叠不言自明是两回事。node/tsc/npm 净、代理服务新码确认、boot 0 panic。
 - **★★下一步次序裁定(评审)**:**M1 后智能匹配剩的真·假只有 rewrites 硬编码假 QPS** ⇒ **① M3(a) rewrites → 复用已真化 `resumeGenerate`(下一刀首选:修最后一个假、便宜)** → ②可选 M3(b) AI gap 理由(做则前瞻件正当;不做则删)/ M2 app-tool(**多读 D3 已被 run.js reads 循环结构性覆盖、M2 只是首次 live 验=增量,可延、非假修**)→ ③ Skills 契约方案(更大已解锁 P2)→ market-value polish 低优先。**M3(a) 盯点**:match 页 rewrites 确路由到**已真化 resumeGenerate**(非另造 ai_generate)、信任分层/诚实降级继承、无双重提交。**下一刀 = M3(a)。**
+
+### 智能匹配 M3(a) · match 页 rewrites 退役假 QPS → 指真化 resumeGenerate · commit `79a209c` · ⏳ 待审
+承第77轮次序裁定(M3(a) 首选:修智能匹配最后一个假、便宜)。**先量确认**:match 页「生成完整定制简历」按钮(bindReadout `data-full`)本就 → `aiResumeForJob` → `resumeGenerate`(块 i 已真化:AI 只重写概要、事实字段用真实数据);真·假只是上面那段 `genRewrites` 硬编码预览(「10w+ QPS / 99.99% / P99 200ms→80ms」= 假数据)。
+- **match.js matchReadout**:删 genRewrites 假预览(rw.map old/neo 对),RESUME REWRITE 改**诚实 CTA**「AI 会基于你**真实的**简历,按这个岗位重写**概要** —— 工作/项目/技能事实一律用你的原数据,**绝不虚构**」+ 保留按钮(→ 已真化 resumeGenerate,绑定不变)。**intake-action.js**:退役 `genRewrites` 定义(grep 确认 0 消费者)。
+- **★盯点兑现**:①rewrites 确路由到**已真化 resumeGenerate**、非另造 ai_generate(按钮绑定不变)②信任分层/诚实降级**继承**(resumeGenerate 已有、零改动)③**无新增提交路径**(删预览、非加生成)。
+- **验**:node --check 净·tsc 51·npm 52·**preview 真机驱动 match 页**:**假 QPS(10w+/99.99%/P99)消失**、诚实 CTA 出「绝不虚构」、按钮在且绑 aiResumeForJob、0 console error·boot 0 panic。
+- **★★智能匹配「假」清零**:M1 分从「自评当客观」修为 computeMatch、[建议]① 消歧、M3(a) rewrites 退役假 QPS 指真化件。gaps/strengths/plan 本就真、j.match/排序是用户输入。**评审请核**:①genRewrites 退役 0 消费者(仅 match.js)②按钮 → resumeGenerate 未变、非另造 ③诚实 CTA 不过度声称(resumeGenerate 只写概要、事实不虚构,CTA 如实说)。**下一步**:M2/M3(b) 可选增强(非假修)/ Skills 契约方案(更大 P2)/ market-value polish 低优先。
