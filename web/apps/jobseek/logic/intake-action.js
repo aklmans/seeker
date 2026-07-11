@@ -2,6 +2,7 @@
 /** jobseek · 行动录入(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- NEW ACTION MODAL ---------- */
 import { skillByName } from '../data-helpers.js';
+import { normIvFeedback } from './iv-feedback.js';
 import { ACTIONS, JOBS, SKILLS } from '../data.js';
 import { renderActions } from '../pages/actions.js';
 import { renderOverview } from '../pages/overview.js';
@@ -111,11 +112,12 @@ export function ivScore(answer){
   const base=len>120?7.5:(len>40?6.5:5.5);
   const r=()=>Math.min(9.5, Math.max(5, base+(Math.random()*2-0.8)));
   const structure=Math.round(r()*10)/10, depth=Math.round(r()*10)/10, quant=Math.round((len>80?r():r()-1)*10)/10;
-  const overall=Math.round((structure+depth+quant)/3*10)/10;
   const goodPool=['结构清晰:先澄清/结论,再分层展开','抓住了核心瓶颈,优先级判断准确','主动给了容量估算,体现工程量感','用了真实数据支撑论点,可信度高'];
   const impPool=['权衡部分可更深:为什么选 A 不选 B,代价是什么','缺一个量化兜底:降级阈值 / 限流水位 / 恢复时长','可主动谈一句演进路线,展示长期视角','边界条件再补:极端流量 / 故障域 / 数据倾斜','表达可更精炼,先结论后展开'];
   const pick=(arr,n)=>arr.slice().sort(()=>Math.random()-0.5).slice(0,n);
-  return {scores:{structure,depth,quant:Math.max(5,quant),overall}, good:pick(goodPool,2), improve:pick(impPool,3)};
+  // ★ivScore schema 刀:产出 **wire 形**(扁平)→ normIvFeedback 归一为承重 canonical 形(各维钳/overall 重算/文字有界)。
+  //   真化后 AI 产出走同一归一化,承重消费者(整轮平均/总评/成长曲线/持久化)零改动。
+  return normIvFeedback({structure, depth, quant:Math.max(5,quant), good:pick(goodPool,2), improve:pick(impPool,3)});
 }
 /* ===== Company interview style + tailored resume ===== */
 const IV_STYLE={
