@@ -1,6 +1,6 @@
 /** 平台 · 能力中心(Capability Center · P1-a)——壳自持管理面(**非 app**,§1 铁律:能力是跨应用平台资源)。
  *
- *  聚合「给人看」的平台能力总览:Connector(MCP)/ 工具·能力 / 记忆 / 知识库;Skills/Project/定时任务 绿地占位。
+ *  聚合「给人看」的平台能力总览:Connector(MCP)/ 工具·能力 / 记忆 / 知识库 / Skills(可执行技能,S1 管理面);Project/定时任务 绿地占位。
  *
  *  ★读/写界(CLAUDE.md §4-2 + 评审第53轮 [应改]A · 本页据此守界):
  *   - 本页是**前端「给人看」视图** —— 读 `rt.*.list()` 渲染进 DOM,**永不喂模型**;端点/命令/密钥等配置细节
@@ -12,6 +12,7 @@ import { cEsc } from './copilot-chrome.js'; // ★评审第54轮 [建议]:复用
 import { $ } from './dom.js';
 import { tt } from './i18n.js';
 import { renderDocs, renderMemory } from './memory-docs.js'; // ★P1-c:记忆 / 知识库管理同样从 settings.js 模态搬迁
+import { renderSkills } from './skills.js'; // ★Skills S1b:平台可执行技能管理面(proposal-skills.md);从「规划中」占位提为一等公民
 import { frontis, signFoot } from './nav.js';
 
 // 用户数据(连接器名 / 能力 id)进 DOM 前逐字转义(纵深防御:虽是用户自填配置/平台定义 id,仍防意外 HTML)。
@@ -45,7 +46,8 @@ export function renderCapabilityCenter() {
     block('cc-tools', 'TOOLS', tt('工具 · 能力', 'Tools & capabilities'), tt('Agent 可调用的能力(经工具循环、红线内执行)。', 'Capabilities the Agent can call (through the tool loop, within the red lines).')) +
     block('cc-memory', 'MEMORY', tt('长期记忆', 'Long-term memory'), tt('你主动写下、供 Agent 长期参考的信息。', 'Info you’ve volunteered for the Agent’s long-term context.')) +
     block('cc-docs', 'KNOWLEDGE', tt('知识库', 'Knowledge base'), tt('你加入、供检索作答的文档语料(需嵌入模型)。', 'Docs you’ve added for retrieval-augmented answers (needs an embed model).')) +
-    block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Skills / Project / 定时任务 —— 后端建设中,后续开放。', 'Skills / Project / Scheduled tasks — backend in progress, coming later.')) +
+    block('cc-skills', 'SKILLS', tt('技能', 'Skills'), tt('把你反复用的指令沉淀成可执行技能 —— 本地保存,一点即运行(运行即将开放)。AI 看不到 Skill 内容(它们是你的指令,不是检索数据)。', 'Turn instructions you reuse into executable skills — stored locally, one-click run (coming soon). The AI can’t see skill contents (they’re your instructions, not retrieval data).')) +
+    block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Project / 定时任务 —— 后端建设中,后续开放。', 'Project / Scheduled tasks — backend in progress, coming later.')) +
     `</div>` +
     signFoot();
   const rb = $('#ccRefresh');
@@ -100,9 +102,18 @@ function populate() {
     catch (_e) { box.innerHTML = emptyLine(tt('桌面端可用(网页端不支持此项)', 'Desktop only (unavailable on web)')); }
   })();
 
-  // ── 绿地(诚实占位):Skills/Project/定时任务 后端零基础,不假装「已建」。
+  // ── Skills(平台可执行技能 · proposal-skills.md S1):用户自撰指令的管理面(增删改;运行 = S2)。
+  //    rt.db 双端可用 ⇒ 桌面/网页均生效。Skill 不进 QUERYABLE(永不 AI 可读);管理在此 UI、不经对话(设置红线)。
+  (async () => {
+    const box = $('#cc-skills');
+    if (!box) return;
+    try { await renderSkills(/** @type {HTMLElement} */ (box)); }
+    catch (_e) { box.innerHTML = emptyLine(tt('暂不可用', 'Unavailable')); }
+  })();
+
+  // ── 绿地(诚实占位):Project/定时任务 后端零基础,不假装「已建」(Skills 已落地 → 上移为一等公民)。
   fill('cc-soon', async () =>
-    ['Skills', 'Project', tt('定时任务', 'Scheduled tasks')]
+    ['Project', tt('定时任务', 'Scheduled tasks')]
       .map((n) => itemRow(`<span style="color:var(--ink-2);">${n}</span> · <span style="color:var(--ink-mute);font-size:12px;">${tt('规划中', 'Planned')}</span>`))
       .join('')
   );

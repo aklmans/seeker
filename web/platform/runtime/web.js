@@ -13,7 +13,7 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 2; // v2:阶段4 assets_* 集合(onupgradeneeded 增量建 store,既有数据不动)
+const DB_VERSION = 3; // v3:平台 platform_skills 集合(Skills S1);v2:阶段4 assets_* 集合。onupgradeneeded 增量建 store,既有数据不动
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
 const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills'];
 const KV_STORES = ['profile', 'settings', 'meta'];
