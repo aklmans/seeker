@@ -12,13 +12,14 @@
  *   计算沙箱**一样都不要**:compute 不渲染 UI、不与用户交互,任何多余的入站/出站面都是攻击面。
  *   故这里是一份**最小 srcDoc**:CSP + compute 源 + 一段只做 `run → result` 的 bridge。
  *
- * 输出经 `output` schema 校验(validate.js,**可信父代码**)后才交回;**校验失败 ⇒ 报错,绝不喂模型**(I4)。
+ * 输出经 `output` schema **校验 + 投影**(validate.js `projectToSchema`,**可信父代码**)后才交回:
+ * 只回按 schema 重建的副本、丢弃未声明字段(**输出 = schema,非 ⊇**),校验失败 ⇒ 报错、绝不喂模型(I4)。
  *
  * 诚实边界:真正的隔离(null 起源 / CSP 掐网 / 无回父通道)由浏览器 iframe 保证,**不可纯 node 单测**
  *   —— 同 show_widget 的沙箱。对抗性验证在真浏览器里跑(见 T1 送审记录)。本模块的可 node 测部分
  *   是 validate.js;沙箱本体走 preview 真机对抗验证。
  */
-import { validateAgainstSchema } from './validate.js';
+import { projectToSchema } from './validate.js';
 
 /** 计算沙箱 CSP:掐断一切网络;仅允许内联脚本(注入 compute 源 + bridge)。**无 style/img** —— 计算不渲染。 */
 const COMPUTE_CSP = "default-src 'none'; script-src 'unsafe-inline'";
@@ -138,13 +139,15 @@ export function runComputeSandbox(spec) {
             settle({ ok: false, error: typeof msg.error === 'string' ? msg.error : 'compute 失败' });
             return;
           }
-          // ★I4:输出经 schema 校验(可信父代码);校验失败 ⇒ 报错,绝不把原始 output 交回。
-          const v = validateAgainstSchema(msg.output, spec.output);
+          // ★I4:输出经 schema **校验 + 投影**(可信父代码)。校验失败 ⇒ 报错;通过 ⇒ 只回**按 schema
+          //   重建的副本**(projectToSchema),未声明字段被丢弃 —— 绝不把原始 output(可能夹带超范围
+          //   的 D3 用户数据 / 外部注入)交回模型。这把 I4 从「输出 ⊇ schema」收紧到「输出 = schema」。
+          const v = projectToSchema(msg.output, spec.output);
           if (!v.ok) {
             settle({ ok: false, error: '输出不合 schema:' + v.error });
             return;
           }
-          settle({ ok: true, output: msg.output });
+          settle({ ok: true, output: v.value });
         };
         port = ch.port1;
         const cw = frame.contentWindow;

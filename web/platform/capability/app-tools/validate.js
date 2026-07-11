@@ -1,17 +1,34 @@
 // @ts-check
 /**
- * app-tool 输出校验(T1)—— JSON Schema **子集**,在**可信父代码**里执行。
+ * app-tool 输出校验 + 投影(T1)—— JSON Schema **子集**,在**可信父代码**里执行。
  * —— 平台层,业务无关。
  *
- * 目的单一(不变式 I4):隔离沙箱里 compute 算出的返回值,必须严丝合缝对上应用声明的
- * `output` schema,**否则如实报错、绝不喂给模型**。校验点**必须在沙箱之外**(沙箱是不可信
- * 计算),故本模块跑在父窗口。
+ * 两个出口,服务两种需要:
  *
- * 只覆盖工具输出实际会用到的关键字:`type`(单个或数组)/ `properties` / `required` /
- * `items` / `enum` / `additionalProperties`(bool 或子 schema)。**不追求完整 JSON Schema**
- * —— 表达力天花板换来的是「校验从严、可读、无依赖」:未知类型 / 缺失必填 / `false` 下的多余
- * 属性一律拒。缺失的关键字按 JSON Schema 语义「不约束」(空 schema `{}` = 放行任意值)。
+ * - `validateAgainstSchema(value, schema)` —— **只校验**(标准 JSON Schema 子集语义):
+ *   type / properties / required / items / enum / additionalProperties。用于「值是否合规」的判断
+ *   (如将来 T2 校验模型入参 `parameters`)。`additionalProperties` 省略时**容忍多余属性**(标准语义)。
+ *
+ * - `projectToSchema(value, schema)` —— **校验 + 投影**(app-tool 输出的**安全闸**,不变式 I4):
+ *   在校验之上,**按声明重建一份副本**,只保留 schema 声明的属性;**未声明的字段结构上到不了模型**。
+ *   这修正了「校验通过 ⇒ 原样回传」的破口:app 若 `return {...row, score}` 而 schema 只声明 `score`,
+ *   投影后模型**只看得到 `score`**,`row` 里超范围的字段(可能含 D3 用户数据 / 外部注入文本)**被丢弃**。
+ *   —— 与本平台一路的 default-deny 同纪律(reads 必填 / `undefined`→拒 / `onConfirm` 缺省):
+ *   **未声明 ⇒ 不放行**,而非退回 JSON Schema 的「省略即容许」宽松默认。
+ *
+ * 投影的额外属性规则(object):`properties` 声明的 → 递归投影保留;`additionalProperties` 为**子 schema**
+ * → 校验通过后保留;`=== true`(应用**主动**声明容许额外)→ 原样保留;`=== false` → **拒绝**(报错);
+ * **省略(最常见的手滑场景)→ 丢弃**。故 bare `{type:'object'}`(无 properties/AP)会投影成 `{}` ——
+ * 这是**有意的 default-deny**,提示作者去声明输出形状(T2 注册期应再加 schema 良构检查)。
+ *
+ * 形状从严(两个出口都生效,闭合「properties-only 无 type」footgun):schema 若带 `properties`/`required`/
+ * `additionalProperties` ⇒ 值**必须是 object**;若带 `items` ⇒ 值**必须是 array**;否则如实报错。
  */
+
+/** @param {any} o @param {string} k */
+function hasOwn(o, k) {
+  return Object.prototype.hasOwnProperty.call(o, k);
+}
 
 /** @param {any} v @returns {string} JSON Schema 语义的类型名(integer 单列)。 */
 function jsonType(v) {
@@ -41,26 +58,33 @@ function deepEqual(a, b) {
   const ka = Object.keys(a);
   const kb = Object.keys(b);
   if (ka.length !== kb.length) return false;
-  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
+  return ka.every((k) => hasOwn(b, k) && deepEqual(a[k], b[k]));
 }
 
 /**
- * 递归校验。
- * @param {any} value 待校验值
- * @param {any} schema JSON Schema(子集)节点
- * @param {string} path 出错定位路径
- * @returns {{ok:true}|{ok:false,error:string}}
+ * 单一递归:`project=false` 只校验(标准语义)、`project=true` 校验 + 投影(重建安全副本)。
+ * 两模式共享 type/enum/required/形状/递归逻辑,只在「额外属性」处分野 —— 单一真相源,不会漂移。
+ * @param {any} value
+ * @param {any} schema
+ * @param {string} path
+ * @param {boolean} project
+ * @returns {{ok:true,value:any}|{ok:false,error:string}}
  */
-function walk(value, schema, path) {
-  // 空 / 非对象 schema ⇒ 不约束(JSON Schema:`{}`/`true` 放行任意)。顶层「必须有 schema」由
-  // 调用点(sandbox.runComputeSandbox)fail-closed 把守,不在此处 —— 此处要支持嵌套的可选子 schema。
-  if (!schema || typeof schema !== 'object') return { ok: true };
+function walk(value, schema, path, project) {
+  // 空 / 非对象 schema(`{}` / `true`)⇒ 不约束、原样返回。
+  if (!schema || typeof schema !== 'object') return { ok: true, value };
 
   if (Array.isArray(schema.enum)) {
     if (!schema.enum.some((/** @type {any} */ e) => deepEqual(e, value))) {
       return fail(path, '不在 enum 允许值内');
     }
   }
+
+  // 形状意图:显式 type,或(无 type 时)由结构关键字推断 —— 闭合「properties 无 type」footgun。
+  const hasObjKw = schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined;
+  const hasArrKw = schema.items !== undefined;
+  const wantsObject = schema.type === 'object' || (schema.type === undefined && hasObjKw);
+  const wantsArray = schema.type === 'array' || (schema.type === undefined && hasArrKw && !hasObjKw);
 
   if (schema.type !== undefined) {
     const at = jsonType(value);
@@ -72,44 +96,71 @@ function walk(value, schema, path) {
 
   const t = jsonType(value);
 
-  if (t === 'object') {
+  if (wantsObject) {
+    if (t !== 'object') return fail(path, `应为 object,实为 ${t}`); // ★形状从严
     const props = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
     if (Array.isArray(schema.required)) {
       for (const k of schema.required) {
-        if (!Object.prototype.hasOwnProperty.call(value, k)) {
-          return fail(path, `缺少必填属性 "${k}"`);
-        }
+        if (!hasOwn(value, k)) return fail(path, `缺少必填属性 "${k}"`);
       }
     }
+    /** @type {any} */
+    const out = project ? {} : value;
     for (const k of Object.keys(value)) {
-      if (Object.prototype.hasOwnProperty.call(props, k)) {
-        const r = walk(value[k], props[k], path + '.' + k);
+      if (hasOwn(props, k)) {
+        const r = walk(value[k], props[k], path + '.' + k, project);
         if (!r.ok) return r;
-      } else if (schema.additionalProperties === false) {
-        return fail(path, `不允许的额外属性 "${k}"`);
+        if (project) out[k] = r.value;
       } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
-        const r = walk(value[k], schema.additionalProperties, path + '.' + k);
+        const r = walk(value[k], schema.additionalProperties, path + '.' + k, project);
         if (!r.ok) return r;
+        if (project) out[k] = r.value;
+      } else if (schema.additionalProperties === false) {
+        return fail(path, `不允许的额外属性 "${k}"`); // 应用显式声明「无额外」⇒ 违反即报错(两模式一致)
+      } else if (schema.additionalProperties === true) {
+        if (project) out[k] = value[k]; // 应用主动容许额外 ⇒ 保留
       }
+      // 其余(additionalProperties 省略):校验模式容忍(标准语义);**投影模式丢弃**(default-deny)。
     }
+    return { ok: true, value: out };
   }
 
-  if (t === 'array' && schema.items && typeof schema.items === 'object') {
-    for (let i = 0; i < value.length; i++) {
-      const r = walk(value[i], schema.items, path + '[' + i + ']');
-      if (!r.ok) return r;
+  if (wantsArray) {
+    if (t !== 'array') return fail(path, `应为 array,实为 ${t}`); // ★形状从严
+    if (schema.items && typeof schema.items === 'object') {
+      /** @type {any[]} */
+      const out = project ? [] : value;
+      for (let i = 0; i < value.length; i++) {
+        const r = walk(value[i], schema.items, path + '[' + i + ']', project);
+        if (!r.ok) return r;
+        if (project) out[i] = r.value;
+      }
+      return { ok: true, value: out };
     }
+    return { ok: true, value };
   }
 
-  return { ok: true };
+  return { ok: true, value };
 }
 
 /**
- * 校验 `value` 是否满足 `schema`(JSON Schema 子集)。
+ * **只校验** `value` 是否满足 `schema`(标准 JSON Schema 子集语义;`additionalProperties` 省略容忍多余)。
  * @param {any} value
  * @param {any} schema
  * @returns {{ok:true}|{ok:false,error:string}}
  */
 export function validateAgainstSchema(value, schema) {
-  return walk(value, schema, '$');
+  const r = walk(value, schema, '$', false);
+  return r.ok ? { ok: true } : r;
+}
+
+/**
+ * **校验 + 投影**:app-tool 输出的安全闸(I4)。返回按 schema 重建的副本,**未声明字段被丢弃**,
+ * 结构上到不了模型。校验失败(类型 / 形状 / 必填 / enum / 显式 `additionalProperties:false` 违反)⇒ 报错。
+ * @param {any} value
+ * @param {any} schema
+ * @returns {{ok:true,value:any}|{ok:false,error:string}}
+ */
+export function projectToSchema(value, schema) {
+  return walk(value, schema, '$', true);
 }
