@@ -219,6 +219,27 @@ export interface AppManifest {
   cActions?: () => Record<string, (...args: any[]) => void>;
 }
 
+/**
+ * 平台 Skill(可执行技能 · proposal-skills.md)—— **用户自撰的具名指令**:进命令面板、一点即运行
+ * (S2 起 Agent 以 `prompt` 为 instruction 跑一轮)。存平台 `platform_skills` 集合(**不进 QUERYABLE**、永不 AI 可读)。
+ *
+ * ★信任:`prompt` 是**本地用户自撰指令**(同用户打字)⇒ 可信侧,不走 untrusted 框定。
+ *   ⚠ 前提是本地自撰;未来 Skill 分享/导入 = 第三方指令,须届时补「导入=知情审阅」(见 proposal §4)。
+ * ★雏形(S1)= prompt-only;绑工具(tools?: app-tool)留完整版。
+ */
+export interface Skill {
+  /** 稳定 id(存储主键)。 */
+  id: string;
+  /** 命令面板显示名。 */
+  name: string;
+  /** 一句话说明(可选)。 */
+  description?: string;
+  /** 用户自撰的指令正文(S2 运行时作为 instruction)。 */
+  prompt: string;
+  /** 更新时间戳(排序用)。 */
+  updated_at?: number;
+}
+
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
 export interface ShellOwn {
   pages: ShellPage[];

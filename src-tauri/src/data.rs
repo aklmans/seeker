@@ -39,6 +39,9 @@ fn table_for(collection: &str) -> Result<&'static str, String> {
         // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀;隐私表(profile/secrets/meta/settings)仍不在此。
         "assets_prompts" => Ok("assets_prompts"),
         "assets_notes" => Ok("assets_notes"),
+        // 平台 Skills(可执行技能 · proposal-skills.md S1):平台级用户能力,非 app ⇒ platform_ 前缀。
+        // db_* 可访问(管理面 CRUD),但**故意不进 QUERYABLE**(capability.rs)——Skill 是用户指令、非 AI 检索数据,永不 AI 可读。
+        "platform_skills" => Ok("platform_skills"),
         other => Err(format!("未知或受保护的集合: {other}")),
     }
 }
@@ -102,6 +105,12 @@ const MIGRATIONS: &[(i64, &str)] = &[
         5,
         "CREATE TABLE IF NOT EXISTS assets_prompts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS assets_notes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    // 平台 Skills(可执行技能 · proposal-skills.md S1):平台级用户自撰指令,platform_ 前缀区别于 apps。
+    // 骨架列 + data_json 弹性 schema 同业务集合;**不进 QUERYABLE**(capability.rs)= 永不 AI 可读。
+    (
+        6,
+        "CREATE TABLE IF NOT EXISTS platform_skills (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -3893,6 +3902,9 @@ mod tests {
         // 业务集合可访问。
         assert!(table_for("jobs").is_ok());
         assert!(table_for("messages").is_ok());
+        // 平台 Skills:db_* 可访问(管理面 CRUD),但不可与 jobseek 的 `skills`(技能库)混淆。
+        assert!(table_for("platform_skills").is_ok());
+        assert_eq!(table_for("platform_skills").unwrap(), "platform_skills");
     }
 
     #[test]

@@ -15,7 +15,7 @@ const FEATURES = new Set(
 const DB_NAME = 'seeker';
 const DB_VERSION = 2; // v2:阶段4 assets_* 集合(onupgradeneeded 增量建 store,既有数据不动)
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills'];
 const KV_STORES = ['profile', 'settings', 'meta'];
 
 /** @type {Promise<any> | null} */

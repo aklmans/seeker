@@ -650,10 +650,16 @@ mod tests {
         assert!(is_queryable("jobs"));
         // messages 可持久化(table_for)但不可被 AI 查询:会话日志可能含用户主动写出的 PII,最小权限。
         assert!(!is_queryable("messages"));
-        // 暴露给 LLM 的工具枚举同样不含 profile。
+        // 平台 Skills(可执行技能):db_* 可访问但**永不 AI 可读** —— Skill 是用户指令、非检索数据(proposal-skills.md S1 盯点①)。
+        assert!(!is_queryable("platform_skills"));
+        // 暴露给 LLM 的工具枚举同样不含 profile / platform_skills。
         let schema = DataQuery.schema().unwrap();
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();
         assert!(!en.contains("profile"), "工具枚举不应含 profile");
+        assert!(
+            !en.contains("platform_skills"),
+            "工具枚举不应含 platform_skills(Skill 是用户指令非 AI 数据)"
+        );
         assert!(en.contains("jobs"));
     }
 
