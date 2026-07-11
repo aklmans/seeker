@@ -98,6 +98,12 @@ export interface AiRequest {
   task?: string;
   /** 业务上下文(白名单);网关组装提示时**结构上不含 profile 隐私字段**。 */
   context?: unknown;
+  /**
+   * app-tool 描述符(壳按启用∩可读收集;app-tool 契约 T2b)。**只带给模型看的元数据** ——
+   * name/description/parameters(应用自持可信文案),**不含** compute/reads/output/render / 任何用户数据 / profile。
+   * 「上架」的 D3 可读性过滤(reads ⊆ 运行时可读集)在收集时已施加;执行经 `ai_app_tool` 事件回前端隔离上下文。
+   */
+  appTools?: { name: string; description: string; parameters: object }[];
 }
 
 /** show_widget 下发载荷(不可信 HTML,前端在 sandbox iframe + srcDoc 内 CSP 渲染)。 */

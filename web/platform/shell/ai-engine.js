@@ -28,13 +28,29 @@ export function extractSeekerBlock(text, kind){
 // AI 回复语言:把当前界面语言作为指令附在发给模型的文本末尾。
 // (系统提示在平台层、domain 改不了;故经 user_text 传达。显示给用户的仍是原文,只有发给模型的带此指令。)
 function aiLangHint(){ return setState.lang==='en' ? '\n\n[Please reply in English.]' : '\n\n[请用简体中文回复。]'; }
+/**
+ * 收集启用∩可读的 app-tool 描述符,随请求携给网关(app-tool 契约 T2b)。
+ * ★D3「上架」闸:只带 **reads ⊆ 运行时可读集**(aiReadableCollections)的工具——reads 不可读即**不上架**;
+ *   运行时「调用硬拒」另由后端 query_data 的 D3 闸独立兜底(取数时若不可读则拒)。
+ * ★fail-closed:缺 SeekerShell / appTools 返 `[]`(无 app-tool,不误上架)。
+ * ★**只带 name/description/parameters**(应用自持可信元数据),**不带** compute/reads/output/render / 任何用户数据 / profile。
+ * @returns {{name:string,description:string,parameters:object}[]}
+ */
+function readableAppTools(){
+  const S = /** @type {any} */ (window).SeekerShell;
+  if(!S || typeof S.appTools!=='function' || typeof S.aiReadableCollections!=='function') return [];
+  const readable = new Set(S.aiReadableCollections());
+  return S.appTools()
+    .filter((/** @type {any} */ t)=> Array.isArray(t.reads) && t.reads.every((/** @type {string} */ c)=> readable.has(c)))
+    .map((/** @type {any} */ t)=>({ name:t.name, description:t.description, parameters:t.parameters }));
+}
 export function streamReply(thinkBubble, text, who, scrollFn){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
-  window.SeekerRT.ai.stream({ userText:text+aiLangHint() }, {
+  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:readableAppTools() }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){
