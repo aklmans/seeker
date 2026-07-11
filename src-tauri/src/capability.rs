@@ -204,7 +204,9 @@ impl Registry {
         reg.register(Box::new(ShowWidget));
         reg.register(Box::new(crate::memory::LongTermMemory));
         reg.register(Box::new(crate::docs::DocContext)); // RAG-over-docs:Context 自动召回用户文档
-        reg.register(Box::new(crate::jobseek::MarketValue)); // ★AI-Native P0 打样:jobseek 真工具(路线 B · §1 权衡见 jobseek.rs 头)
+
+        // ★T3:jobseek_market_value 已迁为 app-tool(apps/jobseek/tools/,契约执行链见 ai.rs 第三分支);
+        // 路线 B 打样(jobseek.rs)随之删除 —— 平台 Rust 能力层回到「业务无关的 4 个平台能力」,业务工具走 app-tool 契约。
         reg
     }
 
@@ -690,14 +692,9 @@ mod tests {
         assert_eq!(crate::docs::DocContext.id(), "docs");
         assert_eq!(crate::docs::DocContext.kind(), Kind::Context);
         assert!(crate::docs::DocContext.schema().is_none());
-        // ★AI-Native P0 打样:jobseek 真工具(路线 B)。
-        assert_eq!(
-            crate::jobseek::MarketValue.schema().unwrap().name,
-            "jobseek_market_value"
-        );
-        assert_eq!(crate::jobseek::MarketValue.kind(), Kind::Tool);
-        // Registry 装配五者(DataQuery / ShowWidget / memory / docs / jobseek_market_value)。
-        assert_eq!(Registry::new().caps.len(), 5);
+        // ★T3:jobseek_market_value 已迁为 app-tool(apps/jobseek/tools/),jobseek.rs 已删。
+        //   Registry 装配四者(DataQuery / ShowWidget / memory / docs)——全**业务无关的平台能力**;业务工具走 app-tool 契约。
+        assert_eq!(Registry::new().caps.len(), 4);
     }
 
     #[test]

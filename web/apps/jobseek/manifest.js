@@ -32,6 +32,7 @@ import { jobseekWidgetAction } from './logic/widget-actions-jobseek.js';
 import { captureSeed, syncDemoBanner, setDemoMode } from './logic/demo-seed.js';
 import { hydrateJobs } from './logic/persistence.js';
 import { JOBS, ACTIONS } from './data.js';
+import { marketValueTool } from './tools/market-value.js';
 import { tt } from '../../platform/shell/i18n.js';
 import { go } from '../../platform/shell/nav.js';
 import { toast } from '../../platform/shell/toast.js';
@@ -90,6 +91,8 @@ import { setState } from '../../platform/shell/shell-state.js';
       { id: 'interview', label: '面试陪练', en: 'Interview', abbr: '练', group: 'growth', ai: true, icon: ICONS.interview, render: () => renderInterview() },
     ],
     cards: SEEKER_CARDS,
+    // app-tool(T3):市场价值估算迁自 Rust 打样(jobseek.rs 已删)。reads:['skills'],隔离 compute,前端 render(tt 双语)。
+    tools: [marketValueTool],
     frameQuery: (t) => frameQuery(t),
     appReply: (t) => copReply(t),
     appSuggs: () => aiSuggs(),

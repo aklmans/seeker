@@ -11,6 +11,7 @@ import { tt } from './i18n.js';
 import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
+import { filterReadableTools } from '../capability/app-tools/readable.js';
 
 export function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
@@ -39,10 +40,7 @@ function aiLangHint(){ return setState.lang==='en' ? '\n\n[Please reply in Engli
 function readableAppTools(){
   const S = /** @type {any} */ (window).SeekerShell;
   if(!S || typeof S.appTools!=='function' || typeof S.aiReadableCollections!=='function') return [];
-  const readable = new Set(S.aiReadableCollections());
-  return S.appTools()
-    .filter((/** @type {any} */ t)=> Array.isArray(t.reads) && t.reads.every((/** @type {string} */ c)=> readable.has(c)))
-    .map((/** @type {any} */ t)=>({ name:t.name, description:t.description, parameters:t.parameters }));
+  return filterReadableTools(S.appTools(), S.aiReadableCollections());
 }
 export function streamReply(thinkBubble, text, who, scrollFn){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';

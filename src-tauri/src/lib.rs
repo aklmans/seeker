@@ -5,7 +5,6 @@ mod data;
 mod docs;
 mod docx;
 mod embed;
-mod jobseek; // ★AI-Native P0 打样:jobseek 专属能力(§1 权衡记账,见模块头)
 mod mcp;
 mod memory;
 mod prompts;
