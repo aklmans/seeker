@@ -2,7 +2,7 @@
 /** jobseek · 智能匹配(平台化阶段3 逐页搬迁)。classic 全局语义不变;依赖见 ../monolith-globals.d.ts。 */
 /* ---------- SMART MATCH (旗舰) ---------- */
 import { JOBS, SKILLS } from '../data.js';
-import { RESUME, aiRun, genPlanFromGap, genRewrites, planFor } from './intake-action.js';
+import { RESUME, aiRun, genPlanFromGap, planFor } from './intake-action.js';
 import { computeMatch } from './match-result.js';
 import { aiResumeForJob, goInterview } from './job-actions.js';
 import { renderActions } from '../pages/actions.js';
@@ -47,7 +47,7 @@ function matchReadout(j){
   const pct=Math.round(m.score*10);
   const gaps=m.gaps; const top=gaps[0]||(j.plus&&j.plus[0])||'系统设计';
   const strengths=m.matched;
-  const rw=genRewrites(j); const p=planFor(top);
+  const p=planFor(top);
   return `
   <div style="display:flex;gap:40px;align-items:flex-end;flex-wrap:wrap;">
     <div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 6px;">${tt('综合匹配度 · 基于你的技能','Overall match · based on your skills')}</p>
@@ -58,9 +58,8 @@ function matchReadout(j){
   <div class="msec" style="border-bottom:0.5px solid var(--border);margin-top:8px;"><p class="seclabel">— GAPS</p><h3 class="sectitle" style="font-size:15px;margin-bottom:10px;">${tt('可补充的能力','Gaps to fill')}<span class="dot">.</span></h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">${(gaps.length?gaps:[tt('暂无明显缺口','No clear gaps')]).map(g=>`<span class="chip gap">${cEsc(g)}</span>`).join('')}</div></div>
   <div class="msec" style="border-bottom:0.5px solid var(--border);"><p class="seclabel">— RESUME REWRITE</p><h3 class="sectitle" style="font-size:15px;margin-bottom:4px;">${tt('针对这个岗位,简历这样改','Rewrite your resume for this job')}<span class="dot">.</span></h3>
-    <p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('对齐该 JD 的高频词,用量化结果替换职责描述:','Align to the JD\'s keywords; replace duties with quantified results:')}</p>
-    <div class="rw-diff">${rw.map(r=>`<div><div class="h">${tt('原文','Before')}</div><div class="rw-old">${r.old}</div></div><div><div class="h" style="color:var(--accent);">${tt('AI 改写','AI rewrite')}</div><div class="rw-new">${cEsc(r.neo)}</div></div>`).join('')}</div>
-    <button class="btn" style="margin-top:12px;" data-full="${j.id}">${tt('生成完整定制简历','Generate full tailored resume')} →</button></div>
+    <p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;line-height:1.7;">${tt('AI 会基于你<b>真实的</b>简历,按这个岗位重写<b>概要</b> —— 工作 / 项目 / 技能等事实字段一律用你的原数据,<b>绝不虚构</b>。','AI rewrites your <b>summary</b> for this role from your <b>real</b> resume — work / projects / skills stay your actual data, <b>never fabricated</b>.')}</p>
+    <button class="btn btn-accent" style="margin-top:2px;" data-full="${j.id}">${tt('生成完整定制简历','Generate full tailored resume')} →</button></div>
   <div class="msec" style="border-bottom:none;"><p class="seclabel">— PLAN</p><h3 class="sectitle" style="font-size:15px;margin-bottom:4px;">${tt('下一步该练什么','What to train next')}<span class="dot">.</span></h3>
     <p style="font-size:13px;color:var(--ink-2);margin:0 0 4px;">${tt('优先补齐 <b>'+cEsc(top)+'</b> · 约 '+p.weeks+' 周 · '+p.ms.length+' 个里程碑','Fill <b>'+cEsc(top)+'</b> first · ~'+p.weeks+' weeks · '+p.ms.length+' milestones')}</p>
     <p style="font-size:12px;color:var(--ink-3);margin:0 0 14px;">${tt('推荐资源:','Resources:')}${p.res.join(' · ')}</p>

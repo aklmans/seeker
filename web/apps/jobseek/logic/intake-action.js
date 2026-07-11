@@ -67,13 +67,8 @@ const PLAN_LIB={
 };
 export function planFor(skill){return PLAN_LIB[skill]||{weeks:2, ms:['梳理现状与目标差距','找 1 个练手项目','沉淀为可展示证据'], res:['官方文档','社区最佳实践']};}
 export function topGapsOf(job){return job.need.filter(n=>{const s=skillByName(n);return !s||s.lvl<3;});}
-export function genRewrites(job){
-  const kw=job.need.slice(0,3);
-  return [
-    {old:'负责后端服务的开发与日常维护,参与需求评审与排期。', neo:`主导 <b>${kw[0]||'核心链路'}</b> 后端架构,单服务 QPS <b>10w+</b>、可用性 <b>99.99%</b>,推动 P99 从 200ms 降至 <b>80ms</b>。`},
-    {old:'熟悉常用中间件,有一定的系统设计与团队协作经验。', neo:`深度实践 <b>${kw.join(' / ')}</b>,Owner 稳定性建设,主导服务治理与容量规划,支撑大促 <b>零故障</b>。`}
-  ];
-}
+// ★M3(a):genRewrites(硬编码假 QPS 改写预览)已退役 —— match 页「简历这样改」改为诚实指向已真化的
+//   resumeGenerate(AI 按岗位重写概要、事实字段用真实数据)。删前 grep 确认 0 消费者(仅 match.js 曾 import)。
 /* ===== Interview question bank + records ===== */
 export const IV_CATS=[['design','系统设计'],['perf','高并发·性能'],['dist','分布式·一致性'],['project','项目深挖'],['behavior','行为面试']];
 export const IV_CATLABEL=Object.fromEntries(IV_CATS);
