@@ -91,7 +91,8 @@ function openJobDetail(id, row){
         <button class="x">${IC.x}</button></div>
     </div>
     <div class="modal-body">
-      <div style="display:flex;gap:28px;padding:6px 0 18px;border-bottom:0.5px solid var(--border);">
+      <p class="seclabel" style="margin:4px 0 2px;">— SELF-ASSESSMENT · 我的评估</p>
+      <div style="display:flex;gap:28px;padding:2px 0 18px;border-bottom:0.5px solid var(--border);">
         ${[[tt('兴趣','Interest'),j.interest],[tt('成长','Growth'),j.growth],[tt('匹配','Match'),j.match],[tt('机会','Odds'),j.chance]].map(s=>`<div><p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0;">${s[0]}</p><p style="font-family:var(--font-serif);font-size:24px;font-weight:500;margin:4px 0 0;color:var(--ink);">${s[1].toFixed(1)}<span style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);">/10</span></p></div>`).join('')}
       </div>
       ${aiMetaHtml(j)}
