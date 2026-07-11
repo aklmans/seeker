@@ -6,6 +6,7 @@
  * db / capability 仍占位(#3 / #2)。
  */
 import { notImpl } from './errors.js';
+import { runAppTool } from '../capability/app-tools/run.js';
 
 /** 桌面端「全功能」:所有能力都在。 */
 const FEATURES = new Set(
@@ -80,6 +81,18 @@ function aiStream(req, handlers = {}, startInvoke) {
         const w = { id: e.payload.id, html: e.payload.html, title: e.payload.title, minHeight: e.payload.minHeight };
         widgets.push(w);
         if (handlers.onWidget) handlers.onWidget(w);
+      }),
+      // app-tool(T2b-2):模型调了某 app-tool → 平台壳按契约在隔离上下文执行,结果回程 Rust。
+      // 编排在 platform/capability/app-tools/run.js(业务无关);这里只把运行时能力(D3 取数 / 结果回程 /
+      // widget 投画布 = 复用 onWidget 同一沙箱渲染路)注入。取数走 query_data(后端 D3 硬强制)。
+      ev.listen('ai_app_tool', (/** @type {any} */ e) => {
+        if (!hit(e)) return;
+        runAppTool(e.payload, {
+          queryData: (/** @type {string} */ c) => invoke('cap_invoke', { id: 'query_data', input: { collection: c } }),
+          result: (/** @type {string} */ callId, /** @type {boolean} */ ok, /** @type {any} */ output, /** @type {string|null} */ error) =>
+            invoke('ai_app_tool_result', { callId, ok: !!ok, output: output ?? null, error: error ?? null }),
+          onWidget: handlers.onWidget,
+        });
       }),
       ev.listen('ai_done', (/** @type {any} */ e) => {
         if (!hit(e)) return;
