@@ -480,7 +480,9 @@ fn resolve_app_tool(
         .unwrap()
         .remove(call_id)
         .ok_or_else(|| format!("未知或已完成的 app-tool 调用: {call_id}"))?;
-    let _ = tx.send(outcome); // rx 已走(超时/取消后 run_app_tool 已 remove)⇒ 理论到不了这;send 失败无害
+    // 正常在途:rx 仍存活 ⇒ send 成功 = **结果的投递机制**(run_app_tool 的 await 由此取到值)。
+    // 竞态(超时/取消已在 await 返回、run_app_tool 尚未走到 :515 的 remove):rx 已 drop ⇒ send 失败、无害丢弃。
+    let _ = tx.send(outcome);
     Ok(())
 }
 

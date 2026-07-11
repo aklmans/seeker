@@ -185,6 +185,15 @@ export interface AppToolSpec {
 
 **T0–T2 是纯平台工作,不碰 apps;T3 是第一次真迁移,也是契约的验收。**
 
+### ★ T0 通过后挂账(评审 T0 复核 · 接线时决定安全成败的三条,现在钉住免返工)
+
+T0 协议核已通过(`7638d6b`:四失败面显式建模、非空出口、pending-map 无泄漏、callId 全局唯一)。以下三条**不是 T0 的缺陷,是后续刀的前置约束**,评审要求挂到对应期:
+
+1. **【T1】srcDoc 只有 request→response,父窗口零入站接口。** `sandbox="allow-scripts"` **不带 `allow-same-origin`** + srcDoc 内 CSP `default-src 'none'` + **除了那一条回传结果的 `postMessage`,父窗口不暴露任何入站接口**。绝不复用 `buildSrcDoc`(它的 `BRIDGE` 有 `window.seeker.action` 回父通道,render.js:109)。验收:compute 里 `window.SeekerRT`/`rt.profile`/`fetch` 全 `undefined` 或被 CSP 拦。
+2. **【T2】`deadline` 必须平台封顶,不得应用可控无界。** `run_app_tool(deadline: Duration)` 现由调用方传;T2 若让 `manifest.tools[].timeoutMs` 由应用声明,坏/恶意 spec 就能设巨长 deadline **挂住整个 `ai_chat` 回合**。必须是**平台常量或 `min(应用请求, 平台上限)`**(同 MCP 走平台常量 `MCP_CONFIRM_TIMEOUT` 的先例)。
+3. **【T2】输入 D3 闸 + Untrusted 框定在进沙箱前,输出 schema 校验在喂回模型前 —— 两处都在可信代码,绝不在沙箱里。** 这是第67轮判路线 C 成立的**全部依据**:协议核只搬运 `Value`、不校验形状(骨架,合理)。T2 接线时,进隔离上下文的数据须**已过 D3(静态 QUERYABLE ∩ 运行时集 ∩ tool.reads)+ 框定**(`ef3e900` 已交付「外部文本进模型必框定」的前提);沙箱回传结果须由**可信编排层(前端 orchestrator 或 Rust)按 output schema 校验**,在 `run_app_tool` 把它 `Ok(v)` 喂回模型**之前**。沙箱是不可信计算 ⇒ 校验点必在其外。**T2 方案须点名这两处强制归哪一刀拥有 —— 它决定「app-tool 不旁路 profile/D3」到底成不成立。**
+4. **【T3】迁 `jobseek_market_value` 不得丢 D3 双点闸。** 它现走 `invoke_raw` 的 D3 双点闸(第60轮验过:skills 不可读时工具**既不上架、调用也硬拒**);迁成 app-tool 后,**同等的 D3 强制必须由新路径接住**。验收:真模块导出 + 双向阳性对照(skills 可读→工具在架且返数;skills 不可读→工具不上架 ∧ 即便强调也被硬拒)。
+
 ---
 
 ## 8. 未决问题 —— 评审第67轮已裁(记录在案)

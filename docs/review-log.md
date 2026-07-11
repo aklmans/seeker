@@ -1995,3 +1995,13 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **call_id 全局唯一防串槽**:`APP_TOOL_SEQ`(process 级 `AtomicU64`)发号 ⇒ 不同调用的 oneshot 不会串槽(同撤销 token 的 `UNDO_TOKEN_SEQ` 先例)。`ai_app_tool_result` 命令是前端**唯一**回程入口,`ok/output/error` 三元组转 `AppToolOutcome::Ok|Err`。`run_app_tool`(AppHandle 包装,`#[allow(dead_code)]` 待 T2)emit `ai_app_tool` 事件(`AppToolEv` camelCase)。
 - **验**:6 个 tokio/std 测试覆盖**四失败面 + 正常返回 + 双重 resolve**,各带正向控制组;**两处变异已证红**——静默忽略错配(仿 MCP)→ 错配测试红(ai.rs:1179);超时误归 `Closed` → 超时测试红(ai.rs:1131)。130/0(124→130);clippy 0;fmt 净;tsc 51(基线);**真机 WKWebView 冷启 0 panic + 进程存活**(验 `ai_app_tool_result` 注册 + `PendingAppTools` state 装载)。
 - **诚实边界**:`run_app_tool` 需 AppHandle emit 不可纯单测(同 show_widget/invoke 边界)⇒ 纯协议核(await/resolve/命令)单测两面夹 + 真机 boot 验注册。**未接线 = T2**:工具循环里把 app-tool 声明拼进工具表、命中时调 run_app_tool、结果回喂——本刀不做。**下一步(评审第69轮次序)**:T1 隔离上下文(独立最小 srcDoc、无 `window.seeker.action` 回父通道)→ T2 接线 + 迁 `jobseek_market_value` → 面试反馈(先解 `ivScore` schema)。
+
+### ★ 第70轮独立复核 = T0 协议核 🏁 通过(无 [应改])+ 1 [建议](措辞,已落)+ 三前置约束挂账
+**评审逐帧走了生命周期,专查 pending-map 泄漏与 callId 串槽 —— 骨架刀的价值在把地基打正,复核重点放在「给 T1/T2 的前置约束」。**
+- **结构性声称逐条坐实(评审读实际行号)**:错配/重入 → 响亮 `Err`(`resolve_app_tool` `.remove().ok_or_else` :482,`ai_app_tool_result` 直接返回 :540)· 四失败面各有**模型可见非空出口**(:519–521)· **pending-map 不泄漏**(`run_app_tool` await 后**无条件** `remove` :515 ⇒ 超时/取消/掉线都清挂起项;正常 resolve 已在 :481 remove)· callId 全局唯一(`APP_TOOL_SEQ` 进程级 `AtomicU64` :454,同 `UNDO_TOKEN_SEQ` 纪律)· oneshot 无丢唤醒(值缓冲在通道,await 立即取到)· emit 失败降级为超时(`let _ = app.emit` :505,无监听→走 deadline→「未执行任何操作」不挂死)· 变异+阳性对照到位(`rx.try_recv()` 断言判据能亮 :1178)。
+- **[建议](措辞,不涉逻辑)· 已落**:`:483` 注释「理论到不了这;send 失败无害」只描述竞态那一支、把 `:483` 说成近乎不可达。**我独立逐帧核实属实**:正常在途路径前端 resolve 在 :481 取到 tx 时 `run_app_tool` 仍阻塞在 :514 await(`rx` 存活)⇒ `:483` send **成功、就是结果的投递机制**、**承重**;竞态(超时/取消已在 await 返回、:515 未及 remove)才 rx 已 drop、send 失败无害。改注释两分支说清「正常在途=投递机制 / 竞态=无害丢弃」。
+- **★三前置约束挂账(评审:骨架刀最该输出的东西)· 记入方案 §7 后**:
+  - **【T1】**srcDoc 只有 request→response,`sandbox="allow-scripts"` 不带 `allow-same-origin` + CSP `default-src 'none'` + **父窗口零入站接口**(除那条回传结果 postMessage);绝不复用 `buildSrcDoc`(其 `BRIDGE` 有 `window.seeker.action` 回父通道)。
+  - **【T2】**①`deadline` **平台封顶**(平台常量或 `min(应用请求, 平台上限)`)—— 别让应用声明的 `timeoutMs` 挂住整个 `ai_chat` 回合(同 MCP 走 `MCP_CONFIRM_TIMEOUT` 先例);②**输入 D3 闸+框定在进沙箱前、输出 schema 校验在喂回模型前,两处都在可信代码**(沙箱是不可信计算 ⇒ 校验点必在其外)—— 这是第67轮判路线 C 成立的全部依据,T2 方案须点名这两处强制归哪一刀拥有。
+  - **【T3】**迁 `jobseek_market_value` **不得丢 D3 双点闸**(第60轮验过:skills 不可读时工具既不上架、调用也硬拒);迁成 app-tool 后同等 D3 强制须由新路径接住,双向阳性对照验收。
+- **验**:注释改动纯措辞、cargo fmt 净 + 130/0(注释级不影响编译)。**下一步认可**:T1 → T2(接线+迁 market_value+删 jobseek.rs)→ 面试反馈(ivScore schema 前置)。
