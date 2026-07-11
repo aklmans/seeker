@@ -66,3 +66,40 @@ export function normIvFeedback(wire) {
     improve: coerceList(w.improve, 5),
   };
 }
+
+/**
+ * 从模型的自由文本里抽出 JSON 反馈对象(wire 形);无 `{` 或 parse 失败 → `null`。
+ * 真化时:模型被要求只输出 JSON,但可能裹 ```json 或前后带散文 —— 抽**第一个平衡的 `{…}` 块**(串内的花括号
+ * 不计数),容错但**不臆造**。返回 null / 非法 ⇒ 调用方走 schema 硬闸的诚实降级(**绝不喂 normIvFeedback 造 0 分**)。
+ * @param {any} text @returns {any|null}
+ */
+export function parseFeedbackWire(text) {
+  const s = String(text == null ? '' : text);
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') {
+      inStr = true;
+    } else if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(s.slice(start, i + 1));
+        } catch (_e) {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}

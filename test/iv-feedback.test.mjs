@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normIvFeedback, IV_FEEDBACK_SCHEMA, IV_DIMS } from '../web/apps/jobseek/logic/iv-feedback.js';
+import { normIvFeedback, IV_FEEDBACK_SCHEMA, IV_DIMS, parseFeedbackWire } from '../web/apps/jobseek/logic/iv-feedback.js';
 import { projectToSchema } from '../web/platform/capability/app-tools/validate.js';
 
 test('归一:各维钳 [0,10] 保留 1 位', () => {
@@ -56,6 +56,33 @@ test('★IV_FEEDBACK_SCHEMA 校验 wire 形(真化 prep;projectToSchema)', () =>
   assert.equal(projectToSchema({ depth: 6, quant: 8 }, IV_FEEDBACK_SCHEMA).ok, false, '缺 structure ⇒ 拒');
   // 维非数 ⇒ 拒
   assert.equal(projectToSchema({ structure: 'x', depth: 6, quant: 8 }, IV_FEEDBACK_SCHEMA).ok, false, 'structure 非 number ⇒ 拒');
+});
+
+test('parseFeedbackWire:干净 JSON / 裹散文 / ```json / 串内花括号 / 无 JSON / 畸形', () => {
+  assert.deepEqual(parseFeedbackWire('{"structure":7,"depth":8,"quant":6}'), { structure: 7, depth: 8, quant: 6 });
+  // 前后带散文(模型爱解释)
+  assert.deepEqual(parseFeedbackWire('这是评分:\n{"structure":7,"good":["清晰"]}\n希望有帮助'), { structure: 7, good: ['清晰'] });
+  // ```json 代码块
+  assert.deepEqual(parseFeedbackWire('```json\n{"depth":9}\n```'), { depth: 9 });
+  // 串内的 } 不该提前收尾
+  assert.deepEqual(parseFeedbackWire('{"good":["用 {x} 表示"],"depth":5}'), { good: ['用 {x} 表示'], depth: 5 });
+  // 嵌套对象
+  assert.deepEqual(parseFeedbackWire('{"a":{"b":1},"c":2}'), { a: { b: 1 }, c: 2 });
+  // 无 JSON / 畸形 → null(诚实降级,不臆造)
+  assert.equal(parseFeedbackWire('模型只说了一堆废话,没有 JSON'), null);
+  assert.equal(parseFeedbackWire('{"structure":7,'), null, '畸形 JSON → null');
+  assert.equal(parseFeedbackWire(''), null);
+  assert.equal(parseFeedbackWire(null), null);
+});
+
+test('★parse→schema→norm 全链:合法产 canonical、畸形/漏维在 schema 硬闸被拦', () => {
+  // 合法 wire → projectToSchema.ok → normIvFeedback canonical
+  const good = parseFeedbackWire('{"structure":8,"depth":7,"quant":9,"good":["a"],"improve":["b"]}');
+  assert.equal(projectToSchema(good, IV_FEEDBACK_SCHEMA).ok, true);
+  assert.equal(normIvFeedback(good).scores.overall, 8, 'round((8+7+9)/3)=8');
+  // 漏维(AI 只给两维)→ schema 拒 ⇒ 调用方诚实降级、不喂 normIvFeedback
+  const partial = parseFeedbackWire('{"structure":8,"depth":7}');
+  assert.equal(projectToSchema(partial, IV_FEEDBACK_SCHEMA).ok, false, '缺 quant ⇒ schema 硬闸拦');
 });
 
 test('★iv-feedback.js 零 import(自包含源码守卫)', () => {
