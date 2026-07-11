@@ -3,6 +3,7 @@
 import { PROFILE } from '../../../platform/shell/profile.js'; // ★批8:PROFILE 改 import(profile.js 不上 window 桥、隐私最小暴露)。红线逐字保留:PROFILE 仅在函数体渲染简历预览联系方式、persistResume 绝不入 resumes 集合(见文件尾)。
 import { JOBS } from '../data.js';
 import { IV_BANK, IV_CATLABEL, IV_CATS, IV_RECORDS, MOD_ICON, RESUME, RESUME_TAILORED, aiRun, genQuestionsFor, genTailoredResume, ivScore, resMod, resSkills, resSummary } from './intake-action.js';
+import { normIvFeedback } from './iv-feedback.js';
 import { ivState, renderInterview } from './interview.js';
 import { openResumeModal } from './resume-modals.js';
 import { clearAllTailoredResumes, persistResume, removeResume } from './persistence.js';
@@ -389,8 +390,10 @@ function ivRoundNext(){
   r.idx++; ivState.q=r.qs[r.idx]; renderInterview();
 }
 function ivFinishRound(){
-  const r=ivState.round; const avg=k=>r.recs.reduce((a,x)=>a+x.scores[k],0)/r.recs.length;
-  const scores={structure:+avg('structure').toFixed(1), depth:+avg('depth').toFixed(1), quant:+avg('quant').toFixed(1), overall:+avg('overall').toFixed(1)};
+  const r=ivState.round; const dimAvg=k=>r.recs.reduce((a,x)=>a+x.scores[k],0)/r.recs.length;
+  // ★[建议]④(第75轮):整轮聚合也走 normIvFeedback —— 整轮 overall = 整轮 3 维之均值(不变式两级都成立、总评卡内部一致),
+  //   复用单一归一化(删手写 .toFixed)、fail-safe。per-q 分已是 canonical,此处只对 3 维均值重跑归一化。
+  const {scores}=normIvFeedback({structure:dimAvg('structure'), depth:dimAvg('depth'), quant:dimAvg('quant')});
   const allTags=[...new Set(r.recs.flatMap(x=>x.tags||[]))];
   const dimNames={structure:tt('结构','Structure'),depth:tt('深度','Depth'),quant:tt('量化','Quant')};
   const weakest=['structure','depth','quant'].sort((a,b)=>scores[a]-scores[b])[0];
