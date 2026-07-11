@@ -22,6 +22,9 @@ export function computeMarketValue(_input, rows) {
     var r = recs[i] || {};
     var name = typeof r.name === 'string' ? r.name : '';
     if (!name) continue;
+    // ★入参解析**有意**不同于已删的旧 Rust(第74轮裁决①):非整数 lvl(如 3.9)这里 floor→3;
+    //   旧 Rust `as_i64().unwrap_or(1)` 会让它塌成 1 —— 那是 `as_i64` 对 float 返 None 的 **artifact,非设计**。
+    //   jobseek.rs 已删,没有「等价对象」可复刻;floor 更合理(且 skills.lvl 恒整数 ⇒ 实际不可达)。**勿把它「对齐」向已删代码。**
     var lvl = Number(r.lvl);
     if (!(lvl >= 1)) lvl = 1;
     if (lvl > 5) lvl = 5;

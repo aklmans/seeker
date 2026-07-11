@@ -403,8 +403,9 @@ impl Default for AiReadable {
 }
 
 /// 读当前可读集(state 缺失,如单测无 app → 回默认全 `QUERYABLE`)。
-pub(crate) fn readable_set(cx: &CallCx<'_>) -> HashSet<String> {
-    // ★AI-Native P0:jobseek.rs 的 D3 闸复用
+/// 仅 capability.rs 内用(DataQuery 的 available/invoke + tool_schemas)—— 当年为 jobseek.rs 放宽的 `pub(crate)`
+/// 随 T3 迁移(jobseek.rs 已删)收回 private。
+fn readable_set(cx: &CallCx<'_>) -> HashSet<String> {
     cx.app
         .try_state::<AiReadable>()
         .map(|s| s.0.lock().unwrap().clone())
@@ -517,8 +518,8 @@ impl Capability for DataQuery {
 const WIDGET_MAX_BYTES: usize = 64 * 1024;
 static WIDGET_SEQ: AtomicU64 = AtomicU64::new(1);
 
-pub(crate) fn gen_widget_id() -> String {
-    // ★AI-Native P0:jobseek.rs 的 Output::Widget 复用
+/// 仅 capability.rs 内用(ShowWidget)—— 当年为 jobseek.rs 放宽的 `pub(crate)` 随 T3 迁移收回 private。
+fn gen_widget_id() -> String {
     format!("w_{}", WIDGET_SEQ.fetch_add(1, Ordering::Relaxed))
 }
 
