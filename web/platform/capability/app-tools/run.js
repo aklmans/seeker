@@ -24,9 +24,11 @@ import { runComputeSandbox } from './sandbox.js';
  *   result: (callId:string, ok:boolean, output:any, error:string|null) => Promise<any>,
  *   onWidget?: (w:any) => void,
  * }} rt
+ * @param {(spec:any) => Promise<{ok:true,output:any}|{ok:false,error:string}>} [runSandbox]
+ *   隔离沙箱执行器;**默认真沙箱**(需浏览器 iframe)。测试注入桩以在 node 覆盖 fail-closed 编排(浏览器隔离性仍走 preview)。
  * @returns {Promise<void>}
  */
-export async function runAppTool(ev, rt) {
+export async function runAppTool(ev, rt, runSandbox = runComputeSandbox) {
   const { callId, name, input } = ev || /** @type {any} */ ({});
   try {
     const S = /** @type {any} */ (window).SeekerShell;
@@ -50,7 +52,7 @@ export async function runAppTool(ev, rt) {
     }
 
     // ★隔离 compute + 投影(sandbox 内建 projectToSchema)。compute 源码注入三墙沙箱(无 rt/profile/网络)。
-    const out = await runComputeSandbox({
+    const out = await runSandbox({
       computeSource: String(tool.compute),
       input,
       rows,
