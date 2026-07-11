@@ -83,7 +83,7 @@ export function openNewJob(editId){
       </div>
       <div class="msec"><p class="seclabel">— FULL JD</p><div class="field" style="margin-top:10px;"><textarea class="textarea" id="jdInput" placeholder="${tt('把 JD 完整粘贴在这里…','Paste the full JD here…')}">${editing?String(editing.jd||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}</textarea></div>
         <button class="btn" id="analyzeBtn">${tt('重新解析','Re-parse')}</button><span class="mono" style="font-size:11px;color:var(--ink-mute);margin-left:8px;">${tt('粘贴 JD 自动抽取技能','Paste JD to auto-extract skills')}</span><div id="analyzeResult" style="margin-top:14px;"></div></div>
-      <div class="msec" style="border-bottom:none;"><p class="seclabel">— SCORING</p><div style="margin-top:8px;">
+      <div class="msec" style="border-bottom:none;"><p class="seclabel">— SELF-ASSESSMENT · 我的评估</p><p style="font-size:11px;color:var(--ink-3);margin:2px 0 0;">${tt('你对这个岗位的主观打分(与智能匹配「基于你的技能」的客观分不同)。','Your own subjective ratings (distinct from Smart Match\'s skills-based objective score).')}</p><div style="margin-top:8px;">
         ${scoreInput('interest',tt('兴趣','Interest'),tt('这个岗位让我激动吗?','Does this job excite me?'))}
         ${scoreInput('growth',tt('成长','Growth'),tt('能让我变强吗?','Will it make me stronger?'))}
         ${scoreInput('match',tt('匹配','Match'),tt('我现在的能力对得上吗?','Do my skills fit now?'))}

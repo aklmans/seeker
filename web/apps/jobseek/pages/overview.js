@@ -24,7 +24,7 @@ export function renderOverview(){
     <div class="stat-grid">
       <div class="stat"><div class="num">${JOBS.length}<small> / ${setState.goal||20}</small></div><div class="lab">JOBS COLLECTED</div><div class="sub">${tt('已收集岗位','Jobs collected')}</div></div>
       <div class="stat"><div class="num">${avgI}<small> / 10</small></div><div class="lab">AVG INTEREST</div><div class="sub">${tt('平均兴趣分','Avg interest')}</div></div>
-      <div class="stat"><div class="num">${avgM}<small> / 10</small></div><div class="lab">AVG MATCH</div><div class="sub">${tt('平均匹配分','Avg match')}</div></div>
+      <div class="stat"><div class="num">${avgM}<small> / 10</small></div><div class="lab">AVG MATCH</div><div class="sub">${tt('平均自评匹配','My avg match')}</div></div>
       <div class="stat"><div class="num">${distinctNeedSkills()}</div><div class="lab">HIGH-FREQ SKILLS</div><div class="sub">${tt('高频技能','High-freq skills')}</div></div>
     </div></div>`;
   const gaps=topGapsReal(3).map(g=>`
