@@ -25,6 +25,7 @@ pub fn run() {
         .manage(data::DocTrash::default())
         .manage(mcp::McpManager::default())
         .manage(mcp::PendingConfirms::default())
+        .manage(ai::PendingAppTools::default())
         .setup(|app| {
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
             let conn = data::open(app.handle())?;
@@ -50,6 +51,7 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_extract,
             ai::ai_generate,
+            ai::ai_app_tool_result,
             data::db_list,
             data::db_get,
             data::db_upsert,

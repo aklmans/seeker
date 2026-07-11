@@ -151,6 +151,9 @@ export function createDesktopRuntime() {
           instruction: req.instruction,
           untrusted: req.untrusted ?? null,
         })),
+      // ★块 T0 · app-tool 协议:前端在隔离上下文算完 compute 后,把结果回传 Rust(错配/重入的 callId 后端响亮拒绝)。
+      //   T0 只落协议(超时/取消/重入/错配四失败面);接入工具循环 = T2。
+      appToolResult: (callId, ok, output, error) => invoke('ai_app_tool_result', { callId, ok: !!ok, output: output ?? null, error: error ?? null }),
       // 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本;无工具/历史/系统提示。供 AI 智能录入。
       extract: (req) => invoke('ai_extract', { prompt: req.prompt, imageDataUrl: req.imageDataUrl ?? null }),
       getConfig: () => invoke('ai_config_get'),

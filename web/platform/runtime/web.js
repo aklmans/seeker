@@ -155,6 +155,7 @@ export function createWebRuntime() {
       },
       complete: () => notImpl('rt.ai.complete', 'web'),
       generate: () => { throw new NotImplementedError('rt.ai.generate', 'web'); }, // 生成是桌面能力(同 stream)
+      appToolResult: () => notImpl('rt.ai.appToolResult', 'web'), // app-tool 协议是桌面能力(块 T0)
       extract: () => notImpl('rt.ai.extract', 'web'),
       getConfig: () => notImpl('rt.ai.getConfig', 'web'),
       setConfig: () => notImpl('rt.ai.setConfig', 'web'),

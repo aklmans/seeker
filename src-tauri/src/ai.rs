@@ -113,6 +113,15 @@ struct DoneEv {
     session_id: String,
     stop_reason: String,
 }
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppToolEv {
+    session_id: String,
+    call_id: String,
+    name: String,
+    input: Value,
+}
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ErrEv {
@@ -412,6 +421,123 @@ pub async fn ai_generate(
         }
     }
     Ok(())
+}
+
+// ── app-tool 协议骨架(块 T0 · app-tool 契约的第一期)────────────────────────
+// ★与 MCP 确认流程同构(emit 事件 → 挂起等前端命令 → 恢复),但**错配 callId 响亮拒绝**
+//   (MCP 的 mcp_confirm_resolve 是静默 `if let Some`;这里要 fail-loud —— 前置③「失败必须出声」)。
+// 结构性无工具的 `ai_generate` 是块(i) 的手工纪律;app-tool 契约(T0→T4)才把「隔离执行 + 平台校验 I/O」
+// 变成结构。T0 只落**协议**(超时 / 取消 / 重入 / 错配 callId 四条失败面),不接工具循环、无真应用工具。
+
+/// 一次 app-tool 调用的结果:前端在隔离上下文算完 compute 后回传。
+#[derive(Debug)]
+pub enum AppToolOutcome {
+    Ok(Value),
+    Err(String),
+}
+
+/// 协议的失败面(供将来工具循环映射成模型可见的工具错误)。
+#[derive(Debug, PartialEq)]
+enum AppToolFail {
+    Cancelled, // 用户取消(共享 session token)
+    Timeout,   // 超 deadline 未回结果 —— **不得挂死循环**
+    Closed,    // 前端在回结果前掉线(oneshot sender 被 drop)
+}
+
+/// 挂起中的 app-tool 调用(callId → 结果发送端)。与 `PendingConfirms` 同构。
+#[derive(Default)]
+pub struct PendingAppTools(
+    pub Mutex<HashMap<String, tokio::sync::oneshot::Sender<AppToolOutcome>>>,
+);
+
+/// **进程级** app-tool callId 序号(全局唯一,同 UNDO_TOKEN_SEQ 纪律)。
+static APP_TOOL_SEQ: AtomicU64 = AtomicU64::new(1);
+
+/// 等一次 app-tool 的结果:取消 / 超时 / 前端掉线各有出口。**纯 async、不碰 AppHandle ⇒ 可单测**。
+/// 三条失败面(Cancelled/Timeout/Closed)与正常 resolve 都在这里分野。
+async fn await_app_tool_outcome(
+    rx: tokio::sync::oneshot::Receiver<AppToolOutcome>,
+    token: &CancellationToken,
+    deadline: Duration,
+) -> Result<AppToolOutcome, AppToolFail> {
+    tokio::select! {
+        _ = token.cancelled() => Err(AppToolFail::Cancelled),
+        r = rx => r.map_err(|_| AppToolFail::Closed),
+        _ = tokio::time::sleep(deadline) => Err(AppToolFail::Timeout),
+    }
+}
+
+/// 把一次结果投递给挂起的 callId。**未知 / 已完成的 callId ⇒ 响亮 `Err`**(错配 / 重入 fail-loud;
+/// 比 MCP 的静默忽略更严)。纯函数、不碰 AppHandle ⇒ 可单测。
+fn resolve_app_tool(
+    pending: &PendingAppTools,
+    call_id: &str,
+    outcome: AppToolOutcome,
+) -> Result<(), String> {
+    let tx = pending
+        .0
+        .lock()
+        .unwrap()
+        .remove(call_id)
+        .ok_or_else(|| format!("未知或已完成的 app-tool 调用: {call_id}"))?;
+    let _ = tx.send(outcome); // rx 已走(超时/取消后 run_app_tool 已 remove)⇒ 理论到不了这;send 失败无害
+    Ok(())
+}
+
+/// 触发一次 app-tool:发 `ai_app_tool` 事件、挂起、等结果(超时/取消/掉线各有出口)。
+/// callId 全局唯一;失败一律返回**模型可见的工具错误**,绝不挂死循环、绝不返回空的看似合理结果。
+#[allow(dead_code)] // T0 只落协议;接入工具循环 = T2(manifest.tools)
+async fn run_app_tool(
+    app: &AppHandle,
+    session_id: &str,
+    pending: &PendingAppTools,
+    name: &str,
+    input: Value,
+    token: &CancellationToken,
+    deadline: Duration,
+) -> Result<Value, String> {
+    let call_id = format!(
+        "{session_id}-tool-{}",
+        APP_TOOL_SEQ.fetch_add(1, Ordering::Relaxed)
+    );
+    let (tx, rx) = tokio::sync::oneshot::channel::<AppToolOutcome>();
+    pending.0.lock().unwrap().insert(call_id.clone(), tx);
+    let _ = app.emit(
+        "ai_app_tool",
+        AppToolEv {
+            session_id: session_id.to_string(),
+            call_id: call_id.clone(),
+            name: name.to_string(),
+            input,
+        },
+    );
+    let outcome = await_app_tool_outcome(rx, token, deadline).await;
+    pending.0.lock().unwrap().remove(&call_id); // 清挂起项(超时/取消时 map 里还挂着;正常 resolve 已 remove)
+    match outcome {
+        Ok(AppToolOutcome::Ok(v)) => Ok(v),
+        Ok(AppToolOutcome::Err(e)) => Err(format!("app-tool「{name}」执行失败:{e}")),
+        Err(AppToolFail::Cancelled) => Err("已取消".into()),
+        Err(AppToolFail::Timeout) => Err(format!("app-tool「{name}」超时(未执行任何操作)")),
+        Err(AppToolFail::Closed) => Err("app-tool 前端在返回结果前掉线".into()),
+    }
+}
+
+/// 前端在隔离上下文算完 compute 后,把结果回传 Rust(块 T0)。
+/// **错配 / 重入的 callId ⇒ 响亮 `Err`**(见 `resolve_app_tool`)。
+#[tauri::command]
+pub fn ai_app_tool_result(
+    pending: State<'_, PendingAppTools>,
+    call_id: String,
+    ok: bool,
+    output: Option<Value>,
+    error: Option<String>,
+) -> Result<(), String> {
+    let outcome = if ok {
+        AppToolOutcome::Ok(output.unwrap_or(Value::Null))
+    } else {
+        AppToolOutcome::Err(error.unwrap_or_else(|| "(未提供错误信息)".into()))
+    };
+    resolve_app_tool(&pending, &call_id, outcome)
 }
 
 /// 取消指定会话的流式生成。
@@ -974,6 +1100,116 @@ fn http_err_msg(code: u16, body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ═══ app-tool 协议(块 T0)· 四条失败面各带阳性对照 ═══════════════════
+
+    use std::time::Duration as Dur;
+    use tokio::sync::oneshot;
+
+    /// 正常:前端回结果 → 拿到 Ok。**这是所有失败面测试的阳性对照(判据能亮)**。
+    #[tokio::test]
+    async fn app_tool_outcome_resolves_when_frontend_sends() {
+        let (tx, rx) = oneshot::channel();
+        let token = CancellationToken::new();
+        tx.send(AppToolOutcome::Ok(json!({ "echo": 42 }))).unwrap();
+        let r = await_app_tool_outcome(rx, &token, Dur::from_secs(5)).await;
+        match r {
+            Ok(AppToolOutcome::Ok(v)) => assert_eq!(v, json!({ "echo": 42 })),
+            other => panic!(
+                "应为 Ok,却是 {other:?}",
+                other = matches!(other, Ok(AppToolOutcome::Ok(_)))
+            ),
+        }
+    }
+
+    /// ★失败面①超时:deadline 内无结果 → Timeout(**不挂死**)。
+    #[tokio::test]
+    async fn app_tool_outcome_times_out_when_no_result() {
+        let (_tx, rx) = oneshot::channel::<AppToolOutcome>(); // 持有 _tx ⇒ 不 Closed;就是不发
+        let token = CancellationToken::new();
+        let r = await_app_tool_outcome(rx, &token, Dur::from_millis(20)).await;
+        assert_eq!(
+            r.err(),
+            Some(AppToolFail::Timeout),
+            "无结果且未取消 ⇒ 必须超时,不能永久挂起"
+        );
+    }
+
+    /// ★失败面②取消:已取消的 token → Cancelled,**且优先于超时**(deadline 给足)。
+    #[tokio::test]
+    async fn app_tool_outcome_cancels_before_timeout() {
+        let (_tx, rx) = oneshot::channel::<AppToolOutcome>();
+        let token = CancellationToken::new();
+        token.cancel();
+        let r = await_app_tool_outcome(rx, &token, Dur::from_secs(30)).await;
+        assert_eq!(
+            r.err(),
+            Some(AppToolFail::Cancelled),
+            "已取消 ⇒ 立刻 Cancelled,不等 30s 超时"
+        );
+    }
+
+    /// ★失败面③前端掉线:sender 被 drop(前端在回结果前崩)→ Closed(**不静默成功、不挂死**)。
+    #[tokio::test]
+    async fn app_tool_outcome_closed_when_sender_dropped() {
+        let (tx, rx) = oneshot::channel::<AppToolOutcome>();
+        let token = CancellationToken::new();
+        drop(tx);
+        let r = await_app_tool_outcome(rx, &token, Dur::from_secs(30)).await;
+        assert_eq!(
+            r.err(),
+            Some(AppToolFail::Closed),
+            "sender 掉线 ⇒ Closed,绝不静默当成功"
+        );
+    }
+
+    /// ★失败面④错配 / 重入 callId:`resolve_app_tool` 对未知 / 已完成的 callId **响亮 Err**
+    /// (比 MCP 的静默忽略更严;前置③「失败必须出声」)。含正常 resolve 的阳性对照。
+    #[test]
+    fn resolve_app_tool_errors_on_unknown_and_double_resolve() {
+        let pending = PendingAppTools::default();
+        let (tx, mut rx) = oneshot::channel::<AppToolOutcome>();
+        pending.0.lock().unwrap().insert("c1".into(), tx);
+
+        // 阳性对照:已注册的 callId → Ok,且 rx 收到值(判据能亮)
+        assert!(resolve_app_tool(&pending, "c1", AppToolOutcome::Ok(json!("hi"))).is_ok());
+        match rx.try_recv() {
+            Ok(AppToolOutcome::Ok(v)) => assert_eq!(v, json!("hi")),
+            other => panic!(
+                "rx 应收到 Ok(hi):{}",
+                matches!(other, Ok(AppToolOutcome::Ok(_)))
+            ),
+        }
+
+        // 错配:从未注册的 callId → 响亮 Err
+        let e = resolve_app_tool(&pending, "nope", AppToolOutcome::Ok(Value::Null)).unwrap_err();
+        assert!(e.contains("未知或已完成"), "错配 callId 必须响亮拒绝:{e}");
+
+        // 重入:同一 callId 二次 resolve(首次已 remove)→ 响亮 Err,不双重投递
+        let e2 = resolve_app_tool(&pending, "c1", AppToolOutcome::Ok(Value::Null)).unwrap_err();
+        assert!(
+            e2.contains("未知或已完成"),
+            "重入的 callId 必须响亮拒绝:{e2}"
+        );
+    }
+
+    /// 命令层同款:`ai_app_tool_result` 的 ok/error 分派 + 错配响亮(经 resolve_app_tool)。
+    #[test]
+    fn app_tool_result_dispatches_ok_and_err_payloads() {
+        let pending = PendingAppTools::default();
+        let (tx_ok, mut rx_ok) = oneshot::channel::<AppToolOutcome>();
+        let (tx_err, mut rx_err) = oneshot::channel::<AppToolOutcome>();
+        pending.0.lock().unwrap().insert("ok".into(), tx_ok);
+        pending.0.lock().unwrap().insert("er".into(), tx_err);
+
+        resolve_app_tool(&pending, "ok", AppToolOutcome::Ok(json!({ "a": 1 }))).unwrap();
+        assert!(matches!(rx_ok.try_recv(), Ok(AppToolOutcome::Ok(_))));
+        resolve_app_tool(&pending, "er", AppToolOutcome::Err("boom".into())).unwrap();
+        match rx_err.try_recv() {
+            Ok(AppToolOutcome::Err(e)) => assert_eq!(e, "boom"),
+            _ => panic!("应收到 Err(boom)"),
+        }
+    }
 
     #[test]
     fn generate_user_frames_untrusted_but_leaves_bare_instruction_alone() {

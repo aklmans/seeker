@@ -178,6 +178,12 @@ export interface AiApi {
    * 事件同 `stream`(onToken/onDone/onError),但**无 onTool/onWidget**——生成模式结构性无工具。
    */
   generate(req: AiGenerateRequest, handlers?: AiStreamHandlers): AiStream;
+  /**
+   * **app-tool 结果回传**(块 T0):前端在隔离上下文算完 compute 后,把结果交回 Rust 的挂起调用。
+   * `ok=false` 时 `error` 说明因由。**未知 / 已完成(错配 / 重入)的 `callId` ⇒ 后端响亮 reject**
+   * (比 MCP 的静默忽略更严;失败必须出声)。桌面能力(web 端 notImpl)。
+   */
+  appToolResult(callId: string, ok: boolean, output?: unknown, error?: string | null): Promise<void>;
   /** 一次性抽取(块3):prompt(+可选图片 data-URL)→ 最终文本。无工具/历史/系统提示;供 AI 智能录入从截图/文本抽取岗位。 */
   extract(req: { prompt: string; imageDataUrl?: string | null }): Promise<string>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
