@@ -2171,3 +2171,17 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议] 已落 `e0d0418`**:独立核实 normSkill 确是 S2 承重依赖后抽 `skill-model.js`(零 import @ts-check)= normSkill + skillRunnable(可运行判据);**指出与 ivScore/match 差异**:Skill 用户自撰(可信非 AI 产出)⇒ 不需 projectToSchema 式「防 AI 畸形」硬闸、只需归一化+predicate。入库测 npm 60/0(+8,含 fail-safe 全坏输入 + 零-import 源守卫)、**变异证红**(去 fail-safe → 2 测试转红)、真机 boot 0 panic。
 - **★★S2 = 红线承重刀,评审重点盯**:①**逐条验红线继承别只声明**(skill.prompt 走 ai_chat 后:query_data D3 闸仍在可复现/profile 不可达/破坏性 guardrail/设置不可经对话改,真模块导出+双向阳性对照)②信任=可信侧本地自撰、碰导入落第79轮 [建议]1(导入=知情审阅)③platformSkills() 契约必审、不并 appCommands(第79轮拍板③)④normSkill 已测(S2 承重门就位)。
 - **下一步 = S2**;**建议先与用户对齐是否继续**(S2 触及红线继承最重)。
+
+### Skills S2 · Skill 可执行(S2a runSkill `d0c17fc`)+ 命令面板契约(S2b `fa360fd`)· ⏳ 待审
+承第80轮 + 用户拍板起 S2。红线承重刀。拆两刀:S2a 运行核心、S2b 命令面板集成。
+- **★★红线继承 = 结构性(核心论断,请评审核)**:`runSkill(skill) = agentCollapse() + agentSend(skill.prompt)`。**agentSend 是用户在输入框打字走的完全相同的路径**(`<` 转义显示 + frameQuery 框定 → streamReply → ai_chat)。⇒ **runSkill 不新增任何触达 ai_chat 的路径、不碰 rt.db/profile/capability.invoke,只发一段文本** ⇒ **Skill 执行 ⊆ 用户打那句 prompt 能做的**。故 ai_chat 的四红线(D3 闸 / profile 结构不可达 / 破坏性 guardrail / 设置不可经对话改)**由「复用已测 agentSend→ai_chat 路径」继承**,非新面。**「不给新权力」是结构结论,非声明。**
+  - **诚实边界**:web `aiChatAvailable=false` ⇒ AI 回复走 mock;**真 ai_chat 四红线(D3/profile/guardrail)已在 cargo 测**(is_queryable/sanitize_readable/invoke_raw),runSkill 复用该路径故继承、但**端到端真 gate 验需桌面+BYO 模型**(同既往真化刀)。**双向阳性对照的对象是「runSkill 是否真走 agentSend」(preview 已证:用户气泡 + centered),而非重测 ai_chat 的 gate(那已有 Rust 测)。**
+- **S2a(`d0c17fc`)**:copilot-chrome `runSkill` —— skillRunnable 守卫(草稿不运行)+ agentCollapse(聚焦全屏对话)+ agentSend。管理面「运行」按钮(条件 skillRunnable ⇒ 草稿不显示)。信任=可信侧本地自撰、不 untrusted。**preview E2E**:①门控(可运行有钮、草稿无)②点运行 → split→centered + skill.prompt 作 `cop-msg user` 气泡入 #agentMsgs(经 agentSend、非另造)③**转义**:prompt 含 `<img onerror>` → liveImg=0 显文本(agentSend `<` 转义)④草稿调 runSkill no-op。
+- **S2b(`fa360fd`)**:
+  - **skill-store.js**(新,@ts-check 数据层):platform_skills 内存缓存(命令面板 cmdFilterList **同步** ⇒ 须同步源)+ listSkills(同步)/hydrateSkills(boot rt-ready + 管理面每渲)/saveSkill/removeSkill(rt.db + 缓存同步)。**不 import copilot-chrome 避环**(命令项构建在 chrome 侧读 listSkills)。
+  - **platformSkills() 契约**(copilot-chrome):仅可运行 Skill 以 `⚡` 标记入面板、run→runSkill。**★不并 appCommands**(拍板③):cmdFilterList = `appCommands().concat(platformSkills())` 分源合并。
+  - **★§4-4 红线补漏(我主动抓)**:cmdRender 把 cmd/label/desc **裸插 innerHTML** —— app 命令硬编码安全,但 **Skill name/desc 是用户数据** ⇒ 渲染 sink 处 cEsc(防御所有命令项、app 文案 no-op 零回归)。**preview 证**:XSS 名在面板 liveImg=0 显 `&lt;img...&gt;`。
+  - **skills.js 重构**:数据层直连 rt.db → skill-store(CRUD 同步缓存 ⇒ 面板即时新鲜);删+撤销走 removeSkill/saveSkill(闭包快照 + keyed upsert,非单槽)。**preview 回归**:管理面渲染 3 条(2 可运行)、删→面板即时不列(缓存同步)→撤销→还原。
+  - **preview E2E**:cmdFilterList 含 /match(app)+ ⚡拆JD(skill)、按名过滤命中、cmdRun→runSkill→用户消息+面板关闭。
+- **我的不确定(请评审裁)**:①**platformSkills() 落点** —— 我做成 **copilot-chrome 的 ES export**(读 skill-store listSkills)、**未上 SeekerShell**。理据:Skills 是**平台内部**(skill-store↔chrome 皆 platform/shell/),SeekerShell 是 **app↔platform 桥**;「不并 appCommands + 平台级 + 名 platformSkills」essence 已守。若你要求形式上必在 SeekerShell(provider 桥),我补。②**`⚡` 标记** —— 命令面板区别 Skill 与 /命令用的 emoji(lock-note 有 🧩 先例但设计整体节制);可换文本标记,听裁。③红线继承的「双向阳性对照」我理解为「证 runSkill 真走 agentSend」(已 preview 证),ai_chat gate 本身有 Rust 测不重测 —— 判据对否?
+- **★块 S2 里程碑**:Skill **可执行**(管理面「运行」+ 命令面板 `⚡`)、红线由复用 agentSend 结构性继承。**下一步**:S3(prompts→platform_skills 迁移,知情通知非同意闸)/ S4(assets 退役)。**建议先对齐用户。**
