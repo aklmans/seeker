@@ -18,6 +18,7 @@ import { tt } from './i18n.js';
 import { IC } from './icons.js';
 import { toast, toastUndo, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
+import { normSkill } from './skill-model.js'; // 零 import fail-safe 归一化(node 可测;S2 prompt→instruction 依赖)
 
 const rt = () => /** @type {any} */ (window).SeekerRT;
 const COLL = 'platform_skills';
@@ -25,19 +26,6 @@ const COLL = 'platform_skills';
 /** 生成稳定 id。 */
 function newId() {
   return 'sk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-/** 防御性归一:存储记录可能缺字段 → 强制字符串,渲染不崩(用户数据、S1 非承重,轻量即可)。
- *  @param {any} rec @returns {{id:string,name:string,description:string,prompt:string,updated_at:number}} */
-function normSkill(rec) {
-  const r = rec && typeof rec === 'object' ? rec : {};
-  return {
-    id: String(r.id == null ? '' : r.id),
-    name: String(r.name == null ? '' : r.name),
-    description: String(r.description == null ? '' : r.description),
-    prompt: String(r.prompt == null ? '' : r.prompt),
-    updated_at: typeof r.updated_at === 'number' ? r.updated_at : 0,
-  };
 }
 
 /** Skills 视图:列表(名/说明/指令预览)+ 新建·编辑(模态)+ 逐条删(即时 + toastUndo)。

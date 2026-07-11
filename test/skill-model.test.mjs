@@ -1,0 +1,59 @@
+// 平台 Skill 模型 · normSkill fail-safe 归一化 + skillRunnable 可运行判据(proposal-skills.md S1)入库单测。
+// 承第80轮 [建议]:S2 的 prompt→instruction 依赖 normSkill 的 fail-safe ⇒ 在 S1(code 新鲜)就抽+测,别悬到 S2。
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { normSkill, skillRunnable } from '../web/platform/shell/skill-model.js';
+
+test('normSkill:良构记录原样往返', () => {
+  const rec = { id: 'sk_1', name: '拆 JD', description: '硬性/软性', prompt: '把 JD 拆两列', updated_at: 1720000000000 };
+  assert.deepEqual(normSkill(rec), rec);
+});
+
+test('normSkill:缺字段 → 安全默认(空串 / 0),不抛', () => {
+  assert.deepEqual(normSkill({ id: 'sk_2' }), { id: 'sk_2', name: '', description: '', prompt: '', updated_at: 0 });
+  assert.deepEqual(normSkill({ prompt: '只有指令' }), { id: '', name: '', description: '', prompt: '只有指令', updated_at: 0 });
+});
+
+test('normSkill:类型漂移强制字符串(number/boolean → String)', () => {
+  const n = normSkill({ id: 42, name: 7, description: true, prompt: 3.14 });
+  assert.equal(n.id, '42');
+  assert.equal(n.name, '7');
+  assert.equal(n.description, 'true');
+  assert.equal(n.prompt, '3.14');
+  assert.equal(typeof n.prompt, 'string', 'prompt 必为字符串 —— S2 喂 ai_chat instruction 的承重保证');
+});
+
+test('★normSkill:fail-safe —— 非对象/畸形绝不抛,回全默认', () => {
+  for (const bad of [null, undefined, 'str', 42, true, [], NaN]) {
+    const n = normSkill(bad);
+    assert.deepEqual(n, { id: '', name: '', description: '', prompt: '', updated_at: 0 }, `坏输入 ${String(bad)} 应回默认`);
+  }
+});
+
+test('normSkill:updated_at 非有限数 → 0(NaN/Infinity/字符串)', () => {
+  assert.equal(normSkill({ updated_at: NaN }).updated_at, 0);
+  assert.equal(normSkill({ updated_at: Infinity }).updated_at, 0);
+  assert.equal(normSkill({ updated_at: '123' }).updated_at, 0);
+  assert.equal(normSkill({ updated_at: 5 }).updated_at, 5);
+});
+
+test('skillRunnable:prompt 去空白非空 → 可运行', () => {
+  assert.equal(skillRunnable({ prompt: '做点事' }), true);
+  assert.equal(skillRunnable({ name: '有名但无正文', prompt: '' }), false, '只填名的草稿不可运行');
+  assert.equal(skillRunnable({ prompt: '   \n\t ' }), false, '纯空白不可运行');
+});
+
+test('★skillRunnable:fail-safe —— 畸形/非对象输入不可运行且不抛', () => {
+  for (const bad of [null, undefined, 'str', 42, {}, { prompt: null }]) {
+    assert.equal(skillRunnable(bad), false, `坏输入 ${String(bad)} 应不可运行`);
+  }
+});
+
+test('★源守卫:skill-model.js 零 import(node 可测 + 无浏览器依赖,path-independent)', () => {
+  const src = fs.readFileSync(new URL('../web/platform/shell/skill-model.js', import.meta.url), 'utf8');
+  // 剥注释后不得含 import/require(与 iv-feedback/match-result 同纪律:承重归一化模块自包含)。
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/\bimport\s/.test(code), 'skill-model.js 不应含 import');
+  assert.ok(!/\brequire\s*\(/.test(code), 'skill-model.js 不应含 require');
+});
