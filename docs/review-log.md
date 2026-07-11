@@ -1984,3 +1984,14 @@ Copilot/Agent 面板机制 **30 函数 + 6 卡模板 const**(cEsc/cCard/cAct/cBt
 - **★组合链两端焊死**:第68轮我标的链「rewrite 产出 summary → 回流 interview 的 resumeNote → 进面试指令可信侧」——现在 rewrite 的 summary 经 cEsc + 无工具,它作为 resumeCtx 进 interview 时走 untrusted。**组合放大通路被掐断,靠两处都归 untrusted,不靠「希望没人注入」。**
 - **★★下一刀裁决(评审)= T0 先于面试反馈**:面试反馈被 `ivScore` 承重结构挡着(整轮平均/IV_RECORDS 持久化/总评页渲染分数条)⇒ 它是「schema 刀之后的刀」,现在起=先撞墙。**T0 无阻塞且是根**:块(i) 三刀都在用「instruction 纯常量 + 派生进 untrusted + 无工具」的**手工纪律**防注入;**T0(app-tool 契约)才是把这套纪律变成结构** —— 隔离上下文无 rt、输入平台经 D3 供给、输出平台校验 ⇒ 抽取字段信任问题**从此不靠每个作者记得框定**。
 - **块(i) 进度**:出题 ✓ · 改写 ✓;面试反馈待(ivScore schema 前置)。**用户现在能在真机上看到 AI 真在改写简历概要、真在出题 —— 对「不是 AI-Native」那句反馈的第一份正面证据落地了。**
+
+### T0 · app-tool 协议骨架 · commit `7638d6b` · ⏳ 待审
+承评审第69轮裁决(T0 先于面试反馈,是把块(i) 手工信任纪律变成结构的根)。**本刀只落协议核 = 「模型侧发起 → 前端隔离执行 → 结果回程」的 Rust 地基,尚未接入工具循环(=T2)。**
+- **镜像 MCP confirm 的 pending-map 模式**(emit 事件 → `oneshot` 挂起 pending map → `select!` 三路唤醒),**但四个失败面都显式建模、且比 MCP 更严**:
+  - **超时** `AppToolFail::Timeout` → run_app_tool 回「超时(未执行任何操作)」如实告知模型(评审 §8 裁决③:超时=标准工具错误,绝不返空/静默重试);
+  - **取消** `AppToolFail::Cancelled` → `CancellationToken` 由工具循环持有(T2 接线);
+  - **掉线** `AppToolFail::Closed` → 前端返回前 oneshot sender 掉线;
+  - **★错配** `resolve_app_tool` 对未知/已完成 `call_id` **响亮拒绝(`Err`)**,而非 MCP confirm 的**静默忽略** —— 重入/伪造 callId 立即暴露。
+- **call_id 全局唯一防串槽**:`APP_TOOL_SEQ`(process 级 `AtomicU64`)发号 ⇒ 不同调用的 oneshot 不会串槽(同撤销 token 的 `UNDO_TOKEN_SEQ` 先例)。`ai_app_tool_result` 命令是前端**唯一**回程入口,`ok/output/error` 三元组转 `AppToolOutcome::Ok|Err`。`run_app_tool`(AppHandle 包装,`#[allow(dead_code)]` 待 T2)emit `ai_app_tool` 事件(`AppToolEv` camelCase)。
+- **验**:6 个 tokio/std 测试覆盖**四失败面 + 正常返回 + 双重 resolve**,各带正向控制组;**两处变异已证红**——静默忽略错配(仿 MCP)→ 错配测试红(ai.rs:1179);超时误归 `Closed` → 超时测试红(ai.rs:1131)。130/0(124→130);clippy 0;fmt 净;tsc 51(基线);**真机 WKWebView 冷启 0 panic + 进程存活**(验 `ai_app_tool_result` 注册 + `PendingAppTools` state 装载)。
+- **诚实边界**:`run_app_tool` 需 AppHandle emit 不可纯单测(同 show_widget/invoke 边界)⇒ 纯协议核(await/resolve/命令)单测两面夹 + 真机 boot 验注册。**未接线 = T2**:工具循环里把 app-tool 声明拼进工具表、命中时调 run_app_tool、结果回喂——本刀不做。**下一步(评审第69轮次序)**:T1 隔离上下文(独立最小 srcDoc、无 `window.seeker.action` 回父通道)→ T2 接线 + 迁 `jobseek_market_value` → 面试反馈(先解 `ivScore` schema)。
