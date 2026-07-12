@@ -11,7 +11,7 @@ import { T, tt } from './i18n.js';
 import { IC } from './icons.js';
 import { go } from './nav.js';
 import { isDesktop } from './shell-keys.js';
-import { normSkill, skillRunnable } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径)
+import { normSkill, skillRunnable, skillNeedsReview } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径);I1:导入未审阅双点拒
 import { listSkills } from './skill-store.js'; // ★Skills S2b:命令面板读同步缓存(skill-store 不 import 本文件 ⇒ 无环)
 
 // ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
@@ -81,6 +81,9 @@ export function agentSend(text, aiText, scopeTools){
 export function runSkill(skill){
   const s=normSkill(skill);
   if(!skillRunnable(s)) return;          // 无指令正文 → 不运行(草稿态)
+  // ★I1 fail-closed 双点拒之一:导入未审阅 → 不运行(untrusted-until-reviewed;第三方指令须经审阅门背书)。
+  //   UI 全路由到审阅门(管理面「审阅」按钮;palette 不列未审阅)⇒ 此守卫是结构性兜底、防未来新调用点旁路。
+  if(skillNeedsReview(s)) return;
   agentCollapse();                        // 收起页面画布 → 全屏对话,聚焦到 Agent 看它运行
   // ★Skills F1(工具 scoping):穿 s.tools(normSkill 保三态)→ agentSend → streamReply 收窄 app-tool 工具表。
   //   减权不增权(⊆ 可读集);未声明(undefined)= 全工具(同用户打字重放,雏形零回归)。
@@ -92,7 +95,8 @@ export function runSkill(skill){
    仅**可运行**的 Skill(有指令正文)入面板;点击 run → runSkill(走 agentSend 标准路径、红线结构性继承)。
    读 skill-store 同步缓存(命令面板同步;缓存由 boot 水合 + CRUD 更新保持新鲜)。 */
 export function platformSkills(){
-  return listSkills().filter(skillRunnable).map(s=>({
+  // ★I1 fail-closed 双点拒之二:导入未审阅**完全不列**(第92轮预裁④:palette 只列可运行;审阅走能力中心管理面)。
+  return listSkills().filter((s)=>skillRunnable(s)&&!skillNeedsReview(s)).map(s=>({
     cmd: '⚡',                                                      // Skill 标记(区别于 /命令);label 用用户自撰名
     label: [s.name||tt('未命名技能','Untitled skill'), s.name||tt('未命名技能','Untitled skill')],
     desc: s.description ? [s.description, s.description] : ['运行技能', 'Run skill'],

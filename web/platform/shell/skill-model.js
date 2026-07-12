@@ -12,7 +12,7 @@
  */
 
 /**
- * @typedef {{id:string, name:string, description:string, prompt:string, updated_at:number, tools:(string[]|undefined)}} NormSkill
+ * @typedef {{id:string, name:string, description:string, prompt:string, updated_at:number, tools:(string[]|undefined), imported:boolean, reviewed:boolean}} NormSkill
  */
 
 /**
@@ -27,6 +27,13 @@
  */
 export function normSkill(rec) {
   const r = /** @type {any} */ (rec && typeof rec === 'object' ? rec : {});
+  // ★I1 导入信任标志(untrusted-until-reviewed)fail-closed 归一:
+  //   imported:**truthy 即视为导入**(垃圾值往不可信侧靠——宁多审不漏审);缺失 → false = 本地自撰。
+  //   reviewed:仅对导入有意义,**须显式 === true 才算已背书**(缺失/垃圾 → false = 待审,fail-closed);本地恒 true。
+  //   ⇒ 缺两标志(既有本地 Skill / S3 迁移件 / 用户新建)= imported:false/reviewed:true = 本地可信,**零回归**。
+  //   ★此默认的安全性**全系于**「导入路径永远强制 imported:true」(importSkillWire 载重不变式)——缺失标志才必是本地。
+  const imported = !!r.imported;
+  const reviewed = imported ? r.reviewed === true : true;
   return {
     id: String(r.id == null ? '' : r.id),
     name: String(r.name == null ? '' : r.name),
@@ -35,6 +42,8 @@ export function normSkill(rec) {
     updated_at: typeof r.updated_at === 'number' && isFinite(r.updated_at) ? r.updated_at : 0,
     // ★三态保真:数组 → 过滤非空串(可为 `[]`);非数组(缺失/畸形)→ `undefined`。绝不把 undefined 塌成 []。
     tools: Array.isArray(r.tools) ? r.tools.filter((/** @type {any} */ x) => typeof x === 'string' && x) : undefined,
+    imported,
+    reviewed,
   };
 }
 
@@ -46,4 +55,45 @@ export function normSkill(rec) {
  */
 export function skillRunnable(skill) {
   return normSkill(skill).prompt.trim().length > 0;
+}
+
+/**
+ * ★I1 待审判据(双点拒的谓词):导入且未背书 ⇒ 不可运行。消费者:runSkill fail-closed 守卫 +
+ * 命令面板 platformSkills() 完全不列(第92轮预裁④)。本地自撰(imported:false)恒 false、永不待审。
+ * @param {unknown} skill
+ * @returns {boolean}
+ */
+export function skillNeedsReview(skill) {
+  const s = normSkill(skill);
+  return s.imported && !s.reviewed;
+}
+
+/**
+ * ★★导入载重不变式(第92轮 [建议]-强 · proposal-skills-import §3):粘贴 JSON → **白名单提取**。
+ * **只取 `{name, description, prompt, tools}`;`imported:true / reviewed:false` 由平台强制、永不取自粘贴数据**
+ * ——粘贴里的 `imported`/`reviewed`/`id` 等一律丢弃(不在白名单):
+ *   - 恶意 JSON 带 `reviewed:true` / 省略 `imported`(吃 normSkill 本地可信默认)⇒ 若靠 spread 顺序或
+ *     直接 `normSkill(粘贴)` 入库,审阅门**全线可绕** —— 信任关键字段必须在不可信数据之外设定;
+ *   - 粘贴 `id` 也危险:命中既有 id 的 keyed upsert 会 **clobber 用户已有 Skill** ⇒ 丢弃,
+ *     调用方必须配 fresh id(同 S3 迁移 fresh-id 纪律)。
+ * 无 prompt 正文 → null(审阅门摊的就是 prompt,无正文的导入无意义)。**绝不抛。**
+ * @param {unknown} text 粘贴的 JSON 文本(不可信)
+ * @returns {{name:string, description:string, prompt:string, tools:(string[]|undefined), imported:true, reviewed:false}|null}
+ */
+export function importSkillWire(text) {
+  let w;
+  try {
+    w = JSON.parse(String(text == null ? '' : text));
+  } catch (_e) {
+    return null;
+  }
+  if (!w || typeof w !== 'object' || Array.isArray(w)) return null;
+  const name = typeof w.name === 'string' ? w.name.trim() : '';
+  const description = typeof w.description === 'string' ? w.description.trim() : '';
+  const prompt = typeof w.prompt === 'string' ? w.prompt : '';
+  if (!prompt.trim()) return null;
+  // tools 三态过导入面保真:缺失/非数组 → undefined(未限定);数组 → 滤非空串(可为 [] = 无 app-tool)。
+  // 运行时 scopeAppTools 仍 ∩ readable 减权(F1)⇒ 导入声明超出可读集也够不到,无需此处再闸。
+  const tools = Array.isArray(w.tools) ? w.tools.filter((/** @type {any} */ x) => typeof x === 'string' && x) : undefined;
+  return { name, description, prompt, tools, imported: true, reviewed: false };
 }

@@ -5,14 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { normSkill, skillRunnable } from '../web/platform/shell/skill-model.js';
 
-test('normSkill:良构记录原样往返(含 tools)', () => {
-  const rec = { id: 'sk_1', name: '拆 JD', description: '硬性/软性', prompt: '把 JD 拆两列', updated_at: 1720000000000, tools: ['tool_a'] };
+test('normSkill:良构记录原样往返(含 tools/imported/reviewed)', () => {
+  const rec = { id: 'sk_1', name: '拆 JD', description: '硬性/软性', prompt: '把 JD 拆两列', updated_at: 1720000000000, tools: ['tool_a'], imported: false, reviewed: true };
   assert.deepEqual(normSkill(rec), rec);
 });
 
-test('normSkill:缺字段 → 安全默认(空串 / 0 / tools undefined),不抛', () => {
-  assert.deepEqual(normSkill({ id: 'sk_2' }), { id: 'sk_2', name: '', description: '', prompt: '', updated_at: 0, tools: undefined });
-  assert.deepEqual(normSkill({ prompt: '只有指令' }), { id: '', name: '', description: '', prompt: '只有指令', updated_at: 0, tools: undefined });
+test('normSkill:缺字段 → 安全默认(空串 / 0 / tools undefined / 本地可信),不抛', () => {
+  assert.deepEqual(normSkill({ id: 'sk_2' }), { id: 'sk_2', name: '', description: '', prompt: '', updated_at: 0, tools: undefined, imported: false, reviewed: true });
+  assert.deepEqual(normSkill({ prompt: '只有指令' }), { id: '', name: '', description: '', prompt: '只有指令', updated_at: 0, tools: undefined, imported: false, reviewed: true });
 });
 
 test('normSkill:类型漂移强制字符串(number/boolean → String)', () => {
@@ -27,7 +27,7 @@ test('normSkill:类型漂移强制字符串(number/boolean → String)', () => {
 test('★normSkill:fail-safe —— 非对象/畸形绝不抛,回全默认', () => {
   for (const bad of [null, undefined, 'str', 42, true, [], NaN]) {
     const n = normSkill(bad);
-    assert.deepEqual(n, { id: '', name: '', description: '', prompt: '', updated_at: 0, tools: undefined }, `坏输入 ${String(bad)} 应回默认`);
+    assert.deepEqual(n, { id: '', name: '', description: '', prompt: '', updated_at: 0, tools: undefined, imported: false, reviewed: true }, `坏输入 ${String(bad)} 应回默认`);
   }
 });
 

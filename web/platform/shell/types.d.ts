@@ -246,6 +246,19 @@ export interface Skill {
    *   - **`['x']`** = 仅 `x`(∩ 可读;声明外的 app-tool 结构性够不到)。
    */
   tools?: string[];
+  /**
+   * ★I1 导入来源标志(untrusted-until-reviewed · proposal-skills-import)。缺失 = 本地自撰(可信,零回归)。
+   * **载重不变式(第92轮 [建议]-强)**:导入路径**由平台强制置 true、永不取自粘贴数据**(importSkillWire 白名单
+   * 只提取 name/description/prompt/tools;恶意 JSON 带 reviewed:true / 省略 imported 均不可绕审阅门)。
+   * 归一化 fail-closed:truthy 即视为导入(垃圾值往不可信侧靠);编辑不洗白溯源(imported 恒承原值)。
+   */
+  imported?: boolean;
+  /**
+   * ★用户已审阅背书(仅对 imported 有意义)。归一化须**显式 true** 才算背书(缺失/垃圾 → false = 待审,fail-closed)。
+   * 背书绑**特定 prompt**:prompt 变更 ⇒ 失效重审(第92轮 [建议]2)。`imported && !reviewed` ⇒ **双点拒运行**
+   * (runSkill fail-closed 守卫 + 命令面板完全不列);审阅门显式认可是唯一置 true 的通路(信任转移点)。
+   */
+  reviewed?: boolean;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
