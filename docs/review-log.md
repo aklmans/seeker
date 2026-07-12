@@ -2214,3 +2214,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - npm 60/0(评审亲跑,迁移动共享码无回归)。
 - **★里程碑**:prompts→Skills 迁移完成;连同 notes→知识库(已完成)⇒ **assets 两类数据都迁出 ⇒ S4(assets 退役)解锁**。
 - **★S4 盯点(评审预告 · 承方案 §6 + D2)**:①**关应用=下架 UI+AI、数据保留**(不删 assets_prompts/assets_notes 底层数据,只下架应用)②退役后**平台层对 assets 零 import**(§1,同 jobseek 迁移后纯净度检查)③能力中心/命令面板的 Skills/知识库入口在 assets 关闭后**仍工作**(已归 platform、不依赖 assets 应用启用)。
+
+### Skills S4 · assets 软退役引导 · commit `6dc2081` · ⏳ 待审
+承第82轮 S4 解锁。**用户拍板「软退役 + 用户自关」**(非彻底移除应用)。
+- **★量清:退役能力已在**——应用管理(阶段2)`setEnabled` 本就支持停用应用 + 保留数据 ⇒「用户随时可停用 assets」能力已在。故 S4 软退役 = **引导 + 复用既有停用**,不删应用/不孤立未迁数据/保留「第二应用」演示。code 改动最小(两条引导条)。
+- **引导条(§4-3 反焦虑、非倒计时)**:prompts 页「Prompt 库正在并入 Skills…全部迁完后可在应用管理关闭此应用;数据始终保留、可导出」;notes 页「笔记可迁入知识库…(需迁入弹窗确认,那会扩大 AI 可读范围)」。**★两条正确区分 AI 可读影响**:prompts→Skills 不扩大、notes→知识库扩大(需同意)——延续 S3 的诚实框定。
+- **★S4 三盯点全兑现(preview + grep 验)**:①**关应用=下架不删数据**:`setEnabled('assets',false)` → `enabledApps=[jobseek]`(assets UI/AI 下架)、`assets_prompts`/`platform_skills` 底层数据仍在 rt.db(D2)②**退役后平台层对 assets 零 import**(§1):grep `web/platform/` 零 `apps/assets` import(仅 index.html 引导 script,同 jobseek 纯净度)③**Skills/知识库入口 assets 关闭后仍工作**:`platformSkills()` + 能力中心 `renderSkills` 独立渲染(平台级、不依赖 assets 启用)——停用后直接 renderSkills 仍显 skill(capSkillsAfterDirectRender=1;初值 0 是 async 渲染时序 artifact 非回归)。
+- **验**:node 净 · tsc 51 基线 · 真机 boot 0 panic · preview E2E(引导条文案两页正确区分 + 停用→数据保留+platform_skills 独立工作+能力中心仍渲染)。
+- **★★Skills arc(S1→S4)全线收官**:prompts(人肉复制文本)→ **Skill(可执行:管理面「运行」+ 命令面板 `⚡`,红线复用 agentSend 结构性继承)** + 迁移(知情通知非同意闸)+ assets 软退役(用户自关、数据保留)。**方案 proposal-skills.md 全部落地。**
+- **下一步(承第67轮评审次序 · P2 剩余)**:jobseek 剩余 aiRun 真化(app-tool 契约已解锁)/ Skills 完整版(绑 app-tool、Skill 分享导入需落第79轮 [建议]1 信任模型)/ 其余绿地各自方案。**建议与用户对齐。**
