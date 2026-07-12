@@ -2185,3 +2185,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
   - **preview E2E**:cmdFilterList 含 /match(app)+ ⚡拆JD(skill)、按名过滤命中、cmdRun→runSkill→用户消息+面板关闭。
 - **我的不确定(请评审裁)**:①**platformSkills() 落点** —— 我做成 **copilot-chrome 的 ES export**(读 skill-store listSkills)、**未上 SeekerShell**。理据:Skills 是**平台内部**(skill-store↔chrome 皆 platform/shell/),SeekerShell 是 **app↔platform 桥**;「不并 appCommands + 平台级 + 名 platformSkills」essence 已守。若你要求形式上必在 SeekerShell(provider 桥),我补。②**`⚡` 标记** —— 命令面板区别 Skill 与 /命令用的 emoji(lock-note 有 🧩 先例但设计整体节制);可换文本标记,听裁。③红线继承的「双向阳性对照」我理解为「证 runSkill 真走 agentSend」(已 preview 证),ai_chat gate 本身有 Rust 测不重测 —— 判据对否?
 - **★块 S2 里程碑**:Skill **可执行**(管理面「运行」+ 命令面板 `⚡`)、红线由复用 agentSend 结构性继承。**下一步**:S3(prompts→platform_skills 迁移,知情通知非同意闸)/ S4(assets 退役)。**建议先对齐用户。**
+
+### ★ 第81轮独立复核 = Skills S2 🏁 两刀通过(无 [应改]/[建议])+ 评审自我订正第80轮
+**评审读码亲验核心论断(非采信送审词):runSkill 只调 agentSend、agentSend=用户打字路径 ⇒ 四红线结构性继承。三点不确定全裁。**
+- **★核心论断读码坐实**:`runSkill = normSkill→skillRunnable 闸→agentCollapse(UI)→agentSend(prompt)`,只调 agentSend、不碰 rt.db/capability.invoke/直连 ai_chat;`agentSend` = `<` 转义 + frameQuery 框定 → streamReply → ai_chat = **用户在 #agentInput 打字走的同一路径**。⇒ Skill 能做的 ⊆ 用户打那句能做的、四红线由构造继承、非新面。**「不给新权力=结构结论非声明」评审读码坐实。** 评审评:「安全论证塌缩成『runSkill 只调 agentSend』一条,验它即验全部(gate 已有 Rust 测)」。
+- **§4-4 cEsc 补漏**:platformSkills 传原文、cmdRender 渲染 sink cEsc(cmd/label/desc),存原文/渲染转义位置对、app 命令 no-op 零回归;preview 证 XSS 名显 `&lt;img&gt;`。修得准。
+- **三裁决**:①**platformSkills ES export 未上 SeekerShell = 背书且比上 SeekerShell 更对**(SeekerShell 是 app↔platform 契约;Skills 平台内部[skill-store↔面板皆 platform/shell、无 app 参与]不跨这条线;塞进 SeekerShell 稀释边界语义;本质守拍板③[concat 双源不并]。**caveat**:完整版若允许应用贡献内置 Skill[app→platform],届时需 SeekerShell 契约——现用户自撰无 app 贡献 ⇒ ES export 对)②`⚡` 标记=设计小节、交设计语言、非阻塞③**「双向阳性对照=证 runSkill 走 agentSend」判据正确非冗余**(安全论断=Skill⊆用户打字=runSkill 经 agentSend;验 (a) runSkill 只调 agentSend[结构+preview 用户气泡] + (b) agentSend→ai_chat 守四红线[已 Rust 测];重测 (b) 冗余)。
+- **★评审自我订正第80轮过度归因(我已核实属实)**:第80轮评审说「normSkill 是 S2 承重路径依赖的 fail-safe ⇒ 现在测」把安全归因给 normSkill;读码订正 = **S2 安全门是 `agentSend`(转义+框定,已测),不是 normSkill**;`normSkill` 只做字符串强制(null→'')= 存储良构、不做转义/框定 ⇒ normSkill 测 = **可选的存储完整性,非安全门必需**。**收回那条 [建议] 的安全理据**(normSkill 测仍留=存储完整性+skillRunnable 守卫,不改码)。**★同源纪律:归因先读码——安全在哪条路径要读出来,不凭「承重」直觉。**
+- **第79轮 [建议]1(信任模型)状态**:S2 无 Skill 导入 ⇒ Skills 仍本地自撰-only ⇒「可信作指令」框定成立、未破;[建议]1(导入=改信任模型、需知情审阅)仍适当延到「导入功能」出现时。**⚠ 别在完整版/后续悄悄加导入而不改信任模型。**
+- **诚实边界采信**:web mock;真 ai_chat 四 gate 已 cargo 测,端到端真 gate 待桌面+BYO —— 与「S2 只验路径」分工正确。npm 60/0 亲跑。
+- **★里程碑**:Skill 可执行且**安全代价为零**(无新面)—— 从「人肉复制文本」到「可执行技能」的关键一跳。
+- **下一步(评审)**:**S3**(prompts→platform_skills 迁移,落第79轮 [建议]2:**知情通知非隐私同意闸**,因 platform_skills 不进 QUERYABLE、AI 可读面零变化)→ S4(assets 退役)。**S3 盯点**:迁移幂等/自愈(同 notes 机制)+ 知情文案说**真实变化**(数据迁平台+可执行,非「AI 现在能读」)。
