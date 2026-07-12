@@ -64,7 +64,10 @@ export async function renderPrompts(){
     : (pending.length
         ? `<button class="btn" id="apToSkills" style="margin-left:8px;">${tt('迁入 Skills','Migrate to Skills')} · ${pending.length}</button>`
         : (ASSETS_PROMPTS.length ? `<span class="mono" style="font-size:10px;color:var(--ink-3);margin-left:8px;">${tt('已全部迁入 Skills','All migrated to Skills')}</span>` : ''));
+  // ★S4 软退役引导(反焦虑、非倒计时):Prompt 库并入 Skills;迁完可在应用管理自行关闭此应用(数据保留)。
+  const retireNote=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="lock-note" style="margin:0;max-width:680px;"><span class="li">✨</span><span>${tt('Prompt 库正在并入 <b>Skills</b> —— 迁入后可一点即运行(Agent 用它跑一轮)。全部迁完后,可在<b>应用管理</b>关闭「数据资产」应用;<b>数据始终保留、可导出</b>。','The Prompt Library is merging into <b>Skills</b> — once migrated, run them in one click. After migrating all, you can close the Data Assets app in <b>App Manager</b>; <b>your data is always kept and exportable</b>.')}</span></div></div>`;
   host.innerHTML=frontis('PROMPTS', tt('Prompt 库','Prompt Library'))
+    +retireNote
     +`<div class="sec" style="border-bottom:none;padding-bottom:6px;"><button class="btn btn-accent" id="apAdd">${tt('+ 新建 Prompt','+ New prompt')}</button>${migrateBtn}</div>`
     +list+signFoot();
   const add=$('#apAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openPromptModal('');

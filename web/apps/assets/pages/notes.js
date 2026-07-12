@@ -73,7 +73,10 @@ export function renderNotes(){
   const kbBtn = (!docsStatusKnown && ASSETS_NOTES.length)
     ? `<button class="btn" id="anToKb" disabled style="opacity:.5;cursor:not-allowed;">${tt('迁入知识库','Add to knowledge')}</button><span class="mono" style="font-size:10px;color:var(--ink-3);">${tt('无法确认知识库状态,稍后重试','Cannot confirm knowledge state — retry later')}</span>`
     : (pending?`<button class="btn" id="anToKb">${tt('迁入知识库','Add to knowledge')} · ${pending}</button>`:'');
+  // ★S4 软退役引导(反焦虑、非倒计时):笔记可迁入知识库;迁完可在应用管理自行关闭此应用(数据保留)。
+  const retireNote=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="lock-note" style="margin:0;max-width:680px;"><span class="li">✨</span><span>${tt('笔记可迁入<b>知识库</b> —— 迁入后 AI 能检索作答(需你在迁入弹窗确认,那会扩大 AI 可读范围)。若你把 Prompt/笔记都迁走了,可在<b>应用管理</b>关闭「数据资产」应用;<b>数据始终保留、可导出</b>。','Notes can move into the <b>Knowledge base</b> — once added, the AI can retrieve them (you confirm in the dialog, which widens what the AI can read). Once you have migrated both prompts and notes, you can close the Data Assets app in <b>App Manager</b>; <b>your data is always kept and exportable</b>.')}</span></div></div>`;
   host.innerHTML=frontis('NOTES', tt('笔记','Notes'))
+    +retireNote
     +`<div class="sec" style="border-bottom:none;padding-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button>`
     +kbBtn
     +`</div>`
