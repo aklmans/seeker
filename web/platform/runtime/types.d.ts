@@ -96,6 +96,9 @@ export interface AiRequest {
   sessionId?: string;
   /** ★PJ2 多轮历史桶键(第三职责拆出):项目上下文 'proj_*' / 定时 'sched:*';缺省=session_id(每流 fresh ⇒ prior 恒空=修活前行为)。 */
   historyKey?: string;
+  /** ★PJ3 当前项目指令(system 邻位注入、每轮一次、不入 History)。**只能来自管理面用户自撰的项目配置**
+   * (前端唯一赋值点 = ai-engine 读 project-store;**永不含模型/RAG/外部派生内容** —— 高权位,同 greeting 第50轮纪律)。 */
+  projectInstructions?: string;
   /** 任务类型(智能匹配 / 简历改写 / 面试反馈 …),选择系统提示;由 domain/prompts 配置驱动。 */
   task?: string;
   /** 业务上下文(白名单);网关组装提示时**结构上不含 profile 隐私字段**。 */

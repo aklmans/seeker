@@ -245,6 +245,8 @@ pub async fn ai_chat(
     app_tools: Option<Vec<AppToolDesc>>,
     // ★PJ2 拆键:多轮历史的桶键(项目 `proj_*` / 定时 `sched:*`);缺省 = session_id(每流 fresh,prior 恒空 = 修活前行为)。
     history_key: Option<String>,
+    // ★PJ3 项目指令(用户在管理面自撰;信任与注入语义见 insert_project_instructions 头注)。
+    project_instructions: Option<String>,
 ) -> Result<(), String> {
     let token = CancellationToken::new();
     sessions
@@ -268,6 +270,7 @@ pub async fn ai_chat(
         app_pending.inner(),
         &app_tools.unwrap_or_default(),
         &prior,
+        project_instructions.as_deref(),
         token,
     )
     .await;
@@ -689,6 +692,7 @@ async fn run_chat(
     app_pending: &PendingAppTools,
     app_tools: &[AppToolDesc],
     history: &[Value],
+    project_instructions: Option<&str>,
     token: CancellationToken,
 ) -> Result<(String, String), ChatError> {
     let cfg = crate::config::load(app);
@@ -707,8 +711,9 @@ async fn run_chat(
     // (ai_chat 命令签名只有 user_text,网关无从拿到 profile;工具结果只来自白名单业务集合)。
     let system = crate::prompts::system_prompt(app, task);
     let mut messages = build_messages(&system, user_text); // [system, user]
-                                                           // 多轮历史(#1 G2):已完成轮次插在 system 之后、当前 user 之前。
-    let mut at = 1;
+    // ★PJ3:项目指令插在 system 之后、history 之前(用户自撰、每轮一次、不入 History);None/空 → 零改。
+    let mut at = insert_project_instructions(&mut messages, 1, project_instructions);
+    // 多轮历史(#1 G2):已完成轮次插在项目指令之后、当前 user 之前。
     for h in history {
         messages.insert(at, h.clone());
         at += 1;
@@ -1120,6 +1125,27 @@ fn finalize(content: String, calls: Vec<ToolCallAcc>, finish: Option<String>) ->
 /// 组装发给模型的消息:**只有 system + user**,绝不夹带 profile 等隐私字段
 /// (网关无 profile 来源;隐私从结构上隔离 —— 见 privacy 单测)。提示组装的「资料」块
 /// 由 `build_context_message` 单独插入(同样不含 profile)。
+/// ★PJ3 项目指令注入(proposal-project · 第98轮三条件):在 `at`(system 之后、history 之前)插入
+/// **用户自撰**的项目指令,返回新的插入游标。**每轮注入一次、不入 History**(append_turn 只收
+/// user/assistant ⇒ 结构性不累积);None/空白 → 不插、游标不动(默认工作区/无指令项目零改)。
+/// ★信任(三条件①):内容**只能来自管理面用户自撰的项目配置**(前端唯一赋值点 = project-store 的
+/// instructions;类型注释已钉「永不含模型/RAG/外部派生」)—— 它坐在 system 邻位 = 高权位,同 greeting 纪律。
+fn insert_project_instructions(messages: &mut Vec<Value>, at: usize, pi: Option<&str>) -> usize {
+    match pi.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(text) => {
+            messages.insert(
+                at,
+                json!({
+                    "role": "system",
+                    "content": format!("用户为当前项目设定的背景与指令(用户本人在管理面自撰、以用户身份生效):\n{text}"),
+                }),
+            );
+            at + 1
+        }
+        None => at,
+    }
+}
+
 fn build_messages(system: &str, user_text: &str) -> Vec<Value> {
     vec![
         json!({ "role": "system", "content": system }),
@@ -1186,7 +1212,34 @@ mod tests {
     use tokio::sync::oneshot;
 
     /// 正常:前端回结果 → 拿到 Ok。**这是所有失败面测试的阳性对照(判据能亮)**。
-        /// ★PJ2 拆键(第98轮 [应改]):History 按 historyKey 键控 —— 同 key 累积(修活多轮)、
+        /// ★PJ3 项目指令注入位序:messages[0]=system 恒在;Some(非空)→插 [1](system 之后、history 之前)
+    /// 且游标 +1(history 从 [2] 起);None/空白 → 不插、游标不动(默认工作区零改)。
+    /// 「不入 History」由结构保证:append_turn 只收 user/assistant(见 history_bucket 测),指令不在其中。
+    #[test]
+    fn project_instructions_splice_position_and_skip() {
+        // Some(非空):插在 system 之后、user 之前,游标 +1
+        let mut m = build_messages("SYS", "问题");
+        let at = insert_project_instructions(&mut m, 1, Some("聚焦后端岗"));
+        assert_eq!(at, 2, "游标 +1(history 将从 [2] 起 = 指令之后)");
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[0]["role"], "system");
+        assert_eq!(m[1]["role"], "system", "注入位 = system 邻位");
+        assert!(m[1]["content"].as_str().unwrap().contains("聚焦后端岗"));
+        assert!(
+            m[1]["content"].as_str().unwrap().contains("用户本人在管理面自撰"),
+            "来源框定在场(用户自撰、以用户身份生效)"
+        );
+        assert_eq!(m[2]["role"], "user", "当前 user 恒在末尾");
+        // None / 空白:不插、游标不动(默认工作区/无指令项目 = 零改)
+        let mut m2 = build_messages("SYS", "问题");
+        assert_eq!(insert_project_instructions(&mut m2, 1, None), 1);
+        assert_eq!(m2.len(), 2, "None 零改");
+        let mut m3 = build_messages("SYS", "问题");
+        assert_eq!(insert_project_instructions(&mut m3, 1, Some("   ")), 1, "空白不插(不喂空指令)");
+        assert_eq!(m3.len(), 2);
+    }
+
+    /// ★PJ2 拆键(第98轮 [应改]):History 按 historyKey 键控 —— 同 key 累积(修活多轮)、
     /// 异 key 互不见(项目隔离)、缺省回退 session_id=每流 fresh(prior 恒空=修活前行为、零回归)。
     #[test]
     fn history_bucket_isolation_and_cap() {

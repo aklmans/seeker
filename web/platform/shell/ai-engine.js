@@ -13,6 +13,7 @@ import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
 import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
 import { currentProjectId } from './project-state.js'; // ★PJ2:多轮历史桶键缺省 = 当前项目(零 import 叶子)
+import { listProjects } from './project-store.js'; // ★PJ3:当前项目指令注入(store 只 import project-model,无环)
 
 export function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
@@ -58,6 +59,8 @@ export function aiStreamBusy(){ return __aiStreamBusy; }
  * @param {string=} historyKey ★PJ2 多轮历史桶键(第98轮 [应改] 拆键:sessionId 只承路由+取消、每流 fresh)。
  *   缺省 = 'proj_'+当前项目('default'=默认工作区)⇒ 同项目多轮累积、切项目即隔离(Rust History 按 key 键控);
  *   调度器显式穿 'sched:<id>'(独立 clean-slate,§5.6 预裁)。
+ *   ★PJ3 连带语义:**显式 historyKey = 调用方自管上下文语境 ⇒ 不注入当前项目指令**(定时任务与项目无关、
+ *   skill 自带 prompt);缺省(交互路径)才带当前项目的 instructions(用户自撰,Rust 侧 system 邻位注入、不入 History)。
  */
 export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled, historyKey){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
@@ -67,7 +70,11 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   __aiStreamBusy=true; // ★SC1:开流即忙(清点在 onDone/onError 首行)
   const hkey = historyKey || ('proj_' + (currentProjectId() || 'default')); // 项目上下文桶(修活多轮历史 · 行为变化已告知)
-  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools), historyKey:hkey }, {
+  // ★PJ3 项目指令:仅交互路径(historyKey 缺省)+ 当前非默认工作区;来源 = project-store 用户自撰 instructions
+  //   (三条件①源头:此处为前端唯一赋值点,读的是管理面存的项目配置 —— 永不含模型/RAG/外部派生)。
+  let pInstr;
+  if(!historyKey){ const pid=currentProjectId(); if(pid){ const p=listProjects().find(x=>x.id===pid); if(p && p.instructions && p.instructions.trim()) pInstr=p.instructions; } }
+  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools), historyKey:hkey, projectInstructions:pInstr }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){

@@ -47,7 +47,7 @@ export async function renderProjects(box) {
   box.innerHTML =
     `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="pjAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建项目', '+ New project')}</button></div>` +
     list +
-    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('项目只在这里管理(不经对话);归档不删除 —— 对话数据始终保留、可随时还原。在 Agent 顶栏切换项目;项目内 Agent 记得最近对话(至多约 10 轮,会略增模型用量)。项目指令生效在后续版本。', 'Projects are managed here only (never via chat); archiving deletes nothing — data is kept and restorable. Switch projects in the Agent header; within a project the Agent remembers recent turns (up to ~10, slightly higher model usage). Project instructions take effect in an upcoming update.')}</p>`;
+    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('项目只在这里管理(不经对话);归档不删除 —— 对话数据始终保留、可随时还原。在 Agent 顶栏切换项目;项目内 Agent 记得最近对话(至多约 10 轮,会略增模型用量)、并自动带上你的项目指令。', 'Projects are managed here only (never via chat); archiving deletes nothing — data is kept and restorable. Switch projects in the Agent header; within a project the Agent remembers recent turns (up to ~10, slightly higher model usage) and your project instructions apply automatically.')}</p>`;
   const add = $('#pjAdd', box);
   if (add) /** @type {HTMLElement} */ (add).onclick = () => openProjectModal(box, '');
   $$('[data-pjedit]', box).forEach((b) => {
@@ -82,7 +82,7 @@ function openProjectModal(box, id) {
     }<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="pjName" value="${cEsc(p.name)}" placeholder="${tt('如:2026 后端求职', 'e.g. Backend job hunt 2026')}"></div>
-      <textarea class="input" id="pjInstr" rows="7" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('项目指令(可选)—— 这个项目里 Agent 该知道的背景与偏好;生效于后续版本。', 'Project instructions (optional) — background & preferences the Agent should know in this project; takes effect in an upcoming update.')}">${cEsc(p.instructions)}</textarea>
+      <textarea class="input" id="pjInstr" rows="7" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('项目指令(可选)—— 这个项目里 Agent 该知道的背景与偏好,每次对话自动生效。', 'Project instructions (optional) — background & preferences the Agent should know in this project; applied to every conversation here.')}">${cEsc(p.instructions)}</textarea>
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="pjSave">${tt('保存', 'Save')}</button></div>`,
     true
