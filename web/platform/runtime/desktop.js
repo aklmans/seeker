@@ -112,7 +112,7 @@ function aiStream(req, handlers = {}, startInvoke) {
 
     // 不 await:命令在流结束时才 resolve;真正的结束信号走 ai_done/ai_error。
     //   startInvoke 缺省 = ai_chat(带工具循环);生成模式传入 ai_generate 的 invoker(结构性无工具)。
-    (startInvoke ? startInvoke(sessionId) : invoke('ai_chat', { sessionId, userText: /** @type {import('./types').AiRequest} */ (req).userText, task: req.task || null, appTools: /** @type {import('./types').AiRequest} */ (req).appTools || null }))
+    (startInvoke ? startInvoke(sessionId) : invoke('ai_chat', { sessionId, userText: /** @type {import('./types').AiRequest} */ (req).userText, task: req.task || null, appTools: /** @type {import('./types').AiRequest} */ (req).appTools || null, historyKey: /** @type {import('./types').AiRequest} */ (req).historyKey || null }))
       .catch((/** @type {any} */ err) => {
         cleanup();
         rejectDone(err instanceof Error ? err : new Error(String(err)));

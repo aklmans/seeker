@@ -8,7 +8,7 @@
  *     真删涉项目消息批量销毁 = guardrail 批量档,后续单出。
  *   - 转义(§4-4):name/instructions 进 DOM 一律 cEsc。
  *   - PJ1 无切换器、不显消息数(messages 的 projectId 属 PJ2;不显示还不存在的数据,诚实)。 */
-import { cEsc } from './copilot-chrome.js';
+import { cEsc, renderProjectSwitch } from './copilot-chrome.js'; // renderProjectSwitch:CRUD/归档后重渲切换器(含归档当前回落自愈)
 import { $, $$ } from './dom.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
@@ -16,6 +16,7 @@ import { toast, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
 import { normProject } from './project-model.js';
 import { hydrateProjects, listProjects, saveProject } from './project-store.js';
+import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★盯点④:归档当前项目回落默认工作区
 
 /** 生成稳定 id。 */
 function newId() {
@@ -46,7 +47,7 @@ export async function renderProjects(box) {
   box.innerHTML =
     `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="pjAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建项目', '+ New project')}</button></div>` +
     list +
-    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('项目只在这里管理(不经对话);归档不删除 —— 对话数据始终保留、可随时还原。对话切换与项目指令生效将在后续版本接入。', 'Projects are managed here only (never via chat); archiving deletes nothing — conversation data is always kept and restorable. Thread switching and project instructions take effect in an upcoming update.')}</p>`;
+    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('项目只在这里管理(不经对话);归档不删除 —— 对话数据始终保留、可随时还原。在 Agent 顶栏切换项目;项目内 Agent 记得最近对话(至多约 10 轮,会略增模型用量)。项目指令生效在后续版本。', 'Projects are managed here only (never via chat); archiving deletes nothing — data is kept and restorable. Switch projects in the Agent header; within a project the Agent remembers recent turns (up to ~10, slightly higher model usage). Project instructions take effect in an upcoming update.')}</p>`;
   const add = $('#pjAdd', box);
   if (add) /** @type {HTMLElement} */ (add).onclick = () => openProjectModal(box, '');
   $$('[data-pjedit]', box).forEach((b) => {
@@ -62,7 +63,10 @@ export async function renderProjects(box) {
         toast(errText(e));
         return;
       }
+      // ★盯点④(第99轮):归档的是当前项目 → 回落默认工作区(否则用户停在不在切换器里的「幽灵」当前项目)。
+      if (!p.archived && currentProjectId() === p.id) setCurrentProjectId('');
       await renderProjects(box);
+      renderProjectSwitch(); // 切换器同步(含自愈;Agent 面不在 DOM 时 no-op)
       toast(p.archived ? tt('已还原', 'Restored') : tt('已归档(数据保留)', 'Archived — data kept'));
     };
   });
@@ -101,6 +105,7 @@ function openProjectModal(box, id) {
       }
       closeModal();
       await renderProjects(box);
+      renderProjectSwitch(); // 新建/改名即时进切换器
       toast(tt('已保存', 'Saved'));
     };
 }

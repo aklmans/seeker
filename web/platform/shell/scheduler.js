@@ -69,7 +69,9 @@ export async function schedulerTick(now) {
   }
   if (run) {
     try {
-      runSkill(run, (/** @type {boolean} */ ok, /** @type {string=} */ errMsg) => settleRun(sched.id, ok, errMsg)); // ★标准路径(红线全继承);内部守卫仍兜底(双点)
+      // ★PJ2 §5.6 预裁:定时 fire 用独立 historyKey('sched:<id>')= clean-slate 保持无人值守今日行为
+      //   (不携带项目对话上下文 ⇒ token 成本不涨、输出不受无关近期对话影响;「带上下文的定时任务」后续 opt-in 另出)。
+      runSkill(run, (/** @type {boolean} */ ok, /** @type {string=} */ errMsg) => settleRun(sched.id, ok, errMsg), 'sched:' + sched.id); // ★标准路径(红线全继承);内部守卫仍兜底(双点)
     } catch (_e) {
       settleRun(sched.id, false, 'fire failed');
     }

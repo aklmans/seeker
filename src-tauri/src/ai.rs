@@ -64,13 +64,34 @@ static CONFIRM_SEQ: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
 pub struct Sessions(pub Mutex<HashMap<String, CancellationToken>>);
 
-/// 进程内多轮历史(#1 G2):sessionId → 已完成的 user/assistant 轮次。
+/// 进程内多轮历史(#1 G2):**historyKey** → 已完成的 user/assistant 轮次。
+/// ★PJ2 拆键(第98轮 [应改]):键 = 前端可选 `history_key`(项目上下文 `proj_*` / 定时 `sched:*`),
+///   缺省回退 session_id(= 每流 fresh = 修活前行为:prior 恒空)。**session_id 保持每流 fresh**
+///   (流事件路由 + 取消令牌两职责不动;历史是第三职责,拆出去)。
 /// 进程内即可(同一会话多轮上下文);持久化跨重启待 messages 集合接入。**不含 profile**。
 #[derive(Default)]
 pub struct History(pub Mutex<HashMap<String, Vec<Value>>>);
 
 /// 历史保留的最大消息条数(约 10 轮 user/assistant);防无界增长 + 控 token。
 const HISTORY_MAX: usize = 20;
+
+impl History {
+    /// 取某 key 已完成轮次的快照(克隆后即释锁,不跨 await 持锁)。无记录 → 空。
+    pub fn prior(&self, key: &str) -> Vec<Value> {
+        self.0.lock().unwrap().get(key).cloned().unwrap_or_default()
+    }
+    /// 追加一轮 user/assistant,封顶 HISTORY_MAX(丢最旧)。
+    pub fn append_turn(&self, key: &str, user_text: &str, assistant: &str) {
+        let mut h = self.0.lock().unwrap();
+        let entry = h.entry(key.to_string()).or_default();
+        entry.push(json!({ "role": "user", "content": user_text }));
+        entry.push(json!({ "role": "assistant", "content": assistant }));
+        let len = entry.len();
+        if len > HISTORY_MAX {
+            entry.drain(0..len - HISTORY_MAX);
+        }
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -222,6 +243,8 @@ pub async fn ai_chat(
     task: Option<String>,
     // 前端(壳)携带的启用∩可读 app-tool 描述符(仅 name/description/parameters);缺省 None ⇒ 无 app-tool。
     app_tools: Option<Vec<AppToolDesc>>,
+    // ★PJ2 拆键:多轮历史的桶键(项目 `proj_*` / 定时 `sched:*`);缺省 = session_id(每流 fresh,prior 恒空 = 修活前行为)。
+    history_key: Option<String>,
 ) -> Result<(), String> {
     let token = CancellationToken::new();
     sessions
@@ -230,14 +253,9 @@ pub async fn ai_chat(
         .unwrap()
         .insert(session_id.clone(), token.clone());
 
-    // 多轮历史(#1 G2):取本会话已完成轮次的快照(克隆后即释锁,不跨 await 持锁)。
-    let prior = history
-        .0
-        .lock()
-        .unwrap()
-        .get(&session_id)
-        .cloned()
-        .unwrap_or_default();
+    // 多轮历史(#1 G2 · PJ2 拆键):桶键 = history_key(项目/定时上下文),缺省 session_id(每流 fresh)。
+    let hkey = history_key.unwrap_or_else(|| session_id.clone());
+    let prior = history.prior(&hkey);
 
     let result = run_chat(
         &app,
@@ -259,14 +277,7 @@ pub async fn ai_chat(
         Ok((stop, content)) => {
             // 仅干净完成(非取消、有内容)才入历史:追加本轮 user + assistant,封顶 HISTORY_MAX。
             if stop != "cancelled" && !content.is_empty() {
-                let mut h = history.0.lock().unwrap();
-                let entry = h.entry(session_id.clone()).or_default();
-                entry.push(json!({ "role": "user", "content": user_text }));
-                entry.push(json!({ "role": "assistant", "content": content }));
-                let len = entry.len();
-                if len > HISTORY_MAX {
-                    entry.drain(0..len - HISTORY_MAX);
-                }
+                history.append_turn(&hkey, &user_text, &content);
             }
             let _ = app.emit(
                 "ai_done",
@@ -1175,7 +1186,32 @@ mod tests {
     use tokio::sync::oneshot;
 
     /// 正常:前端回结果 → 拿到 Ok。**这是所有失败面测试的阳性对照(判据能亮)**。
-    #[tokio::test]
+        /// ★PJ2 拆键(第98轮 [应改]):History 按 historyKey 键控 —— 同 key 累积(修活多轮)、
+    /// 异 key 互不见(项目隔离)、缺省回退 session_id=每流 fresh(prior 恒空=修活前行为、零回归)。
+    #[test]
+    fn history_bucket_isolation_and_cap() {
+        let h = History::default();
+        // 同 key:第二轮 prior 含第一轮(多轮历史修活的核心断言)
+        assert!(h.prior("proj_a").is_empty(), "新 key prior 空");
+        h.append_turn("proj_a", "你好", "好的");
+        let p = h.prior("proj_a");
+        assert_eq!(p.len(), 2, "同 key 第二轮 prior 含第一轮 user+assistant");
+        assert_eq!(p[0]["content"], "你好");
+        // ★异 key 隔离:A 项目的对话不进 B 项目的 prior(隐私承诺)
+        assert!(h.prior("proj_b").is_empty(), "异 key prior 空(跨项目隔离)");
+        // 缺省回退语义:fresh session_id 当 key ⇒ prior 恒空(现行为零回归)
+        assert!(h.prior("sess_fresh_123").is_empty());
+        // 封顶 HISTORY_MAX:超出丢最旧
+        for i in 0..30 {
+            h.append_turn("proj_a", &format!("u{i}"), &format!("a{i}"));
+        }
+        let capped = h.prior("proj_a");
+        assert_eq!(capped.len(), HISTORY_MAX, "封顶 HISTORY_MAX");
+        assert_eq!(capped[HISTORY_MAX - 1]["content"], "a29", "保最新");
+        assert_ne!(capped[0]["content"], "你好", "丢最旧");
+    }
+
+#[tokio::test]
     async fn app_tool_outcome_resolves_when_frontend_sends() {
         let (tx, rx) = oneshot::channel();
         let token = CancellationToken::new();

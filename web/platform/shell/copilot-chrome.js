@@ -13,6 +13,8 @@ import { go } from './nav.js';
 import { isDesktop } from './shell-keys.js';
 import { normSkill, skillRunnable, skillNeedsReview } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径);I1:导入未审阅双点拒
 import { listSkills } from './skill-store.js'; // ★Skills S2b:命令面板读同步缓存(skill-store 不 import 本文件 ⇒ 无环)
+import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★PJ2:hydrateMessages 按当前项目过滤 + 切换器写态(零 import 叶子)
+import { listProjects, hydrateProjects } from './project-store.js'; // ★PJ2 切换器:列非归档项目(store 不 import 本文件 ⇒ 无环)
 
 // ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
 //   copClose = 无操作(无浮窗可关;各函数的导航/执行部分照常);copScroll = 滚动 Agent 视图(唯一活动 AI 面)。copEl/copOpen/copToggle/copAppend 已删(浮窗专属、零外部消费者)。
@@ -63,13 +65,13 @@ document.addEventListener('click', (e)=>{
 export function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
 // scopeTools(★Skills F1):Skill.tools 三态 → streamReply 收窄 app-tool 工具表(减权;undefined=全、雏形/打字零回归)。见 runSkill。
 // onSettled(★SC2):本次流真实结局回调,穿给 streamReply(调度器用;用户打字路径不传=undefined 零改)。
-export function agentSend(text, aiText, scopeTools, onSettled){
+export function agentSend(text, aiText, scopeTools, onSettled, historyKey){
   const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll, scopeTools, onSettled); }
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll, scopeTools, onSettled, historyKey); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
 
@@ -79,7 +81,7 @@ export function agentSend(text, aiText, scopeTools, onSettled){
    设置不可经对话改 全部照常。**Skill 不给新权力 = 把用户本就能打的那句指令一键重放。**
    ★信任=可信侧(本地用户自撰指令,同用户在输入框打字),**不走 untrusted 框定**。
    ★skillRunnable 守卫:无指令正文(草稿态)不运行(fail-safe,skill-model 单测覆盖)。 */
-export function runSkill(skill, onSettled){
+export function runSkill(skill, onSettled, historyKey){
   const s=normSkill(skill);
   if(!skillRunnable(s)) return;          // 无指令正文 → 不运行(草稿态)
   // ★I1 fail-closed 双点拒之一:导入未审阅 → 不运行(untrusted-until-reviewed;第三方指令须经审阅门背书)。
@@ -88,7 +90,7 @@ export function runSkill(skill, onSettled){
   agentCollapse();                        // 收起页面画布 → 全屏对话,聚焦到 Agent 看它运行
   // ★Skills F1(工具 scoping):穿 s.tools(normSkill 保三态)→ agentSend → streamReply 收窄 app-tool 工具表。
   //   减权不增权(⊆ 可读集);未声明(undefined)= 全工具(同用户打字重放,雏形零回归)。
-  agentSend(s.prompt, undefined, s.tools, onSettled); // onSettled(SC2):调度器要真实结局;交互路径不传
+  agentSend(s.prompt, undefined, s.tools, onSettled, historyKey); // onSettled(SC2)/historyKey(PJ2:调度器穿 sched:<id> 独立 clean-slate);交互路径都不传
 }
 
 /* ★Skills S2b:命令面板契约 platformSkills() —— 平台级 Skills 命令项(CommandSpec[])。
@@ -145,6 +147,35 @@ export function cmdOpen(q){cmdFiltered=cmdFilterList(q);cmdActive=0;if(cmdFilter
 export function cmdClose(){const p=$('#cmdPop');if(p)p.classList.remove('open');}
 export function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').value='';$('#agentInput').style.height='auto';cmdClose();c.run();}
 
+/* ★PJ2 项目切换器 —— Agent 顶栏下拉:「日常」('')+ 非归档项目 + 「管理项目…」。
+   切换 = 用户 UI 动作(setCurrentProjectId 仅此处与归档回落两个 UI 调用点;Agent 无工具可切 ——
+   「项目管理不经对话」的运行态半)。render 自愈:current 指向已归档/已删项目 → 归位「日常」
+   (防幽灵当前项目,第99轮盯点④)。名字进 DOM 经 cEsc(option 文本位)。 */
+export async function renderProjectSwitch(){
+  const sel=$('#agentProject'); if(!sel) return;
+  await hydrateProjects();
+  const live=listProjects().filter(p=>!p.archived);
+  const cur=currentProjectId();
+  if(cur && !live.some(p=>p.id===cur)) setCurrentProjectId('');   // 自愈:归档/删除的当前项目 → 回落日常
+  const cur2=currentProjectId();
+  sel.innerHTML='<option value="">'+tt('日常','Everyday')+'</option>'
+    + live.map(p=>'<option value="'+cEsc(p.id)+'"'+(p.id===cur2?' selected':'')+'>'+cEsc(p.name||tt('(未命名)','(untitled)'))+'</option>').join('')
+    + '<option value="__manage">'+tt('管理项目…','Manage projects…')+'</option>';
+  sel.value=cur2;
+  sel.title=tt('项目 = 独立对话线;项目内 Agent 记得最近对话(至多约 10 轮)','Projects are separate threads; within one, the Agent remembers recent turns (up to ~10)');
+  sel.onchange=async()=>{
+    if(sel.value==='__manage'){ sel.value=currentProjectId(); go('capability'); return; }
+    await switchProject(sel.value);
+  };
+}
+/* 切换项目:写壳态 → 清对话 → 按新项目重水合;空线则开场白。历史桶随 streamReply 的 hkey 自然切换。 */
+export async function switchProject(id){
+  setCurrentProjectId(id);
+  const c=$('#agentMsgs'); if(c) c.innerHTML='';
+  await hydrateMessages();                                  // 按新 current 过滤重渲(空线时它不动 DOM)
+  if(c && !c.children.length) agentGreet();                 // 新线无历史 → 开场白
+}
+
 /* ---- 抽壳序3-d-10:Agent 输入 + 命令面板接线 agentInit —— 依赖 $/IC(序1)+ 本文件 agentSend/cmd*(序3-d-1/9)/agentCollapse/setAppMode(序3-d-6);
    Agent 技能 chips 经 SeekerShell.renderAppChips() 契约触发(序3-d-11,第16轮强制待契约化账已清——平台不硬编码 app 渲染器符号名)。INIT@agentInit() 运行时调。 ---- */
 export function agentInit(){
@@ -163,6 +194,7 @@ export function agentInit(){
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
   window.SeekerShell.renderAppChips();   // 命令 chips(双语,随语言重渲)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds 符号名)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
+  renderProjectSwitch();                    // ★PJ2:项目切换器(boot 渲染;项目 CRUD 后由管理面再触发重渲)
   const bp=$('#acvBackToPage'); if(bp) bp.onclick=()=>{ document.body.dataset.canvas='page'; };   // ★AI-Native P0:画布「回到页面」→ 让位给 #content(show_widget 画布退)
   // ★AI-Native 收敛(Cut 1a):Agent 是唯一框,boot 直接进 agent + centered(删「编辑器」模式、不再读/写 jh-mode、不经 setAppMode)。
   // centered = 全屏对话;导航到页面/出 widget 时 go→agentShowCanvas 切 split(页面即右画布)。历史由 hydrateMessages 清招呼语后重渲。
@@ -206,7 +238,9 @@ export async function hydrateMessages(){
       }
     }); };
     // ★Cut 1b:收敛后只恢复 agent 历史(Copilot 浮窗删、旧 'cop' 历史弃用=数据保留不删、不再读写)。有历史则清掉招呼语再渲染(#agentMsgs 有子节点即已由本函数或 agentGreet 处理)。
-    const agent = rows.filter(r=>r.surface==='agent');
+    // ★PJ2:再按当前项目过滤(''=默认工作区=无 projectId 字段的既有消息,零回归;切换器换线时重调本函数)。
+    const pj = currentProjectId();
+    const agent = rows.filter(r=>r.surface==='agent' && ((r.projectId||'') === pj));
     if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
   }catch(e){ console.error('[data] hydrate messages', e); }
 }

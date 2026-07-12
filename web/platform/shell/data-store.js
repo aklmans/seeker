@@ -8,6 +8,7 @@
    ★归平台理据:hydrateColl(本引擎,通用集合)按"有数据→已上手"调 markOnboarded = **shell 级 onboarding**(非 jobseek 专属),
    留平台避免平台→apps 反向依赖('jh-seeded-jobs' 是旧版迁移键、逐字保留)。demo 态(demoMode/setDemoMode/SEED/captureSeed)= jobseek,留 apps。 ---- */
 import { isDesktop } from './shell-keys.js';
+import { currentProjectId } from './project-state.js'; // ★PJ2:消息按项目分组(零 import 叶子,无环;默认工作区不写字段=既有数据零回归)
 export function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
 export function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
 export function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
@@ -47,6 +48,7 @@ export function persistMsg(surface, role, text, cards){
   if(!text.trim() && !hasCards) return;                 // 纯空且无卡才跳过(纯卡片回复仍持久)
   const ts = Date.now();
   const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:text, ts:ts };
+  const pj = currentProjectId(); if(pj) rec.projectId = pj;   // ★PJ2:当前项目分组;默认工作区('')不写字段(既有消息天然归它)
   if(hasCards) rec.cards = cards;                        // 可持久化卡指令 [{kind,data}](view 卡;不含 resume-edit 提案)
   window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
 }

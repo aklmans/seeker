@@ -12,6 +12,7 @@ import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
 import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
+import { currentProjectId } from './project-state.js'; // ★PJ2:多轮历史桶键缺省 = 当前项目(零 import 叶子)
 
 export function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
@@ -54,15 +55,19 @@ export function aiStreamBusy(){ return __aiStreamBusy; }
  *   `[]`=无 app-tool、`['x']`=仅 x∩可读。**减权不增权**(scopeAppTools 结果恒 ⊆ readableAppTools);平台 Rust 能力恒在(不在此列表)。
  * @param {((ok:boolean, errMsg?:string)=>void)=} onSettled ★SC2:本次流的**真实结局**回调(onDone→true / onError→false+错误短讯)。
  *   显式按流穿线(同 scopeTools 先例)⇒ 无全局注册表、并发流不误归因;消费者=调度器(last_status 不让「已发起」掩盖 mid-stream 失败)。
+ * @param {string=} historyKey ★PJ2 多轮历史桶键(第98轮 [应改] 拆键:sessionId 只承路由+取消、每流 fresh)。
+ *   缺省 = 'proj_'+当前项目('default'=默认工作区)⇒ 同项目多轮累积、切项目即隔离(Rust History 按 key 键控);
+ *   调度器显式穿 'sched:<id>'(独立 clean-slate,§5.6 预裁)。
  */
-export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled){
+export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled, historyKey){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   __aiStreamBusy=true; // ★SC1:开流即忙(清点在 onDone/onError 首行)
-  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools) }, {
+  const hkey = historyKey || ('proj_' + (currentProjectId() || 'default')); // 项目上下文桶(修活多轮历史 · 行为变化已告知)
+  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools), historyKey:hkey }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){

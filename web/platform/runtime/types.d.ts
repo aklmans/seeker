@@ -92,8 +92,10 @@ export interface ProfileApi {
 export interface AiRequest {
   /** 用户文本——前端只发文字。 */
   userText: string;
-  /** 会话 id(缺省由适配器生成):流式事件路由 + 取消。 */
+  /** 会话 id(缺省由适配器生成):流式事件路由 + 取消。★PJ2 拆键后**只承这两职责**,每流 fresh、勿稳定化(第98轮 [应改]:同 key 并发流=事件交叉投递+取消令牌 clobber)。 */
   sessionId?: string;
+  /** ★PJ2 多轮历史桶键(第三职责拆出):项目上下文 'proj_*' / 定时 'sched:*';缺省=session_id(每流 fresh ⇒ prior 恒空=修活前行为)。 */
+  historyKey?: string;
   /** 任务类型(智能匹配 / 简历改写 / 面试反馈 …),选择系统提示;由 domain/prompts 配置驱动。 */
   task?: string;
   /** 业务上下文(白名单);网关组装提示时**结构上不含 profile 隐私字段**。 */
