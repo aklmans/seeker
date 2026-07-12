@@ -2278,3 +2278,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议] 已落 `840b27f`(我独立核实属实)**:normResumeParse 钳 **0-5/缺省 0**,但承重目标 SKILLS 的消费者(computeMatch/市场价值 `Number.isFinite&&>=1?min(5,floor):1`)把 **lvl<1 当 1** ⇒ **stored-0 ≠ effective-1**;且「从简历抽出的技能=候选人有的技能(lvl≥1)」不该 0。改 normResumeParse lvl → `Number.isFinite&&>=1?min(5,floor):1`(钳 **1-5、无效/未知→1**)⇒ 存储===生效;「AI 判不出等级」→当最小 1(minimal credit 0.5)=computeMatch 已有的合理降级。**趁契约刀(Cut2 写 SKILLS 前)对齐 = schema-first 的意义**(契约定得与消费者一致再让承重写入用它)。lvl 测试更新 [1,5,1,3,1]。**★全 app 技能等级量纲一致(intake/parse/match 同量纲)—— 接续本几轮 computeMatch/市场价值 lvl 语义核查。**
 - **★Cut2 盯点(评审预告 + 加)**:①**schema 硬闸失败→诚实降级,绝不写空/畸形 SKILLS**(承重写不可因 AI 失败污染;同 ivSubmit 第78轮 schema-fail 不落默认值当真档案)②ai_generate 无工具 + 简历文本 untrusted 框定 + instruction 纯常量③**写 SKILLS/RESUME 承重映射:补 demand/pri/state 等非简历字段默认时,别覆盖用户已有 SKILLS 手工编辑**(幂等/合并,同 prompts→Skills fresh-id 不 clobber)④web/无模型诚实 gate⑤**lvl 已 1-5**(本 [建议] 兑现)⑥流式 textContent、结果 cEsc。
 - **下一刀 = Cut2 真化**;**建议先与用户对齐**(Cut2 触 SKILLS 承重写)。
+
+### 简历解析真化 Cut2 · 粘贴文本→ai_generate→硬闸→承重写 SKILLS/RESUME · commit `527c11d` · ⏳ 待审
+承 Cut1 契约过审 + 用户拍板起 Cut2。**★jobseek 最后 1 真·假清零**(退役纯演出罐头 23/15/8 → 真解析)。
+- **UI**:dropzone 假动画 → **粘贴简历文本框 + AI 解析钮**。流:门控 → rt.ai.generate → parseResumeWire → schema 硬闸 → normResumeParse → applyParsedResume。
+- **★信任分层(preview 证)**:简历文本=用户输入**不可信**(untrusted 框定)· instruction **纯 app 常量**(注入不进)· ai_generate 无工具 · 流式 textContent 转义。
+- **★承重写 applyParsedResume**:已过硬闸+归一的结果写 SKILLS(computeMatch/市场价值/智能匹配全读)+ RESUME。**merge-by-name**:解析定技能清单、匹配既有名**保留市场字段**(demand/pri/years 非简历派生)、新技能派生默认、state 从 lvl 重算;lvl 已 1-5(Cut1 [建议])。
+- **★诚实降级(绝不污染承重 SKILLS)**:①web/未配模型→不假装(引导手动)②schema 硬闸失败/无技能→报错重试、**SKILLS 一字节不写**(同 ivSubmit 第78轮 schema-fail 不落默认当真档案)。
+- **验**:node 净 · tsc 51 基线 · npm 69/0 · 真机 boot 0 panic。**★preview E2E(web 真实 handler + stub rt.ai.generate)**:①UI 粘贴框+解析钮无假 dropzone②web 门控诚实降级无罐头③真路径:instruction 无注入/简历[含注入]全落 untrusted/task=parse_resume④承重写:SKILLS 35→2 解析定清单、Go lvl→5、**merge 保 demand 市场字段**、新增 GraphQL 默认 demand6、结果卡真实数 2(非 23)、`<img onerror>` liveImg=0⑤硬闸失败/空技能→SKILLS 逐字节未变+诚实报错。
+- **评审请核**:①信任分层(instruction 纯常量/简历 untrusted/无工具)②schema 硬闸失败诚实降级不污染 SKILLS③merge-by-name 保市场字段+不 clobber(SKILLS 无 UI 编辑故 REPLACE 安全;既有名保 demand/pri)④诚实边界:RESUME 元数据 session 态(同旧 mock,未持久)、端到端真模型需 BYO(preview 以 stub 验契约面+失败面)。
+- **★★jobseek mock 面全线清零**:匹配/简历生成/面试反馈/出题/市场价值/**简历上传** 全真化(真 AI 或诚实客观计算);回应用户最初「不是 AI-Native」反馈的核心流全清。**下一步**:Skills 完整版(绑 app-tool、导入先落第79轮 [建议]1)/ 绿地各自方案。**建议对齐用户。**
