@@ -2496,3 +2496,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议](已入 §5.6)**:Scheduled × 激活历史 —— 「行为不变」对定时任务不成立(fire 带稳定 key ⇒ 无人值守运行携带项目上下文 = token 涨 + 非 clean-slate)⇒ 显式拍板;**推荐独立 `sched:<id>` key**(clean-slate 保今日行为、BYO 自觉;带上下文简报后续 per-schedule opt-in)。
 - **五未决预裁全过**(顶栏下拉/A/「日常」/MVP 归档/随 PJ2 全局激活**以拆键为前提**)+ 新增 §5.6。**PJ1 盯点**:守卫三件套+DB_VERSION 4→5+管理面 CRUD 无对话路径+归档不删。**PJ2 盯点**:拆键并发对照(定时流在飞时用户发送,两流互不串、各自可取消)+ 隔离活证 spy + Scheduled key 落地。**PJ3 盯点**:三条钉死。
 - **下一刀 = PJ1(方案已按 [应改] 订正,可直接起)。**
+
+### Project PJ1:契约 + 存储 + 管理面 · commit `a8b7282` · ⏳ 待审
+承第98轮方案过审([应改] 已订)+ 用户拍板起 PJ1。兑现 PJ1 盯点(逐条):
+- **①守卫三件套(第98轮红线「项目管理不经对话=自我提示注入通路缺席」)**:capability.rs `!is_queryable("platform_projects")` + 工具枚举不含(**变异实测**:塞入 QUERYABLE → 翻红、还原绿)+ **契约注释**(project-model.js + types.d.ts:「Agent 能改项目=自改每轮注入指令=自我提示注入通路;加可写工具即拆除」)+ **写半由 registry caps.len 断言承重**(同 schedules,第96轮确立)。**源守卫测试断注释在场**(删注释=CI 红)。
+- **②三处白名单 + DB_VERSION 4→5**(S1b 教训;preview 证 objectStore 真建)。
+- **③管理面 CRUD 无对话路径**:projects.js 全部 CRUD 在能力中心模态;无 capability/app-tool 可达(caps.len 承重)。**④归档不删**(§5.4 预裁 MVP 只归档):行内仅 编辑/归档,**无删除按钮**(E2E 证);归档=badge+消息数据保留+可还原(非破坏可逆 ⇒ 不弹模态,toast 说明「数据保留」)。
+- **normProject fail-safe 一处选边值得核**:`archived` 须显式 ===true,垃圾值 → **可见**(false)—— 与 schedule 的 `enabled`(垃圾→不跑)**方向相反**:enabled 的失败后果=误跑烧配额 ⇒ 往「不跑」靠;archived 的失败后果=错误隐藏项目(用户以为内容丢了)⇒ 往「可见」靠。**fail-safe 按后果选边、非一律 false**(变异证红)。
+- **诚实边界**:PJ1 无切换器、不显消息数(messages 的 projectId 属 PJ2 —— 不显示还不存在的数据);文案明示「切换与指令生效在后续版本」(不承诺未落的);instructions 是 PJ3 注入位、本刀只存不注入。
+- **验**:node 102/0(+3)· cargo 132/132 · tsc 51=51 · preview E2E(新建 XSS payload → 0 活节点+转义呈现 / 编辑保 created_at / 归档还原 / 空态)· 真机 boot 0 panic · 0 console error。能力中心 cc-soon 占位删除 = **六段全真**(Connector/工具/记忆/知识库/Skills/Scheduled/Project)。
+- **评审请核**:①守卫三件套 + caps.len 承重是否落齐②archived fail-safe 选边(可见侧)的论证③归档不删 + 无删除按钮④诚实文案(不承诺 PJ2/PJ3 未落的)⑤XSS 面(name/instructions 双输入)。**下一刀 = PJ2(切换器+分组+拆键隔离,含 [应改] 落地 + 并发对照判据)。**
