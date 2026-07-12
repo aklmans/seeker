@@ -41,6 +41,36 @@ export function openNewAction(){
 
 /* ============ AI ENGINE + P0/P1/P2 FEATURES ============ */
 export const RESUME={filename:'我的简历_后端工程师.pdf', uploaded:'2026.05.18', parsed:true, years:8, derivedSkills:23, derivedEvidence:15, summary:'8 年后端 · Go / MySQL / Redis 为主 · 美团核心配送背景'};
+/** ★承重写:把**已经硬闸 + normResumeParse 归一**的解析结果写入 SKILLS(computeMatch/市场价值/智能匹配全读)+ RESUME 档案。
+ *  merge-by-name:解析的技能**定清单**(resume 是能力档案的源);匹配既有名的**保留市场字段**(demand/pri/years —— 非简历派生),
+ *  新技能给派生默认(state 从 lvl);state 恒按新 lvl 重算。lvl 已在 normResumeParse 钳 1-5(对齐 computeMatch)。
+ *  ★调用方须保证 parsed 已过 schema 硬闸(畸形/AI 失败绝不到这)—— 本函数只写良构、不做产品级校验。
+ *  @param {{skills:{name:string,lvl:number,evidence:string[]}[], years:number, summary:string}} parsed
+ *  @returns {{skills:number, evidence:number, years:number}} 供结果卡显示真实数字 */
+export function applyParsedResume(parsed){
+  const prevByName={}; SKILLS.forEach(s=>{ prevByName[s.name]=s; });
+  const next=parsed.skills.map(ps=>{
+    const prev=prevByName[ps.name];
+    const state = ps.lvl>=3 ? '已掌握' : ps.lvl>=2 ? '进行中' : '仅基础'; // 从 lvl 重算(非留旧 state)
+    return {
+      name: ps.name,
+      lvl: ps.lvl,
+      years: prev ? prev.years : 0,          // 年限:既有名保留,新技能未知→0(诚实,非编)
+      demand: prev ? prev.demand : 6,        // 市场需求:非简历派生 ⇒ 既有保留、新技能中性默认
+      pri: prev ? prev.pri : 'mid',          // 优先级:同上
+      state,
+      evidence: (ps.evidence && ps.evidence.length) ? ps.evidence : (prev ? (prev.evidence||[]) : []),
+    };
+  });
+  SKILLS.length=0; SKILLS.push(...next);      // resume 定清单:不在解析里的旧技能移除(含旧 mock/上次上传)
+  RESUME.derivedSkills=next.length;
+  RESUME.derivedEvidence=next.reduce((n,s)=>n+((s.evidence&&s.evidence.length)||0),0);
+  if(parsed.years) RESUME.years=parsed.years;
+  if(parsed.summary) RESUME.summary=parsed.summary;
+  RESUME.parsed=true;
+  if(collPersistOn()) persistColl('skills', SKILLS); // 桌面持久;RESUME 元数据本就 session 态(同旧 mock)
+  return { skills: next.length, evidence: RESUME.derivedEvidence, years: RESUME.years };
+}
 export const TREND=[
   {skill:'Rust', pct:42, dir:'up', note:'AI 基建 / 系统编程拉动,半年需求近翻倍'},
   {skill:'分布式系统', pct:24, dir:'up', note:'稳定性岗位扩张'},
