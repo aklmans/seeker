@@ -2402,3 +2402,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node **89/0**(+3):**★键集断言(主证)** —— 「已审阅的导入件」(本地信任状态最满情形)导出,`Object.keys` 严格等 [description,name,prompt,tools]、四泄漏键逐一断无;可选键按需+三态保真;**往返**(导出→JSON→导入 ⇒ 接收方 imported:true/reviewed:false 重走审阅、tools 声明保真、双侧无 id)。**变异证红**:导出泄漏 imported/reviewed → 键集断言红,还原绿。**preview E2E 真 UI 全往返**:分享→导出模态(键集正确、零信任泄漏)→原样粘进导入模态→审阅门自动开→接收件强制未审+fresh id+内容保真→**★源件未被 clobber**(donor reviewed 仍 true)。tsc **51=51**(修一处自伤:exportSkillWire 曾插断 importSkillWire 的 JSDoc 挂接 → text 隐式 any,tsc 抓出、移位修复)。真机 boot 0 panic、0 console error。
 - **评审请核**:①键集断言是否够格当主证(往返只是 belt——接收方本就强制)②分享按钮只给可运行件(草稿无正文不可分享)是否合理③导出模态文案(不过度承诺、说清接收方要自审)④JSON 进 textarea 的 cEsc(prompt 含 </textarea> 不逃逸)。
 - **★Skills 导入方案(I1+I2)全落**:导入=untrusted-until-reviewed(载重不变式双层)+ 导出=白名单剥标志,**双侧对称、信任标志在两个方向都不过界**。
+
+### ★ 第94轮独立复核 = Skills 分享导出 I2 🏁 通过无 findings · ★★Skills 导入方案(I1+I2)收官 = 第79轮 [建议]1 闭环
+**评审读码坐实 allowlist-by-construction、四问逐条裁、无 findings。**
+- **★exportSkillWire = allowlist-by-construction**(skill-model.js:112-120):`out` **从空字面量构建**(`{name,prompt}` + 条件加 description/tools)、**不 spread `s`** ⇒ id/updated_at/imported/reviewed **结构上无法泄漏**(不是「被过滤掉」,是「**从未被读进出口对象**」)。与 projectToSchema(T2a)同 build-from-empty 形状。
+- **★双侧对称性(评审:本方案最漂亮的性质)**:导入=白名单**提取**(粘贴的信任标志从不读)、导出=白名单**构建**(本地的信任标志从不写)——**信任标志在两个方向都结构性不过界**。**信任是 per-user、不可传递的**:每个接收方为自己审阅、不依赖发送方状态。两侧都靠**构造**而非过滤。
+- **①键集断言够格主证且更强**:最满信任态输入 + `Object.keys` 严格 deepEqual = **对所有未来字段的 default-deny 闸**——将来加新字段(如 author)想导出,键集断言先红、逼显式决定(改测试=过审点),**新字段默认不出口**。往返=belt(接收方本就强制)分层判断对。
+- **②双层闸合理 + 观察(非 finding)**:skillRunnable 与 review 状态**正交**(测试明文钉)⇒ 未审阅导入件也有分享按钮——**非洞**:接收方结构性重审、**信任不可传递正是设计性质**(发送方审没审与接收方无关);UX 裁量项。
+- **③文案准确不过度承诺** · **④textarea cEsc 安全且保真双性质**:RCDATA 裸 `</textarea>` 会提前终结→注入,cEsc `<`→`&lt;` 防终结;同时 RCDATA **解码实体读入 .value** ⇒ 用户复制的是**原文**(逐字节往返)。安全与保真同时成立=导出框需要的两个性质。
+- **其余**:npm 89/0 亲跑 · preview 全往返含**源件未被 clobber**(导出是读操作,验了)· tsc 自伤自查(JSDoc 挂接断裂→隐式 any,gate 又立功)诚实披露 · 「剥标志=不依赖接收方实现的防线」成立且重要(旧版/第三方接收实现不受控——导出不携带,谁也吃不到 reviewed:true;**防线放在自己控制的一侧**)。
+- **★★Skills 导入方案(I1+I2)收官 = 第79轮 [建议]1 闭环**(14 轮前红旗「分享/导入=改信任模型、第三方指令不该静默延伸可信框定」→ 落地):本地自撰=可信(S2 用户打字路径)✓ 导入=untrusted-until-reviewed(I1 双层白名单+强制、双点拒、审阅门唯一信任转移)✓ 分享=剥信任标志(I2 allowlist-by-construction、接收方必然重审)✓ tools 全程 F1 减权兜底 ✓。**信任模型三态(本地/导入未审/导入已审)全部结构化、标志双向不过界。**
+- **下一步(承既有次序,P2 剩余)**:**绿地(Project / Scheduled tasks)各自方案先行**(第53轮 [建议]D 队列尾,前面的债全清)——同 app-tool/Skills「方案先行、评审门控」节奏;或按新真机反馈**先量再定**。
