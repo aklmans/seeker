@@ -2475,3 +2475,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 99/0 亲跑 · 变异×2 · tsc 51 · 真机 0 panic;主证=正向断言(截图受本会话捕获故障限)采信。
 - **★★Scheduled 线(方案→SC1→SC2)完整**:无人值守自动化从零落地,**每一处红线代价靠结构承接、每一处诚实语义靠先量钉住** —— fire=runSkill 全继承(四红线+F1 scoping+I1 双点拒)· 唯一新红线「AI 不能给自己排任务」双向钉死(QUERYABLE 读 + caps.len 写 + 契约注释)· 无人值守=只提议不执行(guardrail 模态 ai_chat 内不可达、破坏性只能 inline 卡等人点)· BYO 成本自觉(错过不补跑/保守频率/一键停)· 结局诚实(started→ok/error、水位恒推进、settleRun 防 clobber)。**P2 绿地队列尾积压最久的一件,走完「方案先行→评审门控→SC1 骨架→SC2 打磨→逐盯点落」完整节奏。**
 - **下一步**:**Project 方案**(最后一件绿地;第94轮已裁 = 目标工作区语义)或按用户新真机反馈,先量再定。
+
+### Project 方案(目标工作区 · 对话分组+指令+上下文隔离)· commit `1481103` · ⏳ 待审(最后一件绿地 · 方案门控)
+承第97轮次序 + 第94轮用户拍板语义(Project=目标工作区)。**★先量六条(§1),最大发现 = 存量死功能**:
+- **★②死功能翻案**:Rust `History = HashMap<sessionId, Vec>`(已按 key 键控、HISTORY_MAX 20、"跨重启待 messages 接入")——但 **desktop.js `req.sessionId || genSessionId()`,前端全仓无一处传 sessionId** ⇒ 每次 agentSend = fresh id ⇒ `prior` 恒空 ⇒ **「多轮历史 #1 G2」从未生效**(写入后无人以同 key 读、写完即孤儿;真机表现=Agent 每轮失忆)。**⇒ ③Project 核心机制免费**:sessionId 稳定化为项目 id(前端一处传参)= **修活多轮历史 + per-project 上下文隔离天然成立**(History 本就按 key 隔离、切项目=换 key、**Rust 零改**)。
+- **其余先量**:①消息弹性 schema +projectId 零迁移、hydrateMessages 按 surface 过滤先例扩一维 ④项目指令**不能走 task**(受约束查表键、绝不插值的结构纪律)⇒ 另走通路 ⑤platform_projects 三处+**DB_VERSION 4→5**+∉QUERYABLE(指令生效=注入当前会话是功能;query_data 挖所有项目配置不需要不给)⑥cc-soon 占位就绪。
+- **★红线(新增一条,同族沿用)**:**项目管理不经对话** —— Agent 能创建/切换/改项目 = **自改「每轮注入的指令」= 自我提示注入通路**(与「AI 不能给自己排任务」同族:自我持续/自我改写类通路一律缺席);沿用第95轮 [建议]-强三件套钉法(守卫测试+契约注释+caps.len 承重)。指令=用户自撰可信(同 Skill prompt;**分享/导入留 I1 同款 untrusted-until-reviewed,先钉住**)。**多轮历史激活=行为变化须告知**(token 成本、封顶 20;修活既有设计非新权力)。零回归(既有消息归默认工作区、Skills/Scheduled 落当前工作区行为不变)。
+- **设计**:当前项目=壳态(localStorage);切换器=Agent 顶栏下拉;指令注入两候选(**推荐 A = ai_chat 可选 projectInstructions 参数**,Rust 组装 system 之后 history 之前、**每轮一次不入 history 不重复**,~15 行;B=前端拼 userText 零 Rust 但每轮重复入 history,诚实比较)。管理面=能力中心 PROJECT 段(归档不删消息;删除档位拍板)。
+- **分期**:PJ1 契约+存储+管理面(守卫三件套)/ PJ2 切换器+分组+**上下文隔离**(修活历史;**隔离活证** = spy:同项目第二轮 prior 含第一轮、切项目 prior 空)/ PJ3 指令注入。
+- **五未决拍板**:①切换器位置(推荐 Agent 顶栏)②指令通路(推荐 A)③默认工作区名(推荐「日常」)④删除档位(推荐 MVP 只归档)⑤多轮历史激活范围(推荐随 PJ2 全局,默认工作区也受益)。
+- **诚实边界**:历史跨重启不续(进程内存,如实保留既有边界;跨重启重建=后续单出)· 知识库/记忆不按项目隔离(MVP;资料域另案)· 行为变化明示。
+- **评审请核设计**:①死功能翻案是否成立(前端确无 sessionId 传点、G2 确未生效)②「sessionId=projectId ⇒ 隔离免费」的论证(Rust 零改、History key 隔离)③「项目管理不经对话=自我提示注入通路缺席」这条新红线的识别与三件套落点④指令注入 A/B 取舍与 task 纪律⑤多轮历史激活的行为变化处理(告知/封顶/默认工作区也激活)⑥零回归与数据保留(归档不删)。**下一步 = PJ1(方案过审后)。**
