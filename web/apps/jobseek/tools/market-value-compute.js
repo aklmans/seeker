@@ -23,25 +23,33 @@
 export function computeMarketValue(_input, rows) {
   var jobs = (rows && rows.jobs) || [];
   var skills = (rows && rows.skills) || [];
-  // 内联匹配分(逐字复刻 computeMatch 的确定性评分,零 import 供沙箱):lvl≥3 满 1 / lvl 1-2 半 0.5 / 缺 0,score=10×Σcredit/need。
+  // 内联匹配分 —— **逐字复刻 computeMatch(match-result.js)的评分**,零 import 供沙箱(沙箱强制副本 ⇒ 无法 import 共享;
+  //   由 jobseek-market-value.test.mjs 的**交叉核对测试**锁「一份公式」意图、防 drift。评审第 N 轮读码抓到旧内联发散[缺省 0/不 round]已订正)。
+  //   逐字点:①lvl 缺/非有限 → 1(非 0)②Math.min(5,floor)钳制 ③credit=满 1/半 0.5、score=round(credit/total×100)/10(1 位、total=有效 need 数)。
   /** @type {Record<string, number>} */
   var lvlOf = {};
   for (var i = 0; i < skills.length; i++) {
     var s = skills[i] || {};
     if (typeof s.name === 'string' && s.name) {
       var lv = Number(s.lvl);
-      lvlOf[s.name] = lv >= 1 ? (lv > 5 ? 5 : Math.floor(lv)) : 0;
+      lvlOf[s.name] = Number.isFinite(lv) && lv >= 1 ? Math.min(5, Math.floor(lv)) : 1;
     }
   }
   /** @param {any[]} need @returns {number} */
   function matchScore(need) {
-    if (!need || !need.length) return 0;
-    var credit = 0;
-    for (var k = 0; k < need.length; k++) {
-      var l = lvlOf[need[k]] || 0;
-      credit += l >= 3 ? 1 : l >= 1 ? 0.5 : 0;
+    var arr = need || [];
+    var matched = 0, partial = 0, miss = 0;
+    for (var k = 0; k < arr.length; k++) {
+      var n = arr[k];
+      if (typeof n !== 'string' || !n) continue;
+      var l = lvlOf[n] || 0;
+      if (l >= 3) matched++;
+      else if (l >= 1) partial++;
+      else miss++;
     }
-    return (10 * credit) / need.length;
+    var total = matched + partial + miss;
+    var credit = matched + partial * 0.5;
+    return total > 0 ? Math.round((credit / total) * 100) / 10 : 0;
   }
   // job-pay × 匹配加权 + 跨岗位聚合 gaps(lvl<3 的 need)。
   /** @type {{lo:number,hi:number,w:number}[]} */
