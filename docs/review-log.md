@@ -2256,3 +2256,10 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议]:「逐字复刻 computeMatch」读码证伪(本 arc「勿声明假不变式」第 N 次,这次在注释)**:内联 matchScore 于 ①lvl 缺省(computeMatch 非有限/<1→**1** / 旧内联→**0**)②舍入(computeMatch round 1 位 / 旧内联不)③total(有效 need 数 / need.length)三处发散。**有效数据(lvl1-5)≈同、发散只在坏 lvl(低可达同 created_at 类)⇒ [建议] 非 [应改]**;但「一份公式」成就被内部一份已与 computeMatch 发散的副本暗蚀、且假声明须订正。
 - **★[建议] 已落 `9f20741`(评审给的两条都做)**:①内联 matchScore **真·逐字对齐 computeMatch**(缺省 `Number.isFinite&&>=1?min(5,floor):1`、逐类计数、`round(credit/total×100)/10`)+ 订正注释(逐字点列明);②**交叉核对测试锁「一份公式」意图**(pay lo=hi 两岗位反解权重 + corrupt-lvl 技能,expectedLow 由 computeMatch 独立算 ⇒ 内联权重===computeMatch.score,含缺省1+rounding 边界)。npm **62/0** + **★变异证红**(内联缺省改回 0 → 交叉核对红=抓到评审发现的发散)+ 真实值仍 41-62(rounding 对齐无漂移)+ 真机 boot 0 panic。**沙箱强制副本去不了重 ⇒ CI 交叉核对当次优守卫,正是本 market-value arc 一直防的 formula drift。**
 - **下一步(第84/85轮次序)**:先量 jobseek 剩余 aiRun(简历上传罐头 23-15-8 = 已知 1 真·假,需真解析/诚实降级)→ 真·假先修 / Skills 完整版(绑 app-tool、导入先落第79轮 [建议]1)/ 绿地。**建议对齐用户。**
+
+### ★★ 第86轮独立复核 = 市场价值 [建议] 🏁 闭环通过 · 市场价值 arc 全线清零
+**评审读码坐实逐字对齐为真、交叉核对锁 drift;审查闭环端到端跑通(读两副本→抓发散证伪逐字→对齐+交叉核对→变异证明)、不采信送审词(每步读码/亲跑 npm)。**
+- **假不变式订正为真**:「逐字复刻 computeMatch」曾被评审读码证伪;现**真·逐字**(lvl 缺省 1 / total=matched+partial+miss / round(credit/total×100)/10 三处全对齐),注释明列逐字点、声明与代码一致。
+- **★沙箱强制副本 → CI 交叉核对当次优守卫**:结构上去不了重(沙箱零 import 不能 import computeMatch)⇒ 独立 oracle(computeMatch 算 expectedLow、断言内联一致)锁「一份公式」意图;corrupt-lvl NaN 覆盖缺省 1 vs 0;**变异证红**(内联缺省改回 0→红)=测试抓的正是评审读码发现的那处发散。**这正是本 market-value arc 一直防的 formula drift、现在有 CI 守。**
+- **★★市场价值 arc 收束**:从「静态 48 mock」→「174万荒谬 app-tool」→「41-62 单一 job-pay 函数、UI===app-tool 结构性不发散、内联 matchScore 真逐字 + CI 交叉核对锁死」。**三处假(48 / 174万 / 逐字复刻)各被先量或读码抓出、结构性或 CI 消除**;主公式一份、诚实、示意框定、两面共用、drift 有守卫。**假清零。**
+- **★下一步(评审 · 「先量→真假先修>增强>绿地」)**:①**先量 jobseek 剩余 `aiRun(` 调用点**(已量:剩 1 真·假 = 简历上传罐头 23-15-8[resume-modals],其余 match/简历生成/面试反馈/出题 + market-value[本 arc]全真化)→ 真·假先修(需真解析或诚实降级、无现成真件较大)②Skills 完整版(绑 app-tool、导入先落第79轮 [建议]1 信任模型)③绿地各自方案。**不先绿地。**
