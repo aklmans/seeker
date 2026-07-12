@@ -2372,3 +2372,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **四未决预裁全按推荐(已入 §5)**:①JSON 粘贴(本地优先无网络)②逐条审阅③分享导出并入 I2(**导出剥 imported/reviewed 元、接收方重走审阅**=与载重不变式一致)④未审阅完全不列 palette(fail-closed;palette 只列可运行、审阅走管理面)。
 - **★I1 盯点(评审预告)**:①白名单+强制标志**双向阳性对照**②未审阅双点拒(runSkill+palette)fail-closed ③审阅门摊 prompt 全文 Untrusted+cEsc、tools scope 呈现(注明∩readable)、显式认可→reviewed:true ④审阅后走标准 runSkill(红线继承同本地)⑤platform 对 apps 零 import(tools 仍 registry 按名查)。
 - **下一刀 = I1**(载重不变式已钉进方案,据此实现)。
+
+### Skills 导入 I1:untrusted-until-reviewed(载重不变式 + 双点拒 + 知情审阅门)· commit `acef04d` · ⏳ 待审
+承第92轮方案过审 + 用户拍板起 I1。兑现第92轮五盯点(逐条):
+- **①载重不变式 + 双向阳性对照**:`importSkillWire`([skill-model.js](web/platform/shell/skill-model.js),零 import node 可测)白名单提取 `{name,description,prompt,tools}`,**imported:true/reviewed:false 平台强制、永不取自粘贴**(粘贴 imported/reviewed/**id** 一律丢弃;id 防 keyed-upsert clobber 既有 Skill ⇒ 调用方 fresh id,同 S3 纪律)。保存位第二层:导入模态**显式字面构造** rec(信任标志字面可见、不 spread 粘贴派生对象)。**node 双向阳性对照**(恶意 JSON 带 reviewed:true / 省略 imported ⇒ 仍强制)+ **变异证红×3**(导入信任粘贴标志→阳性对照红 / 导入缺 reviewed 默认 true fail-open→红 / 谓词恒 false→红,还原全绿)。**preview 真 UI 端到端**:恶意 JSON(reviewed:true+恶意 id sk_clobber_target+XSS prompt+越权 tools)经真导入模态 → 入库 imported:true/reviewed:false、id≠sk_clobber(fresh)、0 活 img。
+- **②双点拒 fail-closed**:runSkill 加 `skillNeedsReview` 守卫(结构兜底防未来调用点)+ `platformSkills()` 完全不列未审阅(预裁④)。**preview 证**:未审件 palette 不列 + runSkill 不发流 + **★对照组亮**(同 prompt 本地件发流 ⇒ 守卫拦的确实是「未审」而非别的)。关闭审阅门不启用 → 仍未审(导入先存未审 ⇒ fail-closed)。
+- **③审阅门摊开**:prompt **全文**转义摊开(cEsc,恶意 `<img onerror>` 字面呈现、window.__pwned 未设)+ name 转义 + **tools scope 呈现**(profile_dump·jobseek_market_value + 「运行时仍与你的可读集取交集(只减不增)」注)+ **[建议]3 硬红线兜底文案**(「审阅是知情,不是唯一防线」)+ 显式认可 = **唯一**置 reviewed:true 通路(截图存证)。
+- **④审阅后走标准 runSkill**:启用后 palette 列出、runSkill 发流,**★scoping 端到端**:导入声明 `['profile_dump','jobseek_market_value']` → 运行工具表 = `['jobseek_market_value']`(**profile_dump 结构性够不到 = F1 减权对导入生效**,方案 §1① 先量的活证)。**[建议]2 双向 preview 证**:改 prompt → reviewed:false + imported 保 true(溯源不洗白)/ 只改说明 → 背书保持 true。
+- **⑤platform 对 apps 零 import**:导入/审阅全在 platform/shell(skills.js/skill-model.js);tools 仍是字符串名(F1 scopeTools 同)、非模块引用。
+- **normSkill fail-closed 归一**:imported **truthy 即导入**(垃圾往不可信侧,宁多审不漏审);reviewed 须**显式 ===true**(导入缺失/垃圾→待审);缺两标志=本地可信(既有 Skill/S3 迁移件**零回归**,normSkill 全默认断言更新)。
+- **验**:npm **86/0**(+7)· tsc **51=51** · 真机 boot **0 panic** · preview 0 console error。
+- **评审请核**:①载重不变式实现是否 airtight(白名单+强制标志+fresh id;双向阳性对照+变异是否够)②双点拒+对照组③审阅门呈现(全文/转义/scope/兜底文案)④[建议]2 编辑通路语义(prompt 变更→失效 / 溯源不洗白 / 只改说明保持)是否对⑤有无绕审阅门的旁路(saveSkill 直写?→ 它是平台内部 API 非用户面;审阅门 spread s 是归一记录非粘贴)。**I2(分享导出)待 I1 过审后。**
