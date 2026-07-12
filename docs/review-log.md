@@ -2423,3 +2423,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **未决拍板**:①错过策略(推荐跳过不补跑+显示错过)②频率档(推荐 daily/weekly 起步)③忙时策略(推荐跳过本 tick)④产出去向(推荐同一对话)。
 - **诚实边界**:仅 app 开着时触发(OS 级调度=另一个方案,不假装);分钟级精度不承诺秒级;web 同界。
 - **评审请核设计**:①「调度器落前端壳+fire 经 runSkill=红线全继承」的先量是否成立(有无我漏的后台面)②「AI 不能给自己排任务」红线的落点(不进 QUERYABLE+管理面 only)是否够③破坏性 fail-closed 继承论证(无人点=不执行)有无洞④错过不补跑/忙时跳过的反焦虑取舍⑤DB_VERSION 升级与三处集合白名单的先量。**下一步 = SC1(方案过审后)。**
+
+### ★ 第95轮独立复核 = Scheduled tasks 方案 🏁 设计通过 + 1 [建议]-强(已钉进方案)+ SC1 七盯点
+**评审验码坐实六先量、对抗性补全「无人值守逐工具路径走查」、四未决预裁全按推荐;[建议]-强已落 proposal。**
+- **①先量成立、无漏的后台面**:Rust 零 scheduler 验码(全仓 spawn 仅 MCP 子进程/stdio/OS open,无定时循环)、auto_backup_if_due 事件驱动先例真、fire=runSkill 继承链第81轮亲验。**★评审补全无人值守逐工具路径对抗走查**:MCP=`MCP_CONFIRM_TIMEOUT` 无人点→超时即**拒**(fail-closed)· guardrail=模态**无超时**(验实)→卡等人回 · app-tool=隔离 compute 无 rt 结构无破坏性 · memory(remember)=与有人值守完全相同(增量/可撤销/Untrusted 框定)非新增风险 · show_widget=静置。**唯一真正的新面 = 调度器本身(timer/due/CRUD),不触 AI。**
+- **★[建议]-强(已钉进 §2)**:「AI 不能给自己排任务」**识别与落点都对**(评审走查:模型今天可达 platform_schedules 的写路径**不存在**;环闭合=即便被调度的 Skill prompt 说「再排一个」,Agent 无工具→只能引导→**每圈需人手点一次**,自激励循环结构断开)。**但保证形态=「结构性缺席」,缺席会静默磨损**(后人「顺手加个排任务工具」时无声消失,不像 QUERYABLE 静态底有代码可指)⇒ SC1 钉成两件有形物:①**守卫测试** `!is_queryable("platform_schedules")` + 工具枚举不含(镜像 S1 platform_skills,断言能红)②**契约注释**(schedule-model.js+types.d.ts)「永不注册可写 platform_schedules 的 capability/app-tool;本红线是结构性缺席,加此类工具即拆除」。同第6轮 QUERYABLE 钉死/第50轮 greeting 信任注释纪律。
+- **③破坏性 fail-closed 无洞**:「预授权确认结构上不存在、绝不引入」划线正确(预授权=拆第58轮「用户显式点击不可伪造」闸)。盯点:guardrail 卡带 source「定时任务 · <skill 名>」(widget-actions 先例;否则用户回来面对没头没尾的确认框)。
+- **④错过不补跑/忙时跳过认可 + 补「同 tick 多 due 串行」**(每 tick 至多 fire 一枚——两枚同时 fire=两条流撞同一对话=忙信号要防的碰撞的自制版;未 fire 那枚 last_run_at 未更新⇒下 tick 天然轮到)。**⑤DB_VERSION 3→4 + 三处白名单先量正确。**
+- **四未决预裁全认可**:跳过不补跑+显示错过(防 7 个 daily 一齐开火)/ daily-weekly 保守频率(成本自觉默认)/ 忙时跳过+串行 / 产出同一对话(可见=透明)。
+- **★SC1 七盯点**:①守卫测试(能红)+契约注释②fire 经 runSkill(spy)+**未审件 fire no-op 双向阳性对照**③每 tick 至多一枚④悬空 skillId→no-op+last_status 如实('skill-missing',不静默)⑤guardrail source(先量通路)⑥scheduleDue 边界+变异证红⑦文案诚实。
+- **下一刀 = SC1。**
