@@ -36,10 +36,13 @@ function lastLabel(n) {
   const when = new Date(n.last_run_at).toLocaleString();
   const st =
     n.last_status === 'ok' ? tt('已运行', 'ran') :
+    n.last_status === 'started' ? tt('已发起(结果见对话)', 'started — see conversation') :
     n.last_status === 'skill-missing' ? tt('Skill 已删除,未运行', 'skill missing — did not run') :
     n.last_status === 'skill-blocked' ? tt('Skill 不可运行(草稿/待审阅),未运行', 'skill not runnable (draft/unreviewed) — did not run') :
-    n.last_status === 'error' ? tt('出错', 'errored') : n.last_status;
-  return when + ' · ' + st;
+    n.last_status === 'error' ? tt('出错', 'errored') + (n.last_error ? ':' + n.last_error : '') : n.last_status;
+  // SC2 错过提示(第96轮 forward-note②):上次 fire 时被越过的排点数(不补跑,如实告知)。
+  const miss = n.last_missed > 0 ? ' · ' + tt('错过 ', 'missed ') + (n.last_missed >= 99 ? '99+' : n.last_missed) + tt(' 次排点(不补跑)', ' occurrence(s), not replayed') : '';
+  return when + ' · ' + st + miss;
 }
 
 /** Scheduled 视图(能力中心传入 box)。 @param {HTMLElement} box */

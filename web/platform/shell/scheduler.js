@@ -10,10 +10,19 @@
  */
 import { aiStreamBusy } from './ai-engine.js';
 import { runSkill } from './copilot-chrome.js';
-import { scheduleDue } from './schedule-model.js';
+import { scheduleDue, occurrencesSinceWatermark } from './schedule-model.js';
 import { listSchedules, saveSchedule } from './schedule-store.js';
 import { normSkill, skillRunnable, skillNeedsReview } from './skill-model.js';
 import { listSkills } from './skill-store.js';
+
+/** SC2 结局回写:流 settle 后按 id **重读**记录、只更状态字段(fire 与 settle 之间用户可能编辑/删除 ——
+ *  重读防 clobber 编辑、已删则跳过;spread 旧闭包快照会把编辑顶掉)。errMsg 截 200 字防日志式膨胀。
+ *  @param {string} id @param {boolean} ok @param {string=} errMsg */
+function settleRun(id, ok, errMsg) {
+  const cur = listSchedules().find((x) => x.id === id);
+  if (!cur) return; // fire 后被删 → 结局无处落,跳过(记录已不存在,不是静默吞失败)
+  saveSchedule({ ...cur, last_status: ok ? 'ok' : 'error', last_error: ok ? '' : String(errMsg || '').slice(0, 200) }).catch(() => {});
+}
 
 /**
  * 一次 tick(可测导出;setInterval 每分钟调它)。
@@ -23,17 +32,21 @@ import { listSkills } from './skill-store.js';
  * - **水位恒推进 + 状态如实**(第95轮盯点④):悬空 skillId → 'skill-missing';草稿/待审 → 'skill-blocked'
  *   (runSkill 会 no-op,如实记不静默)。**不推进水位会让坏调度每分钟重试 + 因「每 tick 一枚」饿死其他调度** ⇒
  *   一律推进 last_run_at、用 last_status 说真话。
- * - 'ok' = **已发起运行**(结果在对话里),非「模型成功」—— 流式结果异步、不在本函数可知范围。
+ * - **状态语义(SC2)**:'started' = 已发起(流式结局异步;settle 后 settleRun 改 'ok'/'error'+last_error ——
+ *   「已发起」不再掩盖 mid-stream 失败;app 中途退出 / web mock 分支不回 settle 则停 'started' = 诚实「结局未知」)。
  * @param {number} now 毫秒 epoch
- * @returns {{fired:string|null, status?:string, reason?:string}} 测试断言用
+ * @returns {Promise<{fired:string|null, status?:string, reason?:string, missed?:number}>} 测试断言用
  */
-export function schedulerTick(now) {
+export async function schedulerTick(now) {
   if (aiStreamBusy()) return { fired: null, reason: 'busy' };
   const due = listSchedules().filter((s) => scheduleDue(s, now));
   if (!due.length) return { fired: null, reason: 'none' };
   const sched = due[0]; // 每 tick 至多一枚;其余下 tick 天然轮到
+  // ★SC2 错过计数(第96轮 forward-note②):水位后排点数 - 1(本次跑的是最新一个,其余=永久错过、不补跑)。
+  const missed = Math.max(0, occurrencesSinceWatermark(sched, now) - 1);
   const skill = listSkills().find((x) => x.id === sched.skillId);
-  let status;
+  /** @type {string} */ let status;
+  /** @type {ReturnType<typeof normSkill>|null} */ let run = null;
   if (!skill) {
     status = 'skill-missing'; // 悬空:Skill 已删 → no-op + 如实记(不静默;UI 据此显示)
   } else {
@@ -41,17 +54,27 @@ export function schedulerTick(now) {
     if (!skillRunnable(s) || skillNeedsReview(s)) {
       status = 'skill-blocked'; // 草稿 / 导入待审([建议]2 编辑重审同落此):runSkill 会 no-op,如实记
     } else {
-      try {
-        runSkill(s); // ★标准路径(红线全继承);内部守卫仍兜底(双点)
-        status = 'ok';
-      } catch (_e) {
-        status = 'error';
-      }
+      // ★SC2 真实结局(第96轮 forward-note①):'started'=已发起(app 中途退出停在此=诚实「结局未知」;
+      //   web 无桌面 rt 的 mock 分支不回 settle,同样停 'started');settle 后改 'ok'/'error'+last_error。
+      status = 'started';
+      run = s;
     }
   }
-  // 写回:水位推进(错过/坏调度不重试、不饿死他人)+ 状态如实。fire-and-forget(失败仅缓存内可见,下次水合对齐)。
-  saveSchedule({ ...sched, last_run_at: now, last_status: status }).catch(() => {});
-  return { fired: sched.id, status };
+  // ★水位先落、await 到缓存已新,**再**起跑 —— settle 可能同步到来(测试 spy/极速失败),
+  //   若跑在写回前,settleRun 会基于旧缓存记录写回 ⇒ **丢水位 ⇒ 重跑循环**。落不下就不跑(fail-closed,防同一循环)。
+  try {
+    await saveSchedule({ ...sched, last_run_at: now, last_status: status, last_missed: missed, last_error: '' });
+  } catch (_e) {
+    return { fired: sched.id, status: 'error', missed };
+  }
+  if (run) {
+    try {
+      runSkill(run, (/** @type {boolean} */ ok, /** @type {string=} */ errMsg) => settleRun(sched.id, ok, errMsg)); // ★标准路径(红线全继承);内部守卫仍兜底(双点)
+    } catch (_e) {
+      settleRun(sched.id, false, 'fire failed');
+    }
+  }
+  return { fired: sched.id, status, missed };
 }
 
 /** @type {ReturnType<typeof setInterval>|null} */
@@ -60,5 +83,5 @@ let _timer = null;
 /** 启动调度器(壳 boot 调;幂等)。60s tick = 分钟级精度(方案 §6 诚实边界)。 */
 export function startScheduler() {
   if (_timer != null) return;
-  _timer = setInterval(() => schedulerTick(Date.now()), 60_000);
+  _timer = setInterval(() => { schedulerTick(Date.now()).catch(() => {}); }, 60_000);
 }

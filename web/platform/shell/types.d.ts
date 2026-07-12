@@ -287,8 +287,13 @@ export interface Schedule {
   created_at?: number;
   /** 上次 fire 时刻(水位;fire 后越过全部积压排点 = 错过不补跑)。 */
   last_run_at?: number;
-  /** 上次结果:'ok' | 'error' | 'skill-missing'(悬空如实记、不静默)。 */
+  /** 上次结果(SC2 语义):'started'=已发起(settle 后改判;app 中途退/mock 不回 settle 停此=诚实结局未知)
+   *  | 'ok'=流正常收 | 'error'=流失败(短讯在 last_error)| 'skill-missing'(悬空)| 'skill-blocked'(草稿/待审)。 */
   last_status?: string;
+  /** 上次 fire 时被越过的排点数(错过不补跑,UI 如实提示;fire 时由 occurrencesSinceWatermark-1 算好存下)。 */
+  last_missed?: number;
+  /** settle 失败短讯(≤200 字;'ok' settle 清空)。 */
+  last_error?: string;
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */

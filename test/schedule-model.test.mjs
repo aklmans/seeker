@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normSchedule, scheduleDue, prevOccurrence } from '../web/platform/shell/schedule-model.js';
+import { normSchedule, scheduleDue, prevOccurrence, occurrencesSinceWatermark } from '../web/platform/shell/schedule-model.js';
 
 // 固定基准:2026-07-15(周三)。本地时区构造。
 const at = (d, hh, mm) => new Date(2026, 6, d, hh, mm, 0, 0).getTime(); // 月份 6 = 7 月
@@ -79,4 +79,24 @@ test('★源守卫:schedule-model.js 零 import + 含「永不注册写调度工
   assert.ok(!/\bimport\s/.test(code), '零 import(node 可测)');
   assert.ok(src.includes('永不注册任何可写 `platform_schedules` 的'), '★[建议]-强契约注释在场(缺席钉成有形物;删注释=本断言红)');
   assert.ok(src.includes('自我持续执行'), '红线理由在场');
+});
+
+test('★occurrencesSinceWatermark(SC2 错过提示):水位后排点数,迭代日历回退(错过数 = 本函数 - 1)', () => {
+  const base = { kind: 'daily', time: '09:00', enabled: true, created_at: at(1, 0, 0) };
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: at(WED - 1, 9, 0) }, at(WED, 14, 0)), 1, '昨天跑过 → 今天 1 个排点(错过 0)');
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: at(WED - 5, 9, 0) }, at(WED, 14, 0)), 5, '5 天没跑 → 5 个排点(错过 4)');
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: at(WED, 9, 0) }, at(WED, 14, 0)), 0, '今天已跑 → 0');
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: at(WED, 8, 0), created_at: at(WED, 8, 30) }, at(WED, 14, 0)), 1, '水位取 max(含 created_at)');
+  const wk = { kind: 'weekly', time: '09:00', dow: 3, enabled: true, created_at: at(1, 0, 0) };
+  assert.equal(occurrencesSinceWatermark({ ...wk, last_run_at: at(WED - 14, 10, 0) }, at(WED, 14, 0)), 2, '两周没跑 → 2 个周排点(错过 1)');
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: 0, created_at: 0, time: 'bad' }, at(WED, 14, 0)), 0, '无效 time → 0(不抛)');
+  assert.equal(occurrencesSinceWatermark({ ...base, last_run_at: 0 }, at(WED, 14, 0)), 15, '长积压按日历逐日计(7月1日 00:00 创建 → 1-15 日各一排点=15,首日 09:00 亦在水位后)');
+});
+
+test('normSchedule:SC2 字段归一(last_missed 非负整数 / last_error 字符串;settle spread 不丢字段的前提)', () => {
+  assert.equal(normSchedule({ last_missed: 3 }).last_missed, 3);
+  assert.equal(normSchedule({ last_missed: -1 }).last_missed, 0);
+  assert.equal(normSchedule({ last_missed: 'x' }).last_missed, 0);
+  assert.equal(normSchedule({ last_error: 'boom' }).last_error, 'boom');
+  assert.equal(normSchedule({ last_error: 42 }).last_error, '');
 });

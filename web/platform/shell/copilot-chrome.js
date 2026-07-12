@@ -62,13 +62,14 @@ document.addEventListener('click', (e)=>{
 
 export function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
 // scopeTools(★Skills F1):Skill.tools 三态 → streamReply 收窄 app-tool 工具表(减权;undefined=全、雏形/打字零回归)。见 runSkill。
-export function agentSend(text, aiText, scopeTools){
+// onSettled(★SC2):本次流真实结局回调,穿给 streamReply(调度器用;用户打字路径不传=undefined 零改)。
+export function agentSend(text, aiText, scopeTools, onSettled){
   const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
   inp.value=''; inp.style.height='auto';
   agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
   const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
   const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll, scopeTools); }
+  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll, scopeTools, onSettled); }
   else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
 }
 
@@ -78,7 +79,7 @@ export function agentSend(text, aiText, scopeTools){
    设置不可经对话改 全部照常。**Skill 不给新权力 = 把用户本就能打的那句指令一键重放。**
    ★信任=可信侧(本地用户自撰指令,同用户在输入框打字),**不走 untrusted 框定**。
    ★skillRunnable 守卫:无指令正文(草稿态)不运行(fail-safe,skill-model 单测覆盖)。 */
-export function runSkill(skill){
+export function runSkill(skill, onSettled){
   const s=normSkill(skill);
   if(!skillRunnable(s)) return;          // 无指令正文 → 不运行(草稿态)
   // ★I1 fail-closed 双点拒之一:导入未审阅 → 不运行(untrusted-until-reviewed;第三方指令须经审阅门背书)。
@@ -87,7 +88,7 @@ export function runSkill(skill){
   agentCollapse();                        // 收起页面画布 → 全屏对话,聚焦到 Agent 看它运行
   // ★Skills F1(工具 scoping):穿 s.tools(normSkill 保三态)→ agentSend → streamReply 收窄 app-tool 工具表。
   //   减权不增权(⊆ 可读集);未声明(undefined)= 全工具(同用户打字重放,雏形零回归)。
-  agentSend(s.prompt, undefined, s.tools);
+  agentSend(s.prompt, undefined, s.tools, onSettled); // onSettled(SC2):调度器要真实结局;交互路径不传
 }
 
 /* ★Skills S2b:命令面板契约 platformSkills() —— 平台级 Skills 命令项(CommandSpec[])。

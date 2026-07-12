@@ -52,8 +52,10 @@ export function aiStreamBusy(){ return __aiStreamBusy; }
  * @param {any} thinkBubble @param {string} text @param {string} who @param {(()=>void)|undefined} scrollFn
  * @param {string[]=} scopeTools ★Skills F1(工具 scoping):Skill.tools 三态 —— undefined=全可读 app-tool(雏形/用户打字零回归)、
  *   `[]`=无 app-tool、`['x']`=仅 x∩可读。**减权不增权**(scopeAppTools 结果恒 ⊆ readableAppTools);平台 Rust 能力恒在(不在此列表)。
+ * @param {((ok:boolean, errMsg?:string)=>void)=} onSettled ★SC2:本次流的**真实结局**回调(onDone→true / onError→false+错误短讯)。
+ *   显式按流穿线(同 scopeTools 先例)⇒ 无全局注册表、并发流不误归因;消费者=调度器(last_status 不让「已发起」掩盖 mid-stream 失败)。
  */
-export function streamReply(thinkBubble, text, who, scrollFn, scopeTools){
+export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
@@ -76,9 +78,10 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools){
       catch(e){ console.error('[widget] 渲染失败', e); }
       if(scrollFn) scrollFn();
     },
-    onError(err){ __aiStreamBusy=false; thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
+    onError(err){ __aiStreamBusy=false; if(onSettled){ try{ onSettled(false, String((err&&(err.message||err))||'')); }catch(_e){} } thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
       __aiStreamBusy=false;                                           // ★SC1:收流即闲(首行,处理体异常不留死忙)
+      if(onSettled){ try{ onSettled(true); }catch(_e){} }             // ★SC2:结局=流正常收(卡渲染异常不翻结局,那是展示层)
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       let prose = acc; const pending = [];                            // 逐卡型剥离 ```seeker 指令块(注册表驱动,加卡零改)
       const CARDS = window.SeekerShell.cards();                       // 壳组合:启用应用贡献的卡注册表

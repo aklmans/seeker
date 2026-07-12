@@ -16,7 +16,7 @@
 
 /**
  * @typedef {{id:string, skillId:string, kind:('daily'|'weekly'), time:string, dow:number,
- *   enabled:boolean, created_at:number, last_run_at:number, last_status:string}} NormSchedule
+ *   enabled:boolean, created_at:number, last_run_at:number, last_status:string, last_missed:number, last_error:string}} NormSchedule
  */
 
 /**
@@ -39,6 +39,8 @@ export function normSchedule(rec) {
     created_at: num(r.created_at),
     last_run_at: num(r.last_run_at),
     last_status: typeof r.last_status === 'string' ? r.last_status : '',
+    last_missed: Number.isInteger(r.last_missed) && r.last_missed >= 0 ? r.last_missed : 0, // SC2 错过提示(fire 时算好存下)
+    last_error: typeof r.last_error === 'string' ? r.last_error : '', // SC2 settle 失败短讯(≤200 字,scheduler 截)
   };
 }
 
@@ -93,4 +95,25 @@ export function scheduleDue(sched, now) {
   const prev = prevOccurrence(n, now);
   if (prev == null) return false;
   return prev > Math.max(n.last_run_at, n.created_at);
+}
+
+/**
+ * 水位之后、now 之前(含)的排点数(SC2 错过提示):fire 时「本次跑的是最新一个,其余 = 错过(不补跑)」
+ * ⇒ 错过数 = 本函数 - 1。**迭代真实 Date 回退**(daily -1 天 / weekly -7 天,本地时区)而非除以固定毫秒周期
+ * —— 跨 DST 的「一天」不是恒 24h,除法会偏一;迭代按日历回退天然正确。上限 99(显示「99+」够用,防畸形水位空转)。
+ * @param {unknown} sched @param {number} now
+ * @returns {number}
+ */
+export function occurrencesSinceWatermark(sched, now) {
+  const n = normSchedule(sched);
+  const from = Math.max(n.last_run_at, n.created_at);
+  const first = prevOccurrence(n, now);
+  if (first == null || first <= from) return 0;
+  let count = 0;
+  const d = new Date(first);
+  while (d.getTime() > from && count < 99) {
+    count++;
+    d.setDate(d.getDate() - (n.kind === 'weekly' ? 7 : 1));
+  }
+  return count;
 }
