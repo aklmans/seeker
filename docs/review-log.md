@@ -2263,3 +2263,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★沙箱强制副本 → CI 交叉核对当次优守卫**:结构上去不了重(沙箱零 import 不能 import computeMatch)⇒ 独立 oracle(computeMatch 算 expectedLow、断言内联一致)锁「一份公式」意图;corrupt-lvl NaN 覆盖缺省 1 vs 0;**变异证红**(内联缺省改回 0→红)=测试抓的正是评审读码发现的那处发散。**这正是本 market-value arc 一直防的 formula drift、现在有 CI 守。**
 - **★★市场价值 arc 收束**:从「静态 48 mock」→「174万荒谬 app-tool」→「41-62 单一 job-pay 函数、UI===app-tool 结构性不发散、内联 matchScore 真逐字 + CI 交叉核对锁死」。**三处假(48 / 174万 / 逐字复刻)各被先量或读码抓出、结构性或 CI 消除**;主公式一份、诚实、示意框定、两面共用、drift 有守卫。**假清零。**
 - **★下一步(评审 · 「先量→真假先修>增强>绿地」)**:①**先量 jobseek 剩余 `aiRun(` 调用点**(已量:剩 1 真·假 = 简历上传罐头 23-15-8[resume-modals],其余 match/简历生成/面试反馈/出题 + market-value[本 arc]全真化)→ 真·假先修(需真解析或诚实降级、无现成真件较大)②Skills 完整版(绑 app-tool、导入先落第79轮 [建议]1 信任模型)③绿地各自方案。**不先绿地。**
+
+### 简历解析真化 Cut1 · 承重契约 + fail-safe 归一化 · commit `16508c6` · ⏳ 待审
+用户拍板「A 真解析」(触 SKILLS 承重;B 诚实降级未选)。**量清:简历上传是纯演出**(startParse 不读文件、罐头 23/15/8、RESUME 静态 mock)。同 ivScore schema 刀 → ivSubmit 真化 拆法:Cut1 钉承重契约、Cut2 AI 接线+写 SKILLS/RESUME+诚实降级。
+- **★承重**:真解析写入 SKILLS(computeMatch/市场价值/智能匹配全读)+ RESUME 档案 ⇒ 结构+校验先定死,AI 产出经硬闸(失败诚实降级、绝不把畸形写进 SKILLS)。
+- **resume-parse.js**(新,零 import node 可测):`RESUME_PARSE_SCHEMA`(硬闸)+ `normResumeParse`(fail-safe:{skills:[{name,lvl,evidence}],years,summary};lvl 钳 0-5、丢无名/重名、evidence 滤非空串、绝不抛;**承重防崩非「乱答写空档案」产品语义**)+ `parseResumeWire`(平衡花括号,同 parseFeedbackWire)。信任分层留 Cut2(简历文本=untrusted / instruction 纯常量 / ai_generate 无工具)。
+- **验**:node 净 · tsc 51 基线 · npm **69/0**(+7:归一/lvl 钳/丢无名去重名/evidence 滤/★fail-safe 全坏输入/parseResumeWire 串感知/schema 硬闸/零-import 源守卫)· ★变异证红(破 fail-safe 守卫→红)· 真机 boot 0 panic(resume-parse 尚未接线、不在载入图 ⇒ 按 <when_to_verify> 无可观测面,Cut2 接线时全驱动验)。
+- **评审请核**:①承重契约(schema+normalizer 覆盖面,尤 fail-safe)②真化前置分工(硬闸拒畸形=产品语义 / normResumeParse fail-safe=承重防崩,同第75轮 ivScore 前置)③Cut2 盯点预告:UI(粘贴文本)、ai_generate 无工具+简历文本 untrusted、schema 硬闸失败诚实降级(不写空 SKILLS)、写 SKILLS/RESUME 承重映射(补 demand/pri/state 等非简历字段的默认)、web/无模型诚实 gate。
+- **下一刀 = Cut2 真化**(AI 接线 + 写 SKILLS/RESUME + 诚实降级)。**建议 Cut1 契约过审后再落 Cut2。**
