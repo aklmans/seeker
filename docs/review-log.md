@@ -2433,3 +2433,16 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **四未决预裁全认可**:跳过不补跑+显示错过(防 7 个 daily 一齐开火)/ daily-weekly 保守频率(成本自觉默认)/ 忙时跳过+串行 / 产出同一对话(可见=透明)。
 - **★SC1 七盯点**:①守卫测试(能红)+契约注释②fire 经 runSkill(spy)+**未审件 fire no-op 双向阳性对照**③每 tick 至多一枚④悬空 skillId→no-op+last_status 如实('skill-missing',不静默)⑤guardrail source(先量通路)⑥scheduleDue 边界+变异证红⑦文案诚实。
 - **下一刀 = SC1。**
+
+### Scheduled tasks SC1:契约 + 调度核心 + 最小管理面(一刀闭环)· commit `9284f15` · ⏳ 待审
+承第95轮方案过审 + 用户拍板起 SC1。兑现第95轮七盯点(逐条):
+- **①[建议]-强钉死(缺席→有形物)**:capability.rs 守卫 `!is_queryable("platform_schedules")` + 工具枚举不含(**变异实测**:塞入 QUERYABLE → 守卫翻红、还原绿)+ schedule-model.js/types.d.ts **契约注释**「永不注册可写 platform_schedules 的 capability/app-tool —— Agent 能排任务=自我持续执行通路,加即拆除」+ **源守卫测试断注释在场**(删注释=断言红,注释本身也钉进 CI)。
+- **②fire 经 runSkill + 未审件双向阳性对照(preview 活线)**:due fire → spy 捕获真流 + 水位推进 + 再 tick 不重跑;**未审件 → 'skill-blocked' 0 流,同構已审件 → 'ok' 有流**(拦的确是「未审」非他因)。
+- **③每 tick 至多 fire 一枚**:两枚同时 due → 分两 tick 各 fire 一枚、第三 tick none、共 2 流(未 fire 的 last_run_at 未动 ⇒ 下 tick 天然轮到,无饥饿)。
+- **④悬空 skillId → no-op + `last_status:'skill-missing'` 如实**;另设 **'skill-blocked'**(草稿/待审,[建议]2 编辑重审场景同落此)——**★水位恒推进**(不推进则坏调度每分钟重试 + 因「每 tick 一枚」**饿死其他调度**;推进水位 + last_status 说真话)。'ok'=**已发起运行**非「模型成功」(流式结果异步,诚实语义)。
+- **⑤guardrail 溯源 · 先量结论(留评审裁)**:ai.rs:811 读码坐实 —— 工具循环内破坏性经 `invoke_raw` **被拒** ⇒ 模型只能渲染 **inline 确认卡(cAB)** ⇒ **平台 guardrail 模态在 ai_chat 运行中结构性不可达** ⇒ scheduled fire 的破坏性提议只会是对话内卡片、**紧邻其上即 skill prompt 用户气泡 = 溯源靠相邻性天然成立**(比穿 source 字段更结实:不是「标注了来源」而是「来源就在上一条消息」;且无需在 agentSend 链上穿新参数)。
+- **⑥scheduleDue 边界 node 测 + 变异证红×3**:daily/weekly 跨天跨周、错过多次只 due 一次、**新建不立即开火**(水位=max(last_run_at, **created_at**):创建晚于今日排点 → 等下一个排点,不把「今早 9 点」算欠账)、禁用/无效 time/畸形永不 due;变异(due 忽略 enabled / 水位忽略 created_at / enabled 放宽 truthy)各翻红。**normSchedule `enabled` 须显式 ===true**(truthy 垃圾不启用:无人值守存疑不跑、宁漏跑不误跑,同 I1 reviewed 纪律)。
+- **⑦诚实文案**:管理面 +新建模态双处「仅 Seeker 开着时触发(到点后一分钟内)· 错过不补跑 · 破坏性只提议等你确认」;能力中心段副题「AI 不能给自己排任务」。
+- **其余**:忙信号 = 壳级(streamReply 开流置、onDone/onError **首行**清,处理体异常不留死忙;同步抛的残忙方向=调度跳过,fail-safe)· **真忙信号活测**(开流不收→tick 'busy' 跳过、收流→fire)· DB_VERSION 3→4(preview 证 objectStore 真建)· 调度 CRUD 只在管理面 · cc-soon 收窄为 Project。
+- **验**:node **97/0**(+8)· cargo **132/132** · tsc **51=51** · 真机 boot **0 panic** · preview 0 console error。(截图辅证受浏览器捕获故障限制,主证=DOM 断言全绿——同「0 console 必要非充分、主证=正向断言」纪律。)
+- **评审请核**:①缺席钉死三件套(守卫+两处注释+注释在场断言)是否够②水位恒推进+状态如实的取舍(vs 不推进重试)③盯点⑤先量结论(inline 卡相邻性=溯源,guardrail 模态不可达)是否成立④'ok'=已发起的诚实语义⑤每 tick 一枚的实现(due[0] 顺序公平性:byUpdated 排序,新改的排前——可接受?)。**SC2(运行记录面板/错过提示)待 SC1 过审后。**
