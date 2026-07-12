@@ -2506,3 +2506,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **诚实边界**:PJ1 无切换器、不显消息数(messages 的 projectId 属 PJ2 —— 不显示还不存在的数据);文案明示「切换与指令生效在后续版本」(不承诺未落的);instructions 是 PJ3 注入位、本刀只存不注入。
 - **验**:node 102/0(+3)· cargo 132/132 · tsc 51=51 · preview E2E(新建 XSS payload → 0 活节点+转义呈现 / 编辑保 created_at / 归档还原 / 空态)· 真机 boot 0 panic · 0 console error。能力中心 cc-soon 占位删除 = **六段全真**(Connector/工具/记忆/知识库/Skills/Scheduled/Project)。
 - **评审请核**:①守卫三件套 + caps.len 承重是否落齐②archived fail-safe 选边(可见侧)的论证③归档不删 + 无删除按钮④诚实文案(不承诺 PJ2/PJ3 未落的)⑤XSS 面(name/instructions 双输入)。**下一刀 = PJ2(切换器+分组+拆键隔离,含 [应改] 落地 + 并发对照判据)。**
+
+### ★ 第99轮独立复核 = Project PJ1 🏁 通过无 findings · ②fail-safe 选边升格 standing(已入 onboarding §4-⑨)
+**评审四盯点全核实;archived fail-safe 选边论证升格为 standing 判据。**
+- **①守卫三件套 + caps.len 承重落齐**(capability.rs:662/676/720 + 契约注释 + 源守卫、变异红):「自我提示注入通路缺席」双向钉死,**caps.len 承重机制第三次复用(skills/schedules/projects)已成模式**。
+- **★②archived fail-safe 选边 → standing(已入 reviewer-onboarding §4-⑨)**:**fail-safe 的方向由失败后果决定,不是一律取 falsy** —— enabled 判错=误跑烧配额→惰性侧 / reviewed 判错=未审可运行→不信任侧 / **archived 判错=错误隐藏=感知数据丢失→可见侧**。同一 fail-closed 原则、后果分析定 closed 侧;此前三例恰好都往 falsy 倒、易被误学成「垃圾一律 false」,archived 是第一例反向。**评审新布尔归一化必问:这个字段判错,哪边疼?**
+- **③归档不删分层正确**(非破坏可逆 ⇒ 不弹模态,合 §4-3 两档;加确认闸反而违反焦虑;无删除按钮=MVP 无破坏面)· **④诚实文案**(不显 PJ2 数据/明示后续版本/只存不注入)· **⑤XSS 面净** · instructions 非串→空 + 信任注释 = **PJ3 三条件的第一条提前固化**。
+- **验**:node 102/0 亲跑 · cargo 132 · 真机 0 panic。**最后一件绿地起步;能力中心六段全真(cc-soon 占位退场)。**
+- **★PJ2 盯点(第98轮四条 + 本轮新增一条)**:①拆键落地 + 并发对照(定时流在飞时用户发送,两流互不串、各自可取消)②隔离活证 spy(同项目第二轮 prior 含第一轮、切项目 prior 空)③Scheduled historyKey 显式拍板④**★新增:归档当前项目须回落默认工作区**(PJ1 无切换器故无副作用;PJ2 有切换器后,归档当前项目若不回落,用户停在不在列表里的「幽灵」当前项目——别让这条从缝里漏掉)⑤激活告知(token 成本、封顶 20)。
+- **下一刀 = PJ2。**
