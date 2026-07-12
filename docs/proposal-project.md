@@ -18,7 +18,7 @@
 
 - **①消息模型弹性**:`{id, surface, role, text, ts, cards?}`(data-store persistMsg)⇒ **+`projectId` 字段零迁移**;`hydrateMessages` 已按 `surface==='agent'` 过滤重渲 ⇒ **按 projectId 过滤 = 同一模式扩一维**。
 - **②★存量死功能(本次先量最大发现)**:Rust `History = HashMap<sessionId, Vec>`(ai.rs:70,**已按 key 键控**、HISTORY_MAX 20 封顶、"持久化跨重启待 messages 接入")—— 但 **desktop.js `req.sessionId || genSessionId()`,前端全仓无一处传 sessionId** ⇒ 每次 agentSend = 新 id = `prior` 恒空 ⇒ **「多轮历史 #1 G2」从未生效**(写入后无人以同 key 读、写完即孤儿;真机表现 = Agent 每轮失忆)。
-- **③⇒ Project 的核心机制免费**:把 `sessionId` 稳定化为**当前项目 id**(前端一处传参)⇒ **一举两得**:修活多轮历史(同项目内 Agent 记得前文)+ **per-project 上下文隔离天然成立**(History 本就按 key 隔离,切项目=换 key,**Rust 零改**)。
+- **③⇒ Project 的核心机制很便宜,但不是零改(第98轮 [应改] 订正)**:我最初写「sessionId 稳定化为项目 id、Rust 零改」——**不成立**。评审验出(我先量只看了一重职责)`sessionId` 是**三重职责**:(a) **流事件路由**(desktop.js:65 `hit = e.payload.sessionId === sessionId`,每条流靠它认领自己的 chunk/done/error)(b) **取消键**(ai.rs Sessions map,`insert(session_id, token)` **同 key 二次 insert 顶掉第一条流的取消令牌**、ai_cancel 歧义)(c) History bucket。直接稳定化 ⇒ **并发流相撞**(定时 fire 在飞 + 用户打字〔agentSend 无忙闸〕= 同 key 两流 ⇒ 事件交叉投递 + 令牌 clobber;**今天并发流正常,恰因 id 每次 fresh**)。**⇒ 修法 = 拆键**:`session_id` 保持每流 fresh(路由+取消),`ai_chat` 加**可选 `historyKey`**(= 项目 id;History 的 entry/prior 读改按它键控,缺省 fresh = 现行为)。**Rust ~5–10 行、前端一处传参** —— 「隔离的核心论证(History 按 key 隔离、切项目=换 key)仍成立」,只是 key 须专用参数而非复用 sessionId。
 - **④项目指令不能走 `task`**:prompts.rs task 是**受约束查表键、绝不插值**(结构纪律)⇒ 用户自撰的项目指令须另走通路(§3,两候选拍板)。
 - **⑤新集合 `platform_projects`**:三处白名单 + **DB_VERSION 4→5**(S1b 教训);**不进 QUERYABLE**——项目指令的生效方式是**注入当前会话**(功能本身),不是让模型 query_data 挖所有项目的配置(不需要、不给)。
 - **⑥能力中心 cc-soon 占位就绪**;Agent 窗口 chrome(切换器)是新 UI 面。
@@ -39,7 +39,8 @@
 
 - **数据**:`platform_projects` 记录 `{id, name, instructions, archived:boolean, created_at, updated_at}`(弹性 schema;`normProject` fail-safe 同族)。**当前项目 = 壳态**(shell-state,localStorage 持久;缺省 = 默认工作区 id `''`)。
 - **消息分组**:persistMsg 加 projectId(当前项目;默认工作区 = 不写字段,既有数据天然归它);hydrateMessages / 切换重渲按 projectId 过滤。
-- **上下文隔离**:streamReply 传 `sessionId = 'proj_' + (当前项目 id || 'default')` ⇒ History 按项目积累/隔离(②③)。**切项目 = 换 key**;删/归档项目 → 该 key 的内存历史一并作废(App 重启本就清空,MVP 不做跨重启历史——ai.rs 注释里的既有边界,如实保留)。
+- **上下文隔离(按 [应改] 拆键)**:streamReply 传**可选 `historyKey = 'proj_' + (当前项目 id || 'default')`**(sessionId 照旧每流 fresh)⇒ History 按项目积累/隔离。**切项目 = 换 key**;删/归档项目 → 该 key 的内存历史一并作废(App 重启本就清空,MVP 不做跨重启历史——ai.rs 注释里的既有边界,如实保留)。
+- **Scheduled × 激活历史(第98轮 [建议],§5.6 拍板)**:激活历史后「定时任务行为不变」不再全真 —— fire 若继承项目 key,无人值守运行会**携带项目近期对话上下文**(token 涨 + 非 clean-slate)。**推荐:定时 fire 用独立 `historyKey='sched:'+调度id`**(clean-slate 保持今日行为、BYO 成本自觉一贯立场;「带上下文的定时简报」将来可作 per-schedule opt-in 单出)。
 - **项目指令注入(两候选,拍板 §5.2)**:
   - **A(推荐)· `ai_chat` 加可选 `projectInstructions` 参数**:Rust 组装进 messages(system 之后、history 之前,角色 system、前缀「用户设定的项目背景/指令:」)。**每轮注入一次、不入 history**(不随轮数重复膨胀);参数是用户自撰可信文本,与 user_text 同信任级;**不碰 task 查表纪律**。约 15 行 Rust。
   - B · 前端拼进 toAI(aiLangHint 先例、零 Rust):但指令会**进 history 每轮重复**(token 膨胀 + 模型看到 N 份)且污染「user 消息 = 用户原话」语义。列出仅为诚实比较。
@@ -54,8 +55,8 @@
 | 刀 | 内容 | 判据 |
 |---|---|---|
 | **PJ1 · 契约 + 存储 + 管理面** | platform_projects(三处 + DB_VERSION 4→5 + ∉QUERYABLE 守卫三件套)+ project-model(normProject,零 import)+ project-store + 能力中心 PROJECT 段(新建/编辑/归档;删除按 §5.4 拍板)。**无切换器**(先立数据面)。 | 守卫测试能红;normProject fail-safe node 测;管理面 CRUD;既有行为零回归 |
-| **PJ2 · 切换器 + 对话分组 + 上下文隔离** | 壳态 currentProject + Agent 顶栏切换器 + persistMsg/hydrateMessages 带 projectId + **streamReply 传稳定 sessionId(修活多轮历史)**。 | 切换重渲正确(A 线消息不出现在 B 线);**★上下文隔离活证**(spy:同项目第二轮 prior 含第一轮、切项目 prior 空);既有消息归默认工作区零回归;多轮历史激活的行为变化在文案/送审明示 |
-| **PJ3 · 项目指令注入** | 按 §5.2 拍板落(推荐 A:ai_chat 可选参数、Rust 组装、不入 history)。 | 指令进上下文活证(spy/单测:messages 含注入、位置对、不随轮重复);task 纪律不破;指令=可信侧、管理不经对话 |
+| **PJ2 · 切换器 + 对话分组 + 上下文隔离** | 壳态 currentProject + Agent 顶栏切换器 + persistMsg/hydrateMessages 带 projectId + **拆键落地**(ai_chat 可选 `historyKey`、sessionId 每流 fresh;streamReply 传 historyKey 修活多轮历史)+ **Scheduled fire 用 `sched:<id>` 独立 key**(§5.6)。 | **★拆键并发对照**(第98轮 [应改] 判据:定时流在飞时用户发送 —— 两流事件互不串、各自可取消);切换重渲正确(A 线消息不出现在 B 线);**★上下文隔离活证**(spy:同项目第二轮 prior 含第一轮、切项目 prior 空);既有消息归默认工作区零回归;多轮历史激活的行为变化在文案/送审明示 |
+| **PJ3 · 项目指令注入** | 按 §5.2 拍板落(推荐 A:ai_chat 可选参数、Rust 组装、不入 history)。**第98轮三条钉死**:①来源钉死(projectInstructions 只来自管理面用户自撰配置、**永不含模型/RAG/外部派生内容** —— system 邻位=高权位,固化进类型注释同 greeting 第50轮)②不入 history ③契约扩展必审。 | 指令进上下文活证(spy/单测:messages 含注入、位置对、不随轮重复);task 纪律不破;三条钉死逐条验;指令=可信侧、管理不经对话 |
 
 ---
 
@@ -65,7 +66,8 @@
 2. **指令注入通路**:①**A · ai_chat 可选参数**(推荐:每轮一次不入 history、语义干净;~15 行 Rust)②B · 前端拼 userText(零 Rust 但每轮重复入 history)。
 3. **默认工作区命名**:①**「日常」**(推荐)②「收件箱」③不命名(下拉里显示「默认」)。
 4. **项目删除档位**:①**MVP 只归档不删**(推荐:数据保留原则最简落法;真删后续按 guardrail 批量档单出)②给删(guardrail 批量档:预览+确认+快照撤销)。
-5. **多轮历史激活范围**:①**随 PJ2 全局激活**(推荐:修活死功能,默认工作区也受益;HISTORY_MAX 20 封顶)②仅项目内激活、默认工作区维持失忆(维持现状但语义怪)。
+5. **多轮历史激活范围**:①**随 PJ2 全局激活**(推荐:修活死功能,默认工作区也受益;HISTORY_MAX 20 封顶)②仅项目内激活、默认工作区维持失忆(维持现状但语义怪)。**前提 = [应改] 拆键已落。**
+6. **Scheduled fire 的 historyKey(第98轮 [建议])**:①**独立 `sched:<id>`(推荐)**——clean-slate 保持今日行为、无人值守 token 成本不涨(Scheduled 线一贯的 BYO 自觉);「带上下文的定时任务」将来 per-schedule opt-in 单出②继承项目 key(带上下文,须在 Scheduled 文案披露成本)。
 
 ---
 
