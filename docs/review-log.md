@@ -2457,3 +2457,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★里程碑 · P2 绿地首件落地**:Scheduled tasks = P1 方案 §4 标「纯绿地」、队列尾积压最久一件。落地意味着 **AI-Native 的最后一类能力(无人值守自动化)有了骨架、红线代价靠结构承接**(fire=runSkill 全继承 + 唯一新红线双向钉死)。绿地不套「已建」、方案先行、评审门控、逐盯点落 —— 同 app-tool/Skills 节奏走完。
 - **SC2 forward-note**:①运行记录面板接 onError/onDone('ok'→起流后真实结局)②错过提示(「昨天 9 点错过」)。
 - **下一步**:SC2(打磨)或 **Project 方案**(第94轮已裁 Project=目标工作区语义,单出方案)。先量再定。
+
+### Scheduled tasks SC2:真实结局回写(started→ok/error)+ 错过提示 · commit `6c14d15` · ⏳ 待审
+承第96轮 SC1 通过 + 两条 forward-note。
+- **①真实结局(forward-note①:「已发起」不再掩盖 mid-stream 失败)**:`onSettled` **显式按流穿线**(streamReply→agentSend→runSkill 各加可选尾参,同 F1 scopeTools 先例)—— 无全局注册表、**并发流不误归因**(用户打字与定时流各自归各自);交互路径不传 = 零改。onDone→true(busy 清后立刻;卡渲染异常不翻结局=展示层)、onError→false+短讯。**状态五态**:'started'(已发起;app 中途退/web mock 不回 settle 停此=诚实「结局未知」)→ settle 改 'ok'/'error'+last_error(截 200 字)。**settleRun 按 id 重读记录、只更状态字段**(fire 与 settle 之间用户可能编辑/删除:重读防 clobber、已删跳过——spread 旧闭包快照会顶掉编辑)。
+- **★时序竞态修(落码抓出、同 SC1 水位恒推进一族的载重交互)**:settle 可能**同步**到来(测试 spy/极速失败)——若水位写回排在 runSkill 之后,settleRun 会基于**旧缓存**记录写回 ⇒ **丢水位 ⇒ 重跑循环**。改「**水位先落(await 到缓存已新)再起跑**」,落不下就不跑(fail-closed 防同一循环);schedulerTick 转 async(setInterval 侧 .catch 兜底)。
+- **②错过提示(forward-note②)**:`occurrencesSinceWatermark`(零 import):水位后排点数,**迭代真实 Date 回退**(daily -1 天/weekly -7 天)而非除固定毫秒 —— **跨 DST 的「一天」非恒 24h,除法会偏一**;上限 99。错过数=排点数-1(本次跑最新、其余永久错过);fire 时算好存 `last_missed`,UI「错过 N 次排点(不补跑)」如实。**normSchedule 收 last_missed/last_error**(settle spread 不丢字段的前提——归一化白名单会剥未声明字段,这是加字段时的固有配套)。
+- **验**:node **99/0**(+2;含长积压逐日历计 15——我先写错 14 被自己测试抓出订正)· **变异证红×2**(weekly 步长丢/水位丢 created_at)· preview E2E(fire→'started'+missed→settle 'ok' 水位/missed 保住 / error 路径 'error'+短讯 / UI 三态+错过提示 / **★settle 前编辑不被 clobber**:改 time 23:45 保住+状态照落)· tsc 51=51 · 真机 boot 0 panic。
+- **评审请核**:①onSettled 穿线(显式 vs 全局)与并发不误归因②「水位先落再起跑」时序修是否封死重跑循环(同步 settle 场景)③settleRun 重读防 clobber 的取舍(vs 乐观锁)④迭代日历回退的 DST 论证⑤'started' 停驻语义(app 中途退/mock 不回 settle)是否诚实够用。**Scheduled 线(方案+SC1+SC2)完整;下一步 = Project 方案(目标工作区)或按反馈。**
