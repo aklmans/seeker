@@ -2394,3 +2394,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:npm 86/0 亲跑 · 变异证红×3(逻辑核实成立)。
 - **★I2 盯点(评审预告,承预裁③)**:①导出**剥 imported/reviewed 元**(接收方 imported:true/reviewed:false 重走审阅,与 I1 载重不变式一致)②导出**不含任何本地信任状态**(否则接收方吃到 reviewed:true 绕审阅门)③本地优先无网络(JSON 复制,同 I1 粘贴先例)。
 - **下一刀 = I2(分享导出)。**
+
+### Skills 分享导出 I2:白名单导出(剥信任标志)+ 全往返 · commit `c16bc12` · ⏳ 待审
+承第93轮 I1 通过 + 用户拍板起 I2(导入方案最后一刀)。兑现第93轮三盯点(逐条):
+- **①②导出剥信任标志 + 不含本地信任状态**:`exportSkillWire`([skill-model.js](web/platform/shell/skill-model.js),零 import,与 importSkillWire 对称)只导出 `{name, prompt, description?, tools?}` —— **绝不含 id/updated_at/imported/reviewed**。**剥信任标志 = 不依赖接收方实现的防线**:标准接收方(I1 importSkillWire)本会丢弃粘贴标志(belt),但导出不携带 ⇒ **旧版本/第三方接收实现也吃不到 reviewed:true**(绕不了审阅门)。剥 id ⇒ 接收方必然 fresh id(不可能 clobber)。tools 三态过导出面保真(undefined 不导出键 / []/['x'] 原样)。无 prompt → null(对称)。
+- **③本地优先无网络**:列表行「分享」按钮(仅可运行件)→ 导出模态(readonly JSON textarea、cEsc 进 DOM)+ 文案「**不含你的本地状态**(id/审阅标志);对方导入后会经**自己的审阅门**认可才能运行」+ 复制三级兜底(clipboard→execCommand→全选提示 ⌘C,WKWebView 剪贴板可用性不赌)。零网络、JSON 复制,同 I1 粘贴先例。
+- **验**:node **89/0**(+3):**★键集断言(主证)** —— 「已审阅的导入件」(本地信任状态最满情形)导出,`Object.keys` 严格等 [description,name,prompt,tools]、四泄漏键逐一断无;可选键按需+三态保真;**往返**(导出→JSON→导入 ⇒ 接收方 imported:true/reviewed:false 重走审阅、tools 声明保真、双侧无 id)。**变异证红**:导出泄漏 imported/reviewed → 键集断言红,还原绿。**preview E2E 真 UI 全往返**:分享→导出模态(键集正确、零信任泄漏)→原样粘进导入模态→审阅门自动开→接收件强制未审+fresh id+内容保真→**★源件未被 clobber**(donor reviewed 仍 true)。tsc **51=51**(修一处自伤:exportSkillWire 曾插断 importSkillWire 的 JSDoc 挂接 → text 隐式 any,tsc 抓出、移位修复)。真机 boot 0 panic、0 console error。
+- **评审请核**:①键集断言是否够格当主证(往返只是 belt——接收方本就强制)②分享按钮只给可运行件(草稿无正文不可分享)是否合理③导出模态文案(不过度承诺、说清接收方要自审)④JSON 进 textarea 的 cEsc(prompt 含 </textarea> 不逃逸)。
+- **★Skills 导入方案(I1+I2)全落**:导入=untrusted-until-reviewed(载重不变式双层)+ 导出=白名单剥标志,**双侧对称、信任标志在两个方向都不过界**。
