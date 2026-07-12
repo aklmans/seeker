@@ -2249,3 +2249,10 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 净 · tsc 51 基线 · **npm 61/0**(市场价值测试重写:job-pay 公式/★div-zero 0.1 守卫/pay 解析+不可解析跳过/gaps 聚合/schema/自包含 eval/零 import 源守卫/**★两集合 reads D3 上架双向阳性对照:缺 jobs 或 skills 任一⇒不上架**)· **★变异证红**(去 0.1 守卫→div-zero 红)· 真机 boot 0 panic · **preview E2E**:app-tool computeMarketValue(真实数据)=41-62 非 174 · **UI===app-tool** · render 显区间/gaps/示意 · 前端 openMarketValue 无回归。
 - **★市场价值假彻底清零**:UI(四面)+ app-tool(模型侧)全收敛到单一 job-pay 函数、41-62 合理、示意框定、结构性不发散。**评审盯点全兑现**:模型侧不再 174万 ✓ / 两层 D3 reads:[jobs,skills] 双向阳性对照 ✓ / 单一 marketValue 函数 UI+app-tool 共用+源守卫零 import ✓。
 - **下一步**:jobseek 剩 1 真·假 = **简历上传罐头 23-15-8**(无现成真件、需真解析或诚实降级)/ Skills 完整版 / 绿地。**建议对齐用户。**
+
+### ★ 第85轮独立复核 = 市场价值 [应改] 收敛 🏁 通过 + 1 [建议](逐字复刻假声明,已落 `9f20741`)
+**评审读码核实收敛(结构性、非巧合);★读码证伪我的「逐字复刻 computeMatch」注释(假不变式)。**
+- **[应改] 收敛读码通过**:computeMarketValue 重写 job-pay 读 `rows.jobs/skills`(D3-fed rows 非模块 globals ⇒ 沙箱安全)、174万公式删;`marketValue()` 复用同函数 ⇒ **UI===app-tool(公式一份、不可能发散,非「都改成 41-62」的巧合而是构造)**;reads:['jobs','skills'] 两层 D3(jobs 在 QUERYABLE、readable_set 门,无新破口)+ run.js 逐集合硬拒;#1+#3 同刀(纯可测+变异红)。**三盯点全兑现、市场价值主公式假清零。**
+- **★[建议]:「逐字复刻 computeMatch」读码证伪(本 arc「勿声明假不变式」第 N 次,这次在注释)**:内联 matchScore 于 ①lvl 缺省(computeMatch 非有限/<1→**1** / 旧内联→**0**)②舍入(computeMatch round 1 位 / 旧内联不)③total(有效 need 数 / need.length)三处发散。**有效数据(lvl1-5)≈同、发散只在坏 lvl(低可达同 created_at 类)⇒ [建议] 非 [应改]**;但「一份公式」成就被内部一份已与 computeMatch 发散的副本暗蚀、且假声明须订正。
+- **★[建议] 已落 `9f20741`(评审给的两条都做)**:①内联 matchScore **真·逐字对齐 computeMatch**(缺省 `Number.isFinite&&>=1?min(5,floor):1`、逐类计数、`round(credit/total×100)/10`)+ 订正注释(逐字点列明);②**交叉核对测试锁「一份公式」意图**(pay lo=hi 两岗位反解权重 + corrupt-lvl 技能,expectedLow 由 computeMatch 独立算 ⇒ 内联权重===computeMatch.score,含缺省1+rounding 边界)。npm **62/0** + **★变异证红**(内联缺省改回 0 → 交叉核对红=抓到评审发现的发散)+ 真实值仍 41-62(rounding 对齐无漂移)+ 真机 boot 0 panic。**沙箱强制副本去不了重 ⇒ CI 交叉核对当次优守卫,正是本 market-value arc 一直防的 formula drift。**
+- **下一步(第84/85轮次序)**:先量 jobseek 剩余 aiRun(简历上传罐头 23-15-8 = 已知 1 真·假,需真解析/诚实降级)→ 真·假先修 / Skills 完整版(绑 app-tool、导入先落第79轮 [建议]1)/ 绿地。**建议对齐用户。**
