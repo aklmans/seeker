@@ -2526,3 +2526,15 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **消息分组**:persistMsg 带 projectId(**默认工作区 '' 不写字段 = 既有消息零回归**);hydrateMessages 按 `(r.projectId||'')===current` 过滤。**E2E 双向隔离**(A 线不见日常、日常不见 A;零回归=无 projectId 消息在日常线)。**壳态 = project-state.js 零 import 叶子**(先量:shell-state 已 import data-store ⇒ 当前项目态不能住 shell-state,否则 persistMsg 反向 import 成环;单列叶子无环)。reassigned litmus:getter/setter 不上 window。**切换项目 = 仅两个用户 UI 调用点**(切换器 onchange / 归档回落)——「项目管理不经对话」的运行态半。
 - **验**:cargo **133/133**(+1)· npm 102/0 · tsc 51=51 · preview E2E 全绿 · 真机 boot 0 panic · 0 console error。
 - **评审请核**:①拆键是否封死第98轮并发碰撞(sessionId 零改+historyKey 单测+变异;分层论证是否成立)②消息分组零回归(''不写字段)与过滤语义③归档回落双保险④'sched:' 前缀与 'proj_' 前缀的键空间是否会撞(sched id 'sc_*' vs proj id 'pj_*',前缀隔离)⑤修活多轮历史的行为变化告知是否够。**下一刀 = PJ3(指令注入,三条钉死)。**
+
+### ★ 第100轮独立复核 = Project PJ2 🏁 通过无 findings · ★里程碑:G2 死功能修活
+**评审读码坐实拆键精确落地、采纳分层论证、五盯点全兑现。**
+- **①拆键精确落地**:desktop.js:43 **逐字未变**(每流 fresh)、路由 hit()/Sessions/ai_cancel 两消费者零改;ai.rs:257 `history_key.unwrap_or(session_id)` **缺省=fresh=修活前行为零回归(缺省语义选得准)**;AiRequest 注释钉「勿稳定化」= 红线搬类型面又一次。
+- **★分层论证采纳(评审:这是正确的论证形态)**:第98轮碰撞的**唯一成因**=稳定化 sessionId;本刀对其生成+两消费者**零改动(评审读码验证了「没做」)** ⇒ **碰撞向量结构性缺席**。与第96轮「guardrail 模态 ai_chat 内不可达」同族:**对一个唯一成因从未被引入的 bug,验证「未引入」优于强行构造触发 —— 前提是「未引入」被独立读码核实。**Rust `history_bucket_isolation_and_cap` + 变异红补住新代码正确性。
+- **②隔离分层活证**(Rust 同 key 累积/异 key 空/封顶 + 前端三态穿参;真模型待 BYO,与 D3 的 Rust-gate+接线断言同一分层)· **③归档回落双保险超要求**(UI 回落 + 幽灵自愈连坏 localStorage 态也自愈)· **④键空间双重隔离**(`proj_`/`sched:` 前缀互异 + sc_*/pj_* id 命名空间;proj_default 哨兵与 proj_pj_* 不撞)· **⑤告知准确**(20 条=10 轮,翻译成用户语言)· 分组零回归('' 不写字段)。
+- **★project-state 零 import 叶子 = SCC 纪律(§4-②)设计期主动应用**(评审记一笔):先量出 shell-state→data-store 既有边 ⇒ 壳态住 shell-state 会成环 ⇒ 单列叶子 —— **不是被评审抓,是设计期避掉**。
+- **备注(非 finding)**:同项目并发双发向同桶 append,Mutex 护住、次序略竞态无损坏 —— 与任何聊天应用一致,不处理。
+- **验**:cargo 133/133 · npm 102/0 亲跑 · 真机 0 panic。
+- **★里程碑**:第98轮发现的**死功能(G2 多轮历史)修活** —— Agent 第一次记得上一轮;以**项目为界隔离**、定时任务 clean-slate、默认工作区同享。**一个从未生效的存量设计,借最后一件绿地的落地顺手接通,零回归(缺省=旧行为)。**
+- **★PJ3 盯点(承第98轮三条件 + 本轮加)**:①注入源头验(只来自管理面自撰、永不含模型/RAG/外部派生;PJ1 类型注释已固化)②system 之后 history 之前、每轮一次、不入 history③ai_chat 契约扩展必审 —— **评审将读注入位实际拼装(与 Untrusted 框定/contribute 注入的相对位序是否正确)**。
+- **下一刀 = PJ3(Project 线最后一刀)。**
