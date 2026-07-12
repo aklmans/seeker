@@ -28,7 +28,7 @@
   - **平台 Rust 能力**(query_data / show_widget / memory / doc)—— **恒在**(ai_chat 结构内,非前端 app-tool,scoping 不动它们);
   - **app-tool**(前端 appTools)—— 限定为 `readable ∩ scopeTools`(声明集)。
 - **★结构性收窄、不旁路**(评审盯点①):scoping 只是把 appTools 列表**取子集**(⊆ readable),每个 app-tool 仍走 T0–T3 全管线(D3 取数 / iframe 隔离 compute / projectToSchema+框定);且 ai_chat dispatch 已 `app_tool_names.contains(call.name)`([ai.rs](src-tauri/src/ai.rs))—— **模型调未传入的工具不匹配、不执行** ⇒ 声明外的 app-tool 结构性够不到。**scoping 减权、绝不增权,红线全继承。**
-- **管理 UI**(能力中心 Skills 段):Skill 编辑加「可用工具」多选(从 `SeekerShell.appTools()` 列;选空/不选 = 全工具)。工具名进 DOM 走 cEsc。
+- **管理 UI**(能力中心 Skills 段):Skill 编辑加「限定此 Skill 可用的工具」开关 + 「可用工具」多选(从 `SeekerShell.appTools()` 列)。**三态(严格同 §5.2,勿写反)**:开关**未勾** = `undefined`(不限定 = 全工具、雏形零回归)/ 勾 + **选定** = `['x']` / 勾 + **全不选** = `[]`(**无 app-tool**,非全工具)。工具名进 DOM 走 cEsc。**★注意**:`[]` = 无 app-tool 是**最小权限**;绝不可解读成「空 = 全」——那会把最小权限反转成提权(第91轮 [建议] 修正的反转残留)。
 
 ---
 
