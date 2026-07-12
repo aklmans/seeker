@@ -2383,3 +2383,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **normSkill fail-closed 归一**:imported **truthy 即导入**(垃圾往不可信侧,宁多审不漏审);reviewed 须**显式 ===true**(导入缺失/垃圾→待审);缺两标志=本地可信(既有 Skill/S3 迁移件**零回归**,normSkill 全默认断言更新)。
 - **验**:npm **86/0**(+7)· tsc **51=51** · 真机 boot **0 panic** · preview 0 console error。
 - **评审请核**:①载重不变式实现是否 airtight(白名单+强制标志+fresh id;双向阳性对照+变异是否够)②双点拒+对照组③审阅门呈现(全文/转义/scope/兜底文案)④[建议]2 编辑通路语义(prompt 变更→失效 / 溯源不洗白 / 只改说明保持)是否对⑤有无绕审阅门的旁路(saveSkill 直写?→ 它是平台内部 API 非用户面;审阅门 spread s 是归一记录非粘贴)。**I2(分享导出)待 I1 过审后。**
+
+### ★ 第93轮独立复核 = Skills 导入 I1 🏁 通过(载重不变式 airtight · scoping 真价值兑现)
+**评审读码亲验载重不变式双层强制 airtight、三 [建议] 全兑现([建议]2 比要求更精准)、五盯点全过、无旁路。**
+- **★载重不变式双层读码坐实**:**Layer1** importSkillWire(skill-model.js:98)return **字面** imported:true/reviewed:false,粘贴的 w.imported/reviewed/id **从不读**、**无 `...w` spread ⇒ 无 spread 顺序风险**;**Layer2** 导入模态字面构造 rec + newId fresh id —— 即便 Layer1 被绕保存位仍字面强制(纵深)。恶意 JSON(reviewed:true / 省略 imported 吃本地默认 / clobber id)**一律强制**,第92轮「spread 顺序错→审阅门全线可绕」结构性堵死。normSkill fail-closed(imported truthy 严处靠 / reviewed 须显式 ===true / 缺两标志=本地零回归,安全性系于「导入永远强制 imported:true」= Layer1/2 保证)。
+- **★[建议]2 兑现且更精准**(skills.js:180):prompt 变→reviewed:false(旧背书失效)/ **只改说明→保 s.reviewed**(不是一改就重审)/ imported:s.imported **溯源不洗白** ⇒ 恶意导入件**无法经编辑洗白信任或跳过重审**。[建议]3 硬红线兜底文案兑现。
+- **②双点拒 fail-closed + 对照组亮**(同 prompt 本地件发流 ⇒ 拦的确是「未审」非他因,「控制组必须能亮」)· **③审阅门 = 唯一 reviewed:true 通路**(prompt 全文 cEsc+Untrusted 摊开、恶意 <img onerror> 字面呈现、tools scope + ∩readable 注)· **⑤无旁路:四 saveSkill 调用点全安全**(restore=快照归一记录 / edit=溯源+prompt-bound / import=白名单+fresh id / endorse=`{...s, reviewed:true}` s 是归一记录、reviewed:true 在 spread **后**=正确顺序、唯一置 true 路径;saveSkill 平台内部 API 无用户面直写粘贴)。
+- **④scoping 对导入生效 = 方案 §1① 先量活证**:导入声明 ['profile_dump','jobseek_market_value'] → 运行工具表 ['jobseek_market_value'](profile_dump 结构性够不到)= F1 减权(scopeAppTools⊆readable⊆D3)对导入生效,「导入不改 tools 侧安全」坐实。
+- **★★scoping 真价值兑现(第89/90/91轮排序注记落点)**:导入第三方 Skill = 平台强制不可信 + 双点拒未审 + 审阅门知情背书唯一信任转移 + tools 运行时减权 + 硬红线结构性兜底。**「本地自撰 scoping 安全价值低、导入才是兑现点」判断落地坐实。**
+- **验**:npm 86/0 亲跑 · 变异证红×3(逻辑核实成立)。
+- **★I2 盯点(评审预告,承预裁③)**:①导出**剥 imported/reviewed 元**(接收方 imported:true/reviewed:false 重走审阅,与 I1 载重不变式一致)②导出**不含任何本地信任状态**(否则接收方吃到 reviewed:true 绕审阅门)③本地优先无网络(JSON 复制,同 I1 粘贴先例)。
+- **下一刀 = I2(分享导出)。**
