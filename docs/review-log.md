@@ -2515,3 +2515,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 102/0 亲跑 · cargo 132 · 真机 0 panic。**最后一件绿地起步;能力中心六段全真(cc-soon 占位退场)。**
 - **★PJ2 盯点(第98轮四条 + 本轮新增一条)**:①拆键落地 + 并发对照(定时流在飞时用户发送,两流互不串、各自可取消)②隔离活证 spy(同项目第二轮 prior 含第一轮、切项目 prior 空)③Scheduled historyKey 显式拍板④**★新增:归档当前项目须回落默认工作区**(PJ1 无切换器故无副作用;PJ2 有切换器后,归档当前项目若不回落,用户停在不在列表里的「幽灵」当前项目——别让这条从缝里漏掉)⑤激活告知(token 成本、封顶 20)。
 - **下一刀 = PJ2。**
+
+### Project PJ2:拆键 + 切换器 + 对话分组 + 上下文隔离(修活多轮历史)· commit `9fdd8d1` · ⏳ 待审
+承第98/99轮五盯点。逐条:
+- **①拆键落地([应改])**:ai_chat 加可选 `history_key`;History 抽 `prior/append_turn` 方法、读写按 `history_key.unwrap_or(session_id)` 键控(缺省=每流 fresh=prior 恒空=修活前行为零回归)。**sessionId 只承路由+取消、每流 fresh 未动**(desktop.js:43 零改;AiRequest 类型注释钉死「勿稳定化」+ 引第98轮 [应改] 理由)。**并发对照分层**:前端半 = 每流独立回调集(E2E)+ sessionId fresh 读码;Rust 半 = `history_bucket_isolation_and_cap` 单测(桶独立于 session、异 key 隔离、封顶丢最旧)+ **变异证红**(prior 忽略 key → 隔离断言红);事件路由/取消令牌两职责**零改动=结构保持**(诚实:同 key 两真流的事件级对照需真机双流,E2E spy 层不可达 —— 主证=「引发碰撞的改动根本没做」)。
+- **②隔离活证(分层)**:Rust 单测=同 key 第二轮 prior 含第一轮(多轮修活核心)+ 异 key prior 空(跨项目隐私);前端=hkey 三态穿参真 UI 断言(`proj_default`/`proj_<id>`/`sched:<id>`)。端到端真模型 prior 注入需 BYO(诚实边界)。
+- **③Scheduled historyKey 落地(§5.6 预裁)**:fire 穿 `'sched:'+id` 独立 clean-slate(无人值守 token 不涨、输出不受无关近期对话影响;注释留「带上下文定时任务后续 opt-in」)。E2E 断言 fire 的 hkey。
+- **④归档当前回落 + 幽灵自愈(第99轮新增盯点)**:projects.js 归档当前项目 → `setCurrentProjectId('')`(E2E 证);**双保险** render 自愈:切换器渲染时 current 指向归档/已删项目 → 归位日常(E2E 手写幽灵 id 证)。
+- **⑤激活告知**:切换器 title + 管理面文案「项目内 Agent 记得最近对话(至多约 10 轮,**会略增模型用量**)」;PJ1「后续版本」文案更新(切换已生效、指令留 PJ3)。
+- **消息分组**:persistMsg 带 projectId(**默认工作区 '' 不写字段 = 既有消息零回归**);hydrateMessages 按 `(r.projectId||'')===current` 过滤。**E2E 双向隔离**(A 线不见日常、日常不见 A;零回归=无 projectId 消息在日常线)。**壳态 = project-state.js 零 import 叶子**(先量:shell-state 已 import data-store ⇒ 当前项目态不能住 shell-state,否则 persistMsg 反向 import 成环;单列叶子无环)。reassigned litmus:getter/setter 不上 window。**切换项目 = 仅两个用户 UI 调用点**(切换器 onchange / 归档回落)——「项目管理不经对话」的运行态半。
+- **验**:cargo **133/133**(+1)· npm 102/0 · tsc 51=51 · preview E2E 全绿 · 真机 boot 0 panic · 0 console error。
+- **评审请核**:①拆键是否封死第98轮并发碰撞(sessionId 零改+historyKey 单测+变异;分层论证是否成立)②消息分组零回归(''不写字段)与过滤语义③归档回落双保险④'sched:' 前缀与 'proj_' 前缀的键空间是否会撞(sched id 'sc_*' vs proj id 'pj_*',前缀隔离)⑤修活多轮历史的行为变化告知是否够。**下一刀 = PJ3(指令注入,三条钉死)。**
