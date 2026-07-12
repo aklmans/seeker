@@ -2304,3 +2304,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **分期**:F1 契约+scoping 运行时(无 UI、三态逐条测)→ F2 管理 UI(可用工具多选、cEsc、管理不经对话)→(后续)导入。推荐 F1 先行。
 - **评审请核设计**:①scoping「限定非加入」的先量翻案是否成立(§5 premise 空操作)②三态语义 + 结构性够不到声明外(收窄非旁路、红线继承)③信任(本地自撰 / 导入留后续)④F1 先行去风险。
 - **下一步 = F1**(契约 + scoping 运行时)。**建议方案过审后再落 F1。**
+
+### ★ 第89轮独立复核 = Skills 完整版方案 🏁 设计通过 + 1 [建议] + 1 排序注记
+**评审读码坐实核心 pivot(§5 绑工具=空操作 → scoping/最小权限);★记为第五次先量翻案(翻方案自己 §5)。**
+- **★第五次先量翻案读码坐实**:streamReply 已传 `appTools:readableAppTools()` 全可读集 ⇒ prompt-only Skill 工具表已含全部可读 app-tool ⇒ §5「绑工具=∪加入」**确是空操作**;pivot 到 scoping(限定=最小权限)。**先量连自己刚写的方案 §5 都不放过。**
+- **scoping 结构性成立**:①**減権非増权 airtight**(scoped=`readableAppTools∩declared`⊆readable,三态全⊆readable、无提权面)②**两道结构闸**(工具表不含声明外 + ai_chat dispatch `app_tool_names.contains` 拒幻觉调 → 声明外结构性够不到、每 app-tool 仍走 T0–T3)③红线继承不破(scoping 减权、runSkill 仍=agentSend(prompt)、Skill⊆用户打字且工具更少)④信任本地自撰+导入延后(第79轮 [建议]1)+platform 零 import(registry 按名查、scopeTools 字符串名)。
+- **★scoping 真价值锚在安全导入**(评审点睛):本地 Skill 自我 scoping 安全价值低(用户既写 prompt 又设 scope);scoping 是**安全导入的前提**(导入的第三方 Skill 声明所需工具、平台强制 scope ⇒ 恶意导入够不到声明外)。F1 先建 scoping = 为安全导入打地基。
+- **★[建议]:`[]`=「无 app-tool」非「无工具」固化进 Skill.tools 类型注释**(非只方案 doc,同 greeting/widgetActions「红线搬类型面」第49轮):`[]` 的 Skill 仍能 query_data/写记忆/show_widget(平台 Rust 能力恒在、各由自身红线闸),作者若理解成「沙箱无数据」会惊讶。三态语义(undefined 全/[]无 app-tool 平台恒在/['x']仅 x∩)固化进类型。若要「纯文本无数据」是另一机制(ai_generate 无工具)非 `[]`。
+- **★排序注记(产品取舍交用户)**:F1=契约+runtime **无 UI**+导入延后 ⇒ F1 落地后 scoping 机制**无消费者**(undefined=全零回归下休眠)=可接受**已测前瞻件**(同 T0/normMatchResult),**但前提 F2/导入 reasonably 跟上、别留长 gap**(否则成「测过没人用」死重);scoping 真价值在安全导入 ⇒ 若近期不做导入/UI,可考虑 scoping 是否等导入方案一起。
+- **★F1 盯点(评审)**:①runtime scoping 两道结构闸真 enforce(工具表=平台∪readable∩declared 真模块导出验、dispatch 拒声明外)②三态逐条测+变异证红③红线继承 scoped⊆用户打字、runSkill 穿 scopeTools 到 streamReply 无旁路④`[]` 语义类型注释固化。
+- **下一步 = F1**(契约+scoping runtime,含 [建议] `[]` 类型注释);**排序注记交用户定**(F1 现在 + 承诺 F2 / 还是等导入一起)。
