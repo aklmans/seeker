@@ -2538,3 +2538,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★里程碑**:第98轮发现的**死功能(G2 多轮历史)修活** —— Agent 第一次记得上一轮;以**项目为界隔离**、定时任务 clean-slate、默认工作区同享。**一个从未生效的存量设计,借最后一件绿地的落地顺手接通,零回归(缺省=旧行为)。**
 - **★PJ3 盯点(承第98轮三条件 + 本轮加)**:①注入源头验(只来自管理面自撰、永不含模型/RAG/外部派生;PJ1 类型注释已固化)②system 之后 history 之前、每轮一次、不入 history③ai_chat 契约扩展必审 —— **评审将读注入位实际拼装(与 Untrusted 框定/contribute 注入的相对位序是否正确)**。
 - **下一刀 = PJ3(Project 线最后一刀)。**
+
+### Project PJ3:项目指令注入(通路 A · 三条钉死)· commit `8db8925` · ⏳ 待审 —— Project 线收官刀
+承第98轮三条件 + 第100轮盯点(评审将读注入位实际拼装)。
+- **注入实现**:`insert_project_instructions`(可单测纯函数):Some(非空)→插 messages[1](**system 之后、history 之前**,role=system、内容带来源框定「用户本人在管理面自撰、以用户身份生效」)+ 游标 +1 ⇒ history 从 [2] 起、当前 user 恒末尾;None/空白 → 不插零改。**与 contribute/Untrusted 的相对位序**:项目指令在 build_messages 后、history 前(at=1);context message(记忆召回,含 Untrusted 框定)仍插在 history 之后、user 之前(既有 at 游标顺延)⇒ **可信指令(高位)与不可信召回(低位、带框定)天然分层,未动 contribute 一行**。
+- **三条钉死逐条**:①**来源**:前端唯一赋值点 = ai-engine 读 project-store 用户自撰 instructions(historyKey 缺省 + 当前非默认 + 非空白三闸);AiRequest 类型注释钉「永不含模型/RAG/外部派生」②**不入 History = 结构保证**(append_turn 只收 user/assistant,指令不在其中 —— 不随轮数累积,单测断言在案)③**契约扩展即本刀送审主体**(ai_chat 签名 + run_chat 穿参,编译器证明唯一调用点)。
+- **★连带语义(与 PJ2 §5.6 一致)**:显式 historyKey = 调用方自管语境 ⇒ **不注入项目指令**(定时任务与项目无关、skill 自带 prompt;JSDoc 钉死)。E2E 四态:默认→UNDEF / 带指令项目→**指令原文** / 空白指令→UNDEF / sched fire→UNDEF。
+- **验**:cargo **134/134**(+1 位序单测:[0]sys/[1]指令/[2]user + 来源框定在场 + None/空白零改;**变异证红**:忽略 pi 恒不插→红)· preview E2E 四态穿参 · tsc 51=51 · npm 102/0 · 真机 boot 0 panic。文案更新(指令「每次对话自动生效」,不再欠账)。
+- **评审请核**:①注入位拼装(与 Untrusted/contribute 相对位序 —— 指令高位可信 vs 召回低位带框定分层)②三条钉死逐条③连带语义(sched 不带指令)是否正确④来源框定文案(「以用户身份生效」)是否恰当⑤`<注入试探>` 类内容在指令里原样穿参 —— 它是用户自撰可信侧、注入位是纯文本 content 无 HTML 面,是否认可。**Project 线(方案+PJ1+PJ2+PJ3)收官;能力中心全部能力落地。**
