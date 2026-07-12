@@ -2,12 +2,12 @@
 /** jobseek · 岗位级快捷动作(原 index.html inline 收尾 · 批9c):
  *  dotsHTML(技能点渲染件,analysis/skills 页消费)· openMarketValue(市场价值报告模态,nav 顶栏动作/cards/copilot/analysis/skills 消费)·
  *  aiResumeForJob + goInterview(岗位→简历/面试快捷跳转,jobs/match/cards/copilot 消费)。
- *  ★ownership:openMarketValue 读 marketValue/topLeverageGaps/aiRun(intake-action.js)= jobseek 业务,归 apps(先前"9b 含 openMarketValue"框定经 grep 订正);
+ *  ★ownership:openMarketValue 读 marketValue/aiRun(intake-action.js)= jobseek 业务,归 apps(先前"9b 含 openMarketValue"框定经 grep 订正);
  *    批11A 已把 analysis/skills 的原内联 onclick 改 [data-omv] import 绑定、批11B nav 顶栏动作改 SeekerShell.pageActions 契约 → openMarketValue 桥已摘、消费者全 import。 */
 
 /* ---------- MARKET VALUE modal ---------- */
 import { JOBS } from '../data.js';
-import { marketValue, topLeverageGaps, aiRun } from './intake-action.js';
+import { marketValue, aiRun } from './intake-action.js';
 import { ivState, renderInterview } from './interview.js';
 import { renderResumes, resumeGenerate } from './resumes.js';
 import { $ } from '../../../platform/shell/dom.js';
@@ -21,7 +21,7 @@ export function openMarketValue(){
     <div class="modal-body"><div id="mvHost"></div></div>`;
   const m=openModal(html);
   aiRun($('#mvHost',m),[tt('聚合你的能力档案与项目证据','Aggregating your assets & evidence'),tt('对照 12 份目标 JD 与市场薪资带','Comparing against 12 JDs & salary bands'),tt('估算你的市场定位','Estimating your market position')],
-    ()=>{ const mv=marketValue(); const gaps=topLeverageGaps(); return `<div style="text-align:center;padding:8px 0 18px;border-bottom:0.5px solid var(--border);">
+    ()=>{ const mv=marketValue(); const gaps=mv.gaps||[]; return `<div style="text-align:center;padding:8px 0 18px;border-bottom:0.5px solid var(--border);">
       <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 8px;">${tt('参考区间 · 年包(示意)','Reference range · annual (indicative)')}</p>
       <div class="score-big" style="justify-content:center;"><span class="v accent">${mv.low}–${mv.high}</span><span class="u">${tt('万 / 年','w / yr')}</span></div>
       <p style="font-size:12.5px;color:var(--ink-3);margin:12px auto 0;max-width:460px;line-height:1.7;">${tt('由你 <b>'+mv.jobs+'</b> 个目标岗位的真实薪资、按你对各岗位的匹配分加权得出 —— <b>示意级、仅供参考</b>,勿作决策依据。','Weighted from the real pay of your <b>'+mv.jobs+'</b> target roles by how well you match each — <b>indicative only</b>, not a decision basis.')}</p></div>

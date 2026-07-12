@@ -17,21 +17,21 @@ import {
 } from './market-value-compute.js';
 
 /**
- * 据**已投影** output 产市场价值卡(样式沿旧 jobseek.rs,文案改 tt 双语)。
- * @param {{low:number, high:number, n:number, top:{name:string, lvl:number}[]}} o
+ * 据**已投影** output 产市场价值卡(文案 tt 双语;与前端 openMarketValue 报告同源同框定)。
+ * @param {{low:number, high:number, jobs:number, gaps:string[]}} o
  * @returns {import('../../../platform/shell/types').AppToolWidget}
  */
 function renderMarketValue(o) {
-  const chips = (o.top || [])
-    .map((k) =>
-      `<span style="display:inline-block;padding:3px 9px;border:0.5px solid var(--border,#d8d5cf);font-size:12px;color:var(--ink-2,#3a3a3a)">${cEsc(k.name)} · L${k.lvl}</span>`,
+  const chips = (o.gaps || [])
+    .map((g) =>
+      `<span style="display:inline-block;padding:3px 9px;border:0.5px solid var(--border,#d8d5cf);font-size:12px;color:var(--ink-2,#3a3a3a)">${tt('补齐 ', 'Close ')}${cEsc(g)}</span>`,
     )
     .join(' ');
   const html =
     `<div style="font-family:var(--font-sans,system-ui);padding:10px 6px">` +
     `<div style="font-size:10px;letter-spacing:.18em;color:var(--ink-3,#9a9a9a);font-family:var(--font-mono,monospace)">${tt('— 参考区间 · 年包(示意)', '— Reference range · annual (illustrative)')}</div>` +
     `<div style="font-size:34px;color:var(--accent,#c95f3d);font-weight:600;margin:8px 0 4px">${o.low}–${o.high}<span style="font-size:14px;color:var(--ink-3,#888);font-weight:400"> ${tt('万 / 年', '×10k / yr')}</span></div>` +
-    `<div style="font-size:13px;color:var(--ink-2,#555);line-height:1.6;margin-bottom:14px">${tt('基于你 ', 'Based on your ')}<b>${o.n}</b>${tt(' 项职业资产的示意性参考(打样公式,非真实定价模型;仅供参考、勿作决策依据);补齐高杠杆技能可上探上沿。', ' career assets (illustrative estimate — a prototype formula, not a real pricing model; reference only). Filling high-leverage skills can push the upper bound.')}</div>` +
+    `<div style="font-size:13px;color:var(--ink-2,#555);line-height:1.6;margin-bottom:14px">${tt('由你 ', 'Weighted from your ')}<b>${o.jobs}</b>${tt(' 个目标岗位的真实薪资、按你对各岗位的匹配分加权得出(示意级、非真实定价模型;仅供参考、勿作决策依据)。补齐下列高杠杆能力可上探上沿:', ' target roles by how well you match each (illustrative — not a real pricing model; reference only). Closing these high-leverage gaps can push the upper bound:')}</div>` +
     `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div></div>`;
   return { html, title: tt('市场价值估算', 'Market value estimate'), minHeight: 180 };
 }

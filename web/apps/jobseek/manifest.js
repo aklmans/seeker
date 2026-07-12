@@ -91,7 +91,7 @@ import { setState } from '../../platform/shell/shell-state.js';
       { id: 'interview', label: '面试陪练', en: 'Interview', abbr: '练', group: 'growth', ai: true, icon: ICONS.interview, render: () => renderInterview() },
     ],
     cards: SEEKER_CARDS,
-    // app-tool(T3):市场价值估算迁自 Rust 打样(jobseek.rs 已删)。reads:['skills'],隔离 compute,前端 render(tt 双语)。
+    // app-tool(T3):市场价值估算。★收敛到 job-pay×匹配加权(与前端 marketValue 共用同一自包含 computeMarketValue,不再发散;评审 [应改]:曾 174万)。reads:['jobs','skills'](两层 D3),隔离 compute,前端 render(tt 双语)。
     tools: [marketValueTool],
     frameQuery: (t) => frameQuery(t),
     appReply: (t) => copReply(t),
