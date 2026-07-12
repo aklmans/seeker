@@ -2241,3 +2241,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 净 · 无环(intake→match-result 零 import,lazy 用)· tsc 51 基线 · npm 60/0 · 真机 boot 0 panic。**preview E2E**:marketValue={41,62,mid52,jobs12} 合理非 174 · 四面全显 41-62/示意/job 基础 · 真 gaps · analysis marker left:52% · 无 48 无 174 无 XSS。
 - **我的不确定(请评审裁)**:①marketValue() 的 parse+加权逻辑**未单测**(耦合 JOBS/SKILLS/computeMatch、非零 import;E2E 已验真值 41-62)—— 要否抽可测?②**T3 app-tool computeMarketValue(174万 formula)未动** —— 若 app-tool 仍 live,模型侧也会得荒谬值;本刀只修前端显示,app-tool formula 是否另开一刀修/退役?③job-pay 加权权重用 computeMatch.score(0-10)下限 0.1 防除零,妥否?
 - **下一步**:jobseek 剩 1 真·假 = 简历上传罐头 23-15-8(无现成真件、需真解析或诚实降级,较大)/ Skills 完整版 / 绿地。**建议对齐用户。**
+
+### 市场价值 [应改]#2 + [建议]#1:app-tool 收敛到共用 job-pay 函数 · commit `6b4c8ba` · ⏳ 待审
+承评审市场价值 [应改]#2(app-tool 仍 174万)+ [建议]#1(抽共用纯函数,同刀)。
+- **★评审 [应改] 读码坐实(我先前不确定 #2 正是此)**:前端上刀真化 41-62万,但 app-tool `jobseek_market_value` 仍 live + `computeMarketValue`(base20+Σlvl×1.6)对真实 35 技能算 **174万**,其「何时用」正对「我值多少钱」=**最大可达** ⇒ 同问题 UI 点→41-62 / 对话问→模型调工具→174。**模型自信断言 174万比 UI 静态 48 更坏。**
+- **★修(评审首选 a:收敛+共用,#1+#2 同刀)**:①`computeMarketValue` 重写为 **job-pay×内联匹配加权**(自包含供沙箱、逐字复刻 computeMatch 评分)=41-62;reads `['skills']`→`['jobs','skills']`(两层 D3);output {low,high,mid,jobs,gaps};render 改 gaps chips+jobs 数+示意。②`intake-action.marketValue()` **直接复用同一 computeMarketValue** ⇒ **★UI===app-tool(preview converged:true、结构上永不发散)**;退役重复实现+topLeverageGaps。
+- **验**:node 净 · tsc 51 基线 · **npm 61/0**(市场价值测试重写:job-pay 公式/★div-zero 0.1 守卫/pay 解析+不可解析跳过/gaps 聚合/schema/自包含 eval/零 import 源守卫/**★两集合 reads D3 上架双向阳性对照:缺 jobs 或 skills 任一⇒不上架**)· **★变异证红**(去 0.1 守卫→div-zero 红)· 真机 boot 0 panic · **preview E2E**:app-tool computeMarketValue(真实数据)=41-62 非 174 · **UI===app-tool** · render 显区间/gaps/示意 · 前端 openMarketValue 无回归。
+- **★市场价值假彻底清零**:UI(四面)+ app-tool(模型侧)全收敛到单一 job-pay 函数、41-62 合理、示意框定、结构性不发散。**评审盯点全兑现**:模型侧不再 174万 ✓ / 两层 D3 reads:[jobs,skills] 双向阳性对照 ✓ / 单一 marketValue 函数 UI+app-tool 共用+源守卫零 import ✓。
+- **下一步**:jobseek 剩 1 真·假 = **简历上传罐头 23-15-8**(无现成真件、需真解析或诚实降级)/ Skills 完整版 / 绿地。**建议对齐用户。**
