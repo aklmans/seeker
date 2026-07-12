@@ -14,6 +14,7 @@ import { tt } from './i18n.js';
 import { renderDocs, renderMemory } from './memory-docs.js'; // ★P1-c:记忆 / 知识库管理同样从 settings.js 模态搬迁
 import { renderSkills } from './skills.js'; // ★Skills S1b:平台可执行技能管理面(proposal-skills.md);从「规划中」占位提为一等公民
 import { renderSchedules } from './schedules.js'; // ★Scheduled SC1:定时任务管理面(proposal-scheduled-tasks;调度 CRUD 只在此,不经对话)
+import { renderProjects } from './projects.js'; // ★Project PJ1:目标工作区管理面(proposal-project;项目 CRUD 只在此=自我提示注入通路缺席)
 import { frontis, signFoot } from './nav.js';
 
 // 用户数据(连接器名 / 能力 id)进 DOM 前逐字转义(纵深防御:虽是用户自填配置/平台定义 id,仍防意外 HTML)。
@@ -49,7 +50,7 @@ export function renderCapabilityCenter() {
     block('cc-docs', 'KNOWLEDGE', tt('知识库', 'Knowledge base'), tt('你加入、供检索作答的文档语料(需嵌入模型)。', 'Docs you’ve added for retrieval-augmented answers (needs an embed model).')) +
     block('cc-skills', 'SKILLS', tt('技能', 'Skills'), tt('把你反复用的指令沉淀成可执行技能 —— 本地保存,一点即运行(Agent 会用它跑一轮)。AI 看不到 Skill 内容(它们是你的指令,不是检索数据)。', 'Turn instructions you reuse into executable skills — stored locally, one-click run (the Agent runs it for you). The AI can’t see skill contents (they’re your instructions, not retrieval data).')) +
     block('cc-schedules', 'SCHEDULED', tt('定时任务', 'Scheduled tasks'), tt('到点自动跑一枚 Skill(仅 Seeker 开着时;错过不补跑)。任务只能在这里管理 —— AI 不能给自己排任务。', 'Run a skill on schedule (while Seeker is open; missed runs are skipped). Managed here only — the AI cannot schedule tasks for itself.')) +
-    block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Project(目标工作区)—— 方案设计中,后续开放。', 'Project (goal workspaces) — in design, coming later.')) +
+    block('cc-projects', 'PROJECT', tt('项目', 'Projects'), tt('一个项目 = 一个目标的工作区(对话线 / 定制指令)。项目只能在这里管理 —— AI 不能创建或改写项目。', 'A project is a goal workspace (its own thread & instructions). Managed here only — the AI cannot create or rewrite projects.')) +
     `</div>` +
     signFoot();
   const rb = $('#ccRefresh');
@@ -122,10 +123,12 @@ function populate() {
     catch (_e) { box.innerHTML = emptyLine(tt('暂不可用', 'Unavailable')); }
   })();
 
-  // ── 绿地(诚实占位):Project(目标工作区)方案设计中,不假装「已建」(Scheduled 已落地 → 上移为一等公民)。
-  fill('cc-soon', async () =>
-    ['Project']
-      .map((n) => itemRow(`<span style="color:var(--ink-2);">${n}</span> · <span style="color:var(--ink-mute);font-size:12px;">${tt('规划中', 'Planned')}</span>`))
-      .join('')
-  );
+  // ── Project(目标工作区 · proposal-project PJ1):项目 CRUD 只在此(不经对话=自我提示注入通路缺席,第98轮);
+  //    platform_projects 不进 QUERYABLE。切换器/指令生效 = PJ2/PJ3。
+  (async () => {
+    const box = $('#cc-projects');
+    if (!box) return;
+    try { await renderProjects(/** @type {HTMLElement} */ (box)); }
+    catch (_e) { box.innerHTML = emptyLine(tt('暂不可用', 'Unavailable')); }
+  })();
 }

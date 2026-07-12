@@ -13,9 +13,9 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 4; // v4:平台 platform_schedules(Scheduled SC1);v3:platform_skills;v2:assets_*。onupgradeneeded 增量建 store,既有数据不动
+const DB_VERSION = 5; // v5:platform_projects(Project PJ1);v4:platform_schedules;v3:platform_skills;v2:assets_*。onupgradeneeded 增量建 store,既有数据不动
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects'];
 const KV_STORES = ['profile', 'settings', 'meta'];
 
 /** @type {Promise<any> | null} */

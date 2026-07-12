@@ -46,6 +46,11 @@ fn table_for(collection: &str) -> Result<&'static str, String> {
         // db_* 可访问(管理面 CRUD)但**故意不进 QUERYABLE**;且**永不注册任何可写本集合的
         // capability/app-tool** —— Agent 能排任务 = 自我持续执行通路(第95轮 [建议]-强,加即拆除本红线)。
         "platform_schedules" => Ok("platform_schedules"),
+        // 平台 Project(目标工作区 · proposal-project PJ1):项目配置(名/指令/归档态)=用户配置非 AI 数据,
+        // db_* 可访问(管理面 CRUD)但**故意不进 QUERYABLE**;且**永不注册任何可写本集合的
+        // capability/app-tool** —— Agent 能创建/改项目 = 自改「每轮注入的指令」= 自我提示注入通路
+        // (第98轮,与「不能自排任务」同族;加即拆除本红线)。
+        "platform_projects" => Ok("platform_projects"),
         other => Err(format!("未知或受保护的集合: {other}")),
     }
 }
@@ -120,6 +125,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (
         7,
         "CREATE TABLE IF NOT EXISTS platform_schedules (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    // 平台 Project(proposal-project PJ1):目标工作区配置,弹性 schema 同上;不进 QUERYABLE。
+    (
+        8,
+        "CREATE TABLE IF NOT EXISTS platform_projects (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -3916,6 +3926,9 @@ mod tests {
         // 平台 Scheduled tasks:db_* 可访问(管理面 CRUD);AI 不可读见 capability.rs 守卫。
         assert!(table_for("platform_schedules").is_ok());
         assert_eq!(table_for("platform_schedules").unwrap(), "platform_schedules");
+        // 平台 Project:同上(项目配置=用户配置;AI 不可读见 capability.rs 守卫)。
+        assert!(table_for("platform_projects").is_ok());
+        assert_eq!(table_for("platform_projects").unwrap(), "platform_projects");
         assert_eq!(table_for("platform_skills").unwrap(), "platform_skills");
     }
 

@@ -296,6 +296,34 @@ export interface Schedule {
   last_error?: string;
 }
 
+/**
+ * 平台 Project(目标工作区 · proposal-project)—— 对话按项目分组 + 项目内定制指令(PJ3 注入)+
+ * 上下文隔离(PJ2 historyKey)。
+ *
+ * ★★红线(第98轮 · 与「AI 不能给自己排任务」同族):**永不注册任何可写 `platform_projects` 的
+ * capability / app-tool** —— Agent 能创建/切换/改写项目 = 自改「每轮注入的指令」= **自我提示注入
+ * 通路**(自我改写行为基线)。缺席钉死:capability.rs 守卫 + registry caps.len 断言(写半承重)+
+ * project-model.js/本注释。项目 CRUD 只在能力中心管理面;`platform_projects` 永不进 QUERYABLE
+ * (当前项目指令经注入到达模型是功能;query_data 枚举所有项目 = 跨项目泄漏,违背隔离承诺)。
+ *
+ * ★`instructions` = 用户在管理面自撰 = 可信(同 Skill prompt);**永不含模型/RAG/外部派生内容**
+ * (PJ3 注入位 = system 邻位高权位,同 greeting 第50轮纪律);分享/导入须 I1 同款 untrusted-until-reviewed。
+ */
+export interface Project {
+  /** 稳定 id(存储主键;'' 保留给默认工作区语义,不作为记录 id)。 */
+  id: string;
+  /** 项目名(切换器/管理面显示;进 DOM 一律 cEsc)。 */
+  name: string;
+  /** 项目定制指令(PJ3 每轮注入一次、不入 history;用户自撰可信,见上)。 */
+  instructions?: string;
+  /** 归档(不出现在切换器;消息数据保留、可还原 —— MVP 不提供删除,§5.4 预裁)。归一化须显式 true。 */
+  archived?: boolean;
+  /** 创建时刻。 */
+  created_at?: number;
+  /** 更新时刻(排序用)。 */
+  updated_at?: number;
+}
+
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
 export interface ShellOwn {
   pages: ShellPage[];

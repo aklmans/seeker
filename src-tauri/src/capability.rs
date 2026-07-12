@@ -656,6 +656,10 @@ mod tests {
         //   platform_schedules 的 capability/app-tool** —— Agent 能排任务 = 自我持续执行通路(自激励循环),
         //   本红线今天的形态是「结构性缺席」,此测试 + table_for/schedule-model 契约注释把缺席钉成有形物。
         assert!(!is_queryable("platform_schedules"));
+        // ★平台 Project(第98轮):项目配置永不 AI 可读;且**永不注册任何可写 platform_projects 的
+        //   capability/app-tool** —— Agent 能改项目 = 自改「每轮注入的指令」= 自我提示注入通路
+        //   (自我改写行为基线,比自排任务更直接);写半由 registry caps.len 断言承重(同 schedules)。
+        assert!(!is_queryable("platform_projects"));
         // 暴露给 LLM 的工具枚举同样不含 profile / platform_skills。
         let schema = DataQuery.schema().unwrap();
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();
@@ -667,6 +671,10 @@ mod tests {
         assert!(
             !en.contains("platform_schedules"),
             "工具枚举不应含 platform_schedules(AI 不能给自己排任务,第95轮 [建议]-强)"
+        );
+        assert!(
+            !en.contains("platform_projects"),
+            "工具枚举不应含 platform_projects(项目管理不经对话=自我提示注入通路缺席,第98轮)"
         );
         assert!(en.contains("jobs"));
     }
