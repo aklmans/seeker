@@ -2465,3 +2465,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **②错过提示(forward-note②)**:`occurrencesSinceWatermark`(零 import):水位后排点数,**迭代真实 Date 回退**(daily -1 天/weekly -7 天)而非除固定毫秒 —— **跨 DST 的「一天」非恒 24h,除法会偏一**;上限 99。错过数=排点数-1(本次跑最新、其余永久错过);fire 时算好存 `last_missed`,UI「错过 N 次排点(不补跑)」如实。**normSchedule 收 last_missed/last_error**(settle spread 不丢字段的前提——归一化白名单会剥未声明字段,这是加字段时的固有配套)。
 - **验**:node **99/0**(+2;含长积压逐日历计 15——我先写错 14 被自己测试抓出订正)· **变异证红×2**(weekly 步长丢/水位丢 created_at)· preview E2E(fire→'started'+missed→settle 'ok' 水位/missed 保住 / error 路径 'error'+短讯 / UI 三态+错过提示 / **★settle 前编辑不被 clobber**:改 time 23:45 保住+状态照落)· tsc 51=51 · 真机 boot 0 panic。
 - **评审请核**:①onSettled 穿线(显式 vs 全局)与并发不误归因②「水位先落再起跑」时序修是否封死重跑循环(同步 settle 场景)③settleRun 重读防 clobber 的取舍(vs 乐观锁)④迭代日历回退的 DST 论证⑤'started' 停驻语义(app 中途退/mock 不回 settle)是否诚实够用。**Scheduled 线(方案+SC1+SC2)完整;下一步 = Project 方案(目标工作区)或按反馈。**
+
+### ★ 第97轮独立复核 = Scheduled tasks SC2 🏁 通过无 findings · ★★Scheduled 线(方案+SC1+SC2)完整
+**评审读码亲验两处 correctness 承重(时序竞态、settleRun 防 clobber);SC1 两条 forward-note 结清。**
+- **②★时序竞态修读码坐实(本刀最有价值一件,评审评)**:水位先落 await(:66)+ 落不下就不跑 fail-closed(:68 catch return、不调 runSkill,杜绝「跑了但没水位」)+ runSkill 在水位之后(:72,含 try/catch 同步抛也 settleRun(false) 诚实落)⇒ **同步 settle(测试 spy/极速失败)时水位早在起跑前写好 ⇒ settleRun 重读到含水位记录、只改结局 ⇒ 不丢水位、无重跑循环**。「排序 + await + fail-closed」结构性封死。**与 SC1 水位恒推进防饿死同一类「落码时才现形的载重时序交互」——先量-at-code-time 又抓一条。**
+- **③settleRun 重读防 clobber 正确**:`cur=listSchedules().find(id)` 重读当前记录(非旧闭包快照)· 已删 return(如实跳过非静默吞)· `{...cur, status, error}` 只覆盖结局字段 ⇒ fire-settle 间用户编辑保住(同第63轮「spread 当前态非陈旧快照」纪律;preview 证改 time 23:45 保住)。
+- **①onSettled 显式穿线对(全局注册表会串)**:各流各闭包、并发不误归因(用户打字流与定时流不串);交互路径不传=零改;同 F1 scopeTools 先例。**④DST 论证成立**:迭代真实 Date 回退非除固定毫秒(跨 DST「一天」非恒 24h、除法偏一);**★自测抓 off-by-one(写 14→订正 15)= 「测试能红」内化**(测试抓住作者自己的错)。**⑤'started' 停驻诚实**:started→settle→'ok'/'error'+last_error = 「已发起」不再掩盖 mid-stream 失败(结清 SC1 forward-note①);app 中途退/mock 不回 settle 停 'started' = 诚实「结局未知」不谎报。五态语义诚实分层。
+- **SC1 两条 forward-note 结清**:①结局回写 ✓ ②错过提示(occurrencesSinceWatermark + UI)✓。
+- **验**:node 99/0 亲跑 · 变异×2 · tsc 51 · 真机 0 panic;主证=正向断言(截图受本会话捕获故障限)采信。
+- **★★Scheduled 线(方案→SC1→SC2)完整**:无人值守自动化从零落地,**每一处红线代价靠结构承接、每一处诚实语义靠先量钉住** —— fire=runSkill 全继承(四红线+F1 scoping+I1 双点拒)· 唯一新红线「AI 不能给自己排任务」双向钉死(QUERYABLE 读 + caps.len 写 + 契约注释)· 无人值守=只提议不执行(guardrail 模态 ai_chat 内不可达、破坏性只能 inline 卡等人点)· BYO 成本自觉(错过不补跑/保守频率/一键停)· 结局诚实(started→ok/error、水位恒推进、settleRun 防 clobber)。**P2 绿地队列尾积压最久的一件,走完「方案先行→评审门控→SC1 骨架→SC2 打磨→逐盯点落」完整节奏。**
+- **下一步**:**Project 方案**(最后一件绿地;第94轮已裁 = 目标工作区语义)或按用户新真机反馈,先量再定。
