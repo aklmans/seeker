@@ -2324,3 +2324,15 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:npm test **79/0**(+8:scope 6 + skill-model tools 2)· tsc **51=51 零新增**(stash 实测基线,非假设)· 真机 WKWebView boot **0 panic** 进程存活 · preview boot console 0 error。
 - **诚实边界**:F1 无 UI ⇒ scoping 机制**暂无消费者**(undefined=全,雏形零回归下休眠)= 已测前瞻件(第89轮排序注记:F2/导入 reasonably 跟上、别留长 gap;scoping 真价值锚在安全导入)。端到端真模型需 BYO,preview 以 stub 验工具表收窄的活线。
 - **评审请核**:①两道闸(scopeAppTools 收窄 + ai.rs dispatch 同源)是否真堵死声明外 app-tool、平台能力恒在的实测是否成立②三态+变异证红是否覆盖③活线 E2E 是否证 runSkill 穿 scopeTools 无旁路、scoped⊆用户打字④类型注释固化是否够。**下一步(排序)交用户**:F2 管理 UI / 等安全导入方案一起。
+
+### ★ 第90轮独立复核 = Skills 完整版 F1(工具 scoping 运行时)🏁 通过(四盯点全兑现 + 对抗查无旁路)
+**评审端到端读码坐实两道结构闸、減権非増权 airtight、三态保真(undefined≠[] 不塌)、红线继承不破、`[]` 语义固化进类型;第89轮 [建议]④已落。**
+- **★两道结构闸端到端读码坐实**(bypass 检查 = 前端收窄是**结构性非咨询**:模型不能设 app_tools、streamReply 设):ai.rs:720 `registry.tool_schemas()` 平台工具**独立于 app_tools ⇒ 平台能力(query_data/memory/show_widget/doc)恒在**;:744 `app_tool_names` 与 :745 工具表**同源自同一 app_tools ⇒ 模型工具表与 dispatch 白名单同步收窄**;:815 dispatch 拒声明外 → invoke_raw「未知能力」。后端信任前端 app_tools = **可信 shell 码**(非 app/模型)+ 执行仍走 query_data D3 咽喉 ⇒ **scoping 是 D3 之上的最小权限层、不削弱 D3**。
+- **★scopeAppTools 減権非増权 airtight**:readable.js:40 `arr.filter(t=>t && scope.has(t.name))` = **filter-of-readableTools ⇒ 结果恒 ⊆ readable ⊆ D3**;诱饵 `['profile_dump'/'secrets_read']` 结构性**产不出**(arr 无此 name、不能无中生有)、D3 叠加 secret_tool 声明也**捞不回**。
+- **★normSkill 三态保真(承重)**:skill-model.js:37 `Array.isArray(r.tools)?filter:undefined` —— **非数组→undefined 不塌成 []**;若塌了所有 prompt-only Skill(tools undefined)突变 []=无 app-tool = **全量回归**,`notDeepEqual(undefined,[])` 承重断言守住。
+- **★红线继承**:copilot-chrome.js:87 `agentSend(s.prompt,undefined,s.tools)`→scopeAppTools —— runSkill **只减工具、未开新路径** ⇒ scoped Skill 仍=agentSend(prompt)(第81轮继承),工具集是用户打字全集**子集**,D3/profile/guardrail/设置不可经对话改全照常。
+- **★`[]` 语义固化进类型**(第89轮 [建议]④ · 第49轮红线搬类型面):readable.js:28 doc + types.d.ts「[]=无 app-tool 非无工具、平台能力恒在、各由自身红线闸;纯文本无数据是另一机制(ai_generate 无工具)非 []」。
+- **★⑤ 对抗查无旁路**:模型设 app_tools?否(streamReply 设)· prompt 拓宽自己 scope?否(app_tools 在 prompt 处理前由 runSkill 定死、prompt 是 user_text)· scope 跨消息泄漏?否(per-message:run 一条 scoped、之后打字 undefined=全)· 声明平台名 `['query_data']` 撬平台工具?否(平台工具独立 720 恒在、声明→arr 无此 app-tool→空)。
+- **验**:npm 79/0 亲跑 · 变异证红(逻辑核实成立) · tsc 51=51 · 真机 boot 0 panic;主证=正向断言(scopeAppTools 真模块导出 + 活线三态 + 评审读 ai.rs 数据流)、0 console 仅辅证。
+- **诚实边界采信**:F1 无 UI ⇒ scoping 休眠(undefined=全零回归)= 已测前瞻件;真模型 E2E 待 BYO。**★第89轮排序注记仍立**:scoping 真价值锚在**安全导入**,F2(UI)/导入宜 reasonably 跟上、别留长 gap(否则休眠机制成实践未验死重)。
+- **下一步(承分期)**:F2 管理 UI(可用工具多选)/ **导入(先落第79轮 [建议]1 = 第三方指令 untrusted-until-reviewed、知情审阅)= scoping 真价值兑现点**,评审届时盯:导入 Skill 的 tools scope 被平台强制(减权)、导入前知情审阅、第三方 prompt 不当可信作指令 / 绿地各自方案。
