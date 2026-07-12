@@ -8,9 +8,9 @@
 
 ## 0. 一句话
 
-**Skill 可导入(第三方分享)** —— 但导入的 Skill 是**第三方指令、默认不可信**:导入即置 `imported:true, reviewed:false`,
-**未审阅不可运行**;用户经**知情审阅门**(摊 prompt 全文 + 声明的 tools scope,标注 Untrusted)显式认可后 `reviewed:true`,
-此后运行同本地自撰。**这是「untrusted-until-reviewed」:审阅是信任转移点、不是给新权力。**
+**Skill 可导入(第三方分享)** —— 但导入的 Skill 是**第三方指令、默认不可信**:导入即由平台**强制**置 `imported:true, reviewed:false`
+(**绝不取自粘贴数据**,见 §3 载重不变式),**未审阅不可运行**;用户经**知情审阅门**(摊 prompt 全文 + 声明的 tools scope,
+标注 Untrusted)显式认可后 `reviewed:true`,此后运行同本地自撰。**这是「untrusted-until-reviewed」:审阅是信任转移点、不是给新权力。**
 
 ---
 
@@ -36,13 +36,15 @@
 ## 3. 设计
 
 - **契约(扩 Skill / NormSkill)**:`imported?: boolean`(第三方来源)+ `reviewed?: boolean`(用户已审阅背书)。normSkill fail-safe 默认(缺失→本地自撰语义:`imported:false, reviewed:true`——**保守默认必须是「本地可信」不塌成「导入未审」**,否则既有本地 Skill 全变不可运行=回归;**但导入路径显式置 `imported:true, reviewed:false`**)。
-- **导入 = 显式不可信**:导入动作置 `imported:true, reviewed:false, tools:<声明>`;**runSkill 守卫**:`imported && !reviewed ⇒ 不运行、引导审阅`(挂 skillRunnable 旁,同草稿态 no-op 先例);命令面板 `platformSkills()` 未审阅**不入可运行面板**(或入但点击触发审阅门)。
+- **★★载重不变式(第92轮 [建议]-强 · I1 据此实现、绝不偏离)**:导入**只从粘贴数据白名单提取 `{name, description, prompt, tools}`**;`imported:true / reviewed:false` 由**平台层强制设定、永不取自粘贴数据**(粘贴里的 `imported`/`reviewed` 等一律丢弃——不在白名单)。**攻击面(为什么必须钉死 how)**:恶意 JSON 可手工带 `reviewed:true`,或**省略** `imported` 吃 normSkill 的本地可信默认——若实现靠 spread 顺序(`{imported:true, reviewed:false, ...pasted}` 让粘贴 win)或直接 `normSkill(粘贴)` 入库,**审阅门全线可绕**。**信任关键字段必须在不可信数据之外设定、不能靠 spread 顺序**(同第49轮 tokenizer spread-aware / 第64轮 widgetActions `source` 注入 spread 之后不可伪造,同族纪律)。**「保守默认=本地可信」的安全性全系于此**:唯有「导入永远强制 imported:true」成立,「缺失标志=既有本地 Skill」才安全;二者绑定、一起钉。**I1 验法 = 双向阳性对照**:恶意 JSON 含 `reviewed:true` / 省略 `imported` ⇒ 入库**仍** `imported:true, reviewed:false`(审阅门不可绕)。
+- **导入 = 显式不可信(fail-closed 双点拒)**:**runSkill 守卫**:`imported && !reviewed ⇒ 不运行、引导审阅`(挂 skillRunnable 旁,同草稿态 no-op 先例);命令面板 `platformSkills()` 未审阅**完全不列**(第92轮预裁④:palette 只列可运行、审阅走能力中心管理面,分工清)。
 - **★知情审阅门(承 notes 同意闸 · fail-closed)**:模态摊开 ——
   - **prompt 全文**(标 **Untrusted**「第三方指令、非你亲写;审阅其意图」、cEsc);
   - **声明的 tools scope**(用户看清这个 Skill 想用哪些工具;**注明运行时仍 ∩ 你的可读集减权**);
-  - **说清后果**:「这是他人写的指令,运行时会以**你的身份**驱动 Agent(在红线内)。确认你已读懂并信任它。」;
+  - **说清后果 + 硬红线兜底(第92轮 [建议]3:别过度承诺「审阅=安全」)**:「这是他人写的指令,运行时会以**你的身份**驱动 Agent。你已看到它会让 Agent 做什么;**平台仍保护你的隐私资料(AI 永不可读)、破坏性操作仍需你确认** —— 审阅是知情,不是唯一防线。」(复杂/混淆 prompt 用户未必看全 ⇒ 文案传达纵深:知情 + 硬红线兜底,审阅非把它变安全);
   - 用户显式「我已审阅、信任并启用」→ `reviewed:true`(**信任转移点**);可「删除」丢弃。
 - **审阅后运行**:走正常 `runSkill`(用户已背书 ⇒ 同本地自撰、红线结构性继承、tools F1 减权)。
+- **reviewed 绑 prompt 内容(第92轮 [建议]2 · robustness)**:`reviewed:true` 背书的是**特定 prompt**;**任何 prompt 变更 ⇒ reviewed 失效重审**(同「背书绑特定状态、状态变则失效」纪律)。可达性现况低(重导入=新记录强制未审;用户编辑=自己作者化)——钉住它,防未来加「更新导入」类通路时静默绕审;I1 落码时按实际编辑通路量后取舍呈现。
 - **tools scope**:**F1 已强制减权**(§1①),导入**无需新机制**;审阅门只须**呈现** scope 让用户知情(cEsc、注明运行时 ∩ readable)。
 - **平台对 apps 零 import**:导入是平台壳能力(能力中心 Skills 段),不碰 apps;导入 Skill 的 tools 声明是**字符串名**(F1 scopeTools 同)、非模块引用。
 
@@ -52,19 +54,19 @@
 
 | 刀 | 内容 | 判据 |
 |---|---|---|
-| **I1 · 契约 + 审阅门 + 导入** | `imported/reviewed` 契约(normSkill 扩、保守默认本地可信)+ runSkill/命令面板未审阅拒运行 + 导入入口(格式见 §5)+ 知情审阅门(摊 prompt/tools、fail-closed)。 | 导入→未审阅**不可运行**(runSkill+命令面板双点证);审阅门摊 prompt 全文(Untrusted)+ tools scope;审阅后可运行(走标准 runSkill、红线继承);既有本地 Skill **零回归**(保守默认可信)。 |
+| **I1 · 契约 + 审阅门 + 导入** | `imported/reviewed` 契约(normSkill 扩、保守默认本地可信)+ **载重不变式**(白名单提取+平台强制标志)+ runSkill/命令面板未审阅拒运行 + 导入入口(JSON 粘贴)+ 知情审阅门(摊 prompt/tools、fail-closed)。 | **★载重不变式双向阳性对照**(恶意 JSON 含 reviewed:true / 省略 imported ⇒ 入库仍 imported:true/reviewed:false=审阅门不可绕);导入→未审阅**不可运行**(runSkill+命令面板双点证);审阅门摊 prompt 全文(Untrusted+cEsc)+ tools scope(注明 ∩readable);审阅后可运行(走标准 runSkill、红线继承);既有本地 Skill **零回归**(保守默认可信)。 |
 | **I2 · 分享导出** | Skill → 可分享格式(§5 拍板);导出**不含** imported/reviewed 元(导出的是指令本身,接收方重新走审阅)。 | 导出格式可被 I1 导入并触发审阅;导出不泄漏本机隐私(Skill 无 profile 字段)。 |
 
 推荐 **I1 先行**(信任模型 + 审阅门 = 安全核心;分享导出是产出侧、可后)。
 
 ---
 
-## 5. 未决 · 用户拍板
+## 5. 未决 · 已预裁(第92轮评审,四条全按推荐认可)
 
-1. **导入格式**:①**JSON 文本粘贴**(推荐:最简、本地优先、无网络、同简历粘贴先例)②文件导入(.json)③分享码/URL(引入网络/解析面,与本地优先张力)。**推荐 ① 起步**,②③后续。
-2. **审阅粒度**:每枚导入 Skill **逐条审阅**(推荐:Skill 是可执行指令、逐条读懂再启用,同破坏性逐条确认精神)vs 批量导入后逐条审阅。
-3. **分享导出(I2)是否本方案**:并入(I1+I2 一方案分两刀)vs 单出(仅导入,分享另议)。**推荐并入**(导入/导出对称、一方案交代完整)。
-4. **未审阅 Skill 在命令面板**:①完全不列(推荐:未审阅=不可运行,不该出现在可运行面板)vs ②灰列、点击触发审阅门。
+1. **导入格式 = JSON 文本粘贴** ✅(预裁):最简、本地优先、无网络外发、同简历粘贴先例;文件/分享码后续另议。
+2. **审阅粒度 = 逐条审阅** ✅(预裁):每枚导入 Skill 单独审(可执行指令、逐条读懂再启用)。
+3. **分享导出并入本方案(I2)** ✅(预裁):导入/导出对称;**导出剥 imported/reviewed 元**(导出的是指令本身、不带信任标志,接收方 imported:true/reviewed:false **重走审阅** —— 与 §3 载重不变式一致)。
+4. **未审阅 Skill 完全不列命令面板** ✅(预裁):fail-closed(未审阅=不可快速运行);palette 只列可运行、审阅+编辑走能力中心管理面,分工清。
 
 ---
 
