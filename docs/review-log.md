@@ -2223,3 +2223,11 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 净 · tsc 51 基线 · 真机 boot 0 panic · preview E2E(引导条文案两页正确区分 + 停用→数据保留+platform_skills 独立工作+能力中心仍渲染)。
 - **★★Skills arc(S1→S4)全线收官**:prompts(人肉复制文本)→ **Skill(可执行:管理面「运行」+ 命令面板 `⚡`,红线复用 agentSend 结构性继承)** + 迁移(知情通知非同意闸)+ assets 软退役(用户自关、数据保留)。**方案 proposal-skills.md 全部落地。**
 - **下一步(承第67轮评审次序 · P2 剩余)**:jobseek 剩余 aiRun 真化(app-tool 契约已解锁)/ Skills 完整版(绑 app-tool、Skill 分享导入需落第79轮 [建议]1 信任模型)/ 其余绿地各自方案。**建议与用户对齐。**
+
+### ★★ 第83轮独立复核 = Skills S4 🏁 通过 · Skills arc(S1→S4)全线收官
+**评审读 diff 亲验:软退役 diff 仅 6 行(两引导条)、零破坏性操作(grep 无 remove/clear/delete/setEnabled/drop)、§1 平台零 assets import、Skills 入口独立。arc 无 [应改] 收官。**
+- **S4 三盯点全兑现**:①关应用=下架不删数据(退役靠**既有** app-manager setEnabled 的数据保留停用、不新造轮子=对的最小实现)②§1 平台零 assets import(grep=0)③Skills/知识库入口独立(skill-store/capability-center 零 assets 依赖、读 platform_skills 非 assets)。引导条正确区分 AI 可读影响(延续 S3 诚实)、反焦虑非倒计时。
+- **★★arc 回望(评审读码亲验载重、非采信送审词)**:S1 platform_skills 不进 QUERYABLE(守卫断言能红)+ **命名撞车先量=安全 bug**(skills 在 QUERYABLE、字面用会变 AI 可读+撞库);S2 **runSkill=agentSend(prompt) 读码亲验**(只调 agentSend=用户打字路径、四红线结构性继承零新面「结构结论非声明」);S3 知情通知非同意闸(第79轮 [建议]2 精确兑现且披露收窄 AI 可读=超预期诚实、notes→KB 六机制全镜像);S4 软退役。
+- **★arc 实证意义(评审同意「从带 AI 工作台向 AI-Native 的一块实证」)**:用户能力从零到可执行(prompts 人肉复制→Skill 一点即运行);**红线代价为零**(S2 结构性继承=安全没靠新守卫、靠复用已测用户路径=arc 最漂亮一点);QUERYABLE 静态底守(S1);诚实迁移(S3);老应用干净退场(S4)。**每步先量抓真东西、每步读码亲验载重。**
+- **★下一步排序(评审 · 「假修>增强>绿地」优先级)**:①**先量 jobseek 剩余 aiRun**(grep 哪些还是演出 mock+罐头结果 vs 已接真件)→**有真·假就先修**(honesty、低风险、复用 ai_generate/app-tool 现成件)②Skills 完整版(绑 app-tool、增强;**若含导入须先落第79轮 [建议]1**:导入=改信任模型、第三方指令 untrusted-until-reviewed——runSkill 红线守恒假设本地自撰,导入不该静默延伸「可信作指令」)③绿地各自方案。**不建议先绿地。**
+- **★Skills 完整版盯点(评审预告)**:①Skill `tools:[app-tool]` 运行时工具表 = 平台工具 ∪ Skill 绑定 app-tool,D3/框定/projectToSchema 全继承 app-tool 契约 T0–T3、别旁路②若含导入,信任模型改「导入=untrusted-until-reviewed」(第79轮 [建议]1)③platform 对 apps 仍零 import(Skill 绑 app-tool 靠 registry 按名查、非 import,同能力中心先例)。
