@@ -2363,3 +2363,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **分期**:I1 契约+审阅门+导入(信任核心先行)/ I2 分享导出(导出不含 imported/reviewed 元、接收方重走审阅)。
 - **未决拍板**:①导入格式(推荐 JSON 粘贴、本地优先无网络、同简历粘贴先例;文件/分享码后续)②审阅粒度(逐条审阅)③分享导出是否本方案(推荐并入)④未审阅在命令面板(推荐完全不列)。
 - **评审请核设计**:①「硬红线不破 vs 意图操纵风险」的区分是否成立(审阅门堵意图操纵、非重建沙箱)②untrusted-until-reviewed 的信任转移(审阅=知情背书非给权力;审阅后同本地自撰是否安全)③保守默认本地可信不回归④F1 已减权 tools 的先量是否认可(导入不需新 tools 强制)⑤审阅门 fail-closed(承 notes 同意闸)。**下一步 = I1(方案过审后)。**
+
+### ★ 第92轮独立复核 = Skills 导入方案 🏁 设计通过 + 1 [建议]-强(载重,已钉进方案)+ 2 [建议](已落)+ 四未决预裁
+**评审裁核心信任转变成立、F1-已减权先量坐实;但抓出方案只写 intent 没钉 how 的载重洞。[建议] 全落 proposal(设计级,未落码)。**
+- **★[建议]-强(载重不变式 · I1 前钉死,已入 §3)**:导入必须**白名单提取 `{name,description,prompt,tools}` + 平台强制 `imported:true/reviewed:false`,绝不信粘贴数据的信任标志**。**攻击(我独立核实推理成立)**:恶意 JSON 手工带 `reviewed:true`,或**省略 imported 吃 normSkill 本地可信默认**(方案 §3 原文的缺失默认=imported:false/reviewed:true)——若 I1 实现为 spread 在后(`{imported:true,reviewed:false,...pasted}` 粘贴 win)或直接 `normSkill(粘贴)` 入库 ⇒ **审阅门全线可绕**。**信任关键字段必须在不可信数据之外设定、不能靠 spread 顺序**(同第49轮 tokenizer spread-aware / 第64轮 widgetActions source 注入 spread 之后不可伪造)。**③保守默认(缺失→本地可信)的安全性全系于此不变式**——唯有「导入永远强制 imported:true」成立,「缺失标志=既有本地 Skill」才安全;二者绑定。**I1 验法=双向阳性对照**(恶意 JSON reviewed:true / 省略 imported ⇒ 入库仍 imported:true/reviewed:false)。
+- **①-⑤设计裁决**:①**硬红线不破 vs 意图操纵区分成立、不重建沙箱**(runSkill=用户打字路径、D3/profile/guardrail/设置不管消息来源都拦;**最严重意图操纵=memory 投毒**——第三方 prompt 令 Agent remember X 持久污染上下文(第67轮通路),**审阅门摊 prompt 全文正好曝它**;审阅门堵意图操纵+硬红线兜底 blast radius=纵深防御)②信任转移成立(审阅=知情背书=取得所有权,审阅后同本地自撰)③保守默认不回归、安全性绑 [建议]1 ④**F1 已减权 tools 先量坐实**(第90轮验过 scopeAppTools⊆readable⊆D3;导入不需新 tools 强制)⑤fail-closed 双点拒成立、同样绑 [建议]1。
+- **[建议]2(已落 §3)**:reviewed 绑 prompt 内容——`reviewed:true` 背书特定 prompt,任何变更⇒失效重审(同「背书绑特定状态、状态变则失效」);可达性现况低(重导入=新记录强制未审/用户编辑=作者化),钉住防未来「更新导入」通路静默绕审。**[建议]3(已落 §3)**:审阅门文案说清硬红线兜底(「审阅是知情,不是唯一防线」),别过度承诺「审阅=安全」(复杂 prompt 用户未必看全)。
+- **四未决预裁全按推荐(已入 §5)**:①JSON 粘贴(本地优先无网络)②逐条审阅③分享导出并入 I2(**导出剥 imported/reviewed 元、接收方重走审阅**=与载重不变式一致)④未审阅完全不列 palette(fail-closed;palette 只列可运行、审阅走管理面)。
+- **★I1 盯点(评审预告)**:①白名单+强制标志**双向阳性对照**②未审阅双点拒(runSkill+palette)fail-closed ③审阅门摊 prompt 全文 Untrusted+cEsc、tools scope 呈现(注明∩readable)、显式认可→reviewed:true ④审阅后走标准 runSkill(红线继承同本地)⑤platform 对 apps 零 import(tools 仍 registry 按名查)。
+- **下一刀 = I1**(载重不变式已钉进方案,据此实现)。
