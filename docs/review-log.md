@@ -2205,3 +2205,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 净 · tsc 51 基线(prompts @ts-check 净)· npm 60/0 · 真机 boot 0 panic。**preview E2E(web,真实 handler)**:建 2 prompt→按钮「迁入 · 2」→模态知情通知→迁入→platform_skills 2 条+prompts 显「已迁入」+按钮「已全部迁入」(幂等 pending 0)→迁入 Skill 入 platformSkills 可运行+XSS 名面板转义→**自愈**:删迁入 Skill→renderPrompts 后按钮回「迁入·1」。
 - **我的不确定(请评审裁)**:①**自愈是「on-render」**(同 notes:navigate 到页/重渲才刷新;用户在别处删 Skill、正停在 prompts 页时不自动更新)—— 我判与 notes 一致可接受、非 bug;preview 里 `go('prompts')` 已在该页 no-op 未重渲导致一次假失败,直接 renderPrompts 即证自愈。②**web 端 p.skillId 不持久**(persistColl desktop-gated)—— 我判无害(web prompts 本就 reload 即无、无重迁);桌面持久自愈跨 reload。③fresh id vs 派生 id 我选 fresh(避 clobber 编辑),妥否?
 - **下一步**:S4(assets 退役)—— prompts→Skills(本刀)+ notes→知识库(已 opt-in)两路径都在 ⇒ 可关 assets 应用(数据保留 D2)。**建议先对齐用户**(S4 涉及关应用、notes 未迁数据的 UX)。
+
+### ★ 第82轮独立复核 = Skills S3 🏁 通过,无 findings
+**评审读码逐行核实:核心框定精确兑现第79轮 [建议]2 且更诚实;notes→KB 六机制全镜像;三点不确定全有利。**
+- **★核心知情通知非同意闸 = 第79轮 [建议]2 精确兑现且更诚实**:模态说真实变化(Prompt 变可执行 Skill、原样保留)+ **「不会扩大 AI 能读到的范围 —— Skill 是你的指令,永不进 AI 检索」**(与 notes→KB「这会扩大 AI 能读到的范围」正相反)+ **★超预期诚实:「若你曾授权 Prompt 库可读,迁移后不再自动可读」**(主动披露迁移**收窄** AI 可读面)。**说清「失去/改变什么」不只「能不能」= 本 arc 一贯纪律,做到位且超预期。**
+- **notes→KB 六机制全镜像正确**:①非破坏(fresh Skill 是副本,title→name/text→prompt)②幂等键 p.skillId 且校验 Skill 仍存在③**★fresh id 不覆盖编辑**(每次创新 Skill、永不覆盖既有;派生 id 会 clobber)④on-render 自愈(重读实际 Skills,删了则重新可迁)⑤**★状态未知拒绝行动=第67轮为 notes 立的判据兑现**(读 Skills 失败⇒按钮 disabled+重试提示,免造重复)⑥物理重入闸+fail-honest。
+- **三点不确定全有利**:①on-render 自愈同 notes 可接受(重渲即对齐、幂等校验存在性、无数据丢失无重复)②web p.skillId 不持久无害(web prompts 临时态无可幂等对象;skills 双端持久⇒迁出 Skill 在 web reload 后独立存活=合理,Skill 是独立能力;web「重建同名 prompt 再迁」造重复=web 临时态固有低危非迁移 bug)③fresh id 非破坏对(避 clobber、配 p.skillId 免重迁,镜像 notes docId)。
+- npm 60/0(评审亲跑,迁移动共享码无回归)。
+- **★里程碑**:prompts→Skills 迁移完成;连同 notes→知识库(已完成)⇒ **assets 两类数据都迁出 ⇒ S4(assets 退役)解锁**。
+- **★S4 盯点(评审预告 · 承方案 §6 + D2)**:①**关应用=下架 UI+AI、数据保留**(不删 assets_prompts/assets_notes 底层数据,只下架应用)②退役后**平台层对 assets 零 import**(§1,同 jobseek 迁移后纯净度检查)③能力中心/命令面板的 Skills/知识库入口在 assets 关闭后**仍工作**(已归 platform、不依赖 assets 应用启用)。
