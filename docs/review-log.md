@@ -2336,3 +2336,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:npm 79/0 亲跑 · 变异证红(逻辑核实成立) · tsc 51=51 · 真机 boot 0 panic;主证=正向断言(scopeAppTools 真模块导出 + 活线三态 + 评审读 ai.rs 数据流)、0 console 仅辅证。
 - **诚实边界采信**:F1 无 UI ⇒ scoping 休眠(undefined=全零回归)= 已测前瞻件;真模型 E2E 待 BYO。**★第89轮排序注记仍立**:scoping 真价值锚在**安全导入**,F2(UI)/导入宜 reasonably 跟上、别留长 gap(否则休眠机制成实践未验死重)。
 - **下一步(承分期)**:F2 管理 UI(可用工具多选)/ **导入(先落第79轮 [建议]1 = 第三方指令 untrusted-until-reviewed、知情审阅)= scoping 真价值兑现点**,评审届时盯:导入 Skill 的 tools scope 被平台强制(减权)、导入前知情审阅、第三方 prompt 不当可信作指令 / 绿地各自方案。
+
+### Skills 完整版 F2:管理 UI · Skill 编辑加「可用工具」多选(三态)· commit `692aa88` · ⏳ 待审
+承第90轮 F1 通过 + 用户拍板起 F2(消除 F1 休眠 = scoping 机制现有消费者)。
+- **★先量:proposal 内部矛盾裁决**:§5.2 拍板「`[]`=无 app-tool」(三态权威)与 §2/§5.3 旧文字「选空/不选=全工具」冲突 —— 后者是 pivot 前残留、被三态拍板覆盖。**按 §5.2 落地**:UI 用「限定开关 + 多选」表达三态,`undefined`(全)与 `[]`(无)在 UI **可辨**(开关关 vs 开关开+全不选),区分「没限定」与「限定为空」。
+- **★数据层零改(先量)**:skill-store `saveSkill` = `rt.db.upsert(COLL, rec)` 存 **rec 原样**(弹性 schema data_json、无字段白名单)+ 读回 `hydrateSkills`→`normSkill` 保三态 ⇒ **tools 已透传**;F2 **纯 UI 层**(skills.js openSkillModal 一处)。
+- **三态 UI 映射**:「限定此 Skill 可用的工具」开关未勾→`undefined`(全,雏形零回归)/ 勾+选 x→`['x']`/ 勾+全不选→`[]`(无 app-tool)。**工具列表来源 = `SeekerShell.appTools()` 全集**(声明意图用全集;运行时 `scopeAppTools` 再 ∩ readable 减权 ⇒ 声明 ⊇ 生效,与 F1 一致)。段未渲染(无 app-tool 可选)→ **保留原 s.tools 不 clobber**。
+- **红线**:①**管理不经对话**(§4-2):UI 在能力中心模态、Agent 对话改不了(同既有 Skill CRUD)②**cEsc**(§4-4):工具 name 进 DOM(label + value 属性)一律转义③**`[]` 语义 UI 内固化**(承第89轮 [建议]④、比类型注释更直观):提示「未勾=可用全部工具(与你打字一致);勾选后仅用下面选中的。平台能力(查数据/记忆/卡片)不受影响、始终可用」。
+- **验(preview E2E · UI 接线 DOM 耦合 node 测不到,同 DB_VERSION 教训走功能测)**:①段渲染(开关默认未勾+列表默认隐+工具项 jobseek_market_value+开关交互显隐)②三态 SAVE 落库(state1→undefined / state2→[] / state3→['jobseek_market_value'])③**往返回显**(编辑③开关勾+mv 勾+列表显 / ②开关勾+mv 不勾≠① / ①开关不勾+列表隐 ⇒ undefined≠[] 端到端可辨)④截图存证(限定开关+mv 多选+[] 语义提示)。tsc **51=51 零新增**(修 s.tools possibly-undefined:抽 selTools 确定数组喂 .map 闭包)· npm 79/0 · 真机 boot **0 panic** 存活 · preview 0 console error。
+- **评审请核**:①三态 UI 映射(undefined/[]/['x'])+ undefined≠[] 可辨是否正确、§2 vs §5.2 裁决是否认可②cEsc + 管理不经对话③数据层零改 + 不 clobber(段未渲染保留原值)是否稳④声明用 appTools() 全集 / 运行时 ∩ readable 减权(声明⊇生效)是否与 F1 一致⑤有无 UI 旁路(能否经此 UI 提权/绕 D3——应无,scoping 只减、运行时仍 ∩ readable)。
+- **诚实边界**:F2 让 F1 脱离休眠(scoping 现可声明+可运行);**真价值仍锚在安全导入**(第89/90轮排序注记)—— 本地自撰 scoping 安全价值低(用户既写 prompt 又设 scope),导入(第三方 Skill 平台强制 scope)才是兑现点。**下一步(承分期)**:导入(先落第79轮 [建议]1 untrusted-until-reviewed、知情审阅)/ 绿地各自方案。
