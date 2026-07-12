@@ -2295,3 +2295,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议] 已落 `ab5b205`(独立评估:merge 确是承重纯计算,采纳)**:抽 `mergeParseIntoSkills(prevSkills, parsedSkills)` 纯函数(零 import)入库测 —— applyParsedResume 是承重写但 UI 耦合只 preview 验;merge 核心(保市场字段/新默认/state-from-lvl/resume 定清单)抽出入库测补齐「承重写有 CI 覆盖」,同承重纯函数一律入库测纪律。npm **71/0**(+2:保市场字段/新默认/state 分档/fail-safe)· **★变异证红**(去 demand 保留→红)· 真机 boot 0 panic。**承重 merge 现纳 CI、drift 可捕。**
 - **★★里程碑 · jobseek mock 面全线清零**:匹配/简历生成/面试反馈/出题/市场价值/简历上传**六核心流全真化**,每处 mock/罐头/演出被先量抓出、真化或结构性消除,承重写受硬闸保护、信任分层守住、drift/发散有 CI 守卫。**用户最初「能用但非 AI-Native」反馈的全部核心流回应完毕。**评审评:「不是加了 AI,是把每一处假的 AI 演出换成真 AI 或诚实计算,且每一步红线/承重/发散代价都被结构性或 CI 摁住」。
 - **★下一步(承既有次序)**:Skills 完整版(绑 app-tool;**导入先落第79轮 [建议]1**=导入 Skill 是第三方指令需知情审阅)/ 绿地(Project/Scheduled)各自方案先行。**先量再定。Skills 完整版盯点**:①Skill `tools:[app-tool]` 运行时工具表=平台工具∪Skill 绑定 app-tool,D3/框定/projectToSchema 全继承 T0–T3 不旁路②导入=untrusted-until-reviewed(runSkill 红线守恒假设本地自撰)③platform 对 apps 零 import(registry 按名查非 import)。
+
+### Skills 完整版方案(工具 scoping)· commit `ec5641d` · ⏳ 待审(绿地设计,评审门控)
+用户拍板起 Skills 完整版方案。**★先量再改推翻方案 §5 premise(写方案前先量)**:读码量清 prompt-only Skill 运行时 ai_chat 工具表**已含全部可读 app-tool**(runSkill→agentSend→streamReply `appTools:readableAppTools()`)⇒ §5「绑工具=∪加入」是**空操作**;用户经 AskUserQuestion 选方向 = **工具 scoping**(完整版真实价值 = 「限定」非「加入」= 最小权限)。
+- **设计**:`Skill.tools?:string[]` → runSkill 穿 scopeTools → streamReply **过滤** appTools 到声明集。**三态(拍板)**:`undefined`(未声明)=全工具(雏形零回归)/ `[]`=无 app-tool(只平台能力)/ `['x']`=仅 x。平台 Rust 能力(query_data/show_widget/memory)恒在。
+- **★结构性收窄非旁路(评审盯点①兑现)**:scoping 只把 appTools 取子集(⊆readable),每 app-tool 仍走 T0–T3;ai_chat dispatch 已 `app_tool_names.contains(call.name)` ⇒ 模型调未传工具不匹配不执行 ⇒ 声明外结构性够不到。**减权绝不增权、红线全继承**(须 F1 逐条验)。
+- **信任**(评审盯点②③):本地自撰=可信(scoping 减权无新风险);**导入=untrusted-until-reviewed 留后续**(第79轮 [建议]1);platform 对 apps 零 import(registry 按名查、scopeTools 是字符串名非模块引用)。
+- **分期**:F1 契约+scoping 运行时(无 UI、三态逐条测)→ F2 管理 UI(可用工具多选、cEsc、管理不经对话)→(后续)导入。推荐 F1 先行。
+- **评审请核设计**:①scoping「限定非加入」的先量翻案是否成立(§5 premise 空操作)②三态语义 + 结构性够不到声明外(收窄非旁路、红线继承)③信任(本地自撰 / 导入留后续)④F1 先行去风险。
+- **下一步 = F1**(契约 + scoping 运行时)。**建议方案过审后再落 F1。**
