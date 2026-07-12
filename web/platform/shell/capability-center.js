@@ -13,6 +13,7 @@ import { $ } from './dom.js';
 import { tt } from './i18n.js';
 import { renderDocs, renderMemory } from './memory-docs.js'; // ★P1-c:记忆 / 知识库管理同样从 settings.js 模态搬迁
 import { renderSkills } from './skills.js'; // ★Skills S1b:平台可执行技能管理面(proposal-skills.md);从「规划中」占位提为一等公民
+import { renderSchedules } from './schedules.js'; // ★Scheduled SC1:定时任务管理面(proposal-scheduled-tasks;调度 CRUD 只在此,不经对话)
 import { frontis, signFoot } from './nav.js';
 
 // 用户数据(连接器名 / 能力 id)进 DOM 前逐字转义(纵深防御:虽是用户自填配置/平台定义 id,仍防意外 HTML)。
@@ -47,7 +48,8 @@ export function renderCapabilityCenter() {
     block('cc-memory', 'MEMORY', tt('长期记忆', 'Long-term memory'), tt('你主动写下、供 Agent 长期参考的信息。', 'Info you’ve volunteered for the Agent’s long-term context.')) +
     block('cc-docs', 'KNOWLEDGE', tt('知识库', 'Knowledge base'), tt('你加入、供检索作答的文档语料(需嵌入模型)。', 'Docs you’ve added for retrieval-augmented answers (needs an embed model).')) +
     block('cc-skills', 'SKILLS', tt('技能', 'Skills'), tt('把你反复用的指令沉淀成可执行技能 —— 本地保存,一点即运行(Agent 会用它跑一轮)。AI 看不到 Skill 内容(它们是你的指令,不是检索数据)。', 'Turn instructions you reuse into executable skills — stored locally, one-click run (the Agent runs it for you). The AI can’t see skill contents (they’re your instructions, not retrieval data).')) +
-    block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Project / 定时任务 —— 后端建设中,后续开放。', 'Project / Scheduled tasks — backend in progress, coming later.')) +
+    block('cc-schedules', 'SCHEDULED', tt('定时任务', 'Scheduled tasks'), tt('到点自动跑一枚 Skill(仅 Seeker 开着时;错过不补跑)。任务只能在这里管理 —— AI 不能给自己排任务。', 'Run a skill on schedule (while Seeker is open; missed runs are skipped). Managed here only — the AI cannot schedule tasks for itself.')) +
+    block('cc-soon', 'ON THE ROADMAP', tt('规划中', 'On the roadmap'), tt('Project(目标工作区)—— 方案设计中,后续开放。', 'Project (goal workspaces) — in design, coming later.')) +
     `</div>` +
     signFoot();
   const rb = $('#ccRefresh');
@@ -111,9 +113,18 @@ function populate() {
     catch (_e) { box.innerHTML = emptyLine(tt('暂不可用', 'Unavailable')); }
   })();
 
-  // ── 绿地(诚实占位):Project/定时任务 后端零基础,不假装「已建」(Skills 已落地 → 上移为一等公民)。
+  // ── Scheduled(定时任务 · proposal-scheduled-tasks SC1):到点经 runSkill 重放(红线全继承)。
+  //    调度 CRUD 只在此(不经对话);platform_schedules 不进 QUERYABLE;AI 不能给自己排任务(第95轮 [建议]-强)。
+  (async () => {
+    const box = $('#cc-schedules');
+    if (!box) return;
+    try { await renderSchedules(/** @type {HTMLElement} */ (box)); }
+    catch (_e) { box.innerHTML = emptyLine(tt('暂不可用', 'Unavailable')); }
+  })();
+
+  // ── 绿地(诚实占位):Project(目标工作区)方案设计中,不假装「已建」(Scheduled 已落地 → 上移为一等公民)。
   fill('cc-soon', async () =>
-    ['Project', tt('定时任务', 'Scheduled tasks')]
+    ['Project']
       .map((n) => itemRow(`<span style="color:var(--ink-2);">${n}</span> · <span style="color:var(--ink-mute);font-size:12px;">${tt('规划中', 'Planned')}</span>`))
       .join('')
   );

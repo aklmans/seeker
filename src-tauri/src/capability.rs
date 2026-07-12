@@ -652,6 +652,10 @@ mod tests {
         assert!(!is_queryable("messages"));
         // 平台 Skills(可执行技能):db_* 可访问但**永不 AI 可读** —— Skill 是用户指令、非检索数据(proposal-skills.md S1 盯点①)。
         assert!(!is_queryable("platform_skills"));
+        // ★平台 Scheduled tasks(第95轮 [建议]-强 守卫):调度配置永不 AI 可读;且**永不注册任何可写
+        //   platform_schedules 的 capability/app-tool** —— Agent 能排任务 = 自我持续执行通路(自激励循环),
+        //   本红线今天的形态是「结构性缺席」,此测试 + table_for/schedule-model 契约注释把缺席钉成有形物。
+        assert!(!is_queryable("platform_schedules"));
         // 暴露给 LLM 的工具枚举同样不含 profile / platform_skills。
         let schema = DataQuery.schema().unwrap();
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();
@@ -659,6 +663,10 @@ mod tests {
         assert!(
             !en.contains("platform_skills"),
             "工具枚举不应含 platform_skills(Skill 是用户指令非 AI 数据)"
+        );
+        assert!(
+            !en.contains("platform_schedules"),
+            "工具枚举不应含 platform_schedules(AI 不能给自己排任务,第95轮 [建议]-强)"
         );
         assert!(en.contains("jobs"));
     }

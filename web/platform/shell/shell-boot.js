@@ -3,9 +3,11 @@
  *  依赖 $/setLang(平台)+ setState/hydrateSettings/toggleSidebar(过渡 classic 全局,经全局词法/window);INIT-module 运行时调 initShell()。 */
 import { $ } from './dom.js';
 import { setLang } from './nav.js';
+import { startScheduler } from './scheduler.js'; // ★Scheduled SC1:壳级分钟 tick(仅 app 开着时;fire 经 runSkill 红线全继承)
 import { toggleSidebar } from './shell-keys.js';
 import { hydrateSettings, setState } from './shell-state.js';
 export function initShell(){
+  startScheduler(); // 幂等;tick 在 store 水合(seeker-rt-ready)前空转 no-op
   // 拖放守卫:tauri.conf dragDropEnabled:false 后 webview 自己处理拖放;文件拖到拖放区之外时,默认会让 webview 导航去打开文件 → 全局拦掉(仅文件)。AI 录入区 #aiDrop 自己的 drop 仍照常摄入。
   ['dragover','drop'].forEach(evn=>document.addEventListener(evn, e=>{ if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files')) e.preventDefault(); }));
   try{const w=localStorage.getItem('jh-sbw'); if(w)document.documentElement.style.setProperty('--sb-w',w+'px');}catch(e){}

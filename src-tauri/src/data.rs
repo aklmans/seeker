@@ -42,6 +42,10 @@ fn table_for(collection: &str) -> Result<&'static str, String> {
         // 平台 Skills(可执行技能 · proposal-skills.md S1):平台级用户能力,非 app ⇒ platform_ 前缀。
         // db_* 可访问(管理面 CRUD),但**故意不进 QUERYABLE**(capability.rs)——Skill 是用户指令、非 AI 检索数据,永不 AI 可读。
         "platform_skills" => Ok("platform_skills"),
+        // 平台 Scheduled tasks(proposal-scheduled-tasks SC1):调度配置=用户配置非 AI 数据,
+        // db_* 可访问(管理面 CRUD)但**故意不进 QUERYABLE**;且**永不注册任何可写本集合的
+        // capability/app-tool** —— Agent 能排任务 = 自我持续执行通路(第95轮 [建议]-强,加即拆除本红线)。
+        "platform_schedules" => Ok("platform_schedules"),
         other => Err(format!("未知或受保护的集合: {other}")),
     }
 }
@@ -111,6 +115,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (
         6,
         "CREATE TABLE IF NOT EXISTS platform_skills (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    // 平台 Scheduled tasks(proposal-scheduled-tasks SC1):调度配置,弹性 schema 同上;不进 QUERYABLE。
+    (
+        7,
+        "CREATE TABLE IF NOT EXISTS platform_schedules (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -3904,6 +3913,9 @@ mod tests {
         assert!(table_for("messages").is_ok());
         // 平台 Skills:db_* 可访问(管理面 CRUD),但不可与 jobseek 的 `skills`(技能库)混淆。
         assert!(table_for("platform_skills").is_ok());
+        // 平台 Scheduled tasks:db_* 可访问(管理面 CRUD);AI 不可读见 capability.rs 守卫。
+        assert!(table_for("platform_schedules").is_ok());
+        assert_eq!(table_for("platform_schedules").unwrap(), "platform_schedules");
         assert_eq!(table_for("platform_skills").unwrap(), "platform_skills");
     }
 

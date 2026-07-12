@@ -261,6 +261,36 @@ export interface Skill {
   reviewed?: boolean;
 }
 
+/**
+ * 平台 Scheduled task(定时跑 Skill · proposal-scheduled-tasks SC1)—— 到点 fire = 用户预先发起的
+ * 「运行」重放(经 runSkill,四红线 + scoping + needsReview 全继承;破坏性只能提议等用户确认,无预授权)。
+ *
+ * ★★红线(第95轮 [建议]-强):**永不注册任何可写 `platform_schedules` 的 capability / app-tool** ——
+ * Agent 能给自己排任务 = 自我持续执行通路(自激励循环 + BYO 成本)。本红线是「结构性缺席」,
+ * 加此类工具即拆除;有形锚 = capability.rs 守卫测试 + schedule-model.js/本注释。
+ * 调度 CRUD 只在能力中心管理面(§4-2);`platform_schedules` 永不进 QUERYABLE。
+ */
+export interface Schedule {
+  /** 稳定 id(存储主键)。 */
+  id: string;
+  /** 要跑的 Skill id(fire 时按 id 查 skill-store;悬空 → no-op + last_status:'skill-missing' 如实记)。 */
+  skillId: string;
+  /** 排点类型:每天 / 每周。 */
+  kind: 'daily' | 'weekly';
+  /** 排点时间 'HH:MM'(本地时区;无效 → 该调度永不 due,fail-safe 不误跑)。 */
+  time: string;
+  /** kind='weekly' 时的星期(0=周日…6=周六)。 */
+  dow?: number;
+  /** 是否启用。归一化须**显式 true**(垃圾值 → 不跑:无人值守存疑往「不跑」侧靠)。 */
+  enabled: boolean;
+  /** 创建时刻 —— due 水位含它 ⇒ **新建不立即开火**(不把创建前的今日排点算成欠账)。 */
+  created_at?: number;
+  /** 上次 fire 时刻(水位;fire 后越过全部积压排点 = 错过不补跑)。 */
+  last_run_at?: number;
+  /** 上次结果:'ok' | 'error' | 'skill-missing'(悬空如实记、不静默)。 */
+  last_status?: string;
+}
+
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
 export interface ShellOwn {
   pages: ShellPage[];

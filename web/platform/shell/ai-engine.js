@@ -42,6 +42,12 @@ function readableAppTools(){
   if(!S || typeof S.appTools!=='function' || typeof S.aiReadableCollections!=='function') return [];
   return filterReadableTools(S.appTools(), S.aiReadableCollections());
 }
+/* ★Scheduled SC1 壳级忙信号:调度器 fire 前查,避免定时流撞正在飞的流(同 tick 自制碰撞)。
+   置于流发起前、清于 onDone/onError 首行(处理体异常也不留死忙)。仅辅助调度节流,非并发锁:
+   若 ai.stream 同步抛(自研 rt 实践中不抛)会遗留 true 至下次流清零 —— 失败方向 = 调度跳过(不误跑),可接受。 */
+let __aiStreamBusy=false;
+export function aiStreamBusy(){ return __aiStreamBusy; }
+
 /**
  * @param {any} thinkBubble @param {string} text @param {string} who @param {(()=>void)|undefined} scrollFn
  * @param {string[]=} scopeTools ★Skills F1(工具 scoping):Skill.tools 三态 —— undefined=全可读 app-tool(雏形/用户打字零回归)、
@@ -53,6 +59,7 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools){
   let acc='', span=null, streaming=false;
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
+  __aiStreamBusy=true; // ★SC1:开流即忙(清点在 onDone/onError 首行)
   window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools) }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
@@ -69,8 +76,9 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools){
       catch(e){ console.error('[widget] 渲染失败', e); }
       if(scrollFn) scrollFn();
     },
-    onError(err){ thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
+    onError(err){ __aiStreamBusy=false; thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
     onDone(){
+      __aiStreamBusy=false;                                           // ★SC1:收流即闲(首行,处理体异常不留死忙)
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       let prose = acc; const pending = [];                            // 逐卡型剥离 ```seeker 指令块(注册表驱动,加卡零改)
       const CARDS = window.SeekerShell.cards();                       // 壳组合:启用应用贡献的卡注册表
