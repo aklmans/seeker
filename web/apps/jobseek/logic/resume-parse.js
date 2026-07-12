@@ -36,7 +36,7 @@ export const RESUME_PARSE_SCHEMA = {
 };
 
 /**
- * fail-safe 归一:AI 产出 → 良构 ParsedResume。lvl 钳 0-5、字段强制、丢无名/无效技能、evidence 只留非空串。**绝不抛。**
+ * fail-safe 归一:AI 产出 → 良构 ParsedResume。lvl 钳 **1-5**(对齐 computeMatch 消费者语义、无效→1)、字段强制、丢无名/重名技能、evidence 只留非空串。**绝不抛。**
  * @param {any} wire
  * @returns {ParsedResume}
  */
@@ -52,7 +52,10 @@ export function normResumeParse(wire) {
     if (!name || seen.has(name)) continue; // 无名 / 重名 剔除
     seen.add(name);
     const lvNum = Number(r.lvl);
-    const lvl = Number.isFinite(lvNum) && lvNum >= 0 ? Math.min(5, Math.floor(lvNum)) : 0;
+    // ★lvl 对齐 SKILLS 消费者语义(computeMatch/市场价值:`Number.isFinite&&>=1?min(5,floor):1` ⇒ <1 当 1):
+    //   钳 **1-5、无效/未知→1** —— 抽出的技能=候选人「有」的技能(lvl≥1),存储===生效(避 stored-0/effective-1);
+    //   「AI 判不出等级」→ 当最小 1(minimal credit 0.5)是 computeMatch 已有的合理降级。(评审 Cut1 [建议],趁契约刀对齐)
+    const lvl = Number.isFinite(lvNum) && lvNum >= 1 ? Math.min(5, Math.floor(lvNum)) : 1;
     const evidence = Array.isArray(r.evidence)
       ? r.evidence.filter((/** @type {any} */ x) => typeof x === 'string' && x.trim()).map((/** @type {any} */ x) => String(x))
       : [];

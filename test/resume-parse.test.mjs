@@ -17,15 +17,15 @@ test('normResumeParse:良构 wire → 归一(lvl/evidence/years/summary)', () =>
   assert.equal(r.summary, '8 年后端');
 });
 
-test('normResumeParse:lvl 钳制(缺/非有限→0、越界钳 5、取整)', () => {
+test('normResumeParse:lvl 钳制(★对齐 computeMatch:缺/非有限/<1→1、越界钳 5、取整)', () => {
   const r = normResumeParse({ skills: [
-    { name: 'A' },            // 缺 lvl → 0
+    { name: 'A' },            // 缺 lvl → 1(对齐 computeMatch,非 0)
     { name: 'B', lvl: 9 },    // → 5
-    { name: 'C', lvl: -2 },   // <0 → 0
+    { name: 'C', lvl: -2 },   // <1 → 1
     { name: 'D', lvl: 3.9 },  // → 3(floor)
-    { name: 'E', lvl: 'x' },  // 非数 → 0
+    { name: 'E', lvl: 'x' },  // 非数 → 1
   ] });
-  assert.deepEqual(r.skills.map((s) => s.lvl), [0, 5, 0, 3, 0]);
+  assert.deepEqual(r.skills.map((s) => s.lvl), [1, 5, 1, 3, 1], '抽出的技能 lvl≥1(存储===生效,避 stored-0/effective-1)');
 });
 
 test('normResumeParse:丢无名 + 去重名 + evidence 只留非空串', () => {
