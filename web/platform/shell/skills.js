@@ -19,7 +19,7 @@ import { tt } from './i18n.js';
 import { IC } from './icons.js';
 import { toast, toastUndo, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
-import { normSkill, skillRunnable, skillNeedsReview, importSkillWire } from './skill-model.js'; // 零 import fail-safe 归一化 + 可运行判据;I1:待审谓词 + 导入白名单(载重不变式)
+import { normSkill, skillRunnable, skillNeedsReview, importSkillWire, exportSkillWire } from './skill-model.js'; // 零 import fail-safe 归一化 + 可运行判据;I1:待审谓词 + 导入白名单(载重不变式);I2:白名单导出(剥信任标志)
 import { hydrateSkills, listSkills, saveSkill, removeSkill } from './skill-store.js'; // ★S2b:数据层(缓存供命令面板同步 platformSkills)
 
 /** 生成稳定 id。 */
@@ -45,6 +45,7 @@ export async function renderSkills(box) {
           <span style="flex:1;"></span>
           ${skillNeedsReview(s) ? `<button class="btn btn-accent" data-skreview="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('审阅', 'Review')}</button>` : skillRunnable(s) ? `<button class="btn btn-accent" data-skrun="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('运行', 'Run')}</button>` : ''}
           <button class="btn" data-skedit="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('编辑', 'Edit')}</button>
+          ${skillRunnable(s) ? `<button class="btn" data-skshare="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('分享', 'Share')}</button>` : ''}
           <button class="btn" data-skdel="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('删除', 'Delete')}</button>
         </div>
         <div style="margin-top:6px;padding:8px 11px;background:var(--bg-subtle);border:0.5px solid var(--border);font-family:var(--font-mono);font-size:11.5px;line-height:1.6;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;max-height:66px;overflow:hidden;">${cEsc(s.prompt)}</div>
@@ -63,6 +64,12 @@ export async function renderSkills(box) {
     /** @type {HTMLElement} */ (b).onclick = () => {
       const s = rows.find((/** @type {any} */ x) => x.id === /** @type {HTMLElement} */ (b).dataset.skreview);
       if (s) openReviewSkillModal(box, s);
+    };
+  });
+  $$('[data-skshare]', box).forEach((b) => {
+    /** @type {HTMLElement} */ (b).onclick = () => {
+      const s = rows.find((/** @type {any} */ x) => x.id === /** @type {HTMLElement} */ (b).dataset.skshare);
+      if (s) openShareSkillModal(s);
     };
   });
   $$('[data-skrun]', box).forEach((b) => {
@@ -273,5 +280,46 @@ function openReviewSkillModal(box, s) {
     /** @type {HTMLElement} */ (del).onclick = async () => {
       closeModal();
       await delSkill(box, s); // 复用逐条删(toastUndo 可撤销)
+    };
+}
+
+/** ★I2 分享导出(本地优先无网络 · 第93轮盯点③)。JSON 经 exportSkillWire **白名单**产出 ——
+ *  **绝不含 id / updated_at / imported / reviewed**(剥信任标志 = 不依赖接收方实现的防线:
+ *  即便接收方不是 I1 importSkillWire,也吃不到 reviewed:true 绕审阅门);接收方导入后重走审阅(预裁③)。
+ *  复制:navigator.clipboard 优先、execCommand 兜底、都不行则全选提示手动 ⌘C(WKWebView 剪贴板可用性不赌)。
+ *  @param {ReturnType<typeof normSkill>} s */
+function openShareSkillModal(s) {
+  const wire = exportSkillWire(s);
+  if (!wire) {
+    toast(tt('无指令正文,补全后再分享', 'Nothing to share yet — add an instruction first'));
+    return;
+  }
+  const json = JSON.stringify(wire, null, 2);
+  openModal(
+    `<div class="modal-head"><div><p class="eyebrow">— SHARE</p><h2 style="margin-top:5px;">${tt('分享 Skill', 'Share skill')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--ink-2);line-height:1.7;margin:0 0 10px;max-width:640px;">${tt('复制下面的 JSON 发给对方。<b>不含你的本地状态</b>(id / 审阅标志);对方导入后,会经<b>自己的审阅门</b>认可才能运行。', 'Copy the JSON below and send it. <b>None of your local state</b> (id / review flags) is included; the recipient reviews and approves it in <b>their own review gate</b> before it can run.')}</p>
+      <textarea class="input" id="skShareText" rows="10" readonly style="width:100%;font-family:var(--font-mono);font-size:12px;line-height:1.7;">${cEsc(json)}</textarea>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>${tt('关闭', 'Close')}</button><button class="btn btn-accent" id="skShareCopy">${tt('复制', 'Copy')}</button></div>`,
+    true
+  );
+  const cp = $('#skShareCopy');
+  if (cp)
+    /** @type {HTMLElement} */ (cp).onclick = async () => {
+      const ta = /** @type {HTMLTextAreaElement|null} */ ($('#skShareText'));
+      if (ta) ta.select();
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(json);
+        ok = true;
+      } catch (_e) {
+        try {
+          ok = document.execCommand('copy');
+        } catch (_e2) {
+          ok = false;
+        }
+      }
+      toast(ok ? tt('已复制', 'Copied') : tt('已全选,按 ⌘C 复制', 'Selected — press ⌘C to copy'));
     };
 }

@@ -97,3 +97,24 @@ export function importSkillWire(text) {
   const tools = Array.isArray(w.tools) ? w.tools.filter((/** @type {any} */ x) => typeof x === 'string' && x) : undefined;
   return { name, description, prompt, tools, imported: true, reviewed: false };
 }
+
+/**
+ * ★I2 分享导出(白名单,与 importSkillWire 对称 · 第93轮盯点①②):Skill → 可分享 wire 对象。
+ * **只导出 `{name, prompt, description?, tools?}` —— 绝不含 id / updated_at / imported / reviewed**:
+ *   - **剥信任标志是不依赖接收方实现的防线**:标准接收方(I1 importSkillWire)本会丢弃粘贴标志,
+ *     但导出侧不携带 = 旧版本/第三方接收实现也**吃不到 `reviewed:true`**(绕不了审阅门);
+ *   - 剥 id = 接收方必然 fresh id(不可能 clobber);导出的是**指令本身**,接收方重走审阅(预裁③)。
+ * tools 三态过导出面保真:未限定(undefined)不导出键;`[]` / `['x']` 原样导出。
+ * 无 prompt 正文 → null(与 importSkillWire 对称:无正文的分享无意义)。**绝不抛。**
+ * @param {unknown} skill
+ * @returns {{name:string, prompt:string, description?:string, tools?:string[]}|null}
+ */
+export function exportSkillWire(skill) {
+  const s = normSkill(skill);
+  if (!s.prompt.trim()) return null;
+  /** @type {{name:string, prompt:string, description?:string, tools?:string[]}} */
+  const out = { name: s.name, prompt: s.prompt };
+  if (s.description) out.description = s.description;
+  if (Array.isArray(s.tools)) out.tools = s.tools;
+  return out;
+}
