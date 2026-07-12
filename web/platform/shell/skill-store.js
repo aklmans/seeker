@@ -21,12 +21,15 @@ export function listSkills() {
   return _cache.slice();
 }
 
-/** 从 rt.db 重水合缓存(boot + 管理面每次渲染);失败留空、绝不抛。 */
+/** 从 rt.db 重水合缓存(boot + 管理面每次渲染);失败留空、绝不抛。
+ *  @returns {Promise<boolean>} 读取是否成功(true=状态已知;false=读失败,调用方据此拒绝依赖当前 Skills 状态的行动,如 prompts 迁移的幂等判定)。 */
 export async function hydrateSkills() {
   try {
     _cache = (await rt().db.list(COLL)).map(normSkill).sort(byUpdated);
+    return true;
   } catch (_e) {
     _cache = [];
+    return false;
   }
 }
 

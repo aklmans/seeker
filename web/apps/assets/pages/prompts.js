@@ -10,27 +10,45 @@
 import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { IC } from '../../../platform/shell/icons.js';
-import { toast, toastUndo } from '../../../platform/shell/toast.js';
+import { toast, toastUndo, errText } from '../../../platform/shell/toast.js';
 import { openModal, closeModal } from '../../../platform/shell/modal.js';
 import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
+import { saveSkill, listSkills, hydrateSkills } from '../../../platform/shell/skill-store.js'; // ★S3:prompts → 平台 Skills 迁移(app→platform API,同 notes→rt.docs)
 
-/** @type {Array<{id:string, title:string, text:string, updated:number}>} */
+/** @type {Array<{id:string, title:string, text:string, updated:number, skillId?:string}>} skillId=已迁入的 Skill id(幂等键,同 notes 的 docId) */
 const ASSETS_PROMPTS = [];
+
+// ★S3 迁移状态(自愈,同 notes 的 LIVE_DOC_IDS):当前平台 Skills 里实际存在的 id 集 + 状态是否已知。
+/** @type {Set<string>} */
+let CURRENT_SKILL_IDS = new Set();
+let skillsStatusKnown = false;
+/** 一条 prompt 是否已迁入(且其 Skill 仍在)。自愈:用户在能力中心删了那个 Skill ⇒ 重新变「可迁入」。
+ *  @param {{skillId?:string}} p */
+function promptMigrated(p){ return !!p.skillId && CURRENT_SKILL_IDS.has(p.skillId); }
+/** 刷新「当前平台 Skills 有哪些 id」——看**实际**存在(非本地记录),自愈不留悬挂引用。
+ *  hydrateSkills 返回 false(读失败)⇒ 状态未知 ⇒ 迁移按钮禁用(同 notes 第67轮:判定不了就拒绝行动,免造重复)。 */
+async function refreshMigratedSkills(){
+  const ok = await hydrateSkills();
+  if(ok){ CURRENT_SKILL_IDS = new Set(listSkills().map((/** @type {any} */ s)=>s.id)); skillsStatusKnown = true; }
+  else { CURRENT_SKILL_IDS = new Set(); skillsStatusKnown = false; }
+}
 
 /** @param {unknown} s @returns {string} */
 function apEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function persistPrompts(){ persistColl('assets_prompts', ASSETS_PROMPTS); }
 
-export function renderPrompts(){
+export async function renderPrompts(){
   const host=$('#page-prompts'); if(!host) return;
+  await refreshMigratedSkills();                       // 自愈:看当前平台 Skills 实际有哪些(重渲即对齐)
   const rows=ASSETS_PROMPTS.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   const list=rows.length
     ? rows.map(p=>`<div class="sec" style="padding:16px 0;">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
           <h3 style="font-size:15px;color:var(--ink);margin:0;font-weight:600;">${apEsc(p.title)||tt('(未命名)','(untitled)')}</h3>
           <span class="mono" style="font-size:10.5px;color:var(--ink-3);">${new Date(p.updated||0).toLocaleDateString()}</span>
+          ${promptMigrated(p)?`<span class="mono" style="font-size:9.5px;color:var(--status-done,#5a8);">${tt('已迁入 Skills','In Skills')}</span>`:''}
           <span style="flex:1;"></span>
           <button class="btn" data-apcopy="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('复制','Copy')}</button>
           <button class="btn" data-apedit="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
@@ -39,10 +57,18 @@ export function renderPrompts(){
         <pre style="margin:10px 0 0;padding:12px 14px;background:var(--bg-subtle);border:0.5px solid var(--border);font-size:12.5px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);">${apEsc(p.text)}</pre>
       </div>`).join('')
     : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有 Prompt。把你反复使用的提示词沉淀在这里 —— 本地保存,可随时复制取用;授权后 AI 也能检索引用。','No prompts yet. Curate the prompts you reuse — stored locally, one-click copy; with your grant the AI can reference them too.')}</p></div>`;
+  // ★S3 迁入 Skills:待迁数 = 未迁入的 prompt。状态未知(读 Skills 失败)⇒ 禁用 + 提示(免造重复,同 notes 第67轮)。
+  const pending=ASSETS_PROMPTS.filter(p=>!promptMigrated(p));
+  const migrateBtn = !skillsStatusKnown
+    ? `<button class="btn" id="apToSkills" disabled style="opacity:.5;cursor:not-allowed;margin-left:8px;">${tt('迁入 Skills','Migrate to Skills')}</button><span class="mono" style="font-size:10px;color:var(--ink-3);margin-left:6px;">${tt('无法确认 Skills 状态,稍后重试','Cannot confirm Skills state — retry later')}</span>`
+    : (pending.length
+        ? `<button class="btn" id="apToSkills" style="margin-left:8px;">${tt('迁入 Skills','Migrate to Skills')} · ${pending.length}</button>`
+        : (ASSETS_PROMPTS.length ? `<span class="mono" style="font-size:10px;color:var(--ink-3);margin-left:8px;">${tt('已全部迁入 Skills','All migrated to Skills')}</span>` : ''));
   host.innerHTML=frontis('PROMPTS', tt('Prompt 库','Prompt Library'))
-    +`<div class="sec" style="border-bottom:none;padding-bottom:6px;"><button class="btn btn-accent" id="apAdd">${tt('+ 新建 Prompt','+ New prompt')}</button></div>`
+    +`<div class="sec" style="border-bottom:none;padding-bottom:6px;"><button class="btn btn-accent" id="apAdd">${tt('+ 新建 Prompt','+ New prompt')}</button>${migrateBtn}</div>`
     +list+signFoot();
   const add=$('#apAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openPromptModal('');
+  { const mig=$('#apToSkills'); if(mig && !(/** @type {HTMLButtonElement} */(mig).disabled)) /** @type {HTMLElement} */(mig).onclick=()=>openMigrateSkillsModal(); }
   $$('#page-prompts [data-apcopy]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
     const p=ASSETS_PROMPTS.find(x=>x.id===/** @type {HTMLElement} */(b).dataset.apcopy); if(!p) return;
     try{ navigator.clipboard.writeText(p.text); toast(tt('已复制','Copied')); }catch(_e){ toast(tt('复制失败','Copy failed')); }
@@ -73,6 +99,39 @@ function openPromptModal(id){
     if(p){ p.title=title; p.text=text; p.updated=Date.now(); }
     else ASSETS_PROMPTS.push({ id:'ap_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, text, updated:Date.now() });
     persistPrompts(); closeModal(); renderPrompts(); toast(tt('已保存','Saved'));
+  };
+}
+
+/** ★S3 知情通知(**非**隐私同意闸)—— prompts → 平台 `platform_skills` 迁移。
+ *  与 notes→知识库的**关键区别**(第79轮 [建议]2):`platform_skills` **不进 QUERYABLE**、永不 AI 可读 ⇒ 迁移
+ *  **不扩大** AI 可读面(零或收窄:若曾授权 Prompt 库可读,迁后 AI 不再可读)。故文案是**知情通知说清真实变化**,
+ *  不是「扩大 AI 可读」的同意闸。**非破坏**(原 Prompt 保留);幂等键=`p.skillId`(自愈);状态未知拒绝行动(免重复)。 */
+function openMigrateSkillsModal(){
+  if(!skillsStatusKnown){ toast(tt('无法确认 Skills 状态,请稍后重试','Cannot confirm Skills state — please retry')); return; } // 判定不了就别动
+  const pending=ASSETS_PROMPTS.filter(p=>!promptMigrated(p));
+  if(!pending.length){ toast(tt('没有待迁入的 Prompt','Nothing to migrate')); return; }
+  openModal(`<div class="modal-head"><div><p class="eyebrow">— SKILLS</p><h2 style="margin-top:5px;">${tt('把 Prompt 迁入 Skills?','Migrate prompts to Skills?')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body" style="font-size:13.5px;line-height:1.85;color:var(--ink-2);">
+      <p style="margin:0 0 10px;">${tt(`将把 ${pending.length} 条 Prompt 变成可执行 Skill(原 Prompt 保留,不会被删除)。Skill 一点即运行(Agent 用它跑一轮),在「能力中心 → 技能」管理。`,`Turns ${pending.length} prompt(s) into executable Skills (your prompts are kept, not deleted). A Skill runs in one click (the Agent runs it), managed in Capabilities → Skills.`)}</p>
+      <p style="margin:0;color:var(--ink-3);font-size:12.5px;">${tt('这不会扩大 AI 能读到的范围 —— Skill 是你的指令,永不进 AI 检索。若你曾授权 Prompt 库可读,迁移后这些内容 AI 将不再自动可读。','This does not widen what the AI can read — Skills are your instructions and never enter AI retrieval. If you had granted the Prompt Library as readable, the AI will no longer auto-read this content after migration.')}</p>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="apMigGo">${tt('迁入','Migrate')}</button></div>`);
+  const go=$('#apMigGo'); if(go) /** @type {HTMLElement} */(go).onclick=async ()=>{
+    /** @type {HTMLButtonElement} */(go).disabled=true; go.textContent=tt('迁入中…','Migrating…'); // 物理闸:await 窗口内不可重入
+    let done=0, failed=0; let firstErr='';
+    for(const p of pending){
+      try{
+        const id='sk_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+        await saveSkill({ id, name:p.title, description:'', prompt:p.text, updated_at:Date.now() });
+        p.skillId=id; done++;                          // 幂等键:下次跳过(自愈见 promptMigrated);fresh id ⇒ 不覆盖用户对既有 Skill 的编辑
+      }catch(e){ failed++; if(!firstErr) firstErr=errText(e); }
+    }
+    if(done) persistPrompts();                          // 存 p.skillId(桌面持久;web 端 prompts 本就临时态、无 reload 存活)
+    closeModal();
+    await renderPrompts();                              // 重渲(内含 refreshMigratedSkills 自愈)
+    // 如实上报:成功几条、失败几条、第一条失败的真实原因
+    if(done) toast(tt('已迁入 ','Migrated ')+done+tt(' 条到 Skills','  to Skills'));
+    if(failed) toast(tt('有 ','')+failed+tt(' 条未能迁入','  could not migrate')+(firstErr?' · '+firstErr:''));
   };
 }
 
