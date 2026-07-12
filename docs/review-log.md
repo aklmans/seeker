@@ -2196,3 +2196,12 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **诚实边界采信**:web mock;真 ai_chat 四 gate 已 cargo 测,端到端真 gate 待桌面+BYO —— 与「S2 只验路径」分工正确。npm 60/0 亲跑。
 - **★里程碑**:Skill 可执行且**安全代价为零**(无新面)—— 从「人肉复制文本」到「可执行技能」的关键一跳。
 - **下一步(评审)**:**S3**(prompts→platform_skills 迁移,落第79轮 [建议]2:**知情通知非隐私同意闸**,因 platform_skills 不进 QUERYABLE、AI 可读面零变化)→ S4(assets 退役)。**S3 盯点**:迁移幂等/自愈(同 notes 机制)+ 知情文案说**真实变化**(数据迁平台+可执行,非「AI 现在能读」)。
+
+### Skills S3 · prompts → platform_skills 迁移 · commit `8f483fa` · ⏳ 待审
+承第81轮次序裁定 + 用户拍板起 S3。镜像 notes→知识库范式,但**知情通知非同意闸**。
+- **★知情通知非隐私同意闸(核心 · 兑现盯点)**:与 notes→知识库的**关键区别** —— `platform_skills` **不进 QUERYABLE**、永不 AI 可读 ⇒ 迁移**不扩大** AI 可读面(零或收窄:若曾授权 Prompt 库可读,迁后 AI 不再可读)。故模态文案说**真实变化**(Prompt 变可执行 Skill、原样保留、AI 可读面零或收窄),**非**「扩大 AI 可读」的同意闸。preview 证文案含「不会扩大 AI 能读到的范围」+「原 Prompt 保留」(与 notes 的「这会扩大 AI 能读到的范围」正相反)。
+- **镜像 notes 范式(盯点:幂等/自愈同 notes)**:①**非破坏**(原 Prompt 保留、多一份成 Skill;title→name、text→prompt)②**幂等键 `p.skillId`**(同 notes 的 `docId`):迁后存于 prompt;**fresh id 每次生成 ⇒ 不覆盖用户对既有 Skill 的编辑**(★与「派生 id `sk_ap_<pid>` upsert」方案的区别:派生 id 重迁会 clobber 用户在能力中心的编辑;fresh id + p.skillId 追踪则不会)③**自愈**:renderPrompts 每次重读**当前实际** Skills(hydrateSkills)——删了迁入的 Skill ⇒ 那条 Prompt 重新「可迁入」,不留悬挂引用④**状态未知拒绝行动**(同 notes 第67轮):hydrateSkills 返 false(读失败)⇒ 迁移按钮禁用 + 提示重试(免造重复;为此 skill-store.hydrateSkills 加布尔返回,向后兼容 S2b 忽略返回)⑤fail-honest + 物理重入闸(disabled)。
+- **★量清成败前提**:`persistColl`/`hydrateColl` **desktop-gated**(`if(!collPersistOn())return`)⇒ **web 端 prompts 临时态**(reload 即无、无重迁可能);skills 经 skill-store **双端持久** ⇒ p.skillId 桌面持久(自愈跨 reload)、web 无 reload 存活但也无重迁风险。§1:assets→platform/shell import 允许(同 notes→rt.docs;应用调平台 API 非应用互 import)。
+- **验**:node 净 · tsc 51 基线(prompts @ts-check 净)· npm 60/0 · 真机 boot 0 panic。**preview E2E(web,真实 handler)**:建 2 prompt→按钮「迁入 · 2」→模态知情通知→迁入→platform_skills 2 条+prompts 显「已迁入」+按钮「已全部迁入」(幂等 pending 0)→迁入 Skill 入 platformSkills 可运行+XSS 名面板转义→**自愈**:删迁入 Skill→renderPrompts 后按钮回「迁入·1」。
+- **我的不确定(请评审裁)**:①**自愈是「on-render」**(同 notes:navigate 到页/重渲才刷新;用户在别处删 Skill、正停在 prompts 页时不自动更新)—— 我判与 notes 一致可接受、非 bug;preview 里 `go('prompts')` 已在该页 no-op 未重渲导致一次假失败,直接 renderPrompts 即证自愈。②**web 端 p.skillId 不持久**(persistColl desktop-gated)—— 我判无害(web prompts 本就 reload 即无、无重迁);桌面持久自愈跨 reload。③fresh id vs 派生 id 我选 fresh(避 clobber 编辑),妥否?
+- **下一步**:S4(assets 退役)—— prompts→Skills(本刀)+ notes→知识库(已 opt-in)两路径都在 ⇒ 可关 assets 应用(数据保留 D2)。**建议先对齐用户**(S4 涉及关应用、notes 未迁数据的 UX)。
