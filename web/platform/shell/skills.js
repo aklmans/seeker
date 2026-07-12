@@ -99,6 +99,11 @@ async function delSkill(box, snap) {
  *  @param {HTMLElement} box @param {string} id */
 async function openSkillModal(box, id) {
   let s = normSkill(id ? listSkills().find((x) => x.id === id) : null); // 编辑读缓存(hydrateSkills 已对齐存储);新建 → 空
+  // ★F2 工具 scoping:列**全部启用应用**的 app-tool(声明意图用全集;运行时 scopeAppTools 再 ∩ readable 减权,声明 ⊇ 生效)。
+  const _S = /** @type {any} */ (window).SeekerShell;
+  const allTools = _S && typeof _S.appTools === 'function' ? _S.appTools() : [];
+  const scoped = Array.isArray(s.tools); // 三态:undefined=不限定(开关未勾)/ 数组=限定(开关勾,含 []=无 app-tool)
+  const selTools = Array.isArray(s.tools) ? s.tools : []; // 已选集(TS 确定数组,供 .map 闭包内 includes)
   openModal(
     `<div class="modal-head"><div><p class="eyebrow">— SKILL</p><h2 style="margin-top:5px;">${
       id ? tt('编辑 Skill', 'Edit skill') : tt('新建 Skill', 'New skill')
@@ -107,10 +112,36 @@ async function openSkillModal(box, id) {
       <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="skName" value="${cEsc(s.name)}" placeholder="${tt('如:把 JD 拆成硬性/软性要求', 'e.g. Split a JD into hard/soft requirements')}"></div>
       <div class="set-row" style="margin-top:10px;"><span class="sk">${tt('说明', 'Description')}</span><input class="input" id="skDesc" value="${cEsc(s.description)}" placeholder="${tt('一句话(可选)', 'One line (optional)')}"></div>
       <textarea class="input" id="skPrompt" rows="8" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('指令正文 —— 你希望 Agent 执行的事(保存后一点即运行)。', 'Instruction body — what you want the Agent to do (run it in one click after saving).')}">${cEsc(s.prompt)}</textarea>
+      ${
+        allTools.length
+          ? `<div class="set-row" style="margin-top:14px;flex-direction:column;align-items:stretch;gap:7px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:var(--ink-2);"><input type="checkbox" id="skScopeOn"${scoped ? ' checked' : ''}> ${tt('限定此 Skill 可用的工具', 'Limit which tools this skill can use')}</label>
+        <p style="font-size:11px;color:var(--ink-3);margin:0 0 0 23px;line-height:1.6;">${tt(
+          '未勾 = 可用全部工具(与你打字一致);勾选后仅用下面选中的。平台能力(查数据 / 记忆 / 卡片)不受影响、始终可用。',
+          'Unchecked = all tools (same as typing); when checked, only the selected ones. Platform capabilities (query data / memory / widgets) are unaffected and always available.'
+        )}</p>
+        <div id="skToolList" style="display:${scoped ? 'flex' : 'none'};flex-direction:column;gap:6px;margin-left:23px;">${allTools
+          .map(
+            (/** @type {any} */ t) =>
+              `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--ink-2);font-family:var(--font-mono);"><input type="checkbox" class="skTool" value="${cEsc(t.name)}"${
+                selTools.includes(t.name) ? ' checked' : ''
+              }> ${cEsc(t.name)}</label>`
+          )
+          .join('')}</div>
+      </div>`
+          : ''
+      }
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="skSave">${tt('保存', 'Save')}</button></div>`,
     true
   );
+  // ★F2:限定开关 → 显隐工具多选列表(三态 UI 交互)。
+  const scopeOn = /** @type {HTMLInputElement|null} */ ($('#skScopeOn'));
+  if (scopeOn)
+    scopeOn.onchange = () => {
+      const listEl = $('#skToolList');
+      if (listEl) /** @type {HTMLElement} */ (listEl).style.display = scopeOn.checked ? 'flex' : 'none';
+    };
   const save = $('#skSave');
   if (save)
     /** @type {HTMLElement} */ (save).onclick = async () => {
@@ -121,7 +152,19 @@ async function openSkillModal(box, id) {
         toast(tt('写点内容再保存', 'Add some content first'));
         return;
       }
-      const rec = { id: id || newId(), name, description, prompt, updated_at: Date.now() };
+      // ★F2 工具 scoping 三态收集:段未渲染(无 app-tool 可选)→ 保留原 s.tools 不 clobber;
+      //   开关未勾 → undefined(不限定=全,雏形零回归);勾 → 选中 name[](可 []=无 app-tool)。
+      let tools = s.tools;
+      if (allTools.length) {
+        const on = /** @type {HTMLInputElement|null} */ ($('#skScopeOn'));
+        tools =
+          on && on.checked
+            ? $$('.skTool')
+                .filter((/** @type {any} */ c) => c.checked)
+                .map((/** @type {any} */ c) => c.value)
+            : undefined;
+      }
+      const rec = { id: id || newId(), name, description, prompt, updated_at: Date.now(), tools };
       try {
         await saveSkill(rec); // rt.db.upsert + 缓存更新(命令面板即时可见新 Skill)
       } catch (e) {
