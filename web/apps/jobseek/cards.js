@@ -7,7 +7,7 @@
 import { skillByName } from './data-helpers.js';
 import { ACTIONS, JOBS, STATUS } from './data.js';
 import { copInterview, copMarket, copMatch, copPlan, copResume } from './logic/copilot-actions.js';
-import { RESUME_TAILORED, YOU_VALUE, genPlanFromGap, genQuestionsFor, planFor, topGapsOf } from './logic/intake-action.js';
+import { RESUME_TAILORED, marketValue, genPlanFromGap, genQuestionsFor, planFor, topGapsOf } from './logic/intake-action.js';
 import { renderInterview } from './logic/interview.js';
 import { aiResumeForJob, goInterview, openMarketValue } from './logic/job-actions.js';
 import { matchState, renderMatch } from './logic/match.js';
@@ -283,9 +283,9 @@ function renderValueCardEl(){
   const moves=gaps.map(g=>`<div class="vc-move"><span class="vc-dot"></span><span>${tt('补齐 ','Fill ')}<b>${esc(g.skill)}</b> · ${g.jobs} ${tt('个目标岗位需要','jobs need it')}</span></div>`).join('')
     || `<p style="font-size:12.5px;color:var(--ink-3);">${(JOBS&&JOBS.length)?tt('暂无明显短板。','No clear gaps.'):tt('添加目标岗位后给出杠杆动作。','Add target jobs to see leverage moves.')}</p>`;
   const card=el(`<div class="cop-card value-card">
-    <div class="vc-head"><div class="vc-lbl">${tt('综合市场价值 · 年包','Market value · annual')}</div>
-      <div class="vc-num"><span class="v">${YOU_VALUE}</span><span class="u">${tt('万 / 年','w/yr')}</span></div>
-      <div class="vc-band">${tt('后端 · 高级带中上沿','Senior Backend · upper-mid')}</div></div>
+    <div class="vc-head"><div class="vc-lbl">${tt('市场价值 · 年包(示意)','Market value · annual (indicative)')}</div>
+      <div class="vc-num"><span class="v">${marketValue().mid}</span><span class="u">${tt('万 / 年','w/yr')}</span></div>
+      <div class="vc-band">${tt('确定性估算 · 仅供参考','Deterministic estimate · reference only')}</div></div>
     <div class="vc-moves"><div class="vc-mlbl">${tt('最高杠杆动作','Highest-leverage moves')}</div>${moves}</div>
     <div class="cop-actions vc-acts"></div></div>`);
   const b=el(`<button class="btn btn-accent">${tt('看完整报告','Full report')} →</button>`);

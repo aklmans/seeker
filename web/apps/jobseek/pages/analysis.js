@@ -3,7 +3,7 @@
 /* ---------- ANALYSIS ---------- */
 import { distBy, distinctNeedSkills, keywordsReal, skillByName } from '../data-helpers.js';
 import { JOBS, SKILLS } from '../data.js';
-import { SALARY, TREND, YOU_VALUE } from '../logic/intake-action.js';
+import { SALARY, TREND, marketValue } from '../logic/intake-action.js';
 import { dotsHTML, openMarketValue } from '../logic/job-actions.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
 import { $, $$ } from '../../../platform/shell/dom.js';
@@ -73,14 +73,15 @@ export function renderAnalysis(){
     return `<div class="trend-row"><span class="tn">${t.skill}</span><div class="trend-track"><span class="mid"></span>${bar}</div><span class="trend-val ${t.dir}">${sign}${t.pct}%${t.note?'':''}</span></div>${t.note?`<div style="font-size:11.5px;color:var(--ink-mute);margin:-4px 0 4px 110px;">${t.note}</div>`:''}`;
   }).join('');
   const maxSal=100;
-  const salRows=SALARY.map(s=>`<div class="sal-row"><span class="sn">${s.role}</span><div class="sal-bar"><i style="left:${s.lo}%;width:${s.hi-s.lo}%;"></i><span class="you" style="left:${YOU_VALUE}%;"></span></div><span class="sal-val">${s.lo}-${s.hi}万</span></div>`).join('');
+  const mv=marketValue(); // ★真化:确定性区间(退役静态 YOU_VALUE=48);图表位置用中值、文本示意
+  const salRows=SALARY.map(s=>`<div class="sal-row"><span class="sn">${s.role}</span><div class="sal-bar"><i style="left:${s.lo}%;width:${s.hi-s.lo}%;"></i><span class="you" style="left:${mv.mid}%;"></span></div><span class="sal-val">${s.lo}-${s.hi}万</span></div>`).join('');
   const market=`<div class="sec"><p class="seclabel">— MARKET INTEL</p><h2 class="sectitle">${tt('市场情报','Market intel')}<span class="dot">.</span></h2>
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 18px;max-width:680px;line-height:1.7;">${tt('聚合你的 '+JOBS.length+' 份目标 JD 与市场样本得出 —— 这是只有"持续收集 JD"才攒得出的独家数据。趋势仅作机会参考,不必焦虑。','Aggregated from your '+JOBS.length+' target JDs and market samples — exclusive data only built by collecting JDs over time. Trends are for opportunity-spotting only; no need to stress.')}</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">技能需求趋势 · 近 6 个月</p>${trendRows}
       <p style="font-size:11px;color:var(--ink-mute);margin:12px 0 0;">绿 = 需求上行 · 灰 = 平稳/回落</p></div>
     <div><p style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-3);margin:0 0 12px;">薪资 benchmark · <span style="color:var(--accent);">│</span> 为你的估算位</p>${salRows}
-      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">你的估算位约 <b style="color:var(--accent);">${YOU_VALUE} 万</b>,处「高级」带中上沿。<button class="btn-text" data-omv>看完整市场价值报告 →</button></p></div>
+      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">你的估算位约 <b style="color:var(--accent);">${mv.low}–${mv.high} 万</b>(示意级、仅供参考)。<button class="btn-text" data-omv>看完整市场价值报告 →</button></p></div>
     </div></div>`;
   // 私人市场地图(评审 P2-12 护城河前置 + P2-11 研究资产定位):把"持续收集才攒得出"提到显眼处。
   const marketMap=`<div class="sec" style="border-bottom:none;padding-bottom:0;"><div class="ai-bar" style="border:0.5px solid var(--border);">

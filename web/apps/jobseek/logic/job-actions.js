@@ -2,15 +2,16 @@
 /** jobseek · 岗位级快捷动作(原 index.html inline 收尾 · 批9c):
  *  dotsHTML(技能点渲染件,analysis/skills 页消费)· openMarketValue(市场价值报告模态,nav 顶栏动作/cards/copilot/analysis/skills 消费)·
  *  aiResumeForJob + goInterview(岗位→简历/面试快捷跳转,jobs/match/cards/copilot 消费)。
- *  ★ownership:openMarketValue 读 YOU_VALUE/aiRun(intake-action.js)= jobseek 业务,归 apps(先前"9b 含 openMarketValue"框定经 grep 订正);
+ *  ★ownership:openMarketValue 读 marketValue/topLeverageGaps/aiRun(intake-action.js)= jobseek 业务,归 apps(先前"9b 含 openMarketValue"框定经 grep 订正);
  *    批11A 已把 analysis/skills 的原内联 onclick 改 [data-omv] import 绑定、批11B nav 顶栏动作改 SeekerShell.pageActions 契约 → openMarketValue 桥已摘、消费者全 import。 */
 
 /* ---------- MARKET VALUE modal ---------- */
 import { JOBS } from '../data.js';
-import { YOU_VALUE, aiRun } from './intake-action.js';
+import { marketValue, topLeverageGaps, aiRun } from './intake-action.js';
 import { ivState, renderInterview } from './interview.js';
 import { renderResumes, resumeGenerate } from './resumes.js';
 import { $ } from '../../../platform/shell/dom.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js'; // 真 gaps 可能 JD 派生 → 进 DOM 转义(§4-4)
 import { tt } from '../../../platform/shell/i18n.js';
 import { IC } from '../../../platform/shell/icons.js';
 import { closeModal, openModal } from '../../../platform/shell/modal.js';
@@ -20,13 +21,13 @@ export function openMarketValue(){
     <div class="modal-body"><div id="mvHost"></div></div>`;
   const m=openModal(html);
   aiRun($('#mvHost',m),[tt('聚合你的能力档案与项目证据','Aggregating your assets & evidence'),tt('对照 12 份目标 JD 与市场薪资带','Comparing against 12 JDs & salary bands'),tt('估算你的市场定位','Estimating your market position')],
-    ()=>`<div style="text-align:center;padding:8px 0 18px;border-bottom:0.5px solid var(--border);">
-      <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 8px;">${tt('综合估算 · 年包','Estimate · annual')}</p>
-      <div class="score-big" style="justify-content:center;"><span class="v accent">${YOU_VALUE}</span><span class="u">${tt('万 / 年','w / yr')}</span></div>
-      <p style="font-size:12.5px;color:var(--ink-3);margin:12px 0 0;">${tt('落在「后端 · 高级」带的中上沿,补齐 1-2 项复利能力即可冲「专家」带。','Upper-mid of the Senior Backend band; fill 1-2 compounding skills to reach the Expert band.')}</p></div>
-    <div class="msec" style="border-bottom:none;"><p class="seclabel">— LEVERAGE</p><h3 class="sectitle" style="font-size:15px;margin-bottom:10px;">${tt('最高杠杆动作','Highest-leverage moves')}<span class="dot">.</span></h3>
-      ${[[tt('补齐 分布式系统 证据','Add distributed-systems evidence'),tt('已有经历,整理即用,提升匹配最快','Already have it — organize and use; fastest match gain')],[tt('完成 Rust 项目','Finish the Rust project'),tt('稀缺 + 需求半年涨 42%,差异化最大','Scarce + demand up 42% in 6mo; biggest differentiator')],[tt('强化 系统设计 表达','Sharpen system-design delivery'),tt('高级岗硬门槛,直接影响面试通过率','Senior-role gate; directly affects pass rate')]].map((x,i)=>`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${x[0]}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:3px;">${x[1]}</div></div></div>`).join('')}
-      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">${tt('这份报告在职时也值得每季度看一次 —— 把求职工具变成长期的职业资产管家。','Worth reviewing quarterly even while employed — turning a job tool into a long-term career-asset manager.')}</p></div>`,
+    ()=>{ const mv=marketValue(); const gaps=topLeverageGaps(); return `<div style="text-align:center;padding:8px 0 18px;border-bottom:0.5px solid var(--border);">
+      <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--ink-3);margin:0 0 8px;">${tt('参考区间 · 年包(示意)','Reference range · annual (indicative)')}</p>
+      <div class="score-big" style="justify-content:center;"><span class="v accent">${mv.low}–${mv.high}</span><span class="u">${tt('万 / 年','w / yr')}</span></div>
+      <p style="font-size:12.5px;color:var(--ink-3);margin:12px auto 0;max-width:460px;line-height:1.7;">${tt('由你 <b>'+mv.jobs+'</b> 个目标岗位的真实薪资、按你对各岗位的匹配分加权得出 —— <b>示意级、仅供参考</b>,勿作决策依据。','Weighted from the real pay of your <b>'+mv.jobs+'</b> target roles by how well you match each — <b>indicative only</b>, not a decision basis.')}</p></div>
+    <div class="msec" style="border-bottom:none;"><p class="seclabel">— LEVERAGE</p><h3 class="sectitle" style="font-size:15px;margin-bottom:10px;">${tt('最该补的能力','Gaps worth closing')}<span class="dot">.</span></h3>
+      ${(gaps.length?gaps:[tt('暂无明显缺口','No clear gaps')]).map((g,i)=>`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);"><span class="idx">${String(i+1).padStart(2,'0')}</span><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('补齐 ','Close ')}${cEsc(g)}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:3px;">${tt('在多个目标岗位里是缺口 —— 补上提升匹配与定价最快。','A gap across several target roles — closing it lifts match & value fastest.')}</div></div></div>`).join('')}
+      <p style="font-size:12px;color:var(--ink-3);margin:14px 0 0;line-height:1.7;">${tt('这份报告在职时也值得每季度看一次 —— 把求职工具变成长期的职业资产管家。','Worth reviewing quarterly even while employed — turning a job tool into a long-term career-asset manager.')}</p></div>`; },
     {label:tt('估算市场价值中…','Estimating market value…')});
 }
 

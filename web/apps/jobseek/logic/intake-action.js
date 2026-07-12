@@ -4,6 +4,7 @@
 import { skillByName } from '../data-helpers.js';
 import { normIvFeedback } from './iv-feedback.js';
 import { ACTIONS, JOBS, SKILLS } from '../data.js';
+import { computeMatch } from './match-result.js'; // ★市场价值真化:目标岗位真实薪资 × 匹配分(先量推翻 computeMarketValue formula=对全量技能算出 174万荒谬)
 import { renderActions } from '../pages/actions.js';
 import { renderOverview } from '../pages/overview.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
@@ -56,7 +57,29 @@ export const SALARY=[
   {role:'后端 · 专家 (P7/P8)', lo:50, hi:75, med:62},
   {role:'架构师 / 基础设施', lo:60, hi:90, med:75}
 ];
-export const YOU_VALUE=48;
+/** ★市场价值真化(退役静态 `YOU_VALUE=48` mock):**目标岗位真实薪资(JOBS.pay)× 你对每个岗位的匹配分(computeMatch)加权**。
+ *  ★先量再改:原拟接 computeMarketValue(base20+Σlvl×1.6),但对真实 35 项技能算出 174万(远超薪资带、荒谬)——
+ *  那是「打样级·非真实定价」求和公式。job-pay 加权基于**真实岗位薪资**,合理(42-62万带)、随目标+技能变化。**仍标「示意·参考」**。
+ *  每次 fresh compute(SKILLS/JOBS 运行时可变,不能载入期常量)。收敛点:openMarketValue/value-card/copilot/analysis 四面统一读本函数。 */
+export function marketValue(){
+  const parsed=(JOBS||[]).map(j=>{
+    const m=/(\d+)\s*[-–]\s*(\d+)/.exec(String(j.pay||''));   // '40-65万' → lo/hi
+    if(!m) return null;
+    return { lo:+m[1], hi:+m[2], w:Math.max(0.1, computeMatch(j, SKILLS).score) }; // 匹配分 0-10 作权重(下限 0.1 防全 0 除零)
+  }).filter(Boolean);
+  const n=(SKILLS||[]).length;
+  if(!parsed.length) return { low:0, high:0, mid:0, jobs:0, n };
+  const W=parsed.reduce((s,p)=>s+p.w,0);
+  const low=Math.round(parsed.reduce((s,p)=>s+p.lo*p.w,0)/W);
+  const high=Math.round(parsed.reduce((s,p)=>s+p.hi*p.w,0)/W);
+  return { low, high, mid:Math.round((low+high)/2), jobs:parsed.length, n };
+}
+/** 「最该补的能力」:跨所有目标 JD 聚合,出现为 gap(lvl<3)次数最多的 need 技能取前 3。**真数据、非罐头**(替换 openMarketValue 硬编码的三条杠杆动作)。 */
+export function topLeverageGaps(){
+  const cnt={};
+  JOBS.forEach(j=>topGapsOf(j).forEach(g=>{cnt[g]=(cnt[g]||0)+1;}));
+  return Object.keys(cnt).sort((a,b)=>(cnt[b]-cnt[a])||(a<b?-1:1)).slice(0,3);
+}
 const PLAN_LIB={
   'Rust':{weeks:6, ms:['吃透所有权 / 生命周期','掌握 async / tokio 异步模型','实现核心 KV 存储引擎','压测与性能调优','补 K8s 部署 + README'], res:['《Rust 程序设计语言》官方书','tokio 官方教程','《Rust Atomics and Locks》']},
   'K8s':{weeks:3, ms:['kind 本地集群跑通','写 Deployment / Service / Ingress','配探针与滚动发布','接入基础监控'], res:['Kubernetes 官方文档','《Kubernetes in Action》','kind 快速上手指南']},

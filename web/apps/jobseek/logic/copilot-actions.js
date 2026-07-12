@@ -5,7 +5,7 @@
 // 开场建议随数据态(评审 P0-6):零数据 → 引导上手(原"我和字节匹配吗"对新用户是死链);有数据 → 真实可用查询。EN 避撇号(cSuggs 内联 onclick)。
 import { skillByName } from '../data-helpers.js';
 import { ACTIONS, JOBS, TOP_GAPS, SKILLS } from '../data.js';
-import { TREND, YOU_VALUE, genPlanFromGap, openNewAction, planFor, topGapsOf } from './intake-action.js';
+import { TREND, marketValue, genPlanFromGap, openNewAction, planFor, topGapsOf } from './intake-action.js';
 import { openNewJob } from './intake-job.js';
 import { openResumeUpload } from './resume-modals.js';
 import { aiResumeForJob, goInterview, openMarketValue } from './job-actions.js';
@@ -126,7 +126,7 @@ export function copReply(t){
     return `按匹配度,<b>${cEsc(best.co)} · ${cEsc(best.role.split('·')[0].trim())}</b> 最该优先(匹配 ${best.match.toFixed(1)}/10)。`+cAct([cAB('查看完整匹配','copMatch',[best.id],true)]);
   }
   // 12. market value / salary
-  if(has('值多少','市场价值','身价','薪资','工资','值钱','行情')) return `按你的能力档案和 12 份目标 JD 估算,你的市场价值约 <b>${YOU_VALUE} 万/年</b>,在「后端·高级」带中上沿。`+cAct([cAB('看完整市场价值报告','copMarket',[],true), cAB('看市场情报','copGo',['analysis'])]);
+  if(has('值多少','市场价值','身价','薪资','工资','值钱','行情')){ const mv=marketValue(); return `按你 ${mv.jobs} 个目标岗位的真实薪资、加权你对各岗位的匹配,市场价值参考区间约 <b>${mv.low}–${mv.high} 万/年</b>(示意级、仅供参考)。`+cAct([cAB('看完整市场价值报告','copMarket',[],true), cAB('看市场情报','copGo',['analysis'])]); }
   // 13. trend
   if(has('趋势','在涨','在跌','热门','什么火','前景','值得学')){
     const up=TREND.filter(x=>x.dir==='up').slice(0,4).map(x=>`${x.skill} +${x.pct}%`).join(' · ');
