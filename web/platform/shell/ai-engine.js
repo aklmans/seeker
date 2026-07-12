@@ -11,7 +11,7 @@ import { tt } from './i18n.js';
 import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
-import { filterReadableTools } from '../capability/app-tools/readable.js';
+import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
 
 export function extractSeekerBlock(text, kind){
   const s = String(text==null?'':text);
@@ -42,13 +42,18 @@ function readableAppTools(){
   if(!S || typeof S.appTools!=='function' || typeof S.aiReadableCollections!=='function') return [];
   return filterReadableTools(S.appTools(), S.aiReadableCollections());
 }
-export function streamReply(thinkBubble, text, who, scrollFn){
+/**
+ * @param {any} thinkBubble @param {string} text @param {string} who @param {(()=>void)|undefined} scrollFn
+ * @param {string[]=} scopeTools ★Skills F1(工具 scoping):Skill.tools 三态 —— undefined=全可读 app-tool(雏形/用户打字零回归)、
+ *   `[]`=无 app-tool、`['x']`=仅 x∩可读。**减权不增权**(scopeAppTools 结果恒 ⊆ readableAppTools);平台 Rust 能力恒在(不在此列表)。
+ */
+export function streamReply(thinkBubble, text, who, scrollFn, scopeTools){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
-  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:readableAppTools() }, {
+  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools) }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){

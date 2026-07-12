@@ -5,14 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { normSkill, skillRunnable } from '../web/platform/shell/skill-model.js';
 
-test('normSkill:良构记录原样往返', () => {
-  const rec = { id: 'sk_1', name: '拆 JD', description: '硬性/软性', prompt: '把 JD 拆两列', updated_at: 1720000000000 };
+test('normSkill:良构记录原样往返(含 tools)', () => {
+  const rec = { id: 'sk_1', name: '拆 JD', description: '硬性/软性', prompt: '把 JD 拆两列', updated_at: 1720000000000, tools: ['tool_a'] };
   assert.deepEqual(normSkill(rec), rec);
 });
 
-test('normSkill:缺字段 → 安全默认(空串 / 0),不抛', () => {
-  assert.deepEqual(normSkill({ id: 'sk_2' }), { id: 'sk_2', name: '', description: '', prompt: '', updated_at: 0 });
-  assert.deepEqual(normSkill({ prompt: '只有指令' }), { id: '', name: '', description: '', prompt: '只有指令', updated_at: 0 });
+test('normSkill:缺字段 → 安全默认(空串 / 0 / tools undefined),不抛', () => {
+  assert.deepEqual(normSkill({ id: 'sk_2' }), { id: 'sk_2', name: '', description: '', prompt: '', updated_at: 0, tools: undefined });
+  assert.deepEqual(normSkill({ prompt: '只有指令' }), { id: '', name: '', description: '', prompt: '只有指令', updated_at: 0, tools: undefined });
 });
 
 test('normSkill:类型漂移强制字符串(number/boolean → String)', () => {
@@ -27,8 +27,31 @@ test('normSkill:类型漂移强制字符串(number/boolean → String)', () => {
 test('★normSkill:fail-safe —— 非对象/畸形绝不抛,回全默认', () => {
   for (const bad of [null, undefined, 'str', 42, true, [], NaN]) {
     const n = normSkill(bad);
-    assert.deepEqual(n, { id: '', name: '', description: '', prompt: '', updated_at: 0 }, `坏输入 ${String(bad)} 应回默认`);
+    assert.deepEqual(n, { id: '', name: '', description: '', prompt: '', updated_at: 0, tools: undefined }, `坏输入 ${String(bad)} 应回默认`);
   }
+});
+
+test('★normSkill:tools 三态保真(F1 工具 scoping)—— undefined ≠ [](语义不同,不可塌)', () => {
+  assert.equal(normSkill({ prompt: 'x' }).tools, undefined, '缺 tools 键 → undefined(未声明 = 全可读 app-tool、雏形零回归)');
+  assert.deepEqual(normSkill({ prompt: 'x', tools: [] }).tools, [], '[] 保真(声明空 = 无 app-tool,区别于未声明)');
+  assert.deepEqual(normSkill({ prompt: 'x', tools: ['a', 'b'] }).tools, ['a', 'b'], '具名 → string[]');
+  // ★承重:scoping 据「undefined vs []」裁「全工具 vs 无 app-tool」,二者绝不可等同(塌了 = 三态崩成两态)
+  assert.notDeepEqual(
+    normSkill({ prompt: 'x' }).tools,
+    normSkill({ prompt: 'x', tools: [] }).tools,
+    'undefined ≠ [](三态承重:未声明=全 / 声明空=无 app-tool)'
+  );
+});
+
+test('★normSkill:tools 畸形归一(非数组 → undefined、剔非空串,不抛)', () => {
+  for (const bad of [null, 'str', 42, true, {}, NaN]) {
+    assert.equal(normSkill({ prompt: 'x', tools: bad }).tools, undefined, `非数组 tools(${String(bad)})→ undefined(不塌成 [])`);
+  }
+  assert.deepEqual(
+    normSkill({ prompt: 'x', tools: ['ok', '', 42, null, 'y'] }).tools,
+    ['ok', 'y'],
+    '剔非串 / 空串,保留非空串'
+  );
 });
 
 test('normSkill:updated_at 非有限数 → 0(NaN/Infinity/字符串)', () => {

@@ -238,6 +238,14 @@ export interface Skill {
   prompt: string;
   /** 更新时间戳(排序用)。 */
   updated_at?: number;
+  /**
+   * ★Skills F1(工具 scoping · 最小权限):运行本 Skill 时可用的 app-tool 名列表(减权,结果恒 ⊆ 用户可读集)。**三态**:
+   *   - **`undefined`(未声明)** = 全部可读 app-tool(雏形零回归,等同用户打字重放的全工具语义);
+   *   - **`[]`(声明了但空)= 无 app-tool** —— 注意**非「无工具」**:平台 Rust 能力(query_data / memory / show_widget / doc)
+   *     不在本列表、恒在 ai_chat、各由自身红线闸把守,不受 scoping 影响;
+   *   - **`['x']`** = 仅 `x`(∩ 可读;声明外的 app-tool 结构性够不到)。
+   */
+  tools?: string[];
 }
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
