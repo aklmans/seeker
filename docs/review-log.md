@@ -2231,3 +2231,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★arc 实证意义(评审同意「从带 AI 工作台向 AI-Native 的一块实证」)**:用户能力从零到可执行(prompts 人肉复制→Skill 一点即运行);**红线代价为零**(S2 结构性继承=安全没靠新守卫、靠复用已测用户路径=arc 最漂亮一点);QUERYABLE 静态底守(S1);诚实迁移(S3);老应用干净退场(S4)。**每步先量抓真东西、每步读码亲验载重。**
 - **★下一步排序(评审 · 「假修>增强>绿地」优先级)**:①**先量 jobseek 剩余 aiRun**(grep 哪些还是演出 mock+罐头结果 vs 已接真件)→**有真·假就先修**(honesty、低风险、复用 ai_generate/app-tool 现成件)②Skills 完整版(绑 app-tool、增强;**若含导入须先落第79轮 [建议]1**:导入=改信任模型、第三方指令 untrusted-until-reviewed——runSkill 红线守恒假设本地自撰,导入不该静默延伸「可信作指令」)③绿地各自方案。**不建议先绿地。**
 - **★Skills 完整版盯点(评审预告)**:①Skill `tools:[app-tool]` 运行时工具表 = 平台工具 ∪ Skill 绑定 app-tool,D3/框定/projectToSchema 全继承 app-tool 契约 T0–T3、别旁路②若含导入,信任模型改「导入=untrusted-until-reviewed」(第79轮 [建议]1)③platform 对 apps 仍零 import(Skill 绑 app-tool 靠 registry 按名查、非 import,同能力中心先例)。
+
+### 市场价值真化 · 退役静态 YOU_VALUE=48 → 目标岗位薪资×匹配加权 · commit `9def0d8` · ⏳ 待审
+承第83轮次序(假修>增强)+ 用户拍板「先修市场价值假」(先量 jobseek 剩 2 真·假:市场价值静态 48 / 简历上传罐头 23-15-8;本刀修前者)。
+- **★★先量再改再次翻案(同智能匹配 premise 教训、第 N 次)**:用户经 AskUserQuestion 原选「接 T3 app-tool `computeMarketValue`」;**先量真实数据推翻** —— computeMarketValue(base20+Σlvl×1.6)对**真实 35 项技能**算出 **174万**(远超薪资带 35-90万、analysis 图表 `left:174%` 冲出界),因它是「打样级·非真实定价」**求和公式**(技能越多越离谱)。**wire as-is = 用荒谬数字换掉可信的假 48、更坏。** 量到更 honest 数据源:`JOBS.pay` 是**真实岗位薪资**(`'40-65万'`×12)。**surface 给用户 + 三选,用户改选 job-pay 加权**(同智能匹配「先量 refute 自己/用户的 premise」)。
+- **真化算法**:`marketValue()`(intake-action.js,退役 `YOU_VALUE=48`)= **目标岗位真实薪资 × 你对每个岗位的匹配分(computeMatch)加权** = **41-62万**(合理、落薪资带内、随目标+技能变化;fresh compute 因 SKILLS/JOBS 运行时可变)。`topLeverageGaps()` 跨岗位聚合真 gaps(替换硬编码「分布式系统/Rust/系统设计」三条)。
+- **收敛四面**(退役静态 48 到单一 marketValue()):openMarketValue 报告(区间+「12 个目标岗位真实薪资按匹配加权」+示意+真 gaps[分布式系统/K8s/C++]、gaps 可能 JD 派生走 cEsc §4-4)· value-card · copilot 回复 · analysis 图表(marker `left:52%`=中值)。
+- **★诚实框定(承第51轮 [建议])**:一律「示意级、仅供参考、勿作决策依据」(非真实定价模型)。
+- **验**:node 净 · 无环(intake→match-result 零 import,lazy 用)· tsc 51 基线 · npm 60/0 · 真机 boot 0 panic。**preview E2E**:marketValue={41,62,mid52,jobs12} 合理非 174 · 四面全显 41-62/示意/job 基础 · 真 gaps · analysis marker left:52% · 无 48 无 174 无 XSS。
+- **我的不确定(请评审裁)**:①marketValue() 的 parse+加权逻辑**未单测**(耦合 JOBS/SKILLS/computeMatch、非零 import;E2E 已验真值 41-62)—— 要否抽可测?②**T3 app-tool computeMarketValue(174万 formula)未动** —— 若 app-tool 仍 live,模型侧也会得荒谬值;本刀只修前端显示,app-tool formula 是否另开一刀修/退役?③job-pay 加权权重用 computeMatch.score(0-10)下限 0.1 防除零,妥否?
+- **下一步**:jobseek 剩 1 真·假 = 简历上传罐头 23-15-8(无现成真件、需真解析或诚实降级,较大)/ Skills 完整版 / 绿地。**建议对齐用户。**
