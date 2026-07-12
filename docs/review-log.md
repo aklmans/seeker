@@ -2353,3 +2353,13 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **★[建议] 已落(我独立核实定位后修)**:proposal §2:31「选空/不选=全工具」是 **pivot 前(「∪加入」时代)残留**,与 §5.2:58「`[]`=无 app-tool」/F2 代码**直接矛盾**。**危害=反转安全语义**:`[]` 两种解读方向相反且安全后果相反(§5.2/F2 = 无 app-tool 最小权限;§2 残留 = 全工具)——若后人读 §2 把代码「修」成 `[]=全`,把**最小权限反转成提权**(scope 到 [] 的 Skill 拿到全部工具而非零)。**改 §2 为 §5.2 三态语义、内部一致、删地雷。****★评审记「§2/§5.3」;我独立核实 §5.3:59 实为「工具列表来源」干净、残留仅 §2:31 一处**(不采信送审词的定位、亲扫)。延续本 arc「勿留自相矛盾/假声明」——这次在 proposal 且后果是安全语义反转。
 - **诚实边界采信**:UI DOM 耦合 node 测不到、走 preview 功能测(同 DB_VERSION);真价值仍锚**安全导入**(本地自撰 scoping 安全价值低,导入=第三方 Skill 平台强制 scope 才是兑现点)。**F2 消除 F1 休眠 = scoping 现有消费者。**
 - **★下一步(承分期)**:**导入 = scoping 真价值兑现点**,评审盯(第79轮 [建议]1):①导入 Skill 的 tools scope **被平台强制**(减权、不可自扩)②**导入前知情审阅**(第三方 prompt untrusted-until-reviewed、不当可信作指令)③导入 Skill 声明超出可读→运行时 ∩ readable 仍减权(同 F1)。**或先绿地(Project/Scheduled)方案。先量再定。**
+
+### Skills 导入/分享方案(untrusted-until-reviewed)· commit `0588260` · ⏳ 待审(信任模型升级 · 方案门控)
+承 F1+F2 收官 + 用户拍板起导入(scoping 真价值兑现点)。**★先量四条(§1,落实底避空 premise)**:
+- **①F1 已保证导入 tools 减权 ⇒ 导入无需新 tools 强制机制**:`scopeAppTools⊆readable⊆D3`,导入 Skill 声明 profile_dump 运行时也够不到(第90轮坐实)。**先量省一块**(同 §5 先量翻案精神:先量清哪些已被现有机制覆盖)。
+- **②platform_skills 弹性 schema ⇒ imported/reviewed 零迁移**(改 data_json 不写迁移)。③审阅门挂点=runSkill skillRunnable 守卫旁 + 命令面板 filter。④知情审阅最贴先例=**notes→知识库同意闸**(信任升级、fail-closed 状态未知拒绝),**非** S3 知情通知(不扩大 AI 可读的纯通知)。
+- **★核心信任转变**:本地自撰=可信(runSkill=用户打字重放、红线结构性继承);**导入=第三方指令=untrusted-until-reviewed**。**硬红线结构性不破**(D3/profile/guardrail/设置不可改不管消息来源都拦、第三方 prompt 绕不过)⇒ 先厘清别过度设计;**新增风险=第三方 prompt「意图操纵」**(硬红线**内**让 Agent 做用户没意识到的事)⇒ **审阅门堵这个**:摊 prompt 全文让用户读懂意图、背书。**审阅≠给新权力(tools 仍 F1 减权、硬红线仍在),审阅=用户对第三方指令意图知情背书**=信任转移点。
+- **设计**:契约扩 `imported/reviewed`(normSkill fail-safe **保守默认本地可信** `imported:false/reviewed:true`,否则既有本地 Skill 全变不可运行=回归;导入路径**显式**置 imported:true/reviewed:false)· 未审阅 runSkill+命令面板双点拒运行 · 知情审阅门摊 prompt 全文(Untrusted 标注 cEsc)+ tools scope(注明运行时 ∩readable 减权)+ 说清「以你身份驱动 Agent」+ 显式认可→reviewed:true · 审阅后走标准 runSkill(已背书=同本地自撰)。
+- **分期**:I1 契约+审阅门+导入(信任核心先行)/ I2 分享导出(导出不含 imported/reviewed 元、接收方重走审阅)。
+- **未决拍板**:①导入格式(推荐 JSON 粘贴、本地优先无网络、同简历粘贴先例;文件/分享码后续)②审阅粒度(逐条审阅)③分享导出是否本方案(推荐并入)④未审阅在命令面板(推荐完全不列)。
+- **评审请核设计**:①「硬红线不破 vs 意图操纵风险」的区分是否成立(审阅门堵意图操纵、非重建沙箱)②untrusted-until-reviewed 的信任转移(审阅=知情背书非给权力;审阅后同本地自撰是否安全)③保守默认本地可信不回归④F1 已减权 tools 的先量是否认可(导入不需新 tools 强制)⑤审阅门 fail-closed(承 notes 同意闸)。**下一步 = I1(方案过审后)。**
