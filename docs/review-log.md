@@ -2446,3 +2446,14 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **其余**:忙信号 = 壳级(streamReply 开流置、onDone/onError **首行**清,处理体异常不留死忙;同步抛的残忙方向=调度跳过,fail-safe)· **真忙信号活测**(开流不收→tick 'busy' 跳过、收流→fire)· DB_VERSION 3→4(preview 证 objectStore 真建)· 调度 CRUD 只在管理面 · cc-soon 收窄为 Project。
 - **验**:node **97/0**(+8)· cargo **132/132** · tsc **51=51** · 真机 boot **0 panic** · preview 0 console error。(截图辅证受浏览器捕获故障限制,主证=DOM 断言全绿——同「0 console 必要非充分、主证=正向断言」纪律。)
 - **评审请核**:①缺席钉死三件套(守卫+两处注释+注释在场断言)是否够②水位恒推进+状态如实的取舍(vs 不推进重试)③盯点⑤先量结论(inline 卡相邻性=溯源,guardrail 模态不可达)是否成立④'ok'=已发起的诚实语义⑤每 tick 一枚的实现(due[0] 顺序公平性:byUpdated 排序,新改的排前——可接受?)。**SC2(运行记录面板/错过提示)待 SC1 过审后。**
+
+### ★ 第96轮独立复核 = Scheduled tasks SC1 🏁 通过无 findings · ★里程碑:P2 绿地首件落地
+**评审读码亲验两条载重论断、补验缺席钉死的 WRITE 半、采纳盯点⑤先量翻案(refute 自己第95轮建议)。**
+- **①缺席钉死 READ+WRITE 双向完整**:READ 半 = `platform_schedules ∉ QUERYABLE` 守卫测(变异能红)。**★WRITE 半(评审补验,自我持续执行的真正通路是「写」非「读」)**:模型可达写面仅 capability/app-tool/MCP —— **registry 装配断言 `caps.len()==4`(capability.rs:712)⇒ 任何人注册 `schedule_create` capability → 5 → 测红**;app-tool compute 无 rt(不能写)且 `reads⊆manifest.collections`(platform_schedules 非 app 集合、声明不了);MCP 外部+用户确认。⇒ **模型写 platform_schedules 的路径结构性不存在,且新增一条撞红 registry-count 测**。契约注释+源守卫(删注释=断言红)钉进 CI。**★明写(评审点名):「AI 不能给自己排任务」的防线主要在 WRITE 侧,由 `caps.len()==4` 断言承重** —— 后人给 registry 加任何能力时,该断言逼一次显式决定(同 I2 键集 default-deny 精神)。
+- **★盯点⑤先量翻案 · 评审采纳(refute 其第95轮「穿 source 字段」建议)**:invoke_raw 拒破坏性(ai.rs:832)⇒ **guardrail 模态在 ai_chat 运行中结构性不可达** ⇒ 破坏性提议只能是 inline cAB 卡、紧邻 skill-prompt 气泡 = **溯源靠相邻性天然成立**。**评审走查升格**:无人值守下**每条破坏性路径都需一次用户点击**(inline 卡 / widget seeker.action / 模态——且模型触不到模态)⇒ **无人 = 无点 = 无执行、提议静置等人** —— 这不只是溯源,是**「无人值守=只提议不执行」的结构性证明**。「先量 refute 评审建议」再 +1(字段不必要,因为结构本就如此)。
+- **②水位恒推进 = 落码先量抓出的载重交互**(设计没预见):不推进 ⇒ 坏调度每 tick 重试 + 因「每 tick 一枚取 due[0]」**饿死其他 due 调度**;推进(no-op 也推进)+ last_status 真话 = 防重试风暴+防饿死。代价 = 坏调度消费掉本次排点、修好后下个排点跑(无人值守下「跳过并如实记」优于「每分钟重试」)。
+- **③破坏性 fail-closed 无洞** · **④'ok'=已发起非成功 SC1 诚实**(SC2 须接 onError/onDone,别让 'ok' 掩盖 mid-stream 失败 = forward-note 非洞)· **⑤每 tick 一枚 byUpdated 公平可接受**(②的水位推进正是防饿死那一环:N 枚 due N tick 内全跑)· **⑥scheduleDue 边界对**(max(last_run_at, created_at) 错过只 due 一次 + 新建不立即开火;enabled===true 严格 = 无人值守存疑不跑,同 I1 reviewed 纪律)。
+- **验**:node 97/0 亲跑 · cargo 132(采信)· 变异证红 · 截图受本会话捕获故障限、主证=DOM 正向断言(合纪律)采信。
+- **★里程碑 · P2 绿地首件落地**:Scheduled tasks = P1 方案 §4 标「纯绿地」、队列尾积压最久一件。落地意味着 **AI-Native 的最后一类能力(无人值守自动化)有了骨架、红线代价靠结构承接**(fire=runSkill 全继承 + 唯一新红线双向钉死)。绿地不套「已建」、方案先行、评审门控、逐盯点落 —— 同 app-tool/Skills 节奏走完。
+- **SC2 forward-note**:①运行记录面板接 onError/onDone('ok'→起流后真实结局)②错过提示(「昨天 9 点错过」)。
+- **下一步**:SC2(打磨)或 **Project 方案**(第94轮已裁 Project=目标工作区语义,单出方案)。先量再定。
