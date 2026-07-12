@@ -2271,3 +2271,10 @@ app-tool 契约的收成:第一个真 app-tool 替掉 Rust 打样(路线 B),`job
 - **验**:node 净 · tsc 51 基线 · npm **69/0**(+7:归一/lvl 钳/丢无名去重名/evidence 滤/★fail-safe 全坏输入/parseResumeWire 串感知/schema 硬闸/零-import 源守卫)· ★变异证红(破 fail-safe 守卫→红)· 真机 boot 0 panic(resume-parse 尚未接线、不在载入图 ⇒ 按 <when_to_verify> 无可观测面,Cut2 接线时全驱动验)。
 - **评审请核**:①承重契约(schema+normalizer 覆盖面,尤 fail-safe)②真化前置分工(硬闸拒畸形=产品语义 / normResumeParse fail-safe=承重防崩,同第75轮 ivScore 前置)③Cut2 盯点预告:UI(粘贴文本)、ai_generate 无工具+简历文本 untrusted、schema 硬闸失败诚实降级(不写空 SKILLS)、写 SKILLS/RESUME 承重映射(补 demand/pri/state 等非简历字段的默认)、web/无模型诚实 gate。
 - **下一刀 = Cut2 真化**(AI 接线 + 写 SKILLS/RESUME + 诚实降级)。**建议 Cut1 契约过审后再落 Cut2。**
+
+### ★ 第87轮独立复核 = 简历解析 Cut1 🏁 契约通过 + 1 [建议](lvl 量纲对齐,已落 `840b27f`)
+**评审核实 fail-safe/schema 硬闸/parseResumeWire/零-import 全按 ivScore→ivSubmit 验证过的 schema-first 落地;★读承重目标 SKILLS 消费者语义,抓 lvl 量纲不一致。**
+- **契约核实通过**:normResumeParse fail-safe(null/garbage 恒返良构、每处强制安全绝不抛)· 两层分工(schema 拒畸形产品语义 / normResumeParse 防崩,同第75轮)· RESUME_PARSE_SCHEMA 硬闸 · parseResumeWire 平衡花括号串感知(同 parseFeedbackWire 第78轮)· 零-import 源守卫 · npm 69/0 亲跑 · 无接线按 `<when_to_verify>` 无可观测面正确不驱动。
+- **★[建议] 已落 `840b27f`(我独立核实属实)**:normResumeParse 钳 **0-5/缺省 0**,但承重目标 SKILLS 的消费者(computeMatch/市场价值 `Number.isFinite&&>=1?min(5,floor):1`)把 **lvl<1 当 1** ⇒ **stored-0 ≠ effective-1**;且「从简历抽出的技能=候选人有的技能(lvl≥1)」不该 0。改 normResumeParse lvl → `Number.isFinite&&>=1?min(5,floor):1`(钳 **1-5、无效/未知→1**)⇒ 存储===生效;「AI 判不出等级」→当最小 1(minimal credit 0.5)=computeMatch 已有的合理降级。**趁契约刀(Cut2 写 SKILLS 前)对齐 = schema-first 的意义**(契约定得与消费者一致再让承重写入用它)。lvl 测试更新 [1,5,1,3,1]。**★全 app 技能等级量纲一致(intake/parse/match 同量纲)—— 接续本几轮 computeMatch/市场价值 lvl 语义核查。**
+- **★Cut2 盯点(评审预告 + 加)**:①**schema 硬闸失败→诚实降级,绝不写空/畸形 SKILLS**(承重写不可因 AI 失败污染;同 ivSubmit 第78轮 schema-fail 不落默认值当真档案)②ai_generate 无工具 + 简历文本 untrusted 框定 + instruction 纯常量③**写 SKILLS/RESUME 承重映射:补 demand/pri/state 等非简历字段默认时,别覆盖用户已有 SKILLS 手工编辑**(幂等/合并,同 prompts→Skills fresh-id 不 clobber)④web/无模型诚实 gate⑤**lvl 已 1-5**(本 [建议] 兑现)⑥流式 textContent、结果 cEsc。
+- **下一刀 = Cut2 真化**;**建议先与用户对齐**(Cut2 触 SKILLS 承重写)。
