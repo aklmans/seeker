@@ -5,6 +5,7 @@ import { skillByName } from '../data-helpers.js';
 import { normIvFeedback } from './iv-feedback.js';
 import { ACTIONS, JOBS, SKILLS } from '../data.js';
 import { computeMarketValue } from '../tools/market-value-compute.js'; // ★市场价值:UI 与 app-tool 共用同一自包含函数(job-pay×匹配)⇒ 结构上不发散(评审 [应改]:app-tool 曾 174万)
+import { mergeParseIntoSkills } from './resume-parse.js'; // ★承重 merge 核心(纯函数、入库测;评审 Cut2 [建议])
 import { renderActions } from '../pages/actions.js';
 import { renderOverview } from '../pages/overview.js';
 import { cEsc } from '../../../platform/shell/copilot-chrome.js';
@@ -48,20 +49,7 @@ export const RESUME={filename:'我的简历_后端工程师.pdf', uploaded:'2026
  *  @param {{skills:{name:string,lvl:number,evidence:string[]}[], years:number, summary:string}} parsed
  *  @returns {{skills:number, evidence:number, years:number}} 供结果卡显示真实数字 */
 export function applyParsedResume(parsed){
-  const prevByName={}; SKILLS.forEach(s=>{ prevByName[s.name]=s; });
-  const next=parsed.skills.map(ps=>{
-    const prev=prevByName[ps.name];
-    const state = ps.lvl>=3 ? '已掌握' : ps.lvl>=2 ? '进行中' : '仅基础'; // 从 lvl 重算(非留旧 state)
-    return {
-      name: ps.name,
-      lvl: ps.lvl,
-      years: prev ? prev.years : 0,          // 年限:既有名保留,新技能未知→0(诚实,非编)
-      demand: prev ? prev.demand : 6,        // 市场需求:非简历派生 ⇒ 既有保留、新技能中性默认
-      pri: prev ? prev.pri : 'mid',          // 优先级:同上
-      state,
-      evidence: (ps.evidence && ps.evidence.length) ? ps.evidence : (prev ? (prev.evidence||[]) : []),
-    };
-  });
+  const next=mergeParseIntoSkills(SKILLS, parsed.skills); // ★承重 merge 核心(纯函数、入库测):保市场字段、新默认、state-from-lvl、resume 定清单
   SKILLS.length=0; SKILLS.push(...next);      // resume 定清单:不在解析里的旧技能移除(含旧 mock/上次上传)
   RESUME.derivedSkills=next.length;
   RESUME.derivedEvidence=next.reduce((n,s)=>n+((s.evidence&&s.evidence.length)||0),0);

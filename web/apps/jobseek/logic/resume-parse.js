@@ -101,3 +101,34 @@ export function parseResumeWire(text) {
   }
   return null;
 }
+
+/**
+ * ★承重 merge(纯函数,零 import 供入库测;评审 Cut2 [建议]):既有 SKILLS + 解析技能 → **新 SKILLS 记录清单**。
+ * merge-by-name:**解析定清单**(resume 是能力档案的源);匹配既有名**保留市场字段**(demand/pri/years —— 非简历派生);
+ * 新技能给**诚实默认**(years 0 / demand 6 / pri mid,非编造);`state` 恒按新 lvl 重算(lvl 已在 normResumeParse 钳 1-5)。
+ * ★调用方(applyParsedResume)只做副作用(写 SKILLS/RESUME/persist);本函数是它决定「进 SKILLS 什么」的承重核心 ⇒ 入库测防漂移。
+ * @param {any[]} prevSkills 既有 SKILLS(保市场字段)
+ * @param {ParsedSkill[]} parsedSkills normResumeParse 后的技能
+ * @returns {any[]} 新 SKILLS 记录清单
+ */
+export function mergeParseIntoSkills(prevSkills, parsedSkills) {
+  /** @type {Record<string, any>} */
+  const prevByName = {};
+  (Array.isArray(prevSkills) ? prevSkills : []).forEach((s) => {
+    if (s && typeof s.name === 'string' && s.name) prevByName[s.name] = s;
+  });
+  return (Array.isArray(parsedSkills) ? parsedSkills : []).map((ps) => {
+    const prev = prevByName[ps.name];
+    const lvl = ps.lvl;
+    const state = lvl >= 3 ? '已掌握' : lvl >= 2 ? '进行中' : '仅基础'; // 从 lvl 重算(非留旧 state)
+    return {
+      name: ps.name,
+      lvl,
+      years: prev ? prev.years : 0, // 既有名保留,新技能未知→0(诚实,非编)
+      demand: prev ? prev.demand : 6, // 市场字段非简历派生 ⇒ 既有保留、新技能中性默认
+      pri: prev ? prev.pri : 'mid',
+      state,
+      evidence: ps.evidence && ps.evidence.length ? ps.evidence : prev ? prev.evidence || [] : [],
+    };
+  });
+}
