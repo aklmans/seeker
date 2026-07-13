@@ -13,8 +13,14 @@ mod web;
 
 use tauri::Manager;
 
+/// ★前端热嵌依赖闩(见 build.rs):`generate_context!` 在 stable Rust 上无法追踪 `../web` 资产变更 ⇒
+/// build.rs 把前端指纹经 `SEEKER_WEB_FP` 注入,这里 `env!` 依赖它 ⇒ 前端一变、指纹变、本 crate 重编译、
+/// `generate_context!`(run() 内)重读 `../web` 重嵌。**勿删**:删了改前端 `cargo run` 又会嵌旧资产。
+const _WEB_FP: &str = env!("SEEKER_WEB_FP");
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = _WEB_FP; // 触达常量,确保 env! 依赖不被优化掉
     tauri::Builder::default()
         .manage(ai::Sessions::default())
         .manage(ai::History::default())
