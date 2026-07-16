@@ -17,6 +17,7 @@ import { openModal, closeModal } from './modal.js';
 import { normProject } from './project-model.js';
 import { hydrateProjects, listProjects, saveProject } from './project-store.js';
 import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★盯点④:归档当前项目回落默认工作区
+import { mdField, wireMdField, mdRender } from './md-edit.js'; // Markdown 编辑/展示(共享)
 
 /** 生成稳定 id。 */
 function newId() {
@@ -39,7 +40,7 @@ export async function renderProjects(box) {
           <button class="btn" data-pjedit="${cEsc(p.id)}" style="padding:3px 10px;font-size:11px;">${tt('编辑', 'Edit')}</button>
           <button class="btn" data-pjarch="${cEsc(p.id)}" style="padding:3px 10px;font-size:11px;">${p.archived ? tt('还原', 'Restore') : tt('归档', 'Archive')}</button>
         </div>
-        ${p.instructions ? `<div style="margin-top:6px;padding:8px 11px;background:var(--bg-subtle);border:0.5px solid var(--border);font-family:var(--font-mono);font-size:11.5px;line-height:1.6;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;max-height:66px;overflow:hidden;">${cEsc(p.instructions)}</div>` : ''}
+        ${p.instructions ? `<div class="md-body" style="margin-top:6px;padding:8px 11px;background:var(--bg-subtle);border:0.5px solid var(--border);font-size:12px;max-height:88px;overflow:hidden;">${mdRender(p.instructions)}</div>` : ''}
       </div>`
         )
         .join('')
@@ -76,17 +77,18 @@ export async function renderProjects(box) {
  *  @param {HTMLElement} box @param {string} id */
 function openProjectModal(box, id) {
   const p = normProject(id ? listProjects().find((x) => x.id === id) : null);
-  openModal(
+  const m = openModal(
     `<div class="modal-head"><div><p class="eyebrow">— PROJECT</p><h2 style="margin-top:5px;">${
       id ? tt('编辑项目', 'Edit project') : tt('新建项目', 'New project')
     }<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="pjName" value="${cEsc(p.name)}" placeholder="${tt('如:2026 后端求职', 'e.g. Backend job hunt 2026')}"></div>
-      <textarea class="input" id="pjInstr" rows="7" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('项目指令(可选)—— 这个项目里 Agent 该知道的背景与偏好,每次对话自动生效。', 'Project instructions (optional) — background & preferences the Agent should know in this project; applied to every conversation here.')}">${cEsc(p.instructions)}</textarea>
+      <div style="margin-top:12px;">${mdField({ id: 'pjInstr', value: p.instructions, rows: 7, mono: true, placeholder: tt('项目指令(可选)—— 这个项目里 Agent 该知道的背景与偏好,每次对话自动生效(支持 Markdown)。', 'Project instructions (optional) — background & preferences the Agent should know here; applied to every conversation (Markdown supported).') })}</div>
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="pjSave">${tt('保存', 'Save')}</button></div>`,
     true
   );
+  wireMdField(m); // Markdown 编辑/预览切换
   const save = $('#pjSave');
   if (save)
     /** @type {HTMLElement} */ (save).onclick = async () => {

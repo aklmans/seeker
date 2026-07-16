@@ -21,6 +21,7 @@ import { toast, toastUndo, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
 import { normSkill, skillRunnable, skillNeedsReview, importSkillWire, exportSkillWire } from './skill-model.js'; // 零 import fail-safe 归一化 + 可运行判据;I1:待审谓词 + 导入白名单(载重不变式);I2:白名单导出(剥信任标志)
 import { hydrateSkills, listSkills, saveSkill, removeSkill } from './skill-store.js'; // ★S2b:数据层(缓存供命令面板同步 platformSkills)
+import { mdField, wireMdField, mdRender } from './md-edit.js'; // Markdown 编辑/展示(共享);审阅门与 JSON 导入导出保持 raw source
 
 /** 生成稳定 id。 */
 function newId() {
@@ -48,7 +49,7 @@ export async function renderSkills(box) {
           ${skillRunnable(s) ? `<button class="btn" data-skshare="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('分享', 'Share')}</button>` : ''}
           <button class="btn" data-skdel="${cEsc(s.id)}" style="padding:3px 10px;font-size:11px;">${tt('删除', 'Delete')}</button>
         </div>
-        <div style="margin-top:6px;padding:8px 11px;background:var(--bg-subtle);border:0.5px solid var(--border);font-family:var(--font-mono);font-size:11.5px;line-height:1.6;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;max-height:66px;overflow:hidden;">${cEsc(s.prompt)}</div>
+        <div class="md-body" style="margin-top:6px;padding:8px 11px;background:var(--bg-subtle);border:0.5px solid var(--border);font-size:12px;max-height:88px;overflow:hidden;">${mdRender(s.prompt)}</div>
       </div>`
         )
         .join('')
@@ -120,14 +121,14 @@ async function openSkillModal(box, id) {
   const allTools = _S && typeof _S.appTools === 'function' ? _S.appTools() : [];
   const scoped = Array.isArray(s.tools); // 三态:undefined=不限定(开关未勾)/ 数组=限定(开关勾,含 []=无 app-tool)
   const selTools = Array.isArray(s.tools) ? s.tools : []; // 已选集(TS 确定数组,供 .map 闭包内 includes)
-  openModal(
+  const m = openModal(
     `<div class="modal-head"><div><p class="eyebrow">— SKILL</p><h2 style="margin-top:5px;">${
       id ? tt('编辑 Skill', 'Edit skill') : tt('新建 Skill', 'New skill')
     }<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="skName" value="${cEsc(s.name)}" placeholder="${tt('如:把 JD 拆成硬性/软性要求', 'e.g. Split a JD into hard/soft requirements')}"></div>
       <div class="set-row" style="margin-top:10px;"><span class="sk">${tt('说明', 'Description')}</span><input class="input" id="skDesc" value="${cEsc(s.description)}" placeholder="${tt('一句话(可选)', 'One line (optional)')}"></div>
-      <textarea class="input" id="skPrompt" rows="8" style="width:100%;margin-top:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('指令正文 —— 你希望 Agent 执行的事(保存后一点即运行)。', 'Instruction body — what you want the Agent to do (run it in one click after saving).')}">${cEsc(s.prompt)}</textarea>
+      <div style="margin-top:12px;">${mdField({ id: 'skPrompt', value: s.prompt, rows: 8, mono: true, placeholder: tt('指令正文 —— 你希望 Agent 执行的事(保存后一点即运行,支持 Markdown)。', 'Instruction body — what you want the Agent to do (run in one click after saving; Markdown supported).') })}</div>
       ${
         allTools.length
           ? `<div class="set-row" style="margin-top:14px;flex-direction:column;align-items:stretch;gap:7px;">
@@ -151,6 +152,7 @@ async function openSkillModal(box, id) {
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="skSave">${tt('保存', 'Save')}</button></div>`,
     true
   );
+  wireMdField(m); // Markdown 编辑/预览切换
   // ★F2:限定开关 → 显隐工具多选列表(三态 UI 交互)。
   const scopeOn = /** @type {HTMLInputElement|null} */ ($('#skScopeOn'));
   if (scopeOn)

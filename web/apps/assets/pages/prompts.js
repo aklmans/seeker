@@ -14,6 +14,7 @@ import { toast, toastUndo, errText } from '../../../platform/shell/toast.js';
 import { openModal, closeModal } from '../../../platform/shell/modal.js';
 import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
+import { mdField, wireMdField, mdRender } from '../../../platform/shell/md-edit.js'; // Markdown 编辑/展示(共享)
 import { saveSkill, listSkills, hydrateSkills } from '../../../platform/shell/skill-store.js'; // ★S3:prompts → 平台 Skills 迁移(app→platform API,同 notes→rt.docs)
 
 /** @type {Array<{id:string, title:string, text:string, updated:number, skillId?:string}>} skillId=已迁入的 Skill id(幂等键,同 notes 的 docId) */
@@ -54,7 +55,7 @@ export async function renderPrompts(){
           <button class="btn" data-apedit="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
           <button class="btn" data-apdel="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('删除','Delete')}</button>
         </div>
-        <pre style="margin:10px 0 0;padding:12px 14px;background:var(--bg-subtle);border:0.5px solid var(--border);font-size:12.5px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);">${apEsc(p.text)}</pre>
+        <div class="md-body" style="margin-top:10px;padding:12px 14px;background:var(--bg-subtle);border:0.5px solid var(--border);max-height:240px;overflow:hidden;">${mdRender(p.text)}</div>
       </div>`).join('')
     : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有 Prompt。把你反复使用的提示词沉淀在这里 —— 本地保存,可随时复制取用;授权后 AI 也能检索引用。','No prompts yet. Curate the prompts you reuse — stored locally, one-click copy; with your grant the AI can reference them too.')}</p></div>`;
   // ★S3 迁入 Skills:待迁数 = 未迁入的 prompt。状态未知(读 Skills 失败)⇒ 禁用 + 提示(免造重复,同 notes 第67轮)。
@@ -89,12 +90,13 @@ export async function renderPrompts(){
 /** @param {string} id 空串 = 新建 */
 function openPromptModal(id){
   const p=ASSETS_PROMPTS.find(x=>x.id===id);
-  openModal(`<div class="modal-head"><div><p class="eyebrow">— PROMPT</p><h2 style="margin-top:5px;">${p?tt('编辑 Prompt','Edit prompt'):tt('新建 Prompt','New prompt')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PROMPT</p><h2 style="margin-top:5px;">${p?tt('编辑 Prompt','Edit prompt'):tt('新建 Prompt','New prompt')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
       <div class="set-row"><span class="sk">${tt('标题','Title')}</span><input class="input" id="apTitle" value="${apEsc(p?p.title:'')}" placeholder="${tt('如:代码评审提示词','e.g. code-review prompt')}"></div>
-      <textarea class="input" id="apText" rows="10" style="width:100%;margin-top:10px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;" placeholder="${tt('Prompt 正文…','Prompt body…')}">${apEsc(p?p.text:'')}</textarea>
+      <div style="margin-top:10px;">${mdField({ id:'apText', value:p?p.text:'', rows:10, mono:true, placeholder:tt('Prompt 正文…(支持 Markdown)','Prompt body… (Markdown supported)') })}</div>
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="apSave">${tt('保存','Save')}</button></div>`, true);
+  wireMdField(m);
   const save=$('#apSave'); if(save) /** @type {HTMLElement} */(save).onclick=()=>{
     const title=(/** @type {HTMLInputElement|null} */($('#apTitle'))||{value:''}).value.trim();
     const text=(/** @type {HTMLTextAreaElement|null} */($('#apText'))||{value:''}).value;

@@ -25,6 +25,7 @@ import { errText, toast, toastUndo } from '../../../platform/shell/toast.js';
 import { openModal, closeModal } from '../../../platform/shell/modal.js';
 import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
+import { mdField, wireMdField, mdRender } from '../../../platform/shell/md-edit.js'; // Markdown 编辑/展示(共享)
 
 /** @type {Array<{id:string, text:string, updated:number, docId?:string}>} */
 const ASSETS_NOTES = [];
@@ -65,7 +66,7 @@ export function renderNotes(){
           <button class="btn" data-anedit="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
           <button class="btn" data-andel="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('删除','Delete')}</button>
         </div>
-        <p style="margin:8px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;">${anEsc(n.text)}</p>
+        <div class="md-body" style="margin-top:8px;max-height:220px;overflow:hidden;">${mdRender(n.text)}</div>
       </div>`).join('')
     : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有笔记。随手记下想法、片段与线索 —— 只存本地;授权后 AI 也能检索引用。','No notes yet. Jot down ideas, snippets, leads — local-only; with your grant the AI can reference them.')}</p></div>`;
   // ★fail-closed:状态未知(问不到后端)⇒ 按钮禁用 + 提示重试,绝不让用户在盲态下造重复副本。
@@ -152,9 +153,10 @@ function openMigrateModal(){
 /** @param {string} id 空串 = 新建 */
 function openNoteModal(id){
   const n=ASSETS_NOTES.find(x=>x.id===id);
-  openModal(`<div class="modal-head"><div><p class="eyebrow">— NOTE</p><h2 style="margin-top:5px;">${n?tt('编辑笔记','Edit note'):tt('新建笔记','New note')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body"><textarea class="input" id="anText" rows="8" style="width:100%;font-size:13.5px;line-height:1.8;" placeholder="${tt('写点什么…','Write something…')}">${anEsc(n?n.text:'')}</textarea></div>
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— NOTE</p><h2 style="margin-top:5px;">${n?tt('编辑笔记','Edit note'):tt('新建笔记','New note')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">${mdField({ id:'anText', value:n?n.text:'', rows:9, placeholder:tt('写点什么…(支持 Markdown)','Write something… (Markdown supported)') })}</div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="anSave">${tt('保存','Save')}</button></div>`);
+  wireMdField(m);
   const save=$('#anSave'); if(save) /** @type {HTMLElement} */(save).onclick=()=>{
     const text=(/** @type {HTMLTextAreaElement|null} */($('#anText'))||{value:''}).value;
     if(!text.trim()){ toast(tt('写点内容再保存','Add some content first')); return; }
