@@ -305,8 +305,10 @@
     return out;
   }
 
-  /** 应用 chrome 渲染触发:通知各启用应用重渲其 Agent chrome 贡献(如技能 chips → #agentCmds)。
-   *  汇总型副作用——全调、无返回(chrome 扩展点;平台不硬编码 app 渲染器符号名,替代 typeof 守卫直调)。 */
+  /** 应用 chrome 渲染触发:各启用应用把自己的 Agent 快捷 chips **append** 进平台已清空的 #agentCmds。
+   *  汇总型副作用——全调、无返回(chrome 扩展点;平台不硬编码 app 渲染器符号名)。
+   *  ★契约(平台侧见 copilot-chrome renderAgentChips):容器归**平台**——平台负责每次重渲先清空、通用标签、空则隐藏;
+   *    应用只 append 自己的按钮、各自接线(**不得** innerHTML= 清屏,否则多应用互覆盖 + 关本应用时无人清 chips)。 */
   function renderAppChips() {
     enabledApps().forEach((a) => {
       if (typeof a.renderAppChips === 'function') a.renderAppChips();

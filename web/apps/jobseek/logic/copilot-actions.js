@@ -150,8 +150,9 @@ export function copReply(t){
 }
 
 /* ---- 抽壳序3-d-8 择取:jobseek Agent 命令 chips(AGENT_CMDS /命令面板项已抽出单列 → ./agent-commands.js)。
-   renderAgentCmds = 技能 chips(平台 agentInit/updateAgentChrome 经全局触发,渲染进 #agentCmds);依赖 tt/$/$$/agentSend(import)。 ---- */
-// Agent 命令 chips(双语;随语言重渲 —— 见 updateAgentChrome 调用)。查询也双语,配合 frameQuery 的中英关键词框定。
+   renderAgentCmds = jobseek 快捷 chips(平台经 renderAppChips 契约触发,append 进平台已清空的 #agentCmds);依赖 tt/$/agentSend(import)。
+   ★平台拥有容器:本函数**只 append 自己的 chips**,不写通用「技能/命令」标签(归平台 renderAgentChips)、不 innerHTML= 清屏(否则多应用互相覆盖 + 关本应用时无人清)。 ---- */
+// Agent 命令 chips(双语;随语言/开关重渲 —— 见平台 renderAgentChips)。查询也双语,配合 frameQuery 的中英关键词框定。
 export function renderAgentCmds(){
   const host=$('#agentCmds'); if(!host) return;
   const cmds=[
@@ -163,8 +164,13 @@ export function renderAgentCmds(){
     [tt('市场价值','Market value'), tt('我的市场价值值多少?','What is my market value?')],
     [tt('下一步','Next step'), tt('我现在最该做什么?','What should I do next?')]
   ];
-  host.innerHTML=`<span class="ac-label">${tt('技能 / 命令 · 也可输入 /','Skills / commands · or type /')}</span>`+cmds.map(c=>`<button class="ac-chip" data-cmd="${c[1].replace(/"/g,'&quot;')}">${c[0]}</button>`).join('');
-  $$('#agentCmds [data-cmd]').forEach(b=>b.onclick=()=>agentSend(b.dataset.cmd));
+  // 逐个 append + 直接闭包接线(textContent 无注入面、不用 data-cmd;各应用只接线自己的按钮 ⇒ 多应用安全)。
+  for(const [label, query] of cmds){
+    const b=document.createElement('button');
+    b.className='ac-chip'; b.textContent=label;
+    b.onclick=()=>agentSend(query);
+    host.appendChild(b);
+  }
 }
 /* ---- /command palette ---- */
 /* ★3.y 尾(10d checklist①):AGENT_CMDS 抽出单列 → ./agent-commands.js(@ts-check,纯数据,字面量真受 CommandSpec[] 校验;

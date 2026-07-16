@@ -188,7 +188,8 @@ export interface AppManifest {
   greeting?: (mode: 'agent' | 'copilot') => string;
   /** /命令面板项:本应用贡献的 Agent 斜杠命令(与单体 AGENT_CMDS 同构);各应用命令在面板里并集同现。 */
   appCommands?: () => CommandSpec[];
-  /** 重渲本应用的 Agent chrome 贡献(技能 chips → #agentCmds;随语言/初始化触发)。副作用、无返回。 */
+  /** 把本应用的 Agent 快捷 chips **append** 进平台已清空的 #agentCmds(随语言/应用开关/初始化触发)。副作用、无返回。
+   *  容器归平台(清空/标签/空则隐藏由平台 renderAgentChips 负责);应用**只 append 自己的按钮**,勿 innerHTML= 清屏。 */
   renderAppChips?: () => void;
   /** 设置页贡献:新增 tab(goals/weights 等)+ 追加进壳既有 tab(profile 尾部主简历资料、data 尾部简历行等)。 */
   settings?: () => AppSettingsSpec;

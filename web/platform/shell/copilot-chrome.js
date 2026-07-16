@@ -176,8 +176,23 @@ export async function switchProject(id){
   if(c && !c.children.length) agentGreet();                 // 新线无历史 → 开场白
 }
 
+/* ---- Agent 快捷 chips 容器(#agentCmds)归平台所有 ----
+   契约:各**启用**应用经 SeekerShell.renderAppChips() 把自己的快捷 chips **append** 进 #agentCmds(汇总型副作用)。
+   平台职责(本函数):每次重渲**先清空**(关应用/切应用后不留陈迹)→ 派发给启用应用 → 有 chips 才前置通用标签、全空则隐藏整行。
+   ★为何要有它(修 bug):此前容器由 jobseek `innerHTML=`(含标签)独占 —— 关 jobseek 时 renderAppChips 不再派发给它、无人清空 ⇒ 求职 chips 陈留;
+     且 shellReassemble 根本不重渲 chips。现容器归平台、并在 agentInit 里 subscribe 应用开关变化 ⇒ chips 真正**跟随启用应用**。
+   通用「技能 / 命令 · 也可输入 /」标签是平台的输入态提示(非某应用私有),故归平台;应用只贡献自己的 chip 按钮。 */
+export function renderAgentChips(){
+  const host=$('#agentCmds'); if(!host) return;
+  host.innerHTML='';                                    // 平台清空:容器归平台,关应用后陈迹即除(修 bug 关键)
+  window.SeekerShell.renderAppChips();                  // 各启用应用 append 自己的快捷 chips
+  const has=host.childElementCount>0;
+  host.hidden=!has;                                     // 无任何应用贡献 chips → 隐藏整行(免空 padding/border-top)
+  if(has) host.insertAdjacentHTML('afterbegin', `<span class="ac-label">${tt('技能 / 命令 · 也可输入 /','Skills / commands · or type /')}</span>`);
+}
+
 /* ---- 抽壳序3-d-10:Agent 输入 + 命令面板接线 agentInit —— 依赖 $/IC(序1)+ 本文件 agentSend/cmd*(序3-d-1/9)/agentCollapse/setAppMode(序3-d-6);
-   Agent 技能 chips 经 SeekerShell.renderAppChips() 契约触发(序3-d-11,第16轮强制待契约化账已清——平台不硬编码 app 渲染器符号名)。INIT@agentInit() 运行时调。 ---- */
+   Agent 技能 chips 经 renderAgentChips()(平台拥有容器)触发,数据经 SeekerShell.renderAppChips() 契约(平台不硬编码 app 渲染器符号名)。INIT@agentInit() 运行时调。 ---- */
 export function agentInit(){
   $('#agentSend').innerHTML=IC.arrow; $('#agentSend').onclick=()=>agentSend();
   const inp=$('#agentInput');
@@ -192,7 +207,8 @@ export function agentInit(){
   });
   inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(120,inp.scrollHeight)+'px';const v=inp.value;if(v.charAt(0)==='/')cmdOpen(v.slice(1));else cmdClose();});
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
-  window.SeekerShell.renderAppChips();   // 命令 chips(双语,随语言重渲)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds 符号名)
+  renderAgentChips();                                      // boot 渲染(平台拥有 #agentCmds 容器)
+  window.SeekerShell.subscribe(renderAgentChips);          // ★应用开/关/排序/授权变化 → chips 跟随重渲(修:shellReassemble 原不含 chips 重渲 ⇒ 关应用后陈留)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
   renderProjectSwitch();                    // ★PJ2:项目切换器(boot 渲染;项目 CRUD 后由管理面再触发重渲)
   const bp=$('#acvBackToPage'); if(bp) bp.onclick=()=>{ document.body.dataset.canvas='page'; };   // ★AI-Native P0:画布「回到页面」→ 让位给 #content(show_widget 画布退)
@@ -209,7 +225,7 @@ export function updateAgentChrome(){
   const s=$('#agentChat .ah-s'); if(s)s.textContent=T('agentSub');
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
   const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
-  window.SeekerShell.renderAppChips();   // 命令 chips 双语,随语言重渲(含 ac-label)经 renderAppChips 契约(序3-d-11;第16轮强制待契约化账已清——平台不再硬编码 renderAgentCmds)
+  renderAgentChips();   // 命令 chips + 标签双语,随语言重渲(平台拥有容器;数据经 renderAppChips 契约)
 }
 // Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
 export function updateCopChrome(){
