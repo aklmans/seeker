@@ -19,11 +19,17 @@ function esc(t) {
     .replace(/'/g, '&#39;');
 }
 
-/** 行内标记:**先转义**,再插入白名单行内标签。 @param {string} raw */
+/** 行内标记:**先转义**,再插入白名单行内标签。行内码内容用占位符保护、不被后续标记再解析。 @param {string} raw */
 function inline(raw) {
-  let t = esc(raw);
-  // 行内码 `code`(优先,内部不再解析其它标记)
-  t = t.replace(/`([^`\n]+)`/g, (_m, c) => '<code>' + c + '</code>');
+  // 先转义;再剥除输入里的 NUL(U+0000)—— 下面拿它当行内码的私有占位符,剥掉即杜绝用户伪造占位。
+  let t = esc(raw).replace(/\u0000/g, '');
+  // 行内码 `code`:先抽出、留占位(内容已 esc 转义),使其内部的 * _ [ ] ( ) 不被后续行内规则再解析。
+  /** @type {string[]} */
+  const codes = [];
+  t = t.replace(/`([^`\n]+)`/g, (_m, c) => {
+    codes.push(c);
+    return '\u0000' + (codes.length - 1) + '\u0000'; // NUL 包裹的索引:用户输入已剥 NUL ⇒ 不可伪造
+  });
   // 粗体 **x** / __x__
   t = t.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
   t = t.replace(/__([^_\n]+?)__/g, '<strong>$1</strong>');
@@ -33,6 +39,8 @@ function inline(raw) {
   // 链接 [text](http...) —— 仅 http/https;url 已被 esc 转义(引号→实体),无法逃逸属性
   t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, txt, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>');
+  // 还原行内码:占位符 → <code>已转义内容</code>。内容全经 esc(无裸 " < > &),包进任何上下文都无法逃逸。
+  t = t.replace(/\u0000(\d+)\u0000/g, (_m, i) => '<code>' + (codes[+i] || '') + '</code>');
   return t;
 }
 
