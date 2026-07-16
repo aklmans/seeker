@@ -177,8 +177,9 @@ export async function switchProject(id){
 }
 
 /* ---- Agent 快捷 chips 容器(#agentCmds)归平台所有 ----
-   契约:各**启用**应用经 SeekerShell.renderAppChips() 把自己的快捷 chips **append** 进 #agentCmds(汇总型副作用)。
-   平台职责(本函数):每次重渲**先清空**(关应用/切应用后不留陈迹)→ 派发给启用应用 → 有 chips 才前置通用标签、全空则隐藏整行。
+   两类来源:①各**启用**应用经 SeekerShell.renderAppChips() append 自己的快捷 chips(汇总型副作用,随应用开关);
+   ②平台级 Skills 常驻 chips(用户自建通用能力,来源 platformSkills() 与 /面板同源,随 seeker-skills-changed 重渲)。
+   平台职责(本函数):每次重渲**先清空**(关应用/删 Skill 后不留陈迹)→ 应用 chips → Skill chips → 有内容才前置通用标签、全空则隐藏整行。
    ★为何要有它(修 bug):此前容器由 jobseek `innerHTML=`(含标签)独占 —— 关 jobseek 时 renderAppChips 不再派发给它、无人清空 ⇒ 求职 chips 陈留;
      且 shellReassemble 根本不重渲 chips。现容器归平台、并在 agentInit 里 subscribe 应用开关变化 ⇒ chips 真正**跟随启用应用**。
    通用「技能 / 命令 · 也可输入 /」标签是平台的输入态提示(非某应用私有),故归平台;应用只贡献自己的 chip 按钮。 */
@@ -186,8 +187,18 @@ export function renderAgentChips(){
   const host=$('#agentCmds'); if(!host) return;
   host.innerHTML='';                                    // 平台清空:容器归平台,关应用后陈迹即除(修 bug 关键)
   window.SeekerShell.renderAppChips();                  // 各启用应用 append 自己的快捷 chips
+  // ★平台级 Skills 常驻 chips(通用能力,不随应用走):与 /面板**同源** platformSkills()
+  //   (= runnable ∧ 已审阅 —— I1 双点拒口径不复制、自动延伸到本面:导入未审阅绝不上 chips)。
+  //   名字是用户数据 → textContent(零注入面);点击 = c.run() = runSkill(红线结构性继承,同面板)。
+  for(const c of platformSkills()){
+    const b=document.createElement('button');
+    b.className='ac-chip';
+    b.textContent='⚡ '+tt(c.label[0], c.label[1]);      // ⚡ = Skill 标记(与面板 cmd 列同符号)
+    b.onclick=()=>c.run();
+    host.appendChild(b);
+  }
   const has=host.childElementCount>0;
-  host.hidden=!has;                                     // 无任何应用贡献 chips → 隐藏整行(免空 padding/border-top)
+  host.hidden=!has;                                     // 应用 chips + Skill chips 全无才隐藏整行
   if(has) host.insertAdjacentHTML('afterbegin', `<span class="ac-label">${tt('技能 / 命令 · 也可输入 /','Skills / commands · or type /')}</span>`);
 }
 
@@ -209,6 +220,7 @@ export function agentInit(){
   inp.addEventListener('blur',()=>setTimeout(cmdClose,120));
   renderAgentChips();                                      // boot 渲染(平台拥有 #agentCmds 容器)
   window.SeekerShell.subscribe(renderAgentChips);          // ★应用开/关/排序/授权变化 → chips 跟随重渲(修:shellReassemble 原不含 chips 重渲 ⇒ 关应用后陈留)
+  window.addEventListener('seeker-skills-changed', renderAgentChips); // ★Skills 增删改/水合(skill-store 广播)→ 常驻 Skill chips 跟随(boot 水合晚于本监听注册,首批也收得到)
   const ct=$('#agentCanvasToggle'); if(ct) ct.onclick=agentCollapse;
   renderProjectSwitch();                    // ★PJ2:项目切换器(boot 渲染;项目 CRUD 后由管理面再触发重渲)
   const bp=$('#acvBackToPage'); if(bp) bp.onclick=()=>{ document.body.dataset.canvas='page'; };   // ★AI-Native P0:画布「回到页面」→ 让位给 #content(show_widget 画布退)

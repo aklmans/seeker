@@ -4,6 +4,8 @@
  *  ★为何要缓存:命令面板 `cmdFilterList` 是**同步**的 ⇒ `platformSkills()` 须同步返回 ⇒ 读内存缓存。
  *  缓存新鲜三保证:①boot(`seeker-rt-ready`)水合;②每次 CRUD(saveSkill/removeSkill)同步更新缓存
  *  (命令面板即时可见新 Skill);③管理面 renderSkills 每次重水合(与存储对齐)。
+ *  ④缓存变更即广播 `seeker-skills-changed`(window 事件,零 import 不成环)—— 常驻 Skill chips
+ *    (copilot-chrome renderAgentChips)靠它跟随增删改/水合即时重渲。
  *
  *  ★不 import copilot-chrome(避环):本仓只管数据;命令项构建(需 runSkill)在 copilot-chrome 侧读 listSkills()。
  */
@@ -11,6 +13,11 @@ import { normSkill } from './skill-model.js';
 
 const rt = () => /** @type {any} */ (window).SeekerRT;
 const COLL = 'platform_skills';
+
+/** 缓存变更广播(hydrate/save/remove 后调):监听方(如常驻 Skill chips)重渲。best-effort 绝不抛。 */
+function announceChanged() {
+  try { window.dispatchEvent(new CustomEvent('seeker-skills-changed')); } catch (_e) { /* 无监听/异常都不影响数据路径 */ }
+}
 
 /** @type {ReturnType<typeof normSkill>[]} */
 let _cache = [];
@@ -26,9 +33,11 @@ export function listSkills() {
 export async function hydrateSkills() {
   try {
     _cache = (await rt().db.list(COLL)).map(normSkill).sort(byUpdated);
+    announceChanged();
     return true;
   } catch (_e) {
-    _cache = [];
+    _cache = [];       // fail-closed:读失败即空缓存(chips/面板同步清空 —— 不展示无法确认的 Skills)
+    announceChanged();
     return false;
   }
 }
@@ -39,6 +48,7 @@ export async function saveSkill(rec) {
   const s = normSkill(rec);
   await rt().db.upsert(COLL, rec);
   _cache = [s, ..._cache.filter((x) => x.id !== s.id)].sort(byUpdated);
+  announceChanged();
   return s;
 }
 
@@ -48,6 +58,7 @@ export async function removeSkill(id) {
   const snap = _cache.find((x) => x.id === id) || null;
   await rt().db.remove(COLL, id);
   _cache = _cache.filter((x) => x.id !== id);
+  announceChanged();
   return snap;
 }
 
