@@ -3925,7 +3925,10 @@ mod tests {
         assert!(table_for("platform_skills").is_ok());
         // 平台 Scheduled tasks:db_* 可访问(管理面 CRUD);AI 不可读见 capability.rs 守卫。
         assert!(table_for("platform_schedules").is_ok());
-        assert_eq!(table_for("platform_schedules").unwrap(), "platform_schedules");
+        assert_eq!(
+            table_for("platform_schedules").unwrap(),
+            "platform_schedules"
+        );
         // 平台 Project:同上(项目配置=用户配置;AI 不可读见 capability.rs 守卫)。
         assert!(table_for("platform_projects").is_ok());
         assert_eq!(table_for("platform_projects").unwrap(), "platform_projects");

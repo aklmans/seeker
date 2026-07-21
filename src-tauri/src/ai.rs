@@ -710,7 +710,7 @@ async fn run_chat(
     // 消息仅 system + user(+ 工具循环产生的 assistant/tool),**结构上不含 profile**
     // (ai_chat 命令签名只有 user_text,网关无从拿到 profile;工具结果只来自白名单业务集合)。
     let system = crate::prompts::system_prompt(app, task);
-    let mut messages = build_messages(&system, user_text); // [system, user]
+    let mut messages = build_messages(&system, user_text);
     // ★PJ3:项目指令插在 system 之后、history 之前(用户自撰、每轮一次、不入 History);None/空 → 零改。
     let mut at = insert_project_instructions(&mut messages, 1, project_instructions);
     // 多轮历史(#1 G2):已完成轮次插在项目指令之后、当前 user 之前。
@@ -1212,7 +1212,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     /// 正常:前端回结果 → 拿到 Ok。**这是所有失败面测试的阳性对照(判据能亮)**。
-        /// ★PJ3 项目指令注入位序:messages[0]=system 恒在;Some(非空)→插 [1](system 之后、history 之前)
+    /// ★PJ3 项目指令注入位序:messages[0]=system 恒在;Some(非空)→插 [1](system 之后、history 之前)
     /// 且游标 +1(history 从 [2] 起);None/空白 → 不插、游标不动(默认工作区零改)。
     /// 「不入 History」由结构保证:append_turn 只收 user/assistant(见 history_bucket 测),指令不在其中。
     #[test]
@@ -1226,7 +1226,10 @@ mod tests {
         assert_eq!(m[1]["role"], "system", "注入位 = system 邻位");
         assert!(m[1]["content"].as_str().unwrap().contains("聚焦后端岗"));
         assert!(
-            m[1]["content"].as_str().unwrap().contains("用户本人在管理面自撰"),
+            m[1]["content"]
+                .as_str()
+                .unwrap()
+                .contains("用户本人在管理面自撰"),
             "来源框定在场(用户自撰、以用户身份生效)"
         );
         assert_eq!(m[2]["role"], "user", "当前 user 恒在末尾");
@@ -1235,7 +1238,11 @@ mod tests {
         assert_eq!(insert_project_instructions(&mut m2, 1, None), 1);
         assert_eq!(m2.len(), 2, "None 零改");
         let mut m3 = build_messages("SYS", "问题");
-        assert_eq!(insert_project_instructions(&mut m3, 1, Some("   ")), 1, "空白不插(不喂空指令)");
+        assert_eq!(
+            insert_project_instructions(&mut m3, 1, Some("   ")),
+            1,
+            "空白不插(不喂空指令)"
+        );
         assert_eq!(m3.len(), 2);
     }
 
@@ -1264,7 +1271,7 @@ mod tests {
         assert_ne!(capped[0]["content"], "你好", "丢最旧");
     }
 
-#[tokio::test]
+    #[tokio::test]
     async fn app_tool_outcome_resolves_when_frontend_sends() {
         let (tx, rx) = oneshot::channel();
         let token = CancellationToken::new();
