@@ -32,3 +32,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# ── 本地开发工具链(Claude Code 配置,不入公共仓)──────
+/.claude/

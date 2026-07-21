@@ -4,9 +4,9 @@
 #
 # ★现阶段刻意「无签名」:不设任何 APPLE_*/WINDOWS_* env(设了空值反而让签名流程失败)。
 #   - macOS:未签名/未公证 ⇒ 用户右键打开(docs/QUICKSTART.md 有说明);拿到 Apple 证书后按
-#     docs/RELEASE.md 配 secrets 并在本文件恢复签名 env。
+#     仓库 Secrets 配好证书相关 env 后在本文件恢复签名段。
 #   - Windows:无证书 ⇒ SmartScreen「更多信息 → 仍要运行」;个人证书性价比低,暂不办。
-#   - updater 签名(TAURI_SIGNING_*)留待 updater 上线时按 docs/RELEASE.md 配。
+#   - updater 签名(TAURI_SIGNING_*)留待 updater 上线时配置。
 name: release
 
 on:

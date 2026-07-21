@@ -66,14 +66,6 @@ src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP ·
 技术栈:**Tauri 2**(Rust + 系统 WebView)· 原生 HTML/CSS/JS(**无前端框架**)· SQLite / IndexedDB。
 新增一个应用 ≈ 一个目录 + 一份 manifest,平台零改动。
 
-## 工程方法论
-
-本项目由一名开发者与 AI 协作完成,全程走**百余轮外部评审**纪律:变异测试(断言必须能红)、红线体系、真机金标准、诚实边界。评审协议与全部裁定公开:
-
-- [docs/reviewer-onboarding.md](docs/reviewer-onboarding.md) —— 评审员上岗协议(判据体系)
-- [docs/review-log.md](docs/review-log.md) —— 完整评审日志
-- [docs/](docs/) —— 全部设计方案(proposal-*)与路线图
-
 ## 反馈
 
 试用中的任何感受都欢迎 —— 尤其是「哪里卡住了」「哪里没想明白」。请开 [Issue](../../issues) 或按 [FEEDBACK 模板](docs/FEEDBACK.md) 留言。
