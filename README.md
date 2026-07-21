@@ -6,6 +6,12 @@
 
 对话即入口:说出需求,Agent 判断该做什么并执行 —— 查你的数据、出结构化卡片、跑你沉淀的技能;需要展示时右侧画布才出现。找完工作可以关掉求职应用,数据保留 —— 平台还是你的平台。
 
+![Agent 主界面 —— 对话即入口](docs/screenshots/01-agent.png)
+
+| 对话 + 画布分屏(演示数据) | 笔记 · Markdown |
+| --- | --- |
+| ![Agent 与目标岗位画布](docs/screenshots/02-canvas-jobs.png) | ![笔记 Markdown 渲染](docs/screenshots/03-notes-markdown.png) |
+
 ## 特性
 
 - **Agent-native** —— Agent 窗口即入口,一切功能皆工具;斜杠命令面板 + 快捷 chips + 项目工作区(每个项目独立对话线与定制指令)
