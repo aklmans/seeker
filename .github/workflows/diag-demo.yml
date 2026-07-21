@@ -33,24 +33,26 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER || 'root' }}
         run: |
-          ssh -i ~/.ssh/deploy_key "$USER@$HOST" 'bash -s' <<'REMOTE'
+          ssh -o ServerAliveInterval=15 -i ~/.ssh/deploy_key "$USER@$HOST" 'bash -s' <<'REMOTE'
           set -uo pipefail
           echo "== 1. 服务状态 =="
-          systemctl is-active seeker-demo || true
-          echo "== 2. 近 25 行服务日志(设计上不含对话内容/IP)=="
-          journalctl -u seeker-demo -n 25 --no-pager | tail -25 || true
-          echo "== 3. env(UPSTREAM_KEY 掩码)=="
+          timeout 8 systemctl is-active seeker-demo || true
+          echo "== 2. env(UPSTREAM_KEY 掩码)=="
           grep -v '^UPSTREAM_KEY' /etc/seeker-demo.env || true
           set -a; . /etc/seeker-demo.env; set +a
           echo "KEY_SET=$([ -n "${UPSTREAM_KEY:-}" ] && echo yes || echo no) KEY_LEN=${#UPSTREAM_KEY}"
-          echo "== 4. 上游连通性(无鉴权;能到应快速 401)=="
-          curl -sS -o /dev/null -w 'GET /models(无鉴权)→ %{http_code}  %{time_total}s\n' --max-time 15 "$UPSTREAM_BASE/models" || echo "(连不上或超时)"
-          echo "== 5. 鉴权模型列表(前 800 字节;响应不含 key)=="
-          curl -sS --max-time 20 -H "Authorization: Bearer $UPSTREAM_KEY" "$UPSTREAM_BASE/models" | head -c 800 || echo "(失败)"
+          echo "== 3. 上游连通性(无鉴权;能到应快速 401)=="
+          timeout 20 curl -sS -o /dev/null -w 'GET /models(无鉴权)→ %{http_code}  %{time_total}s\n' --max-time 15 "$UPSTREAM_BASE/models" || echo "(连不上或超时)"
+          echo "== 4. 鉴权模型列表(前 800 字节;响应不含 key)=="
+          timeout 25 curl -sS --max-time 20 -H "Authorization: Bearer $UPSTREAM_KEY" "$UPSTREAM_BASE/models" | head -c 800 || echo "(失败)"
           echo ""
-          echo "== 6. 以当前 MODEL 干跑一发(max_tokens=1;判模型名是否有效)=="
-          curl -sS --max-time 30 -H "Authorization: Bearer $UPSTREAM_KEY" -H 'content-type: application/json' \
+          echo "== 5. 以当前 MODEL 干跑一发(max_tokens=1;判模型名是否有效)=="
+          timeout 35 curl -sS --max-time 30 -H "Authorization: Bearer $UPSTREAM_KEY" -H 'content-type: application/json' \
             -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
             "$UPSTREAM_BASE/chat/completions" | head -c 500 || echo "(失败)"
           echo ""
+          echo "== 6. 本机代理健康 + 服务日志(journal 在宝塔机可能極慢,硬 timeout 兜底)=="
+          timeout 8 curl -sS http://127.0.0.1:${PORT:-8787}/api/health || echo "(健康检查失败)"
+          echo ""
+          timeout 10 journalctl -u seeker-demo -n 20 --no-pager -o cat 2>/dev/null || echo "(journal 超时/不可用 —— 宝塔机常见,非故障)"
           REMOTE
