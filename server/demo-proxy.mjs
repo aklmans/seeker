@@ -122,6 +122,9 @@ async function handleChat(req, res) {
 
   const ac = new AbortController();
   req.on('close', () => ac.abort()); // 浏览器断开 → 掐上游,不空烧
+  // ★上游硬超时(90s 全程):无超时的挂起会让用户端「思考中…」永远转(生产实症)。
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 90_000);
   let upstream;
   try {
     upstream = await fetch(`${UPSTREAM_BASE}/chat/completions`, {
@@ -130,7 +133,8 @@ async function handleChat(req, res) {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${UPSTREAM_KEY}` },
       body: JSON.stringify({ model: MODEL, stream: true, messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...v.messages] }),
     });
-  } catch { json(res, 502, { error: 'upstream_unreachable' }); return; }
+  } catch { clearTimeout(timer); json(res, 502, { error: timedOut ? 'upstream_timeout' : 'upstream_unreachable' }); return; }
+  clearTimeout(timer); // 已到头部;流阶段由 req close 与下方 catch 兜底
   if (!upstream.ok || !upstream.body) {
     json(res, 502, { error: 'upstream_' + upstream.status }); // 不透传上游错误体(可能含敏感细节)
     return;

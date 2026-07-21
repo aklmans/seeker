@@ -1,0 +1,56 @@
+# diag-demo.yml —— 手动触发的演示服务诊断(经 DEPLOY_SSH_KEY 上服务器采集现场)。
+# ★公开仓 Actions 日志人人可见 ⇒ 输出严格白名单:服务状态/我方日志(设计上不含对话内容与 IP)/
+#   掩码后的 env(UPSTREAM_KEY 只回显「是否已设 + 长度」)/上游连通性与模型探测(响应体不含 key)。
+name: diag-demo
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    env:
+      HAS_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+    steps:
+      - name: Skip if not configured
+        if: env.HAS_HOST != 'true'
+        run: echo "DEPLOY_HOST 未配置。"
+
+      - name: Setup SSH
+        if: env.HAS_HOST == 'true'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Collect diagnostics (key-masked)
+        if: env.HAS_HOST == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -uo pipefail
+          echo "== 1. 服务状态 =="
+          systemctl is-active seeker-demo || true
+          echo "== 2. 近 25 行服务日志(设计上不含对话内容/IP)=="
+          journalctl -u seeker-demo -n 25 --no-pager | tail -25 || true
+          echo "== 3. env(UPSTREAM_KEY 掩码)=="
+          grep -v '^UPSTREAM_KEY' /etc/seeker-demo.env || true
+          set -a; . /etc/seeker-demo.env; set +a
+          echo "KEY_SET=$([ -n "${UPSTREAM_KEY:-}" ] && echo yes || echo no) KEY_LEN=${#UPSTREAM_KEY}"
+          echo "== 4. 上游连通性(无鉴权;能到应快速 401)=="
+          curl -sS -o /dev/null -w 'GET /models(无鉴权)→ %{http_code}  %{time_total}s\n' --max-time 15 "$UPSTREAM_BASE/models" || echo "(连不上或超时)"
+          echo "== 5. 鉴权模型列表(前 800 字节;响应不含 key)=="
+          curl -sS --max-time 20 -H "Authorization: Bearer $UPSTREAM_KEY" "$UPSTREAM_BASE/models" | head -c 800 || echo "(失败)"
+          echo ""
+          echo "== 6. 以当前 MODEL 干跑一发(max_tokens=1;判模型名是否有效)=="
+          curl -sS --max-time 30 -H "Authorization: Bearer $UPSTREAM_KEY" -H 'content-type: application/json' \
+            -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
+            "$UPSTREAM_BASE/chat/completions" | head -c 500 || echo "(失败)"
+          echo ""
+          REMOTE
