@@ -93,7 +93,7 @@ export function wireOverlay(){ const o=$('#overlay'); if(o) o.addEventListener('
 export function frontis(eyebrow,title){
   return `<div class="frontis"><div><p class="eyebrow">— ${eyebrow}</p><h1 class="title">${title}<span class="dot">.</span></h1></div></div>`;
 }
-export function signFoot(){return `<footer class="sign"><span>JOBHUNT · 2026</span><span>本地优先 · LOCAL-FIRST</span></footer>`;}
+export function signFoot(){return `<footer class="sign"><span>SEEKER · 2026</span><span>本地优先 · LOCAL-FIRST</span></footer>`;}
 
 export function buildPages(){
   const c=$('#content');

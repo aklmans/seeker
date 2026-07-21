@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Seeker — 本地优先的可复用平台基座(首个应用:求职岗位研究工作台)",
+  "description": "Seeker(探索者)— 本地优先的个人 AI Agent 平台:壳 + 可开关小应用(首个应用:求职工作台)",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",
