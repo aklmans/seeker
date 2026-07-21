@@ -147,7 +147,7 @@ export function renderSettings(){
       <div style="font-weight:600;color:var(--ink);">${tt('探索者 · Seeker','Seeker')}</div>
       <div class="mono" style="font-size:12px;color:var(--ink-3);margin:4px 0;">v 0.1.0 · 2026 · ${tt('本地优先','Local-first')}</div>
       <div style="color:var(--ink-3);max-width:600px;">${tt('本地优先的个人 AI Agent 平台 —— 壳 + 可开关的小应用(首个应用:求职工作台)。所有数据存于本地,密钥只进系统钥匙串,隐私信息永不参与 AI 处理。','A local-first personal AI agent platform — a shell plus toggleable mini-apps (first app: the job-hunt workbench). All data stays on your machine, keys live only in the system keychain, and private info never goes through AI.')}</div>
-      <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-mocktoast="已是最新版本">${tt('检查更新','Check updates')}</button><button class="btn" data-mocktoast="感谢反馈 (mock)">${tt('反馈问题','Send feedback')}</button></div>
+      <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-extlink="https://github.com/aklmans/seeker/releases">${tt('检查更新','Check updates')}</button><button class="btn" data-extlink="https://github.com/aklmans/seeker/issues">${tt('反馈问题','Send feedback')}</button></div>
     </div>`;
   const tabDefs=[SET_TABS_SHELL[0],SET_TABS_SHELL[1],SET_TABS_SHELL[2]]
     .concat(appTabs.map(t=>[t.id,[t.label.zh,t.label.en]]))
@@ -186,6 +186,8 @@ export function renderSettings(){
   // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)。
   // ★批11B 末件:演示空状态行(showEmptyState=jobseek 符号)已迁入 jobseek data extend 自绑 → 平台不再裸读 apps 符号、§1 债清零。
   $$('#page-settings [data-mocktoast]').forEach(b=>{ b.onclick=()=>toast(b.dataset.mocktoast); });
+  // 外链按钮(关于页 检查更新/反馈问题 → GitHub Releases/Issues):经 rt.web.open(桌面走 Rust open_external 带 scheme 闸;URL 硬编码平台自持,非用户/模型数据)。
+  $$('#page-settings [data-extlink]').forEach(b=>{ b.onclick=()=>{ try{ /** @type {any} */ (window).SeekerRT.web.open(b.dataset.extlink); }catch(_e){ toast(tt('打开失败','Could not open')); } }; });
   // ②契约驱动 tab/extend 接线:全调(同原逻辑"$$ 选择器对非当前 tab 内容 no-op"的无条件风格),不做条件判断。
   appTabs.forEach(t=>{ if(typeof t.wire==='function') t.wire(); });
   appSpecs.forEach(s=>{ if(s.extend) Object.keys(s.extend).forEach(k=>{ const e=s.extend[k]; if(e&&typeof e.wire==='function') e.wire(); }); });
