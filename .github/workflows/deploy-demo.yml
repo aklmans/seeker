@@ -1,0 +1,135 @@
+# deploy-demo.yml —— push main 自动部署 Web 演示(静态 + AI 代理)到自有服务器。
+#
+# ★Secrets 全部由仓库所有者在 GitHub → Settings → Secrets and variables → Actions 填写;
+#   本文件只引用名字,值不入 git;公开仓日志里 GitHub 自动打码 secrets,本文件也刻意不 echo 任何值。
+#
+# 必填 Secrets:
+#   DEPLOY_SSH_KEY   专用部署私钥(建议单独 ssh-keygen 一对,公钥进服务器 authorized_keys)
+#   DEPLOY_HOST      服务器 IP 或域名
+#   UPSTREAM_KEY     上游模型 API key(如 Kimi/Moonshot)
+#   ACCESS_CODES     访问码,逗号分隔(发给朋友的门票)
+# 可选 Secrets(有默认):
+#   DEPLOY_USER(root) DEPLOY_PATH(/opt/seeker-demo) UPSTREAM_BASE(https://api.moonshot.cn/v1)
+#   MODEL(moonshot-v1-8k) RATE_PER_MIN(6) DAILY_REQ_CAP(300) PORT(8787)
+#
+# 未配 DEPLOY_HOST 时整个 job 安静跳过(fork / 未启用自部署的克隆不受影响)。
+name: deploy-demo
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'server/**', '.github/workflows/deploy-demo.yml']
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+    steps:
+      - name: Skip if not configured
+        if: env.HAS_HOST != 'true'
+        run: echo "DEPLOY_HOST 未配置,跳过自动部署。"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_HOST == 'true'
+
+      - name: Setup SSH
+        if: env.HAS_HOST == 'true'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rsync app (web/ + server/)
+        if: env.HAS_HOST == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEST: ${{ secrets.DEPLOY_PATH || '/opt/seeker-demo' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "mkdir -p '$DEST'"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" web/ "$USER@$HOST:$DEST/web/"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" server/ "$USER@$HOST:$DEST/server/"
+
+      - name: Write env + systemd unit, (re)start service
+        if: env.HAS_HOST == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEST: ${{ secrets.DEPLOY_PATH || '/opt/seeker-demo' }}
+          PORT: ${{ secrets.PORT || '8787' }}
+          UPSTREAM_BASE: ${{ secrets.UPSTREAM_BASE || 'https://api.moonshot.cn/v1' }}
+          UPSTREAM_KEY: ${{ secrets.UPSTREAM_KEY }}
+          MODEL: ${{ secrets.MODEL || 'moonshot-v1-8k' }}
+          ACCESS_CODES: ${{ secrets.ACCESS_CODES }}
+          RATE_PER_MIN: ${{ secrets.RATE_PER_MIN || '6' }}
+          DAILY_REQ_CAP: ${{ secrets.DAILY_REQ_CAP || '300' }}
+        run: |
+          umask 077
+          # env 文件在 runner 内组装(不在服务器命令行拼接,进程表不见值),scp 后收权。
+          cat > seeker-demo.env <<EOF
+          PORT=$PORT
+          UPSTREAM_BASE=$UPSTREAM_BASE
+          UPSTREAM_KEY=$UPSTREAM_KEY
+          MODEL=$MODEL
+          ACCESS_CODES=$ACCESS_CODES
+          RATE_PER_MIN=$RATE_PER_MIN
+          DAILY_REQ_CAP=$DAILY_REQ_CAP
+          EOF
+          scp -i ~/.ssh/deploy_key seeker-demo.env "$USER@$HOST:/etc/seeker-demo.env"
+          rm -f seeker-demo.env
+          # 服务器侧:解析 Node ≥18(优先 PATH,兼容宝塔 /www/server/nodejs)→ 写 unit → 起服务。
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "DEST='$DEST' bash -s" <<'REMOTE'
+          set -euo pipefail
+          chmod 600 /etc/seeker-demo.env
+          NODE_BIN="$(command -v node || true)"
+          if [ -z "$NODE_BIN" ]; then
+            NODE_BIN="$(ls -1 /www/server/nodejs/*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -z "$NODE_BIN" ]; then
+            echo "未找到 node(需 ≥18)。宝塔:软件商店装 Node.js 版本管理器;或 apt install nodejs" >&2
+            exit 1
+          fi
+          MAJOR="$("$NODE_BIN" -e 'console.log(process.versions.node.split(".")[0])')"
+          if [ "$MAJOR" -lt 18 ]; then echo "node 版本过低($MAJOR),需 ≥18" >&2; exit 1; fi
+          cat > /etc/systemd/system/seeker-demo.service <<UNIT
+          [Unit]
+          Description=Seeker web demo (static + AI proxy)
+          After=network.target
+
+          [Service]
+          EnvironmentFile=/etc/seeker-demo.env
+          ExecStart=$NODE_BIN $DEST/server/demo-proxy.mjs
+          WorkingDirectory=$DEST
+          Restart=on-failure
+          RestartSec=3
+          NoNewPrivileges=true
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable seeker-demo >/dev/null 2>&1 || true
+          systemctl restart seeker-demo
+          sleep 1
+          systemctl is-active seeker-demo
+          REMOTE
+
+      - name: Health check
+        if: env.HAS_HOST == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          PORT: ${{ secrets.PORT || '8787' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "curl -fsS http://127.0.0.1:$PORT/api/health"
+          echo "✓ deploy ok"
