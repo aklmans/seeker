@@ -113,7 +113,11 @@ export function platformSkills(){
 export function copGo(id){go(id);}   // ★Cut 1b:原 copClose()+go;浮窗删后 = 纯导航(agent 模式下 go→agentShowCanvas 切 split 展示页面)
 export function agentChat(html){ agentAppend('ai','<span class="who">Agent</span>'+html); }   // ★Cut 1b:appMode 恒 agent → 恒 agentAppend(去 copAppend 分支)
 export function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
-export function aiChatAvailable(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+export function aiChatAvailable(){
+  if(typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT) return true;                 // 桌面:Rust 全能力
+  const ai=window.SeekerRT && /** @type {any} */ (window.SeekerRT).ai;                              // Web 演示代理支:纯聊天(runtime 自报 ready=代理探活+访问码在手;无代理/无码 → false 照旧 canned)
+  return !!(ai && typeof ai.chatReady==='function' && ai.chatReady());
+}
 export function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }
 
 /* ---- 抽壳序3-d-6:Agent 模式群 —— appMode/appReady 状态 + renderModeSwitch/setAppMode/agentShowCanvas/agentCollapse/agentGreet。

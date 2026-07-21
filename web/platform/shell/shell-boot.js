@@ -2,6 +2,7 @@
 /** 平台 · 壳启动 initShell:拖放守卫 + 侧栏/Agent 栏宽度恢复 + 语言恢复 + hydrateSettings + 侧栏收展/拖拽接线 + setLang。
  *  依赖 $/setLang(平台)+ setState/hydrateSettings/toggleSidebar(过渡 classic 全局,经全局词法/window);INIT-module 运行时调 initShell()。 */
 import { $ } from './dom.js';
+import { openModal, closeModal } from './modal.js'; // Web 演示访问码小模态(桌面路径不触达)
 import { setLang } from './nav.js';
 import { startScheduler } from './scheduler.js'; // ★Scheduled SC1:壳级分钟 tick(仅 app 开着时;fire 经 runSkill 红线全继承)
 import { toggleSidebar } from './shell-keys.js';
@@ -43,13 +44,11 @@ function webDemoNote(){
   try{ if(localStorage.getItem('jh-demonote')==='off') return; }catch(_e){}
   const n=document.createElement('div');
   // 顶栏中央空档(面包屑与页首 CTA 之间)—— 固定 bottom 会压住 Agent 输入框(截图实测),故置顶。
-  n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);border-radius:99px;font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,620px);line-height:1.6;white-space:nowrap;';
+  n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);border-radius:99px;font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,680px);line-height:1.6;white-space:nowrap;';
   const zh=(setState.lang||'zh')!=='en';
-  n.innerHTML=(zh
-      ? 'Web <b>演示版</b> —— 数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。'
-      : 'Web <b>demo</b> — data stays in your browser; real AI / memory / connectors live in the desktop app.')
-    +' <a href="https://github.com/aklmans/seeker/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;border-bottom:0.5px solid var(--accent-soft);white-space:nowrap;">'
-    +(zh?'下载桌面版':'Download')+'</a>';
+  const link='<a href="https://github.com/aklmans/seeker/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;border-bottom:0.5px solid var(--accent-soft);white-space:nowrap;">'+(zh?'下载桌面版':'Download')+'</a>';
+  const body=document.createElement('span');
+  n.appendChild(body);
   const x=document.createElement('button');
   x.textContent='×';
   x.setAttribute('aria-label', zh?'关闭':'Dismiss');
@@ -57,5 +56,45 @@ function webDemoNote(){
   x.onclick=()=>{ n.remove(); try{ localStorage.setItem('jh-demonote','off'); }catch(_e){} };
   n.appendChild(x);
   document.body.appendChild(n);
+  // 文案三态:无代理(Pages)/ 有代理未填码 / 已接真模型。探活是异步的 → 先渲基础态,结果到再升级。
+  const ai=/** @type {any} */ (window).SeekerRT && /** @type {any} */ (window).SeekerRT.ai;
+  let demoProxyProbe=false;   // 先于 render 声明(render 闭包引用它;声明滞后会 TDZ)
+  const render=()=>{
+    const ready=!!(ai && typeof ai.chatReady==='function' && ai.chatReady());
+    const proxy=demoProxyProbe || ready; // ready 蕴含代理在
+    if(ready){
+      body.innerHTML=(zh?'Web 演示 —— <b>已接真模型</b>(限量额度);记忆 / 连接器仍在桌面端。':'Web demo — <b>live model on</b> (limited quota); memory / connectors live in the desktop app.')+' '+link;
+    }else if(proxy){
+      body.innerHTML=(zh?'Web <b>演示版</b> —— 数据只存你的浏览器。':'Web <b>demo</b> — data stays in your browser.')+' '
+        +'<a href="#" data-democode style="color:var(--accent);text-decoration:none;border-bottom:0.5px solid var(--accent-soft);white-space:nowrap;">'+(zh?'输入访问码,和真模型聊':'Enter access code for live chat')+'</a> · '+link;
+      const a=body.querySelector('[data-democode]');
+      if(a) /** @type {HTMLElement} */ (a).onclick=(e)=>{ e.preventDefault(); demoCodeModal(zh, render); };
+    }else{
+      body.innerHTML=(zh?'Web <b>演示版</b> —— 数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。':'Web <b>demo</b> — data stays in your browser; real AI / memory / connectors live in the desktop app.')+' '+link;
+    }
+  };
+  render();
+  // 探针:同 runtime 的探活路径(相对 api/health);成功且未填码 → 升级出「输入访问码」入口。
+  try{ fetch('api/health').then(r=>{ if(r&&r.ok){ demoProxyProbe=true; render(); } }).catch(()=>{}); }catch(_e){}
+}
+
+/** 访问码小模态(Web 演示专用):写入 runtime(localStorage),确定后闸门即开(逐次求值,无需刷新)。 */
+function demoCodeModal(zh, onSet){
+  const ai=/** @type {any} */ (window).SeekerRT && /** @type {any} */ (window).SeekerRT.ai;
+  if(!ai || typeof ai.setChatCode!=='function') return;
+  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— WEB DEMO</p><h2 style="margin-top:5px;">${zh?'输入访问码':'Access code'}<span class="dot">.</span></h2></div><button class="x">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--ink-3);line-height:1.8;margin-bottom:10px;">${zh?'访问码由作者发给朋友试用(它只是演示门票,不是密钥)。填一次即可,本页记住。':'Access codes are handed out by the author for friends to try. It is a demo ticket, not a secret key.'}</p>
+      <input class="input" id="demoCodeInp" style="width:100%;font-family:var(--font-mono);" placeholder="${zh?'如:seeker-xxxx':'e.g. seeker-xxxx'}">
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>${zh?'取消':'Cancel'}</button><button class="btn btn-accent" id="demoCodeOk">${zh?'接入':'Connect'}</button></div>`);
+  const ok=m.querySelector('#demoCodeOk');
+  if(ok) /** @type {HTMLElement} */ (ok).onclick=()=>{
+    const v=(/** @type {HTMLInputElement|null} */ (m.querySelector('#demoCodeInp'))||{value:''}).value.trim();
+    if(!v) return;
+    ai.setChatCode(v);
+    closeModal();
+    if(typeof onSet==='function') onSet();
+  };
 }
 /* 过渡 window 兼容桥:INIT-module 调 initShell()(deferred,晚于本 module)→ 按全局名调不变;改 import 后摘。纯函数(无模块态)。 */

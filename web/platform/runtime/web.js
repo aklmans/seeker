@@ -90,6 +90,74 @@ async function bundleAll(redact) {
   };
 }
 
+// ── Web 演示 AI 代理(同源 /api/chat)────────────────────────────────────────
+// 探活:模块 eval 即发一次 GET api/health(相对路径 → Pages 子路径/自托管根都对)。
+// 失败(GitHub Pages / preview 无代理)静默置否 —— 一切照旧降级 canned,零控制台噪音。
+let demoProxyOk = false;
+try {
+  fetch('api/health').then((r) => { if (r && r.ok) demoProxyOk = true; }).catch(() => {});
+} catch { /* 非浏览器环境 */ }
+/** 访问码(朋友门票,非密钥;localStorage 持有,可随时清)。 */
+function demoCode() { try { return (localStorage.getItem('jh-democode') || '').trim(); } catch { return ''; } }
+/** 会话内短历史:historyKey → 轮次(仅内存,刷新即清;镜像桌面 G2 的“最近若干轮”语义)。 */
+/** @type {Map<string, {role:string, content:string}[]>} */
+const demoHist = new Map();
+
+/**
+ * 纯聊天转发:POST api/chat(SSE)→ handlers.onToken/onDone/onError(形状同桌面 aiStream;无 tool/widget 事件)。
+ * @param {any} req @param {any} handlers @param {AbortSignal} [signal] @returns {Promise<{text:string}>}
+ */
+async function demoChat(req, handlers, signal) {
+  const hkey = String(req.historyKey || 'default');
+  const hist = demoHist.get(hkey) || [];
+  const messages = [...hist, { role: 'user', content: String(req.userText || '') }].slice(-20);
+  let acc = '';
+  try {
+    const res = await fetch('api/chat', {
+      method: 'POST',
+      signal,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: demoCode(), messages }),
+    });
+    if (!res.ok || !res.body) {
+      let err = 'proxy_' + res.status;
+      try { err = (await res.json()).error || err; } catch { /* 保底串 */ }
+      if (res.status === 401) { try { localStorage.removeItem('jh-democode'); } catch { /* ignore */ } }
+      const msg = res.status === 401 ? '访问码无效,请重新输入(刷新页面后经顶栏提示重填)。'
+        : err === 'daily' ? '今天的演示额度用完了,明天再来;想不限量就下载桌面版自带模型 Key。'
+        : err === 'rate' ? '说得太快啦,歇几秒再发。'
+        : '演示代理暂不可用(' + err + ')。';
+      if (handlers.onError) handlers.onError(new Error(msg));
+      return { text: '' };
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        try {
+          const m = JSON.parse(line.slice(5).trim());
+          if (typeof m.t === 'string') { acc += m.t; if (handlers.onToken) handlers.onToken(m.t); }
+          else if (m.error) { if (handlers.onError) handlers.onError(new Error('演示代理流中断(' + m.error + ')')); return { text: acc }; }
+        } catch { /* 跳过坏行 */ }
+      }
+    }
+    // 成功收流:写回短历史(仅内存),再通知 onDone(与桌面事件顺序一致)。
+    demoHist.set(hkey, [...messages, { role: 'assistant', content: acc }].slice(-20));
+    if (handlers.onDone) handlers.onDone();
+    return { text: acc };
+  } catch (e) {
+    if (handlers.onError) handlers.onError(e instanceof Error ? e : new Error(String(e)));
+    return { text: acc };
+  }
+}
+
 /** @returns {import('./types').RuntimeApi} */
 export function createWebRuntime() {
   return {
@@ -150,9 +218,20 @@ export function createWebRuntime() {
     },
 
     ai: {
-      stream: () => {
-        throw new NotImplementedError('rt.ai.stream', 'web'); // → 浏览器→自有后端代理 @ #1
+      // ★演示代理(#1 的「浏览器→自有后端代理”落地,纯聊天面):同源 /api/chat(SSE)。
+      //   密钥红线原样成立:**上游 key 只在服务端**,浏览器只持低价值访问码(限朋友的门票,非 API key)。
+      //   纯聊天 = 无工具/无 widget/无记忆(那些是桌面 Rust 核);历史仅存本页内存(刷新即清、不落盘)。
+      //   无代理(GitHub Pages / preview)或未填访问码 → 照旧抛 NotImplementedError ⇒ 壳层降级 canned 回复零回归。
+      stream: (req, handlers = {}) => {
+        if (!demoProxyOk || !demoCode()) throw new NotImplementedError('rt.ai.stream', 'web');
+        const ac = new AbortController();
+        const done = demoChat(req, handlers, ac.signal);
+        return { cancel: () => ac.abort(), done };
       },
+      /** 演示代理探活结果 + 访问码在手 —— 壳层 aiChatAvailable 的 web 支(桌面运行时无此方法)。 */
+      chatReady: () => demoProxyOk && !!demoCode(),
+      /** 供壳层访问码入口写码(只存 localStorage;它是门票不是密钥)。 @param {string} v */
+      setChatCode: (v) => { try { localStorage.setItem('jh-democode', String(v || '').trim()); } catch { /* 私隐模式等 */ } },
       complete: () => notImpl('rt.ai.complete', 'web'),
       generate: () => { throw new NotImplementedError('rt.ai.generate', 'web'); }, // 生成是桌面能力(同 stream)
       appToolResult: () => notImpl('rt.ai.appToolResult', 'web'), // app-tool 协议是桌面能力(块 T0)
