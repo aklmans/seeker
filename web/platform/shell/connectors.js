@@ -24,13 +24,15 @@ import { cEsc } from './copilot-chrome.js';
 import { tt } from './i18n.js';
 import { errText, toast } from './toast.js';
 
+/** @param {string} s */
 const parseArgs = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
 
-/** 把连接器管理渲染进宿主元素(能力中心的 Connector 段)。表单接线一次,列表可重复 refresh。 */
+/** 把连接器管理渲染进宿主元素(能力中心的 Connector 段)。表单接线一次,列表可重复 refresh。
+ *  @param {HTMLElement} box */
 export async function renderConnectors(box) {
   if (!box) return;
-  const rt = window.SeekerRT;
-  const G = window.SeekerGuardrail;
+  const rt = /** @type {any} */ (window).SeekerRT;
+  const G = /** @type {any} */ (window).SeekerGuardrail;
 
   box.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;max-width:560px;">
@@ -62,14 +64,14 @@ export async function renderConnectors(box) {
     )}</span></div>
     <div id="ccMcpList">${tt('加载中…', 'Loading…')}</div>`;
 
-  const q = (sel) => box.querySelector(sel);
-  const qa = (sel) => [...box.querySelectorAll(sel)];
-  const val = (id) => { const e = q(id); return e ? e.value.trim() : ''; };
+  const q = (/** @type {string} */ sel) => /** @type {HTMLElement|null} */ (box.querySelector(sel));
+  const qa = (/** @type {string} */ sel) => /** @type {HTMLElement[]} */ ([...box.querySelectorAll(sel)]);
+  const val = (/** @type {string} */ id) => { const e = /** @type {HTMLInputElement|null} */ (q(id)); return e ? e.value.trim() : ''; };
   const hint = q('#ccMcpHint');
 
   // 传输模式切换(选中态:暖橙文字 + 底线,不依赖 color-mix)。
   let mode = 'stdio';
-  const setMode = (mo) => {
+  const setMode = (/** @type {string} */ mo) => {
     mode = mo;
     const lo = q('#ccMcpLocal'), re = q('#ccMcpRemote');
     if (lo) lo.style.display = mo === 'stdio' ? 'flex' : 'none';
@@ -82,11 +84,11 @@ export async function renderConnectors(box) {
     });
     if (hint) hint.textContent = '';
   };
-  qa('.cc-mcp-mode').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+  qa('.cc-mcp-mode').forEach((b) => (b.onclick = () => setMode(/** @type {string} */ (b.dataset.mode))));
   setMode('stdio');
 
   const refresh = async () => {
-    let rows = [];
+    /** @type {any[]} */ let rows = [];
     try { rows = await rt.mcp.list(); } catch (_e) {}
     const body = q('#ccMcpList');
     if (!body) return;
@@ -96,16 +98,16 @@ export async function renderConnectors(box) {
           // 端点 / 命令仅呈现给用户(不进模型);经 cEsc 转义。
           const where = http ? cEsc(s.url || '') : (cEsc(s.command) + ' ' + cEsc((s.args || []).join(' ')));
           const ttag = `<span class="mono" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);border-radius:3px;padding:0 4px;">${http ? tt('远程', 'REMOTE') : tt('本地', 'LOCAL')}</span>`;
-          const tools = (s.tools || []).map((t) => cEsc(t.name)).join('、');
+          const tools = (s.tools || []).map((/** @type {any} */ t) => cEsc(t.name)).join('、');
           const status = s.error ? `<span style="color:var(--ink-3);">${tt('连接失败', 'Failed')}</span>`
             : s.enabled ? (s.connected ? `<span style="color:var(--status-done);">${s.toolCount} ${tt('工具', 'tools')}</span>` : tt('连接中…', 'Connecting…'))
             : `<span style="color:var(--ink-3);">${tt('已停用', 'Disabled')}</span>`;
           // 令牌状态:只报 configured/empty,永不回显值(红线)。
           const authLine = http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${s.authConfigured ? ('🔑 ' + tt('令牌已配置', 'Token set')) : tt('未配置令牌(无鉴权)', 'No token (unauthenticated)')}</div>` : '';
           // stdio 环境变量状态:只列已配变量名(值只在钥匙串、前端不见)+ 可点 × 清除。
-          const envList = (s.envConfigured || []).filter((e) => e && e.status === 'configured');
+          const envList = (s.envConfigured || []).filter((/** @type {any} */ e) => e && e.status === 'configured');
           const envLine = !http ? `<div style="font-size:11px;color:var(--ink-2);margin-top:3px;">${envList.length
-            ? '🔑 ' + envList.map((e) => `<span class="mono" style="font-size:10px;">${cEsc(e.var)}</span> <span data-mcpenvclear data-cn="${cEsc(s.name)}" data-cv="${cEsc(e.var)}" title="${tt('清除', 'Clear')}" style="cursor:pointer;color:var(--ink-3);padding:0 2px;">×</span>`).join('　')
+            ? '🔑 ' + envList.map((/** @type {any} */ e) => `<span class="mono" style="font-size:10px;">${cEsc(e.var)}</span> <span data-mcpenvclear data-cn="${cEsc(s.name)}" data-cv="${cEsc(e.var)}" title="${tt('清除', 'Clear')}" style="cursor:pointer;color:var(--ink-3);padding:0 2px;">×</span>`).join('　')
             : tt('未配置环境变量', 'No env vars')}</div>` : '';
           return `<div style="padding:9px 0;border-bottom:0.5px solid var(--border);"><div style="display:flex;gap:10px;align-items:center;">
             <div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);font-weight:500;">${ttag} ${cEsc(s.name)} · ${status}</div>
@@ -149,25 +151,25 @@ export async function renderConnectors(box) {
       });
     }));
     // 令牌:展开/收起行内输入 → setAuth(留空保存 = 清除)。令牌直送钥匙串。
-    const findEdit = (name) => qa('.mcp-authedit').find((x) => x.dataset.for === name);
+    const findEdit = (/** @type {string|undefined} */ name) => qa('.mcp-authedit').find((x) => x.dataset.for === name);
     qa('[data-mcpauth]').forEach((b) => (b.onclick = () => {
       const bx = findEdit(b.dataset.mcpauth); if (bx) bx.style.display = bx.style.display === 'none' ? 'flex' : 'none';
     }));
     qa('[data-mcpauthsave]').forEach((b) => (b.onclick = async () => {
-      const name = b.dataset.mcpauthsave, bx = findEdit(name), inp = bx && bx.querySelector('input');
+      const name = b.dataset.mcpauthsave, bx = findEdit(name), inp = bx && /** @type {HTMLInputElement|null} */ (bx.querySelector('input'));
       const has = !!(inp && inp.value.trim());
       try { await rt.mcp.setAuth(name, (inp && inp.value) || ''); toast(has ? tt('令牌已保存', 'Token saved') : tt('令牌已清除', 'Token cleared')); }
       catch (e) { toast(errText(e)); }
       await refresh();
     }));
     // 环境变量(stdio):展开行内「名 + 值」→ setEnv(值直送钥匙串;留空 = 清除该变量)。
-    const findEnvEdit = (name) => qa('.mcp-envedit').find((x) => x.dataset.for === name);
+    const findEnvEdit = (/** @type {string|undefined} */ name) => qa('.mcp-envedit').find((x) => x.dataset.for === name);
     qa('[data-mcpenv]').forEach((b) => (b.onclick = () => {
       const bx = findEnvEdit(b.dataset.mcpenv); if (bx) bx.style.display = bx.style.display === 'none' ? 'flex' : 'none';
     }));
     qa('[data-mcpenvsave]').forEach((b) => (b.onclick = async () => {
       const name = b.dataset.mcpenvsave, bx = findEnvEdit(name);
-      const vn = bx && bx.querySelector('[data-envvar]'), vv = bx && bx.querySelector('[data-envval]');
+      const vn = bx && /** @type {HTMLInputElement|null} */ (bx.querySelector('[data-envvar]')), vv = bx && /** @type {HTMLInputElement|null} */ (bx.querySelector('[data-envval]'));
       const varName = (vn && vn.value.trim()) || '';
       if (!varName) { toast(tt('请填变量名', 'Enter a var name')); return; }
       const hasVal = !!(vv && vv.value.trim());
@@ -185,7 +187,7 @@ export async function renderConnectors(box) {
   };
   await refresh();
 
-  const addBtn = q('#ccMcpAddBtn');
+  const addBtn = /** @type {HTMLButtonElement|null} */ (q('#ccMcpAddBtn'));
   if (addBtn) addBtn.onclick = async () => {
     const name = val('#ccMcpName');
     if (!name) { toast(tt('请填名称', 'Enter a name')); return; }
@@ -203,7 +205,7 @@ export async function renderConnectors(box) {
         await rt.mcp.add(name, { command: cmd, args: parseArgs(val('#ccMcpArgs')) });
       }
       toast(tt('已添加 ', 'Added ') + cEsc(name)); // toast = innerHTML sink,用户数据须 cEsc(见上)
-      ['#ccMcpName', '#ccMcpCmd', '#ccMcpArgs', '#ccMcpUrl', '#ccMcpToken'].forEach((id) => { const e = q(id); if (e) e.value = ''; });
+      ['#ccMcpName', '#ccMcpCmd', '#ccMcpArgs', '#ccMcpUrl', '#ccMcpToken'].forEach((id) => { const e = /** @type {HTMLInputElement|null} */ (q(id)); if (e) e.value = ''; });
       if (hint) hint.textContent = '';
       await refresh();
     }
@@ -211,7 +213,7 @@ export async function renderConnectors(box) {
     finally { addBtn.disabled = false; }
   };
 
-  const testBtn = q('#ccMcpTestBtn');
+  const testBtn = /** @type {HTMLButtonElement|null} */ (q('#ccMcpTestBtn'));
   if (testBtn) testBtn.onclick = async () => {
     testBtn.disabled = true;
     if (hint) hint.textContent = tt('连接中…', 'Connecting…');
