@@ -1,16 +1,26 @@
 # 快速上手 · QUICKSTART
 
 > 给第一次打开「探索者 · Seeker」的你 —— 全程约 5 分钟。
+>
+> **只想先看看?** 打开 **[Web 演示版](https://aklmans.github.io/seeker/)** —— 无需安装,数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。
 
-## 1 · 安装(macOS)
+## 1 · 安装
 
-从 Releases 下载 `.dmg`,拖入「应用程序」。
+### macOS
+
+从 [Releases](https://github.com/aklmans/seeker/releases) 下载 `.dmg`,拖入「应用程序」。
 
 **首次打开若提示「无法打开,因为无法验证开发者」**(App 暂未做 Apple 公证):
 - 方式一:在「应用程序」里**右键(或按住 Control 点击)Seeker → 打开 → 打开**,只需一次;
 - 方式二(终端):`xattr -cr /Applications/Seeker.app` 后正常双击。
 
-> 这是 macOS 对未公证应用的统一提示,不代表检测到了问题。源码完全公开,可自行审计或从源码构建。
+### Windows
+
+从 [Releases](https://github.com/aklmans/seeker/releases) 下载 `Seeker_*_x64-setup.exe` 安装。
+
+**若弹蓝色 SmartScreen「Windows 已保护你的电脑」**(安装包暂未代码签名):点 **「更多信息」→「仍要运行」**,只需一次。Win10 首次启动若提示缺 WebView2,按提示装完即可(Win11 自带)。
+
+> 以上是两家系统对未签名/未公证应用的统一提示,不代表检测到了问题。源码完全公开,可自行审计或从源码构建。
 
 ## 2 · 配好你的 AI(三条路,任选一条)
 

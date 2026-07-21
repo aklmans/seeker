@@ -31,5 +31,31 @@ export function initShell(){
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   };
   setLang(setState.lang);
+  webDemoNote(); // Web 演示版标注(桌面端无此条)
+}
+
+/* ---- Web 演示版标注 ----
+   网页运行时(无 __TAURI__)= IndexedDB + 降级回复:无密钥、无 Rust 能力(真实 AI 工具循环/记忆/连接器/钥匙串均桌面端)。
+   对访客诚实标注「这是演示」,并给下载出口;可关(记 localStorage,不反复打扰 —— 反焦虑)。
+   文案与链接平台自持硬编码(§4-4 纪律);仅 web 注入 ⇒ 桌面零变化。 */
+function webDemoNote(){
+  if(/** @type {any} */ (globalThis).__TAURI__) return;               // 桌面端不出现
+  try{ if(localStorage.getItem('jh-demonote')==='off') return; }catch(_e){}
+  const n=document.createElement('div');
+  // 顶栏中央空档(面包屑与页首 CTA 之间)—— 固定 bottom 会压住 Agent 输入框(截图实测),故置顶。
+  n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);border-radius:99px;font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,620px);line-height:1.6;white-space:nowrap;';
+  const zh=(setState.lang||'zh')!=='en';
+  n.innerHTML=(zh
+      ? 'Web <b>演示版</b> —— 数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。'
+      : 'Web <b>demo</b> — data stays in your browser; real AI / memory / connectors live in the desktop app.')
+    +' <a href="https://github.com/aklmans/seeker/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;border-bottom:0.5px solid var(--accent-soft);white-space:nowrap;">'
+    +(zh?'下载桌面版':'Download')+'</a>';
+  const x=document.createElement('button');
+  x.textContent='×';
+  x.setAttribute('aria-label', zh?'关闭':'Dismiss');
+  x.style.cssText='border:none;background:transparent;color:var(--ink-mute);font-size:14px;cursor:pointer;padding:0 2px;line-height:1;';
+  x.onclick=()=>{ n.remove(); try{ localStorage.setItem('jh-demonote','off'); }catch(_e){} };
+  n.appendChild(x);
+  document.body.appendChild(n);
 }
 /* 过渡 window 兼容桥:INIT-module 调 initShell()(deferred,晚于本 module)→ 按全局名调不变;改 import 后摘。纯函数(无模块态)。 */

@@ -34,7 +34,9 @@
 
 ## 快速开始
 
-**桌面(macOS)**:从 [Releases](../../releases) 下载 `.dmg` 安装。首次打开若提示「无法验证开发者」,右键 App → 打开(详见 [QUICKSTART](docs/QUICKSTART.md))。
+**🌐 在线体验(免安装)**:**[aklmans.github.io/seeker](https://aklmans.github.io/seeker/)** —— Web 演示版,数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。
+
+**桌面(macOS / Windows)**:从 [Releases](../../releases) 下载 `.dmg` / `-setup.exe` 安装。首次打开的系统提示(macOS 右键打开 / Windows SmartScreen「仍要运行」)见 [QUICKSTART](docs/QUICKSTART.md)。
 
 **首跑三步**:数据设置 → 模型配置 → 填入你的 API Key(或本地 Ollama,零成本)。支持 OpenAI 兼容端点 / Anthropic / Gemini / Ollama。详细路径与免费方案见 **[docs/QUICKSTART.md](docs/QUICKSTART.md)**。
 
