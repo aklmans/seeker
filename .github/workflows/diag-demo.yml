@@ -20,12 +20,10 @@ jobs:
         if: env.HAS_HOST == 'true'
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           umask 077
           mkdir -p ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/deploy_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Collect diagnostics (key-masked)
         if: env.HAS_HOST == 'true'
@@ -33,7 +31,8 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER || 'root' }}
         run: |
-          ssh -o ServerAliveInterval=15 -i ~/.ssh/deploy_key "$USER@$HOST" 'bash -s' <<'REMOTE'
+          # 远端脚本先落文件(结构干净);跨洋链路抖动 → accept-new 免 keyscan + 最多重试 3 次。
+          cat > remote-diag.sh <<'REMOTE'
           set -uo pipefail
           echo "== 1. 服务状态 =="
           timeout 8 systemctl is-active seeker-demo || true
@@ -51,8 +50,15 @@ jobs:
             -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
             "$UPSTREAM_BASE/chat/completions" | head -c 500 || echo "(失败)"
           echo ""
-          echo "== 6. 本机代理健康 + 服务日志(journal 在宝塔机可能極慢,硬 timeout 兜底)=="
+          echo "== 6. 本机代理健康 + 服务日志(journal 在宝塔机可能极慢,硬 timeout 兜底)=="
           timeout 8 curl -sS http://127.0.0.1:${PORT:-8787}/api/health || echo "(健康检查失败)"
           echo ""
           timeout 10 journalctl -u seeker-demo -n 20 --no-pager -o cat 2>/dev/null || echo "(journal 超时/不可用 —— 宝塔机常见,非故障)"
           REMOTE
+          ok=""
+          for i in 1 2 3; do
+            if ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+                 -i ~/.ssh/deploy_key "$USER@$HOST" 'bash -s' < remote-diag.sh; then ok=1; break; fi
+            echo "(第 $i 次连接失败,5s 后重试)"; sleep 5
+          done
+          [ "$ok" = 1 ]
