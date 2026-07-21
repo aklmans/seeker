@@ -1,75 +1,73 @@
-# =============================================================================
-# release.yml —— 开发阶段【已停用 · 整体注释】
-# -----------------------------------------------------------------------------
-# 原因:开发期不发布。且无真实签名凭据时,空的 APPLE_CERTIFICATE 会让 macOS
-#       codesign 的 `security import` 失败(参数无效)——故现在整体停用。
+# release.yml —— 发布构建:tag 推送(v*)或手动触发,出 macOS dmg + Windows NSIS,
+# 上传到同名 tag 的 GitHub Release(须已存在;本仓发布流程 = 先 gh release create 再触发本流水线,
+# 或推 tag 前先建 Release —— 避免 CI 代建 Release 覆盖手写的 release notes)。
 #
-# 真正发布时再启用:
-#   1) 取消下方注释,恢复 on/jobs。
-#   2) 按 docs/RELEASE.md 配置签名 secrets。
-#   3) ⚠️ 没有 Apple / Win 证书前,**移除**对应的 APPLE_*/WINDOWS_* env ——
-#      留空会触发签名流程并失败;tauri-action 不设这些 env 时会出未签名包。
-#
-# (本文件当前全是注释,GitHub 不会触发它。)
-# =============================================================================
-#
-# name: release
-#
-# on:
-#   push:
-#     tags: ['v*']
-#   workflow_dispatch: {}
-#
-# jobs:
-#   build:
-#     name: build (${{ matrix.platform }})
-#     permissions:
-#       contents: write # 创建 Release、上传产物
-#     strategy:
-#       fail-fast: false
-#       matrix:
-#         include:
-#           - platform: macos-latest
-#             args: '--target universal-apple-darwin' # arm64 + x64 通用包
-#           - platform: windows-latest
-#             args: ''
-#     runs-on: ${{ matrix.platform }}
-#     steps:
-#       - uses: actions/checkout@v4
-#
-#       - name: Install Rust (stable)
-#         uses: dtolnay/rust-toolchain@stable
-#         with:
-#           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-#
-#       - name: Rust cache
-#         uses: swatinem/rust-cache@v2
-#         with:
-#           workspaces: './src-tauri -> target'
-#
-#       - name: Build + (sign) + release
-#         uses: tauri-apps/tauri-action@v0
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#
-#           # ── updater 签名(私钥来自本机 tauri signer generate,只存 CI secrets);公钥见 docs/RELEASE.md ──
-#           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-#           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-#
-#           # ── macOS 代码签名 + 公证(仅在证书/账号就绪后才加这些 env)──
-#           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-#           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-#           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-#           APPLE_ID: ${{ secrets.APPLE_ID }}
-#           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }} # app-specific password
-#           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-#
-#           # ── Windows 代码签名(仅在 OV/EV 证书就绪后;见 docs/RELEASE.md 两种接法)──
-#           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-#           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-#         with:
-#           tagName: ${{ github.ref_name }}
-#           releaseName: 'Seeker ${{ github.ref_name }}'
-#           releaseDraft: true
-#           prerelease: false
-#           args: ${{ matrix.args }}
+# ★现阶段刻意「无签名」:不设任何 APPLE_*/WINDOWS_* env(设了空值反而让签名流程失败)。
+#   - macOS:未签名/未公证 ⇒ 用户右键打开(docs/QUICKSTART.md 有说明);拿到 Apple 证书后按
+#     docs/RELEASE.md 配 secrets 并在本文件恢复签名 env。
+#   - Windows:无证书 ⇒ SmartScreen「更多信息 → 仍要运行」;个人证书性价比低,暂不办。
+#   - updater 签名(TAURI_SIGNING_*)留待 updater 上线时按 docs/RELEASE.md 配。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建并上传产物的既有 Release tag(如 v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write # gh release upload
+
+jobs:
+  build:
+    name: build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            bundles: nsis
+            asset_glob: src-tauri/target/release/bundle/nsis/*.exe
+          - platform: macos-latest
+            bundles: dmg
+            asset_glob: src-tauri/target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # 工具链版本 + 组件由 rust-toolchain.toml 固定(rustup 自己读,单一真源;同 ci.yml)。
+      - name: Install Rust (pinned via rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - name: Build bundle (${{ matrix.bundles }}, unsigned)
+        run: npm run tauri -- build --bundles ${{ matrix.bundles }}
+
+      - name: Upload to release ${{ steps.tag.outputs.tag }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.asset_glob }} --clobber

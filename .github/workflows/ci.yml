@@ -18,11 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 工具链版本由 rust-toolchain.toml 固定(防 rustfmt/clippy 漂移);此处装组件。
+      # 工具链版本 + 组件由 rust-toolchain.toml 固定(防 rustfmt/clippy 漂移)。
+      # ★rustup 自己读 toml(单一真源);此前用 dtolnay/rust-toolchain@master 却不传 toolchain
+      #   → action 报「'toolchain' is a required input」全线红(action 不读 toml,是 rustup 读)。
       - name: Install Rust (pinned via rust-toolchain.toml)
-        uses: dtolnay/rust-toolchain@master
-        with:
-          components: rustfmt, clippy
+        run: rustup toolchain install
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
