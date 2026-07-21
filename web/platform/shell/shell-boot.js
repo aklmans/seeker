@@ -76,6 +76,8 @@ function webDemoNote(){
   render();
   // 探针:同 runtime 的探活路径(相对 api/health);成功且未填码 → 升级出「输入访问码」入口。
   try{ fetch('api/health').then(r=>{ if(r&&r.ok){ demoProxyProbe=true; render(); } }).catch(()=>{}); }catch(_e){}
+  // 401 清码回滚:runtime 清掉无效码后广播 → 顶栏从「已接真模型」乐观态退回「输入访问码」入口(不留假状态)。
+  window.addEventListener('seeker-demo-code-cleared', render);
 }
 
 /** 访问码小模态(Web 演示专用):写入 runtime(localStorage),确定后闸门即开(逐次求值,无需刷新)。 */

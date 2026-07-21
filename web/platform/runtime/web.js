@@ -122,7 +122,10 @@ async function demoChat(req, handlers, signal) {
     if (!res.ok || !res.body) {
       let err = 'proxy_' + res.status;
       try { err = (await res.json()).error || err; } catch { /* 保底串 */ }
-      if (res.status === 401) { try { localStorage.removeItem('jh-democode'); } catch { /* ignore */ } }
+      if (res.status === 401) {
+        try { localStorage.removeItem('jh-democode'); } catch { /* ignore */ }
+        try { window.dispatchEvent(new CustomEvent('seeker-demo-code-cleared')); } catch { /* 通知顶栏回滚「已接真模型」乐观态 */ }
+      }
       const msg = res.status === 401 ? '访问码无效,请重新输入(刷新页面后经顶栏提示重填)。'
         : err === 'daily' ? '今天的演示额度用完了,明天再来;想不限量就下载桌面版自带模型 Key。'
         : err === 'rate' ? '说得太快啦,歇几秒再发。'
