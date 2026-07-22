@@ -1,6 +1,6 @@
 # 快速上手 · QUICKSTART
 
-> 给第一次打开「探索者 · Seeker」的你 —— 全程约 5 分钟。
+> 给第一次打开「探索者 · Seeker」的你 —— 全程约 5 分钟。官网:**[seeker.aklman.com](https://seeker.aklman.com/)**
 >
 > **只想先看看?** 打开 **[Web 演示版](https://aklmans.github.io/seeker/)** —— 无需安装,数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。
 

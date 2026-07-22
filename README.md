@@ -34,6 +34,8 @@
 
 ## 快速开始
 
+**🌍 官网**:**[seeker.aklman.com](https://seeker.aklman.com/)**
+
 **🌐 在线体验(免安装)**:**[aklmans.github.io/seeker](https://aklmans.github.io/seeker/)** —— Web 演示版,数据只存你的浏览器;真实 AI / 记忆 / 连接器在桌面端。
 
 **桌面(macOS / Windows)**:从 [Releases](../../releases) 下载 `.dmg` / `-setup.exe` 安装。首次打开的系统提示(macOS 右键打开 / Windows SmartScreen「仍要运行」)见 [QUICKSTART](docs/QUICKSTART.md)。
@@ -72,4 +74,4 @@ src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP ·
 
 ## License
 
-[MIT](LICENSE) © 2026 zhapar
+[MIT](LICENSE) © 2026 Zhaphar
