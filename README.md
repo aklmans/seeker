@@ -72,6 +72,16 @@ src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP ·
 
 试用中的任何感受都欢迎 —— 尤其是「哪里卡住了」「哪里没想明白」。请开 [Issue](../../issues) 或按 [FEEDBACK 模板](docs/FEEDBACK.md) 留言。
 
+## 联系作者
+
+| | |
+|---|---|
+| **X / Twitter** | [@ak_zhaphar](https://x.com/ak_zhaphar) |
+| **Email** | hi@zhaphar.com |
+| **微信** | 扫下方二维码 |
+
+<img src="web/contact.jpg" alt="微信二维码 · Zhaphar" width="180">
+
 ## License
 
 [MIT](LICENSE) © 2026 Zhaphar
