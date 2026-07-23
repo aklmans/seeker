@@ -940,6 +940,8 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
   .overlay{padding:14px 10px;}
   .modal{max-width:100%; max-height:calc(100dvh - 28px); overflow-y:auto;}
   .content table, .acv-body table{display:block; max-width:100%; overflow-x:auto; white-space:nowrap;} /* 宽表格自身横滚,页面不横滚 */
+  /* 岗位分析:两处内联双列(城市/类型分布 + 趋势/薪资)手机上塌单列 —— 全站唯一的页面级横向溢出实测元凶(524px) */
+  #page-analysis [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important; row-gap:26px !important;}
   .demo-note{white-space:normal !important; font-size:11px !important; max-width:94vw !important; border-radius:12px !important; line-height:1.55 !important; top:52px !important;} /* 顶栏之下,不压面包屑/CTA */
 }
 </style>
