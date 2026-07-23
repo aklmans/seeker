@@ -938,7 +938,13 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
   #agentProject{max-width:112px !important;}
   .cop-input textarea, input.input, textarea.input, select.input{font-size:16px !important;} /* iOS 聚焦防自动放大;!important 压过 mdField 等内联字号 */
   .overlay{padding:14px 10px;}
-  .modal{max-width:100%; max-height:calc(100dvh - 28px); overflow-y:auto;}
+  /* ★flex min-width:auto 命门:#modalHost 会被内容 min-content 顶穿(应用管理实测 711px 双侧越界)——
+     min-width:0 允许收缩,modal 才真正被视口钳住;行内容改 wrap 消化。 */
+  #modalHost{max-width:100%; min-width:0;}
+  .modal{max-width:100%; min-width:0; max-height:calc(100dvh - 28px); overflow-y:auto;}
+  .appmgr-row{flex-wrap:wrap;}
+  .appmgr-meta{min-width:calc(100% - 150px);} /* 与序号/图标同行占满余宽(min-width:0 会被挤成竖排字 —— 可收缩项永不触发 wrap) */
+  .appmgr-ctrls{width:100%; justify-content:flex-end; margin-left:0;} /* 控制钮独占第二行,右对齐 */
   .content table, .acv-body table{display:block; max-width:100%; overflow-x:auto; white-space:nowrap;} /* 宽表格自身横滚,页面不横滚 */
   /* 岗位分析:两处内联双列(城市/类型分布 + 趋势/薪资)手机上塌单列 —— 全站唯一的页面级横向溢出实测元凶(524px) */
   #page-analysis [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important; row-gap:26px !important;}
