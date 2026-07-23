@@ -64,11 +64,15 @@ function webDemoNote(){
   if(/** @type {any} */ (globalThis).__TAURI__) return;               // 桌面端不出现
   try{ if(localStorage.getItem('jh-demonote')==='off') return; }catch(_e){}
   const n=document.createElement('div');
-  n.className='demo-note'; // 移动端媒体查询靠此类覆盖(换行/字号/圆角,见 index.html 移动块)
-  // 顶栏中央空档(面包屑与页首 CTA 之间)—— 固定 bottom 会压住 Agent 输入框(截图实测),故置顶。
-  n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);border-radius:99px;font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,680px);line-height:1.6;white-space:nowrap;';
+  n.className='demo-note'; // 移动端媒体查询靠此类覆盖(换行/贴条形态,见 index.html 移动块)
+  // 顶栏中央空档(面包屑与页首 CTA 之间);形态守设计语言:0.5px 直角条 + 暖橙标点,不用胶囊。
+  n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,680px);line-height:1.6;white-space:nowrap;';
   const zh=(setState.lang||'zh')!=='en';
   const link='<a href="https://github.com/aklmans/seeker/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;border-bottom:0.5px solid var(--accent-soft);white-space:nowrap;">'+(zh?'下载桌面版':'Download')+'</a>';
+  const dot=document.createElement('span');
+  dot.textContent='●';
+  dot.style.cssText='color:var(--accent);font-size:8px;flex:none;';
+  n.appendChild(dot);
   const body=document.createElement('span');
   n.appendChild(body);
   const x=document.createElement('button');

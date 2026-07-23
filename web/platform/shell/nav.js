@@ -75,7 +75,7 @@ export function toggleTheme(){
   const tb2=$('#themeBtn2'); if(tb2) tb2.innerHTML=next==='dark'?IC.sun:IC.moon;
 }
 (function initTheme(){
-  let t='light'; try{t=localStorage.getItem('jh-theme')||'light';}catch(e){}
+  let t='dark'; try{t=localStorage.getItem('jh-theme')||'dark';}catch(e){} // 缺省深色(与 index.html 早期内联一致);手动选过的优先
   document.documentElement.dataset.theme=t;
 })();
 
