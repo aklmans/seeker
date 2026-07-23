@@ -5,6 +5,7 @@
 import { $, $$ } from './dom.js';
 import { tt } from './i18n.js';
 import { frontis, signFoot } from './nav.js';
+import { setState } from './shell-state.js'; // 微信二维码仅中文界面显示(英文访客用不上;setLang→rerenderPages 会重跑本渲染)
 import { toast } from './toast.js';
 
 const REPO = 'https://github.com/aklmans/seeker';
@@ -66,10 +67,10 @@ export function renderAbout() {
     <div class="sec" style="border-bottom:none;">
       <p class="seclabel">— ${tt('联系作者', 'CONTACT')}</p>
       <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin-top:12px;">
-        <figure style="margin:0;text-align:center;">
-          <img src="contact.jpg" alt="${tt('微信二维码 · Zhaphar', 'WeChat QR · Zhaphar')}" style="width:148px;max-width:40vw;border:0.5px solid var(--border-strong);border-radius:6px;display:block;">
-          <figcaption class="mono" style="font-size:10px;color:var(--ink-3);margin-top:6px;letter-spacing:0.06em;">${tt('微信扫码加我', 'WECHAT')}</figcaption>
-        </figure>
+        ${setState.lang !== 'en' ? `<figure style="margin:0;text-align:center;">
+          <img src="contact.jpg" alt="微信二维码 · Zhaphar" style="width:148px;max-width:40vw;padding:8px;background:#fff;border:0.5px solid var(--border-strong);border-radius:6px;display:block;box-sizing:border-box;">
+          <figcaption class="mono" style="font-size:10px;color:var(--ink-3);margin-top:6px;letter-spacing:0.06em;">微信扫码加我</figcaption>
+        </figure>` : ''}
         <div style="display:flex;flex-direction:column;gap:9px;min-width:220px;">
           <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-size:10px;color:var(--ink-3);width:52px;letter-spacing:0.06em;">X</span><button class="btn" data-extlink="https://x.com/ak_zhaphar" style="padding:5px 12px;">@ak_zhaphar</button></div>
           <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-size:10px;color:var(--ink-3);width:52px;letter-spacing:0.06em;">GITHUB</span><button class="btn" data-extlink="${REPO}" style="padding:5px 12px;">aklmans/seeker</button></div>
