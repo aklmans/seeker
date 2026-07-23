@@ -5,6 +5,7 @@
 import { $, $$ } from './dom.js';
 import { tt } from './i18n.js';
 import { frontis, signFoot } from './nav.js';
+import { maybeShowOnboarding } from './onboarding.js'; // 「重看新手引导」入口
 import { setState } from './shell-state.js'; // 微信二维码仅中文界面显示(英文访客用不上;setLang→rerenderPages 会重跑本渲染)
 import { toast } from './toast.js';
 
@@ -63,6 +64,7 @@ export function renderAbout() {
         'Tauri 2(Rust 内核 + 系统 WebView),前端原生 HTML/CSS/JS、零框架,安装包约 7MB。开源(MIT),由一名开发者与 AI 结对完成 —— 全程一百余轮独立评审,每条安全红线都有测试钉着。当前 v0.1,正在收集第一批真实反馈,用得顺手或别扭都欢迎告诉我。',
         'Tauri 2 (Rust core + system WebView), vanilla HTML/CSS/JS with zero frameworks, ~7MB installer. Open source (MIT), built by one developer pairing with AI — 100+ independent review rounds, every security red line pinned by tests. Now at v0.1, collecting its first real feedback — rough edges welcome.'
       )}</p>
+      <button class="btn-text" id="aboutReplay" style="margin-top:10px;">${tt('重看新手引导 →', 'Replay the welcome tour →')}</button>
     </div>
     <div class="sec" style="border-bottom:none;">
       <p class="seclabel">— ${tt('联系作者', 'CONTACT')}</p>
@@ -86,6 +88,8 @@ export function renderAbout() {
       catch (_e) { toast(tt('打开失败', 'Could not open')); }
     };
   });
+  const replay = $('#aboutReplay');
+  if (replay) /** @type {HTMLElement} */ (replay).onclick = () => maybeShowOnboarding(true);
   // 邮箱:点击复制(mailto 刻意不走 —— open_external 的 scheme 闸只放 http/https,不为便利开闸)。
   const mail = $('#aboutMail');
   if (mail) /** @type {HTMLElement} */ (mail).onclick = async () => {

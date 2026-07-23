@@ -4,6 +4,7 @@
 import { agentCollapse } from './copilot-chrome.js'; // 移动端 AGENT 浮球:分屏一键回居中对话(≤768px 才可见)
 import { $ } from './dom.js';
 import { openModal, closeModal } from './modal.js'; // Web 演示访问码小模态(桌面路径不触达)
+import { maybeShowOnboarding } from './onboarding.js'; // 首次引导欢迎卡(全端;看过永不再弹)
 import { setLang } from './nav.js';
 import { startScheduler } from './scheduler.js'; // ★Scheduled SC1:壳级分钟 tick(仅 app 开着时;fire 经 runSkill 红线全继承)
 import { toggleSidebar } from './shell-keys.js';
@@ -35,6 +36,7 @@ export function initShell(){
   setLang(setState.lang);
   webDemoNote(); // Web 演示版标注(桌面端无此条)
   mobileNavInit(); // 移动端抽屉/浮球接线(桌面上这些元素 display:none,onclick 挂着也永不触达)
+  maybeShowOnboarding(); // 首次引导(全端;localStorage 记忆,永不重复打扰)
 }
 
 /* ---- 移动端(≤768px)导航抽屉 + AGENT 返回浮球 ----
