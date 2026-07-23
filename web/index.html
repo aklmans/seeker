@@ -912,6 +912,36 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
 .ks-row:last-child{border-bottom:none;}
 .ks-lb{font-size:13.5px; color:var(--ink-2);}
 .kbd{font-family:var(--font-mono); font-size:11px; color:var(--ink); background:var(--bg-subtle); border:0.5px solid var(--border-strong); border-radius:3px; padding:3px 8px; white-space:nowrap; letter-spacing:0.04em;}
+/* ===== 移动端响应式(≤768px)—— 侧栏抽屉 · 分屏改「画布全屏 + AGENT 浮球返回」 · 触控适配 =====
+   桌面零影响:新增元素默认 display:none,规则全部收在媒体查询内。 */
+.m-scrim{display:none;}
+#mnavBtn{display:none;}
+#mAgentBack{display:none; position:fixed; right:14px; bottom:18px; z-index:90; border:0.5px solid var(--accent); background:var(--bg-elevated); color:var(--accent); font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; padding:9px 14px; border-radius:99px; box-shadow:0 6px 20px rgba(20,18,15,0.16); cursor:pointer; align-items:center; gap:6px;}
+@supports (height:100dvh){ .app{height:100dvh;} } /* 移动浏览器地址栏伸缩下的真视口高 */
+@media (max-width:768px){
+  /* 侧栏 → 覆盖式抽屉(压过桌面 collapsed/rail 机制;宽度钉死,拖拽柄隐藏) */
+  .sidebar{position:fixed; left:0; top:0; bottom:0; z-index:120; width:min(78vw,300px) !important; flex:none !important; transform:translateX(-102%); transition:transform 200ms ease; box-shadow:8px 0 30px rgba(20,18,15,0.18); display:flex !important;}
+  body[data-mnav="open"] .sidebar{transform:translateX(0);}
+  body[data-mnav="open"] .m-scrim{display:block; position:fixed; inset:0; z-index:110; background:rgba(20,18,15,0.35);}
+  .sb-collapse,.sb-resize,.sb-expand{display:none !important;}
+  #mnavBtn{display:inline-flex; align-items:center; justify-content:center; border:0.5px solid var(--border-strong); background:transparent; color:var(--ink-2); font-size:15px; line-height:1; padding:5px 10px; cursor:pointer; margin-right:10px; flex:none;}
+  /* 分屏:手机上画布/页面全屏,对话经右下 AGENT 浮球一键返回 */
+  body[data-appmode="agent"][data-agent="split"] .agent-chat{display:none !important;}
+  .agent-resize{display:none !important;}
+  body[data-appmode="agent"][data-agent="split"] #mAgentBack{display:inline-flex;}
+  /* 触控与排版 */
+  .content{padding:0 14px 20px;}
+  .topbar{padding:10px 14px;}
+  .crumb{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  .agent-cmds{padding:8px 12px;}
+  .ac-chip{font-size:11.5px; padding:5px 9px;}
+  #agentProject{max-width:112px !important;}
+  .cop-input textarea, input.input, textarea.input, select.input{font-size:16px !important;} /* iOS 聚焦防自动放大;!important 压过 mdField 等内联字号 */
+  .overlay{padding:14px 10px;}
+  .modal{max-width:100%; max-height:calc(100dvh - 28px); overflow-y:auto;}
+  .content table, .acv-body table{display:block; max-width:100%; overflow-x:auto; white-space:nowrap;} /* 宽表格自身横滚,页面不横滚 */
+  .demo-note{white-space:normal !important; font-size:11px !important; max-width:94vw !important; border-radius:12px !important; line-height:1.55 !important; top:52px !important;} /* 顶栏之下,不压面包屑/CTA */
+}
 </style>
 <!-- 应用内快捷键(A 层 · 集中模块,业务无关);IIFE 自挂 window.SeekerKeys,消费者(initKeys)全 runtime -->
 <script type="module" src="./platform/keys/keys.js"></script>
@@ -966,6 +996,7 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
   </aside>
   <div class="main">
     <header class="topbar">
+      <button id="mnavBtn" title="菜单" aria-label="打开导航">☰</button>
       <button class="sb-expand" id="sbExpand" title="展开侧栏">»</button>
       <div class="crumb" id="crumb">总览</div>
       <div class="topbar-actions" id="topActions"></div>
@@ -987,6 +1018,8 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
     </div>
   </div>
 </div>
+<div class="m-scrim" id="mScrim"></div>
+<button id="mAgentBack" aria-label="返回 Agent 对话"><span style="color:var(--accent);">●</span> AGENT</button>
 <div class="overlay" id="overlay"><div id="modalHost"></div></div>
 <!-- ★AI-Native 收敛(Cut 1b):Copilot 浮窗(cop-launch 启动器 + cop-panel 面板)删除 —— Agent 窗口是唯一 AI 面,⌘K 聚焦 Agent 输入。发送/历史/招呼语已收敛到 agent(agentSend/agentMsgs/agentGreet)。 -->
 <div class="toast-wrap" id="toasts"></div>

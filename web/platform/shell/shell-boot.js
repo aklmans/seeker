@@ -1,6 +1,7 @@
 // @ts-nocheck —— 3.y 步3 中层:壳启动 initShell classic 全局 → ES module(export)+ 过渡 window 桥。逻辑逐字节。
 /** 平台 · 壳启动 initShell:拖放守卫 + 侧栏/Agent 栏宽度恢复 + 语言恢复 + hydrateSettings + 侧栏收展/拖拽接线 + setLang。
  *  依赖 $/setLang(平台)+ setState/hydrateSettings/toggleSidebar(过渡 classic 全局,经全局词法/window);INIT-module 运行时调 initShell()。 */
+import { agentCollapse } from './copilot-chrome.js'; // 移动端 AGENT 浮球:分屏一键回居中对话(≤768px 才可见)
 import { $ } from './dom.js';
 import { openModal, closeModal } from './modal.js'; // Web 演示访问码小模态(桌面路径不触达)
 import { setLang } from './nav.js';
@@ -33,6 +34,24 @@ export function initShell(){
   };
   setLang(setState.lang);
   webDemoNote(); // Web 演示版标注(桌面端无此条)
+  mobileNavInit(); // 移动端抽屉/浮球接线(桌面上这些元素 display:none,onclick 挂着也永不触达)
+}
+
+/* ---- 移动端(≤768px)导航抽屉 + AGENT 返回浮球 ----
+   纯接线:显隐全由 CSS 媒体查询管;此处只翻 body[data-mnav] 状态与转发 agentCollapse。
+   抽屉内任何按钮点击(导航/应用管理/主题/语言)即收抽屉 —— 单手动线,免二次关闭。 */
+function mobileNavInit(){
+  const mnav=$('#mnavBtn');
+  if(mnav) /** @type {HTMLElement} */ (mnav).onclick=()=>{ document.body.dataset.mnav = document.body.dataset.mnav==='open' ? '' : 'open'; };
+  const scrim=$('#mScrim');
+  if(scrim) /** @type {HTMLElement} */ (scrim).onclick=()=>{ document.body.dataset.mnav=''; };
+  const sb=$('#sidebar');
+  if(sb) sb.addEventListener('click',(e)=>{
+    const t=/** @type {HTMLElement|null} */ (e.target instanceof HTMLElement ? e.target : null);
+    if(t && t.closest('button') && window.matchMedia('(max-width:768px)').matches) document.body.dataset.mnav='';
+  });
+  const mab=$('#mAgentBack');
+  if(mab) /** @type {HTMLElement} */ (mab).onclick=()=>{ document.body.dataset.mnav=''; agentCollapse(); };
 }
 
 /* ---- Web 演示版标注 ----
@@ -43,6 +62,7 @@ function webDemoNote(){
   if(/** @type {any} */ (globalThis).__TAURI__) return;               // 桌面端不出现
   try{ if(localStorage.getItem('jh-demonote')==='off') return; }catch(_e){}
   const n=document.createElement('div');
+  n.className='demo-note'; // 移动端媒体查询靠此类覆盖(换行/字号/圆角,见 index.html 移动块)
   // 顶栏中央空档(面包屑与页首 CTA 之间)—— 固定 bottom 会压住 Agent 输入框(截图实测),故置顶。
   n.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--bg-elevated);border:0.5px solid var(--border-strong);border-radius:99px;font-size:12px;color:var(--ink-2);box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:min(86vw,680px);line-height:1.6;white-space:nowrap;';
   const zh=(setState.lang||'zh')!=='en';
