@@ -16,9 +16,46 @@ import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
 import { mdField, wireMdField, mdRender } from '../../../platform/shell/md-edit.js'; // Markdown 编辑/展示(共享)
 import { saveSkill, listSkills, hydrateSkills } from '../../../platform/shell/skill-store.js'; // ★S3:prompts → 平台 Skills 迁移(app→platform API,同 notes→rt.docs)
+import { agentSend } from '../../../platform/shell/copilot-chrome.js'; // ★AI-Native:试跑 = 填变量后直接发给 Agent(标准用户消息路径,红线全继承)
+import { aiEnrichAvailable, enrichPromptText, promptVars } from '../enrich.js'; // ★AI-Native:保存后自动充实标签/摘要(桌面);{{变量}} 本地检测
 
-/** @type {Array<{id:string, title:string, text:string, updated:number, skillId?:string}>} skillId=已迁入的 Skill id(幂等键,同 notes 的 docId) */
+/** @type {Array<{id:string, title:string, text:string, updated:number, skillId?:string, tags?:string[], summary?:string, uses?:number, ai?:boolean}>}
+ *  skillId=已迁入的 Skill id(幂等键);tags/summary=AI 整理(可缺);uses=复制/试跑次数;ai=已整理。弹性 schema,无迁移。 */
 const ASSETS_PROMPTS = [];
+
+/** 列表过滤态。 */
+const promptFilter = { q: '', tag: '' };
+
+/** AI 整理一条 Prompt(fire-and-forget,失败静默)。 @param {(typeof ASSETS_PROMPTS)[number]} p */
+async function enrichPromptAndSave(p) {
+  const r = await enrichPromptText(p.title, p.text);
+  if (!r) return;
+  p.tags = r.tags; p.summary = r.summary; p.ai = true;
+  persistPrompts();
+  if (currentPage() === 'prompts') renderPrompts();
+}
+
+/** 记一次使用(复制/试跑)。 @param {(typeof ASSETS_PROMPTS)[number]} p */
+function bumpUses(p) { p.uses = (p.uses || 0) + 1; persistPrompts(); if (currentPage() === 'prompts') renderPrompts(); }
+
+/** {{变量}} 填充:有变量弹填表(值 → 替换),无变量直通。 @param {(typeof ASSETS_PROMPTS)[number]} p @param {(filled: string) => void} onDone */
+function fillVarsThen(p, onDone) {
+  const vars = promptVars(p.text);
+  if (!vars.length) { onDone(p.text); return; }
+  const m = openModal(`<div class="modal-head"><div><p class="eyebrow">— VARIABLES</p><h2 style="margin-top:5px;">${tt('填入变量', 'Fill variables')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body">
+      ${vars.map((v, i) => `<div class="set-row" style="${i ? 'margin-top:10px;' : ''}"><span class="sk mono" style="font-size:10.5px;">{{${apEsc(v)}}}</span><input class="input" data-apvar="${apEsc(v)}" placeholder="${apEsc(v)}"></div>`).join('')}
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="apVarGo">${tt('确定', 'Go')}</button></div>`);
+  const go = m && m.querySelector('#apVarGo');
+  if (go) /** @type {HTMLElement} */ (go).onclick = () => {
+    /** @type {Record<string,string>} */ const vals = {};
+    (m ? [...m.querySelectorAll('[data-apvar]')] : []).forEach((el) => { vals[/** @type {HTMLElement} */ (el).dataset.apvar || ''] = /** @type {HTMLInputElement} */ (el).value; });
+    const filled = p.text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (mm, name) => (vals[name] !== undefined && vals[name] !== '' ? vals[name] : mm));
+    closeModal();
+    onDone(filled);
+  };
+}
 
 // ★S3 迁移状态(自愈,同 notes 的 LIVE_DOC_IDS):当前平台 Skills 里实际存在的 id 集 + 状态是否已知。
 /** @type {Set<string>} */
@@ -43,21 +80,46 @@ function persistPrompts(){ persistColl('assets_prompts', ASSETS_PROMPTS); }
 export async function renderPrompts(){
   const host=$('#page-prompts'); if(!host) return;
   await refreshMigratedSkills();                       // 自愈:看当前平台 Skills 实际有哪些(重渲即对齐)
-  const rows=ASSETS_PROMPTS.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
+  const all=ASSETS_PROMPTS.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
+  /** @type {Map<string,number>} */ const tagFreq=new Map();
+  all.forEach(p=>(p.tags||[]).forEach(t=>tagFreq.set(t,(tagFreq.get(t)||0)+1)));
+  const topTags=[...tagFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([t])=>t);
+  const q=promptFilter.q.trim().toLowerCase();
+  const rows=all.filter(p=>{
+    if(promptFilter.tag && !(p.tags||[]).includes(promptFilter.tag)) return false;
+    if(q && !((p.title||'')+' '+p.text+' '+(p.tags||[]).join(' ')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const toolbar=(all.length>=3||q||promptFilter.tag)
+    ? `<div class="sec" style="border-bottom:none;padding:2px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input class="input" id="apQ" value="${apEsc(promptFilter.q)}" placeholder="${tt('搜标题 / 内容 / 标签…','Search title / text / tags…')}" style="max-width:240px;padding:6px 10px;font-size:12.5px;">
+        ${topTags.map(t=>`<button class="mono" data-aptag="${apEsc(t)}" style="font-size:10px;letter-spacing:0.05em;padding:3px 9px;border:0.5px solid ${promptFilter.tag===t?'var(--accent)':'var(--border)'};color:${promptFilter.tag===t?'var(--accent)':'var(--ink-3)'};background:${promptFilter.tag===t?'var(--accent-soft)':'transparent'};cursor:pointer;border-radius:99px;">#${apEsc(t)}</button>`).join('')}
+        ${(q||promptFilter.tag)?`<button class="btn-text" id="apClr" style="font-size:11px;">${tt('清除筛选','Clear')}</button>`:''}
+       </div>`
+    : '';
   const list=rows.length
-    ? rows.map(p=>`<div class="sec" style="padding:16px 0;">
-        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+    ? rows.map(p=>{ const vars=promptVars(p.text); return `<div class="sec" style="padding:16px 0;">
+        <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;">
           <h3 style="font-size:15px;color:var(--ink);margin:0;font-weight:600;">${apEsc(p.title)||tt('(未命名)','(untitled)')}</h3>
-          <span class="mono" style="font-size:10.5px;color:var(--ink-3);">${new Date(p.updated||0).toLocaleDateString()}</span>
+          ${p.ai?`<span title="${tt('AI 已整理','Organized by AI')}" style="color:var(--accent);font-size:11px;flex:none;">✦</span>`:''}
+          ${vars.map(v=>`<span class="mono" style="font-size:9.5px;color:var(--accent);border:0.5px solid var(--accent-soft);padding:2px 7px;border-radius:99px;">{{${apEsc(v)}}}</span>`).join('')}
+          <span class="mono" style="font-size:10px;color:var(--ink-3);">${new Date(p.updated||0).toLocaleDateString()}</span>
+          ${(p.uses||0)>0?`<span class="mono" style="font-size:10px;color:var(--ink-3);">${tt('用过 ','used ')}${p.uses}${tt(' 次','×')}</span>`:''}
           ${promptMigrated(p)?`<span class="mono" style="font-size:9.5px;color:var(--status-done,#5a8);">${tt('已迁入 Skills','In Skills')}</span>`:''}
           <span style="flex:1;"></span>
+          <button class="btn btn-accent" data-aprun="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('试跑','Run')}</button>
           <button class="btn" data-apcopy="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('复制','Copy')}</button>
+          ${(!p.ai&&aiEnrichAvailable())?`<button class="btn" data-apai="${apEsc(p.id)}" style="padding:3px 10px;font-size:11px;">✦ ${tt('整理','Organize')}</button>`:''}
           <button class="btn" data-apedit="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
           <button class="btn" data-apdel="${apEsc(p.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('删除','Delete')}</button>
         </div>
+        ${(p.tags&&p.tags.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">${p.tags.map(t=>`<button class="mono" data-aptag="${apEsc(t)}" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);background:transparent;padding:2px 8px;cursor:pointer;border-radius:99px;">#${apEsc(t)}</button>`).join('')}</div>`:''}
+        ${p.summary?`<p style="font-size:12px;color:var(--ink-3);line-height:1.7;margin:7px 0 0;">${apEsc(p.summary)}</p>`:''}
         <div class="md-body" style="margin-top:10px;padding:12px 14px;background:var(--bg-subtle);border:0.5px solid var(--border);max-height:240px;overflow:hidden;">${mdRender(p.text)}</div>
-      </div>`).join('')
-    : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有 Prompt。把你反复使用的提示词沉淀在这里 —— 本地保存,可随时复制取用;授权后 AI 也能检索引用。','No prompts yet. Curate the prompts you reuse — stored locally, one-click copy; with your grant the AI can reference them too.')}</p></div>`;
+      </div>`; }).join('')
+    : (all.length
+        ? `<div class="sec" style="border-bottom:none;"><p style="font-size:12.5px;color:var(--ink-3);">${tt('没有匹配的 Prompt。','No matching prompts.')}</p></div>`
+        : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有 Prompt。沉淀你反复使用的提示词 —— 支持 {{变量}} 占位(复制/试跑时填入);保存后 AI 会自动打标签写摘要(桌面版);一键「试跑」直接发给 Agent。','No prompts yet. Curate the prompts you reuse — {{variable}} placeholders fill on copy/run; on desktop the AI auto-tags and summarizes; one-click Run sends it to the Agent.')}</p></div>`);
   // ★S3 迁入 Skills:待迁数 = 未迁入的 prompt。状态未知(读 Skills 失败)⇒ 禁用 + 提示(免造重复,同 notes 第67轮)。
   const pending=ASSETS_PROMPTS.filter(p=>!promptMigrated(p));
   const migrateBtn = !skillsStatusKnown
@@ -70,12 +132,34 @@ export async function renderPrompts(){
   host.innerHTML=frontis('PROMPTS', tt('Prompt 库','Prompt Library'))
     +retireNote
     +`<div class="sec" style="border-bottom:none;padding-bottom:6px;"><button class="btn btn-accent" id="apAdd">${tt('+ 新建 Prompt','+ New prompt')}</button>${migrateBtn}</div>`
+    +toolbar
     +list+signFoot();
   const add=$('#apAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openPromptModal('');
   { const mig=$('#apToSkills'); if(mig && !(/** @type {HTMLButtonElement} */(mig).disabled)) /** @type {HTMLElement} */(mig).onclick=()=>openMigrateSkillsModal(); }
+  // 筛选接线(同 notes:搜索重渲后复焦;标签可反选,卡片标签与工具栏共用委派)。
+  const qi=/** @type {HTMLInputElement|null} */($('#apQ'));
+  if(qi) qi.oninput=()=>{ promptFilter.q=qi.value; renderPrompts().then(()=>{ const q2=/** @type {HTMLInputElement|null} */($('#apQ')); if(q2){ q2.focus(); q2.setSelectionRange(q2.value.length,q2.value.length); } }); };
+  $$('#page-prompts [data-aptag]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{ const v=/** @type {HTMLElement} */(b).dataset.aptag||''; promptFilter.tag=(promptFilter.tag===v?'':v); renderPrompts(); }; });
+  const clr=$('#apClr'); if(clr) /** @type {HTMLElement} */(clr).onclick=()=>{ promptFilter.q=''; promptFilter.tag=''; renderPrompts(); };
+  // 试跑:填变量 → 发给 Agent(标准 agentSend 路径)→ 记一次使用。
+  $$('#page-prompts [data-aprun]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
+    const p=ASSETS_PROMPTS.find(x=>x.id===/** @type {HTMLElement} */(b).dataset.aprun); if(!p) return;
+    fillVarsThen(p,(filled)=>{ bumpUses(p); agentSend(filled); toast(tt('已发给 Agent','Sent to the Agent')); }); // 先记使用再发送:试跑意图已发生,发送侧异常不吞计数
+  };});
+  // 复制:填变量 → 剪贴板 → 记一次使用。
   $$('#page-prompts [data-apcopy]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
     const p=ASSETS_PROMPTS.find(x=>x.id===/** @type {HTMLElement} */(b).dataset.apcopy); if(!p) return;
-    try{ navigator.clipboard.writeText(p.text); toast(tt('已复制','Copied')); }catch(_e){ toast(tt('复制失败','Copy failed')); }
+    fillVarsThen(p,(filled)=>{
+      try{ navigator.clipboard.writeText(filled); toast(tt('已复制','Copied')); bumpUses(p); }
+      catch(_e){ toast(tt('复制失败','Copy failed')); }
+    });
+  };});
+  // 手动整理(未整理 && 桌面)。
+  $$('#page-prompts [data-apai]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=async ()=>{
+    const p=ASSETS_PROMPTS.find(x=>x.id===/** @type {HTMLElement} */(b).dataset.apai); if(!p) return;
+    /** @type {HTMLButtonElement} */(b).disabled=true; b.textContent=tt('整理中…','Organizing…');
+    await enrichPromptAndSave(p);
+    if(!p.ai){ toast(tt('整理失败(检查模型配置)','Organize failed — check model config')); renderPrompts(); }
   };});
   $$('#page-prompts [data-apedit]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>openPromptModal(/** @type {HTMLElement} */(b).dataset.apedit||''); });
   $$('#page-prompts [data-apdel]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
@@ -101,9 +185,11 @@ function openPromptModal(id){
     const title=(/** @type {HTMLInputElement|null} */($('#apTitle'))||{value:''}).value.trim();
     const text=(/** @type {HTMLTextAreaElement|null} */($('#apText'))||{value:''}).value;
     if(!title && !text.trim()){ toast(tt('写点内容再保存','Add some content first')); return; }
-    if(p){ p.title=title; p.text=text; p.updated=Date.now(); }
-    else ASSETS_PROMPTS.push({ id:'ap_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, text, updated:Date.now() });
+    /** @type {(typeof ASSETS_PROMPTS)[number]} */ let rec;
+    if(p){ p.title=title; p.text=text; p.updated=Date.now(); p.ai=false; rec=p; }   // 内容变了 → 旧维度作废,重整理
+    else { rec={ id:'ap_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, text, updated:Date.now() }; ASSETS_PROMPTS.push(rec); }
     persistPrompts(); closeModal(); renderPrompts(); toast(tt('已保存','Saved'));
+    enrichPromptAndSave(rec); // ★AI-Native:保存即整理(桌面异步充实标签/摘要;web 静默跳过)
   };
 }
 

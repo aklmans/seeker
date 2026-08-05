@@ -26,9 +26,31 @@ import { openModal, closeModal } from '../../../platform/shell/modal.js';
 import { persistColl, collPersistOn, hydrateColl } from '../../../platform/shell/data-store.js';
 import { currentPage, frontis, signFoot } from '../../../platform/shell/nav.js';
 import { mdField, wireMdField, mdRender } from '../../../platform/shell/md-edit.js'; // Markdown 编辑/展示(共享)
+import { aiEnrichAvailable, enrichNoteText, NOTE_KINDS } from '../enrich.js'; // ★AI-Native:保存后自动充实维度(桌面);web 静默降级
 
-/** @type {Array<{id:string, text:string, updated:number, docId?:string}>} */
+/** @type {Array<{id:string, text:string, updated:number, docId?:string, title?:string, kind?:string, tags?:string[], summary?:string, ai?:boolean}>}
+ *  title/kind/tags/summary = AI 整理产物(可缺;缺时 UI 用首行兜底);ai=true 表示已整理。弹性 schema,无迁移。 */
 const ASSETS_NOTES = [];
+
+/** 列表过滤态(模块本地;搜索词 + 类型 + 标签)。 */
+const noteFilter = { q: '', kind: '', tag: '' };
+
+/** 展示标题:AI 标题 → 首行截断 → 时间戳兜底。 @param {{title?:string, text:string, updated:number}} n */
+function noteTitle(n) {
+  if (n.title) return n.title;
+  const first = String(n.text || '').split('\n')[0].replace(/^#+\s*/, '').trim();
+  return first ? first.slice(0, 24) : new Date(n.updated || 0).toLocaleDateString();
+}
+
+/** AI 整理一条笔记(fire-and-forget;成功即落库重渲,失败静默 —— 手动内容不因 AI 缺席而降级)。
+ *  @param {(typeof ASSETS_NOTES)[number]} n */
+async function enrichAndSave(n) {
+  const r = await enrichNoteText(n.text);
+  if (!r) return;
+  n.title = r.title || n.title; n.kind = r.kind; n.tags = r.tags; n.summary = r.summary; n.ai = true;
+  persistNotes();
+  if (currentPage() === 'notes') renderNotes();
+}
 
 /** 本次渲染时,知识库里实际存在的 docId 集合 —— 用它判断一条笔记「是否真的还在知识库里」,
  *  而不是只看本地的 `docId` 字段(用户可能已在能力中心把那篇文档删了)。**自愈,不留悬挂引用。** */
@@ -56,19 +78,50 @@ function persistNotes(){ persistColl('assets_notes', ASSETS_NOTES); }
 
 export function renderNotes(){
   const host=$('#page-notes'); if(!host) return;
-  const rows=ASSETS_NOTES.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
+  const all=ASSETS_NOTES.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
+  // 聚合可用维度(标签按频次取前 10;类型只列实际出现的)
+  /** @type {Map<string,number>} */ const tagFreq=new Map();
+  all.forEach(n=>(n.tags||[]).forEach(t=>tagFreq.set(t,(tagFreq.get(t)||0)+1)));
+  const topTags=[...tagFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([t])=>t);
+  const kindsPresent=NOTE_KINDS.filter(k=>all.some(n=>n.kind===k));
+  // 过滤:搜索词命中 标题/正文/标签;类型与标签单选
+  const q=noteFilter.q.trim().toLowerCase();
+  const rows=all.filter(n=>{
+    if(noteFilter.kind && n.kind!==noteFilter.kind) return false;
+    if(noteFilter.tag && !(n.tags||[]).includes(noteFilter.tag)) return false;
+    if(q && !(noteTitle(n)+' '+n.text+' '+(n.tags||[]).join(' ')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const chip=(/** @type {string} */label, /** @type {string} */attr, /** @type {string} */val, /** @type {boolean} */on)=>
+    `<button class="mono" data-${attr}="${anEsc(val)}" style="font-size:10px;letter-spacing:0.05em;padding:3px 9px;border:0.5px solid ${on?'var(--accent)':'var(--border)'};color:${on?'var(--accent)':'var(--ink-3)'};background:${on?'var(--accent-soft)':'transparent'};cursor:pointer;border-radius:99px;">${anEsc(label)}</button>`;
+  const toolbar=(all.length>=3||q||noteFilter.kind||noteFilter.tag)
+    ? `<div class="sec" style="border-bottom:none;padding:2px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input class="input" id="anQ" value="${anEsc(noteFilter.q)}" placeholder="${tt('搜标题 / 内容 / 标签…','Search title / text / tags…')}" style="max-width:240px;padding:6px 10px;font-size:12.5px;">
+        ${kindsPresent.map(k=>chip(k,'ankind',k,noteFilter.kind===k)).join('')}
+        ${topTags.map(t=>chip('#'+t,'antag',t,noteFilter.tag===t)).join('')}
+        ${(q||noteFilter.kind||noteFilter.tag)?`<button class="btn-text" id="anClr" style="font-size:11px;">${tt('清除筛选','Clear')}</button>`:''}
+       </div>`
+    : '';
   const list=rows.length
     ? rows.map(n=>`<div class="sec" style="padding:16px 0;">
-        <div style="display:flex;align-items:baseline;gap:10px;">
-          <span class="mono" style="font-size:10.5px;color:var(--ink-3);">${new Date(n.updated||0).toLocaleString()}</span>
+        <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;">
+          ${n.kind?`<span class="mono" style="font-size:9.5px;letter-spacing:0.08em;color:var(--ink-3);border:0.5px solid var(--border);padding:2px 7px;flex:none;">${anEsc(n.kind)}</span>`:''}
+          <h3 style="font-size:14.5px;color:var(--ink);margin:0;font-weight:600;">${anEsc(noteTitle(n))}</h3>
+          ${n.ai?`<span title="${tt('AI 已整理','Organized by AI')}" style="color:var(--accent);font-size:11px;flex:none;">✦</span>`:''}
+          <span class="mono" style="font-size:10px;color:var(--ink-3);">${new Date(n.updated||0).toLocaleDateString()}</span>
           <span style="flex:1;"></span>
           ${inKnowledge(n)?`<span class="mono" style="font-size:10px;color:var(--accent);">${tt('已在知识库','IN KNOWLEDGE')}</span>`:''}
+          ${(!n.ai&&aiEnrichAvailable())?`<button class="btn" data-anai="${anEsc(n.id)}" style="padding:3px 10px;font-size:11px;">✦ ${tt('整理','Organize')}</button>`:''}
           <button class="btn" data-anedit="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('编辑','Edit')}</button>
           <button class="btn" data-andel="${anEsc(n.id)}" style="padding:3px 10px;font-size:11.5px;">${tt('删除','Delete')}</button>
         </div>
+        ${(n.tags&&n.tags.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">${n.tags.map(t=>`<button class="mono" data-antag="${anEsc(t)}" style="font-size:9.5px;color:var(--ink-3);border:0.5px solid var(--border);background:transparent;padding:2px 8px;cursor:pointer;border-radius:99px;">#${anEsc(t)}</button>`).join('')}</div>`:''}
+        ${n.summary?`<p style="font-size:12px;color:var(--ink-3);line-height:1.7;margin:7px 0 0;">${anEsc(n.summary)}</p>`:''}
         <div class="md-body" style="margin-top:8px;max-height:220px;overflow:hidden;">${mdRender(n.text)}</div>
       </div>`).join('')
-    : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有笔记。随手记下想法、片段与线索 —— 只存本地;授权后 AI 也能检索引用。','No notes yet. Jot down ideas, snippets, leads — local-only; with your grant the AI can reference them.')}</p></div>`;
+    : (all.length
+        ? `<div class="sec" style="border-bottom:none;"><p style="font-size:12.5px;color:var(--ink-3);">${tt('没有匹配的笔记。','No matching notes.')}</p></div>`
+        : `<div class="sec" style="border-bottom:none;"><p style="font-size:13.5px;color:var(--ink-3);line-height:1.8;max-width:560px;">${tt('还没有笔记。随手记下想法、片段与线索 —— 保存后 AI 会自动整理出标题、类型、标签与摘要(桌面版);只存本地,授权后 AI 也能检索引用。','No notes yet. Jot down ideas, snippets, leads — on desktop the AI auto-organizes each note with a title, type, tags and summary; local-only, and the AI can reference them with your grant.')}</p></div>`);
   // ★fail-closed:状态未知(问不到后端)⇒ 按钮禁用 + 提示重试,绝不让用户在盲态下造重复副本。
   const pending=docsStatusKnown ? ASSETS_NOTES.filter(n=>!inKnowledge(n)).length : 0;
   const kbBtn = (!docsStatusKnown && ASSETS_NOTES.length)
@@ -81,9 +134,22 @@ export function renderNotes(){
     +`<div class="sec" style="border-bottom:none;padding-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button>`
     +kbBtn
     +`</div>`
+    +toolbar
     +list+signFoot();
   const add=$('#anAdd'); if(add) /** @type {HTMLElement} */(add).onclick=()=>openNoteModal('');
   const kb=$('#anToKb'); if(kb && !(/** @type {HTMLButtonElement} */(kb).disabled)) /** @type {HTMLElement} */(kb).onclick=()=>openMigrateModal();
+  // 筛选接线:搜索重渲后恢复焦点与光标(否则每敲一键失焦);类型/标签单选可反选;卡片标签与工具栏共用委派。
+  const qi=/** @type {HTMLInputElement|null} */($('#anQ'));
+  if(qi) qi.oninput=()=>{ noteFilter.q=qi.value; renderNotes(); const q2=/** @type {HTMLInputElement|null} */($('#anQ')); if(q2){ q2.focus(); q2.setSelectionRange(q2.value.length,q2.value.length); } };
+  $$('#page-notes [data-ankind]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{ const v=/** @type {HTMLElement} */(b).dataset.ankind||''; noteFilter.kind=(noteFilter.kind===v?'':v); renderNotes(); }; });
+  $$('#page-notes [data-antag]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{ const v=/** @type {HTMLElement} */(b).dataset.antag||''; noteFilter.tag=(noteFilter.tag===v?'':v); renderNotes(); }; });
+  const clr=$('#anClr'); if(clr) /** @type {HTMLElement} */(clr).onclick=()=>{ noteFilter.q=''; noteFilter.kind=''; noteFilter.tag=''; renderNotes(); };
+  $$('#page-notes [data-anai]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=async ()=>{
+    const n=ASSETS_NOTES.find(x=>x.id===/** @type {HTMLElement} */(b).dataset.anai); if(!n) return;
+    /** @type {HTMLButtonElement} */(b).disabled=true; b.textContent=tt('整理中…','Organizing…');
+    await enrichAndSave(n);
+    if(!n.ai){ toast(tt('整理失败(检查模型配置)','Organize failed — check model config')); renderNotes(); }
+  };});
   $$('#page-notes [data-anedit]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>openNoteModal(/** @type {HTMLElement} */(b).dataset.anedit||''); });
   $$('#page-notes [data-andel]').forEach(b=>{ /** @type {HTMLElement} */(b).onclick=()=>{
     const id=/** @type {HTMLElement} */(b).dataset.andel; const i=ASSETS_NOTES.findIndex(x=>x.id===id); if(i<0) return;
@@ -160,9 +226,11 @@ function openNoteModal(id){
   const save=$('#anSave'); if(save) /** @type {HTMLElement} */(save).onclick=()=>{
     const text=(/** @type {HTMLTextAreaElement|null} */($('#anText'))||{value:''}).value;
     if(!text.trim()){ toast(tt('写点内容再保存','Add some content first')); return; }
-    if(n){ n.text=text; n.updated=Date.now(); }
-    else ASSETS_NOTES.push({ id:'an_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), text, updated:Date.now() });
+    /** @type {(typeof ASSETS_NOTES)[number]} */ let rec;
+    if(n){ n.text=text; n.updated=Date.now(); n.ai=false; rec=n; }   // 内容变了 → 旧维度作废,重整理
+    else { rec={ id:'an_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), text, updated:Date.now() }; ASSETS_NOTES.push(rec); }
     persistNotes(); closeModal(); renderNotes(); toast(tt('已保存','Saved'));
+    enrichAndSave(rec); // ★AI-Native:保存即整理(桌面异步充实标题/类型/标签/摘要;web 静默跳过)
   };
 }
 
