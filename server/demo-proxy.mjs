@@ -200,6 +200,13 @@ const server = http.createServer(async (req, res) => {
   });
   try {
     if (url === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true }); return; }
+    if (url === '/api/plaza' && req.method === 'GET') {
+      // 技能广场导入信标(需求侧探针):只记精选技能 id 的计数,无任何用户内容;id 白名单字符防日志注入。
+      const raw = new URL(req.url || '/', 'http://x').searchParams.get('skill') || '';
+      const id = /^[a-z0-9-]{1,40}$/.test(raw) ? raw : 'unknown';
+      console.log(`[plaza] import skill=${id}`);
+      res.writeHead(204); res.end(); return;
+    }
     if (url === '/api/chat' && req.method === 'POST') { await handleChat(req, res); return; }
     if (req.method === 'GET' || req.method === 'HEAD') { await handleStatic(req, res); return; }
     json(res, 405, { error: 'method' });
