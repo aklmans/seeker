@@ -12,6 +12,8 @@ pnpm-debug.log*
 # ── Build output ──────────────────────────────────────────
 /dist/
 /build/
+/playwright-report/
+/test-results/
 
 # ── Secrets — NEVER commit ────────────────────────────────
 # 密钥只进系统钥匙串 / CI 加密 secrets;updater 私钥、证书等一律排除
