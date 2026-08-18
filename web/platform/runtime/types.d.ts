@@ -155,6 +155,10 @@ export interface AiStream {
 export interface AiConfig {
   /** 线上协议；旧配置缺省为 openai。 */
   protocol: 'openai' | 'anthropic' | 'gemini' | 'ollama';
+  /** 当前协议是否有已实现的嵌入端点；Anthropic 为 false。 */
+  embeddingSupported: boolean;
+  /** Ollama 为可选，其余线上协议必须配置。 */
+  keyRequired: boolean;
   baseUrl: string;
   /** 当前启用的模型(active)。 */
   model: string;

@@ -1,14 +1,13 @@
-//! 嵌入(embedding)来源(#2 · C2)——**BYO**:复用用户自填的 OpenAI 兼容端点的 `/embeddings`。
+//! 嵌入(embedding)来源(#2 · C2)——**BYO**:OpenAI/Ollama 兼容 `/embeddings`,
+//! Gemini 原生 `batchEmbedContents`;Anthropic 无原生嵌入能力时明确降级。
 //!
 //! 隐私:仅调**用户自填的端点**(与对话同信任域,符合"联网只为调用户自填端点");
 //! 文本不落第三方、不写日志。本地嵌入 sidecar 为日后可选实现(同一 `Embedder` 角色)。
 //! 失败一律返回 `Err`(记忆/RAG 据此优雅降级,不报错给用户)。
 
-use serde_json::json;
 use std::time::Duration;
 use tauri::AppHandle;
 
-const KEY_ACCOUNT: &str = "provider.openai.key";
 const EMBED_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 批量把文本嵌入为向量。空输入 → 空结果。
@@ -17,17 +16,23 @@ pub async fn embed_texts(app: &AppHandle, texts: &[String]) -> Result<Vec<Vec<f3
         return Ok(Vec::new());
     }
     let cfg = crate::config::load(app);
-    if cfg.base_url.is_empty() || cfg.embed_model.is_empty() {
-        return Err("尚未配置嵌入模型(embed_model),请在「数据设置」填写".into());
+    if cfg.base_url.is_empty() {
+        return Err("尚未配置模型 base_url,请在「数据设置」填写".into());
     }
-    let key = crate::secret::get_secret(KEY_ACCOUNT).map_err(|_| "尚未配置 API Key".to_string())?;
-    let url = format!("{}/embeddings", cfg.base_url.trim_end_matches('/'));
-    let body = json!({ "model": cfg.embed_model, "input": texts });
+    if let Some(reason) = cfg.embedding_unavailable_reason() {
+        return Err(reason.to_string());
+    }
+    let key = crate::provider::load_api_key(cfg.protocol)?;
+    let spec =
+        crate::provider::embedding_request(cfg.protocol, &cfg.base_url, &cfg.embed_model, texts)?;
     let client = reqwest::Client::new();
+    let request = client.post(&spec.url);
     // key 用完即弃;不写日志。
     let resp = tokio::time::timeout(
         EMBED_TIMEOUT,
-        client.post(&url).bearer_auth(&key).json(&body).send(),
+        crate::provider::authorize(cfg.protocol, request, &key)
+            .json(&spec.body)
+            .send(),
     )
     .await
     .map_err(|_| "嵌入请求超时".to_string())?
@@ -39,21 +44,13 @@ pub async fn embed_texts(app: &AppHandle, texts: &[String]) -> Result<Vec<Vec<f3
         .json()
         .await
         .map_err(|e| format!("嵌入响应解析失败: {e}"))?;
-    let data = v
-        .get("data")
-        .and_then(|d| d.as_array())
-        .ok_or("嵌入响应缺少 data")?;
-    let mut out = Vec::with_capacity(data.len());
-    for item in data {
-        let arr = item
-            .get("embedding")
-            .and_then(|e| e.as_array())
-            .ok_or("嵌入项缺少 embedding")?;
-        out.push(
-            arr.iter()
-                .filter_map(|x| x.as_f64().map(|f| f as f32))
-                .collect(),
-        );
+    let out = crate::provider::embedding_vectors(cfg.protocol, &v)?;
+    if out.len() != texts.len() {
+        return Err(format!(
+            "嵌入响应数量不符:请求 {},返回 {}",
+            texts.len(),
+            out.len()
+        ));
     }
     Ok(out)
 }

@@ -97,16 +97,16 @@ export function renderSettings(){
   const proto=[['openai','OpenAI 兼容'],['anthropic','Anthropic'],['gemini','Gemini'],['ollama','Ollama 本地']];
   const sttEng=[['browser','浏览器(免费)'],['whisper','Whisper 自托管'],['deepgram','Deepgram'],['groq','Groq'],['other','其他']];
   const ttsEng=[['browser','浏览器(免费)'],['kokoro','Kokoro/Piper 自托管'],['deepgram','Deepgram Aura'],['eleven','ElevenLabs'],['other','其他']];
-  const sttSelf=MODEL.stt!=='browser', ttsSelf=MODEL.tts!=='browser';
+  const sttSelf=MODEL.stt!=='browser', ttsSelf=MODEL.tts!=='browser', embeddingSupported=MODEL.protocol!=='anthropic';
   const byo=`<div style="max-width:580px;">
     <p class="seclabel" style="margin-bottom:10px;">— LLM</p>
     ${row(tt('接口协议','Protocol'),`<select class="select" id="mdProto">${proto.map(p=>`<option value="${p[0]}" ${p[0]===MODEL.protocol?'selected':''}>${p[1]}</option>`).join('')}</select>`)}
     ${row('Base URL',`<input class="input" id="mdBase" placeholder="https://api.anthropic.com" value="${(MODEL.baseUrl||'').replace(/"/g,'&quot;')}">`)}
-    ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="sk-…" value="${(MODEL.apiKey||'').replace(/"/g,'&quot;')}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
+    ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="${MODEL.protocol==='ollama'?tt('可选 · 本地 Ollama 不需要','Optional · not needed locally'):'sk-…'}" value="${(MODEL.apiKey||'').replace(/"/g,'&quot;')}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
     ${row(tt('模型(可存多个,点选当前)','Models (save many, click to use)'),`<div style="display:flex;flex-direction:column;gap:8px;">
       <div id="mdModelList" class="md-models"></div>
       <div style="display:flex;gap:8px;"><input class="input" id="mdModelAdd" placeholder="${tt('添加模型名,如 gpt-4o','Add a model, e.g. gpt-4o')}"><button class="btn" id="mdModelAddBtn">${tt('添加','Add')}</button></div></div>`)}
-    ${row(tt('嵌入模型','Embed model'),`<input class="input" id="mdEmbed" placeholder="text-embedding-3-small" value="${(MODEL.embedModel||'').replace(/"/g,'&quot;')}">`)}
+    ${row(tt('嵌入模型','Embed model'),`<input class="input" id="mdEmbed" placeholder="${MODEL.protocol==='gemini'?'gemini-embedding-001':MODEL.protocol==='ollama'?'nomic-embed-text':'text-embedding-3-small'}" value="${(MODEL.embedModel||'').replace(/"/g,'&quot;')}" ${embeddingSupported?'':'disabled'}>${embeddingSupported?'':`<span style="display:block;font-size:11.5px;color:var(--ink-3);margin-top:5px;">${tt('Anthropic 没有原生嵌入 API；长期记忆与知识库会安全停用。','Anthropic has no native embedding API; memory and knowledge retrieval are safely disabled.')}</span>`}`)}
     ${row(tt('User-Agent · 高级','User-Agent · advanced'),`<input class="input" id="mdUA" placeholder="claude-cli/1.0.0 (external, cli)" value="${(MODEL.userAgent||'').replace(/"/g,'&quot;')}">`)}
     <p style="font-size:11.5px;color:var(--ink-3);margin:2px 0 8px;line-height:1.6;">${tt('某些供应商(如 Kimi For Coding)按 User-Agent 限定「编程 agent」;留空用默认。改后下次调用即生效,无需重启。','Some providers (e.g. Kimi For Coding) gate by User-Agent to coding agents; leave blank for the default. Takes effect on the next call — no restart.')}</p>
     ${row(tt('连接','Connection'),`<button class="btn btn-accent" id="mdTest">${tt('测试连接','Test connection')}</button>`)}
@@ -177,8 +177,9 @@ export function renderSettings(){
     MODEL.protocol=mp.value;
     MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com/v1beta',ollama:'http://localhost:11434/v1'})[mp.value]||'';
     MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku-latest',gemini:'gemini-2.5-flash',ollama:'qwen2.5'})[mp.value]||'';
+    MODEL.embedModel=({openai:'text-embedding-3-small',anthropic:'',gemini:'gemini-embedding-001',ollama:'nomic-embed-text'})[mp.value]||'';
     if(settingsPersistOn()){
-      window.SeekerRT.ai.setConfig({protocol:MODEL.protocol,baseUrl:MODEL.baseUrl,model:MODEL.model})
+      window.SeekerRT.ai.setConfig({protocol:MODEL.protocol,baseUrl:MODEL.baseUrl,model:MODEL.model,embedModel:MODEL.embedModel})
         .then(()=>{ toast(tt('已切换模型协议','Model protocol switched')); renderSettings(); })
         .catch(e=>toast(errText(e)));
     }else renderSettings();
@@ -315,9 +316,9 @@ async function wireModelConfigDesktop(){
   try{
     const c=await rt.ai.getConfig();
     MODEL.protocol=c.protocol||'openai'; const proto=$('#mdProto'); if(proto) proto.value=MODEL.protocol;
-    base.value=c.baseUrl||''; if(embed) embed.value=c.embedModel||''; if(ua) ua.value=c.userAgent||'';
+    base.value=c.baseUrl||''; if(embed){ embed.value=c.embedModel||''; embed.disabled=c.embeddingSupported===false; } if(ua) ua.value=c.userAgent||'';
     MODEL.models=Array.isArray(c.models)?c.models:[]; MODEL.model=c.model||''; renderModelList(); // 用后端真实已存模型列表覆盖重渲
-    if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : 'sk-…'; }
+    if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : (c.keyRequired===false?tt('可选 · 本地 Ollama 不需要','Optional · not needed locally'):'sk-…'); }
   }catch(_e){ /* 未就绪 */ }
   base.onblur=()=>{ rt.ai.setConfig({baseUrl:base.value.trim()})
     .then(()=>toast(tt('已保存 Base URL','Base URL saved')))

@@ -24,10 +24,6 @@ const TOP_K: usize = 4;
 const MIN_SCORE: f32 = 0.2; // 相关度下限,过滤噪声
 static DOC_SEQ: AtomicU64 = AtomicU64::new(1);
 
-fn embed_configured(embed_model: &str) -> bool {
-    !embed_model.trim().is_empty()
-}
-
 fn gen_doc_id() -> String {
     let n = DOC_SEQ.fetch_add(1, Ordering::Relaxed);
     let ms = std::time::SystemTime::now()
@@ -165,10 +161,9 @@ impl Capability for DocContext {
     }
     /// 未配嵌入 → Unavailable(contribute_all 据此跳过,不召回不报错);前端据此显隐入口。
     fn available(&self, cx: &CallCx) -> Availability {
-        if embed_configured(&crate::config::load(cx.app).embed_model) {
-            Availability::Ready
-        } else {
-            Availability::Unavailable("未配置嵌入模型".into())
+        match crate::config::load(cx.app).embedding_unavailable_reason() {
+            None => Availability::Ready,
+            Some(reason) => Availability::Unavailable(reason.into()),
         }
     }
     fn permissions(&self) -> &[Permission] {
@@ -191,7 +186,7 @@ impl Capability for DocContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{chunk_text, decode_pdf_b64, embed_configured, CHUNK_SIZE};
+    use super::{chunk_text, decode_pdf_b64, CHUNK_SIZE};
 
     #[test]
     fn chunk_empty_and_short() {
@@ -207,13 +202,6 @@ mod tests {
         let cs = chunk_text(&long);
         assert!(cs.len() >= 3, "长文本应切多块"); // 1050 字 / 步进 420 ≈ 3 块
         assert!(cs.iter().all(|c| c.chars().count() <= CHUNK_SIZE));
-    }
-
-    #[test]
-    fn availability_depends_on_embed() {
-        assert!(!embed_configured(""));
-        assert!(!embed_configured("   "));
-        assert!(embed_configured("text-embedding-3-small"));
     }
 
     #[test]

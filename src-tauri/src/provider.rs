@@ -10,10 +10,20 @@ use serde_json::{json, Value};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const DEFAULT_MAX_TOKENS: u64 = 4096;
+const KEY_ACCOUNT: &str = "provider.openai.key";
 
 pub(crate) struct RequestSpec {
     pub url: String,
     pub body: Value,
+}
+
+/// 线上协议必须从钥匙串得到 key；Ollama 官方兼容接口忽略 key,用固定非密钥占位值。
+pub(crate) fn load_api_key(protocol: ProviderProtocol) -> Result<String, String> {
+    match crate::secret::get_secret(KEY_ACCOUNT) {
+        Ok(key) if !key.trim().is_empty() => Ok(key.trim().to_string()),
+        _ if !protocol.requires_api_key() => Ok("ollama".to_string()),
+        _ => Err("尚未配置 API Key,请在「数据设置」填写".to_string()),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -588,6 +598,76 @@ pub(crate) fn extract_text(protocol: ProviderProtocol, value: &Value) -> String 
     }
 }
 
+pub(crate) fn embedding_request(
+    protocol: ProviderProtocol,
+    base_url: &str,
+    model: &str,
+    texts: &[String],
+) -> Result<RequestSpec, String> {
+    match protocol {
+        ProviderProtocol::Openai | ProviderProtocol::Ollama => Ok(RequestSpec {
+            url: append_endpoint(base_url, "embeddings"),
+            body: json!({ "model": model, "input": texts }),
+        }),
+        ProviderProtocol::Gemini => {
+            let model = model.trim_start_matches("models/");
+            let resource = format!("models/{model}");
+            let requests: Vec<Value> = texts
+                .iter()
+                .map(|text| {
+                    json!({
+                        "model": resource,
+                        "content": { "parts": [{ "text": text }] },
+                    })
+                })
+                .collect();
+            Ok(RequestSpec {
+                url: append_endpoint(
+                    &gemini_base(base_url),
+                    &format!("models/{model}:batchEmbedContents"),
+                ),
+                body: json!({ "requests": requests }),
+            })
+        }
+        ProviderProtocol::Anthropic => Err("Anthropic 协议不提供嵌入 API".to_string()),
+    }
+}
+
+fn numeric_vector(value: &Value) -> Result<Vec<f32>, String> {
+    value
+        .as_array()
+        .ok_or_else(|| "嵌入项不是数组".to_string())?
+        .iter()
+        .map(|number| {
+            number
+                .as_f64()
+                .map(|n| n as f32)
+                .ok_or_else(|| "嵌入向量含非数字项".to_string())
+        })
+        .collect()
+}
+
+pub(crate) fn embedding_vectors(
+    protocol: ProviderProtocol,
+    value: &Value,
+) -> Result<Vec<Vec<f32>>, String> {
+    match protocol {
+        ProviderProtocol::Openai | ProviderProtocol::Ollama => value["data"]
+            .as_array()
+            .ok_or_else(|| "嵌入响应缺少 data".to_string())?
+            .iter()
+            .map(|item| numeric_vector(&item["embedding"]))
+            .collect(),
+        ProviderProtocol::Gemini => value["embeddings"]
+            .as_array()
+            .ok_or_else(|| "Gemini 嵌入响应缺少 embeddings".to_string())?
+            .iter()
+            .map(|item| numeric_vector(&item["values"]))
+            .collect(),
+        ProviderProtocol::Anthropic => Err("Anthropic 协议不提供嵌入 API".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -793,5 +873,48 @@ mod tests {
             ),
             "gemini"
         );
+    }
+
+    #[test]
+    fn embedding_capability_uses_native_gemini_and_compatible_openai_shapes() {
+        let texts = vec!["a".to_string(), "b".to_string()];
+        let gemini = embedding_request(
+            ProviderProtocol::Gemini,
+            "https://generativelanguage.googleapis.com",
+            "models/gemini-embedding-001",
+            &texts,
+        )
+        .unwrap();
+        assert_eq!(
+            gemini.url,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents"
+        );
+        assert_eq!(
+            gemini.body["requests"][1]["model"],
+            "models/gemini-embedding-001"
+        );
+        assert_eq!(
+            embedding_vectors(
+                ProviderProtocol::Gemini,
+                &json!({"embeddings":[{"values":[1,2.5]},{"values":[3,4]}]})
+            )
+            .unwrap(),
+            vec![vec![1.0, 2.5], vec![3.0, 4.0]]
+        );
+        assert_eq!(
+            embedding_vectors(
+                ProviderProtocol::Openai,
+                &json!({"data":[{"embedding":[0.25,0.5]}]})
+            )
+            .unwrap(),
+            vec![vec![0.25, 0.5]]
+        );
+        assert!(embedding_request(
+            ProviderProtocol::Anthropic,
+            "https://api.anthropic.com",
+            "unused",
+            &texts
+        )
+        .is_err());
     }
 }

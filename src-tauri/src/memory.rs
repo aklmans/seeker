@@ -18,11 +18,6 @@ const TOP_K_CONTRIBUTE: usize = 3;
 const MIN_SCORE: f32 = 0.2; // 相关度下限,过滤噪声
 static MEM_SEQ: AtomicU64 = AtomicU64::new(1);
 
-/// 记忆是否可用 = 是否配了嵌入模型(无嵌入则无法写入/检索)。
-fn embed_configured(embed_model: &str) -> bool {
-    !embed_model.trim().is_empty()
-}
-
 fn gen_id() -> String {
     let n = MEM_SEQ.fetch_add(1, Ordering::Relaxed);
     let ms = std::time::SystemTime::now()
@@ -66,10 +61,9 @@ impl Capability for LongTermMemory {
     /// 运行时降级(C3):未配置嵌入模型 → Unavailable;网关据此不暴露 memory 工具、不召回
     /// (避免给模型一个必然报错的工具),前端可据此提示去配置。
     fn available(&self, cx: &CallCx) -> Availability {
-        if embed_configured(&crate::config::load(cx.app).embed_model) {
-            Availability::Ready
-        } else {
-            Availability::Unavailable("未配置嵌入模型".into())
+        match crate::config::load(cx.app).embedding_unavailable_reason() {
+            None => Availability::Ready,
+            Some(reason) => Availability::Unavailable(reason.into()),
         }
     }
     fn permissions(&self) -> &[Permission] {
@@ -152,13 +146,6 @@ mod tests {
         let p = s.parameters["properties"]["op"]["enum"].to_string();
         assert!(p.contains("remember") && p.contains("recall"));
         assert!(s.description.contains("不要用它存")); // 引导不存 PII
-    }
-
-    #[test]
-    fn availability_depends_on_embed_config() {
-        assert!(!embed_configured(""));
-        assert!(!embed_configured("   "));
-        assert!(embed_configured("text-embedding-3-small"));
     }
 
     #[test]

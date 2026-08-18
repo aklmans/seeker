@@ -24,7 +24,6 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
-const KEY_ACCOUNT: &str = "provider.openai.key";
 /// 默认请求 User-Agent。某些供应商(如 Kimi For Coding)按 UA 限定「编程 agent」——
 /// 默认 reqwest UA 会被 403 拒;Seeker 本是编程 / agent 应用,故默认以编程 agent UA 标识。
 /// 用户可在「数据设置」覆盖(provider.user_agent;空 = 用此默认),运行时即时生效、无需重启。
@@ -50,15 +49,6 @@ fn redact_secret(text: &str, secret: &str) -> String {
     }
 }
 
-/// Ollama 的 OpenAI-compatible API 按官方约定忽略 key；未配置时提供非密钥占位值。
-/// 其它线上协议仍 fail-closed,必须从钥匙串取得真实 key。
-fn provider_key(protocol: crate::config::ProviderProtocol) -> Result<String, String> {
-    match crate::secret::get_secret(KEY_ACCOUNT) {
-        Ok(key) if !key.trim().is_empty() => Ok(key.trim().to_string()),
-        _ if protocol == crate::config::ProviderProtocol::Ollama => Ok("ollama".to_string()),
-        _ => Err("尚未配置 API Key,请在「数据设置」填写".to_string()),
-    }
-}
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 工具循环最多轮数;最后一轮强制不带 tools,逼模型给出最终文本(避免悬在工具调用上)。
@@ -353,7 +343,7 @@ async fn run_generate(
             "尚未配置模型(base_url / model),请在「数据设置」填写",
         ));
     }
-    let key = provider_key(cfg.protocol).map_err(ChatError::config)?;
+    let key = crate::provider::load_api_key(cfg.protocol).map_err(ChatError::config)?;
     let ua = effective_user_agent(&cfg.user_agent).to_string();
 
     let system = crate::prompts::system_prompt(app, task);
@@ -624,7 +614,7 @@ pub async fn ai_extract(
     if cfg.base_url.is_empty() || cfg.model.is_empty() {
         return Err("尚未配置模型(base_url / model),请在「数据设置」填写".into());
     }
-    let key = provider_key(cfg.protocol)?; // Ollama 无 key 可用占位值；线上协议仍必须有钥匙串 key。
+    let key = crate::provider::load_api_key(cfg.protocol)?; // Ollama 无 key 可用占位值；线上协议仍必须有钥匙串 key。
 
     let has_image = image_data_url.as_deref().is_some_and(|u| !u.is_empty());
     let spec = crate::provider::extract_request(
@@ -691,7 +681,7 @@ async fn run_chat(
             "尚未配置模型(base_url / model),请在「数据设置」填写",
         ));
     }
-    let key = provider_key(cfg.protocol).map_err(ChatError::config)?;
+    let key = crate::provider::load_api_key(cfg.protocol).map_err(ChatError::config)?;
     let ua = effective_user_agent(&cfg.user_agent).to_string(); // 生效 UA(供应商可能按 UA 限定)
 
     // 系统提示(配置化):平台安全/行为基线 + 域 overlay(按 task 选取);见 prompts.rs。

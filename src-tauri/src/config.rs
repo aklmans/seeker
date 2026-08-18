@@ -26,6 +26,17 @@ pub enum ProviderProtocol {
     Ollama,
 }
 
+impl ProviderProtocol {
+    /// Anthropic Messages API 没有原生 embeddings 端点；其余三类由 provider adapter 支持。
+    pub fn supports_embeddings(self) -> bool {
+        self != Self::Anthropic
+    }
+
+    pub fn requires_api_key(self) -> bool {
+        self != Self::Ollama
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ProviderConfig {
     /// 线上协议。`serde(default)` 令无此字段的旧配置无损迁移为 OpenAI-compatible。
@@ -46,6 +57,19 @@ pub struct ProviderConfig {
     /// 默认 UA 会被 403 拒;空 = 用默认(见 `ai.rs` DEFAULT_USER_AGENT)。**非密钥**,可显示。
     #[serde(default)]
     pub user_agent: String,
+}
+
+impl ProviderConfig {
+    /// 能力层统一使用这一判据，避免“填了模型名但当前协议根本没有嵌入 API”时误上架。
+    pub fn embedding_unavailable_reason(&self) -> Option<&'static str> {
+        if !self.protocol.supports_embeddings() {
+            Some("Anthropic 协议不提供嵌入 API")
+        } else if self.embed_model.trim().is_empty() {
+            Some("未配置嵌入模型")
+        } else {
+            None
+        }
+    }
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -73,6 +97,8 @@ fn save(app: &AppHandle, c: &ProviderConfig) -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 pub struct ConfigView {
     protocol: ProviderProtocol,
+    embedding_supported: bool,
+    key_required: bool,
     base_url: String,
     model: String,
     embed_model: String,
@@ -100,6 +126,8 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
     }
     Ok(ConfigView {
         protocol: c.protocol,
+        embedding_supported: c.protocol.supports_embeddings(),
+        key_required: c.protocol.requires_api_key(),
         base_url: c.base_url,
         model: c.model,
         embed_model: c.embed_model,
@@ -168,6 +196,24 @@ mod tests {
         assert_eq!(json["protocol"], "anthropic");
         let restored: ProviderConfig = serde_json::from_value(json).unwrap();
         assert_eq!(restored.protocol, ProviderProtocol::Anthropic);
+    }
+
+    #[test]
+    fn embedding_capability_matrix_is_fail_closed() {
+        let mut c = ProviderConfig {
+            protocol: ProviderProtocol::Anthropic,
+            embed_model: "text-embedding-x".into(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            c.embedding_unavailable_reason(),
+            Some("Anthropic 协议不提供嵌入 API")
+        );
+        c.protocol = ProviderProtocol::Gemini;
+        assert_eq!(c.embedding_unavailable_reason(), None);
+        c.embed_model.clear();
+        assert_eq!(c.embedding_unavailable_reason(), Some("未配置嵌入模型"));
+        assert!(!ProviderProtocol::Ollama.requires_api_key());
     }
 }
 
