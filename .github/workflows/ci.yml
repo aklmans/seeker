@@ -43,8 +43,8 @@ jobs:
       - name: test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  typecheck:
-    name: typecheck (tsc --noEmit)
+  frontend:
+    name: frontend tests + typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,4 +58,5 @@ jobs:
       # 锁住隐私不变量(SecretApi 无 get()、Collection 排除 profile);
       # @ts-check 的 platform/domain 模块在此真正被类型检查。
       - run: npm ci
+      - run: npm test
       - run: npm run typecheck
