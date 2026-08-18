@@ -1,13 +1,13 @@
-//! AI 网关(#1 · G1 单协议直通 + #2 · C1 工具循环)。
+//! AI 网关(#1 · G1 多协议直通 + #2 · C1 工具循环)。
 //!
 //! 职责:跟模型说话。前端只 invoke `ai_chat` 发文字、订阅事件收 token 流;
 //! **密钥与出网都在这里**,前端不持 key、不组装系统提示。
-//! G1:OpenAI 兼容协议 + 流式 + 取消/超时/错误。
+//! G1:OpenAI / Anthropic / Gemini / Ollama + 流式 + 取消/超时/错误。
 //! C1:从能力层 registry 取 `kind=Tool` 的 schema 塞进请求;模型要调工具时,
 //! 累积流式 tool_calls → 经 registry 统一执行(破坏性能力被拒,须走护栏)→ 结果回灌 → 续推。
 //! C2:提示组装期汇集 Context 能力(长期记忆)的召回片段作「资料」注入。
 //! G2:**多轮历史**(进程内,按 sessionId 累积 user/assistant 轮次)。
-//! 多协议(G4)、系统提示配置化(G2 剩余)、重试退避(G2 剩余)后续。
+//! 各供应商 wire format 在 `provider.rs` 边界适配；本文件只维护 canonical 消息与工具循环。
 //!
 //! 事件:`ai_chunk{sessionId,text}` · `ai_tool{sessionId,id,name,ok}` ·
 //!       `ai_done{sessionId,stopReason}` · `ai_error{sessionId,code,message,retriable}`
@@ -47,6 +47,16 @@ fn redact_secret(text: &str, secret: &str) -> String {
         text.to_string()
     } else {
         text.replace(secret, "[已脱敏]")
+    }
+}
+
+/// Ollama 的 OpenAI-compatible API 按官方约定忽略 key；未配置时提供非密钥占位值。
+/// 其它线上协议仍 fail-closed,必须从钥匙串取得真实 key。
+fn provider_key(protocol: crate::config::ProviderProtocol) -> Result<String, String> {
+    match crate::secret::get_secret(KEY_ACCOUNT) {
+        Ok(key) if !key.trim().is_empty() => Ok(key.trim().to_string()),
+        _ if protocol == crate::config::ProviderProtocol::Ollama => Ok("ollama".to_string()),
+        _ => Err("尚未配置 API Key,请在「数据设置」填写".to_string()),
     }
 }
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -343,9 +353,7 @@ async fn run_generate(
             "尚未配置模型(base_url / model),请在「数据设置」填写",
         ));
     }
-    let key = crate::secret::get_secret(KEY_ACCOUNT)
-        .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
-    let key = key.trim().to_string();
+    let key = provider_key(cfg.protocol).map_err(ChatError::config)?;
     let ua = effective_user_agent(&cfg.user_agent).to_string();
 
     let system = crate::prompts::system_prompt(app, task);
@@ -358,6 +366,7 @@ async fn run_generate(
         match stream_round(
             app,
             session_id,
+            cfg.protocol,
             &cfg.base_url,
             &cfg.model,
             &key,
@@ -596,23 +605,6 @@ pub fn ai_cancel(sessions: State<'_, Sessions>, session_id: String) -> Result<()
     Ok(())
 }
 
-/// 组装一次性抽取请求体(抽出为纯函数以单测锁住红线:**单条 user、无 system 消息、无 tools**)。
-/// 有图片 → OpenAI 兼容多模态 content 数组;否则纯文本字符串。
-fn build_extract_body(model: &str, prompt: String, image_data_url: Option<String>) -> Value {
-    let content: Value = match image_data_url {
-        Some(url) if !url.is_empty() => json!([
-            { "type": "text", "text": prompt },
-            { "type": "image_url", "image_url": { "url": url } },
-        ]),
-        _ => Value::String(prompt),
-    };
-    json!({
-        "model": model,
-        "stream": false,
-        "messages": [ { "role": "user", "content": content } ],
-    })
-}
-
 /// 一次性抽取(块3 · 多模态录入):把 `prompt`(+可选图片)发给模型,取最终文本返回。
 ///
 /// 与 `ai_chat` 的区别 —— **无工具循环、无多轮历史、无系统提示、非流式**:
@@ -620,7 +612,7 @@ fn build_extract_body(model: &str, prompt: String, image_data_url: Option<String
 /// - 无工具:从给定内容(文本 / 截图)抽取即可,不该去查库;
 /// - 红线:命令签名只有 `prompt` + 图片,网关结构上**无从拿到 profile**(同 ai_chat 的 profile-free 不变量)。
 ///
-/// 图片走 OpenAI 兼容多模态:`content:[{type:text},{type:image_url,image_url:{url:"data:<mime>;base64,…"}}]`。
+/// 图片由协议适配器转成 OpenAI image_url、Anthropic image source 或 Gemini inlineData。
 /// 供「AI 智能录入」从招聘截图 / 文本抽取结构化岗位(domain 仍以提案→预览→确认落库,AI 只产文本)。
 #[tauri::command]
 pub async fn ai_extract(
@@ -632,26 +624,28 @@ pub async fn ai_extract(
     if cfg.base_url.is_empty() || cfg.model.is_empty() {
         return Err("尚未配置模型(base_url / model),请在「数据设置」填写".into());
     }
-    let key = crate::secret::get_secret(KEY_ACCOUNT)
-        .map_err(|_| "尚未配置 API Key,请在「数据设置」填写".to_string())?;
-    let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
+    let key = provider_key(cfg.protocol)?; // Ollama 无 key 可用占位值；线上协议仍必须有钥匙串 key。
 
     let has_image = image_data_url.as_deref().is_some_and(|u| !u.is_empty());
-    let body = build_extract_body(&cfg.model, prompt, image_data_url);
-    let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
+    let spec = crate::provider::extract_request(
+        cfg.protocol,
+        &cfg.base_url,
+        &cfg.model,
+        &prompt,
+        image_data_url.as_deref(),
+    )?;
+    let url = spec.url;
 
     // 多模态响应可能较慢(图片处理),给足整体超时。
     let client = reqwest::Client::new();
+    let request = client.post(&url).header(
+        reqwest::header::USER_AGENT,
+        effective_user_agent(&cfg.user_agent),
+    );
     let resp = tokio::time::timeout(
         Duration::from_secs(120),
-        client
-            .post(&url)
-            .header(
-                reqwest::header::USER_AGENT,
-                effective_user_agent(&cfg.user_agent),
-            )
-            .bearer_auth(&key)
-            .json(&body)
+        crate::provider::authorize(cfg.protocol, request, &key)
+            .json(&spec.body)
             .send(),
     )
     .await
@@ -672,11 +666,7 @@ pub async fn ai_extract(
         .json()
         .await
         .map_err(|e| format!("解析响应失败:{}", e))?;
-    let text = v["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    Ok(text)
+    Ok(crate::provider::extract_text(cfg.protocol, &v))
 }
 
 /// 工具循环:逐轮流式请求,模型要调工具就执行并回灌,直到给出最终回答或达上限。
@@ -701,9 +691,7 @@ async fn run_chat(
             "尚未配置模型(base_url / model),请在「数据设置」填写",
         ));
     }
-    let key = crate::secret::get_secret(KEY_ACCOUNT)
-        .map_err(|_| ChatError::config("尚未配置 API Key,请在「数据设置」填写"))?;
-    let key = key.trim().to_string(); // 去首尾空白/换行(常见复制陷阱致 401)
+    let key = provider_key(cfg.protocol).map_err(ChatError::config)?;
     let ua = effective_user_agent(&cfg.user_agent).to_string(); // 生效 UA(供应商可能按 UA 限定)
 
     // 系统提示(配置化):平台安全/行为基线 + 域 overlay(按 task 选取);见 prompts.rs。
@@ -780,6 +768,7 @@ async fn run_chat(
                 match stream_round(
                     app,
                     session_id,
+                    cfg.protocol,
                     &cfg.base_url,
                     &cfg.model,
                     &key,
@@ -954,6 +943,7 @@ async fn mcp_confirm_and_call(
 async fn stream_round(
     app: &AppHandle,
     session_id: &str,
+    protocol: crate::config::ProviderProtocol,
     base_url: &str,
     model: &str,
     key: &str,
@@ -962,20 +952,16 @@ async fn stream_round(
     tools: &[Value],
     token: &CancellationToken,
 ) -> Result<RoundOutcome, ChatError> {
-    let mut body = json!({ "model": model, "stream": true });
-    body["messages"] = Value::Array(messages.to_vec());
-    if !tools.is_empty() {
-        body["tools"] = Value::Array(tools.to_vec());
-    }
-    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let spec = crate::provider::stream_request(protocol, base_url, model, messages, tools);
+    let url = spec.url;
     log::info!("[ai] POST {url}");
 
     let client = reqwest::Client::new();
-    let send = client
+    let request = client
         .post(&url)
-        .header(reqwest::header::USER_AGENT, user_agent)
-        .bearer_auth(key)
-        .json(&body)
+        .header(reqwest::header::USER_AGENT, user_agent);
+    let send = crate::provider::authorize(protocol, request, key)
+        .json(&spec.body)
         .send();
 
     let resp = tokio::select! {
@@ -1036,53 +1022,68 @@ async fn stream_round(
             let Ok(v) = serde_json::from_str::<Value>(data) else {
                 continue;
             };
-            let choice = &v["choices"][0];
-            // 文本增量:累积 + 逐 token 回灌。
-            if let Some(t) = choice["delta"]["content"].as_str() {
-                if !t.is_empty() {
-                    content.push_str(t);
-                    let _ = app.emit(
-                        "ai_chunk",
-                        Chunk {
-                            session_id: session_id.to_string(),
-                            text: t.to_string(),
-                        },
-                    );
-                }
+            if v.get("error").is_some_and(|e| !e.is_null()) || v["type"] == "error" {
+                let safe = redact_secret(&v.to_string(), key);
+                return Err(ChatError::transient_mid(
+                    "provider_stream",
+                    format!(
+                        "模型流返回错误:{}",
+                        safe.chars().take(300).collect::<String>()
+                    ),
+                ));
             }
-            // 工具调用增量:按 index 累积 id / name / arguments。
-            apply_tool_delta(&mut calls, choice);
-            if let Some(fr) = choice["finish_reason"].as_str() {
-                if !fr.is_empty() {
-                    finish = Some(fr.to_string());
-                }
+            let delta = crate::provider::parse_stream_delta(protocol, &v);
+            // 文本增量:累积 + 逐 token 回灌。
+            for text in delta.text {
+                content.push_str(&text);
+                let _ = app.emit(
+                    "ai_chunk",
+                    Chunk {
+                        session_id: session_id.to_string(),
+                        text,
+                    },
+                );
+            }
+            apply_tool_deltas(&mut calls, delta.tools);
+            if delta.finish.is_some() {
+                finish = delta.finish;
+            }
+            if delta.done {
+                return Ok(finalize(content, calls, finish));
             }
         }
     }
     Ok(finalize(content, calls, finish))
 }
 
-/// 把一条 choice 的 `delta.tool_calls` 累积进 `calls`(流式分片:首片带 id/name,后续仅 arguments)。
-fn apply_tool_delta(calls: &mut Vec<ToolCallAcc>, choice: &Value) {
-    let Some(tcs) = choice["delta"]["tool_calls"].as_array() else {
-        return;
-    };
-    for tc in tcs {
-        let idx = tc["index"].as_u64().unwrap_or(0) as usize;
+/// 把供应商事件归一后的工具分片累积进 canonical tool calls。
+fn apply_tool_deltas(calls: &mut Vec<ToolCallAcc>, deltas: Vec<crate::provider::ToolDelta>) {
+    for delta in deltas {
+        let idx = delta.index;
         while calls.len() <= idx {
             calls.push(ToolCallAcc::default());
         }
         let slot = &mut calls[idx];
-        if let Some(id) = tc["id"].as_str() {
+        if let Some(id) = delta.id {
             if !id.is_empty() {
-                slot.id = id.to_string();
+                slot.id = id;
             }
         }
-        if let Some(n) = tc["function"]["name"].as_str() {
-            slot.name.push_str(n);
+        if let Some(name) = delta.name {
+            if slot.name != name {
+                // OpenAI 兼容端点可能把 name 拆片；Anthropic/Gemini 通常给完整名且可能重发。
+                if name.starts_with(&slot.name) {
+                    slot.name = name;
+                } else {
+                    slot.name.push_str(&name);
+                }
+            }
         }
-        if let Some(a) = tc["function"]["arguments"].as_str() {
-            slot.args.push_str(a);
+        if let Some(update) = delta.arguments {
+            match update {
+                crate::provider::ArgumentsUpdate::Append(value) => slot.args.push_str(&value),
+                crate::provider::ArgumentsUpdate::Replace(value) => slot.args = value,
+            }
         }
     }
 }
@@ -1517,16 +1518,18 @@ mod tests {
     fn accumulates_streamed_tool_call() {
         // 模拟 OpenAI 流式 tool_call 分片:首片带 id/name + 半截 arguments,次片续 arguments。
         let mut calls = Vec::new();
-        apply_tool_delta(
-            &mut calls,
-            &json!({"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function",
-                "function":{"name":"query_data","arguments":"{\"col"}}]}}),
+        let first = crate::provider::parse_stream_delta(
+            crate::config::ProviderProtocol::Openai,
+            &json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function",
+                "function":{"name":"query_data","arguments":"{\"col"}}]}}]}),
         );
-        apply_tool_delta(
-            &mut calls,
-            &json!({"delta":{"tool_calls":[{"index":0,
-                "function":{"arguments":"lection\":\"jobs\"}"}}]}}),
+        apply_tool_deltas(&mut calls, first.tools);
+        let second = crate::provider::parse_stream_delta(
+            crate::config::ProviderProtocol::Openai,
+            &json!({"choices":[{"delta":{"tool_calls":[{"index":0,
+                "function":{"arguments":"lection\":\"jobs\"}"}}]}}]}),
         );
+        apply_tool_deltas(&mut calls, second.tools);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].id, "call_1");
         assert_eq!(calls[0].name, "query_data");
@@ -1567,7 +1570,11 @@ mod tests {
     fn parses_openai_content_delta() {
         let mut calls = Vec::new();
         let choice = json!({"delta":{"content":"你好"}});
-        apply_tool_delta(&mut calls, &choice); // 无 tool_calls → 不动
+        let delta = crate::provider::parse_stream_delta(
+            crate::config::ProviderProtocol::Openai,
+            &json!({"choices":[choice.clone()]}),
+        );
+        apply_tool_deltas(&mut calls, delta.tools); // 无 tool_calls → 不动
         assert!(calls.is_empty());
         assert_eq!(choice["delta"]["content"].as_str(), Some("你好"));
     }
@@ -1640,70 +1647,6 @@ mod tests {
         }
         assert_eq!(messages[0]["role"], "system");
         assert_eq!(messages.last().unwrap()["role"], "user");
-    }
-
-    // ── ai_extract 请求体红线(块3):一次性抽取是新的够到模型的路,单测锁住无 system / 无 tools / profile-free。
-    #[test]
-    fn extract_body_text_has_no_system_no_tools() {
-        let b = build_extract_body("gpt-x", "提取这段 JD".into(), None);
-        assert_eq!(b["model"], "gpt-x");
-        assert_eq!(b["stream"], false);
-        assert!(
-            b.get("tools").is_none(),
-            "一次性抽取不带 tools(此路够不到破坏性工具/MCP)"
-        );
-        let msgs = b["messages"].as_array().unwrap();
-        assert_eq!(msgs.len(), 1, "只一条 user 消息");
-        assert_eq!(msgs[0]["role"], "user");
-        assert!(
-            !msgs.iter().any(|m| m["role"] == "system"),
-            "无 system 消息(纯抽取不注入系统提示)"
-        );
-        assert_eq!(
-            msgs[0]["content"], "提取这段 JD",
-            "纯文本 → content 为字符串"
-        );
-    }
-
-    #[test]
-    fn extract_body_image_is_multimodal() {
-        let b = build_extract_body(
-            "gpt-x",
-            "看图".into(),
-            Some("data:image/png;base64,QUJD".into()),
-        );
-        let content = &b["messages"][0]["content"];
-        assert!(content.is_array(), "有图 → content 为多模态数组");
-        assert_eq!(content[0]["type"], "text");
-        assert_eq!(content[0]["text"], "看图");
-        assert_eq!(content[1]["type"], "image_url");
-        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,QUJD");
-        assert!(b.get("tools").is_none());
-        assert!(!b["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["role"] == "system"));
-    }
-
-    #[test]
-    fn extract_body_empty_image_falls_back_to_text() {
-        // 空图片 URL 视作无图(纯文本字符串),不产生空 image_url 块。
-        let b = build_extract_body("gpt-x", "hi".into(), Some(String::new()));
-        assert_eq!(b["messages"][0]["content"], "hi");
-    }
-
-    #[test]
-    fn extract_body_has_no_profile_keys() {
-        let b = build_extract_body(
-            "gpt-x",
-            "提取岗位".into(),
-            Some("data:image/png;base64,AA".into()),
-        );
-        let s = serde_json::to_string(&b).unwrap();
-        for k in ["profile", "phone", "email", "\"name\""] {
-            assert!(!s.contains(k), "抽取请求体不应含隐私键: {k}");
-        }
     }
 
     #[test]

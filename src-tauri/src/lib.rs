@@ -8,6 +8,7 @@ mod embed;
 mod mcp;
 mod memory;
 mod prompts;
+mod provider;
 mod secret;
 mod web;
 
