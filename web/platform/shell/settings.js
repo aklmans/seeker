@@ -193,7 +193,7 @@ export function renderSettings(){
   appSpecs.forEach(s=>{ if(s.extend) Object.keys(s.extend).forEach(k=>{ const e=s.extend[k]; if(e&&typeof e.wire==='function') e.wire(); }); });
 }
 
-/* D3:导出 / 脱敏导出 / 导入(桌面真接平台核;web 沿用 mock)。导入用 <input type=file> 读文件,零新插件。 */
+/* D3:导出 / 脱敏导出 / 导入按 rt.db 能力接线(桌面写文件、Web 下载 JSON)。导入用 <input type=file> 读文件,零新插件。 */
 function wireDataIO(){
   const exp=$('#dataExport'), expR=$('#dataExportRedacted'), imp=$('#dataImport'), impFile=$('#dataImportFile');
   if(!exp) return;
@@ -202,14 +202,14 @@ function wireDataIO(){
   const md=$('#mgrDocs'); if(md) md.onclick=()=>go('capability');     // ★P1-c:知识库管理同上(RAG #2)
   const mcpB=$('#mgrMcp'); if(mcpB) mcpB.onclick=()=>go('capability');  // ★P1-b:连接器管理已搬迁至能力中心(一等公民),此处只留指路
   const cad=$('#clearAllData'); if(cad) cad.onclick=clearAllDataFlow;  // 真·清空所有数据(guardrail+备份+种子守卫;index.html 过渡全局)
-  const on = (typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT);
+  const rt=window.SeekerRT;
+  const on = !!(rt&&rt.db&&typeof rt.db.export==='function'&&typeof rt.db.import==='function');
   if(!on){
-    exp.onclick=()=>toast('已导出 jobhunt-data.json (mock)');
-    if(expR) expR.onclick=()=>toast('脱敏导出 (mock)');
-    if(imp) imp.onclick=()=>toast('请选择文件 (mock)');
+    exp.onclick=()=>toast(tt('该端暂不支持导出','Export is not supported here'));
+    if(expR) expR.onclick=()=>toast(tt('该端暂不支持导出','Export is not supported here'));
+    if(imp) imp.onclick=()=>toast(tt('该端暂不支持导入','Import is not supported here'));
     return;
   }
-  const rt=window.SeekerRT;
   exp.onclick=()=>rt.db.export(false).then(p=>toast(tt('已导出到 ','Exported to ')+p)).catch(e=>toast(errText(e)));
   if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已脱敏导出(不含隐私)到 ','Redacted export to ')+p)).catch(e=>toast(errText(e)));
   if(imp&&impFile){

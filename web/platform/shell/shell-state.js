@@ -8,9 +8,10 @@
 /* ============ NAV STATE ============ */
 /* 多应用平台(阶段1):导航项/分组由壳组合 —— apps/jobseek/manifest.js 注册业务页、壳自持设置页(SHELL BOOT setShell + 填充)。PAGES/GROUPS 保名空置,消费方(buildNav/buildPages/go/initKeys/setLang/rerenderPages)零改动。 */
 import { markOnboarded } from './data-store.js';
+import { clearCollectionsSafely } from '../runtime/data-clear.js';
 import { tt } from './i18n.js';
 import { isDesktop } from './shell-keys.js';
-import { toast } from './toast.js';
+import { errText, toast } from './toast.js';
 export const PAGES=[];
 export const GROUPS={};
 
@@ -39,11 +40,8 @@ export function hydrateSettings(){
 // —— 新应用集合自动纳入,「清空全部数据」永不静默漏集合(§4-3 可撤销完整性);
 // app-local 状态复位经 SeekerShell.notifyDataCleared() 契约(第9契约,如 jobseek 退演示模式),平台零 setDemoMode 直调。
 export async function clearAllCollections(){ // 抽出便于安全测试 + 不依赖 reload
-  const rt=window.SeekerRT; if(!rt) return;
-  try{ await rt.db.backup(); }catch(_e){}                 // 清前自动备份(可日后导入恢复)
-  for(const c of window.SeekerShell.collections()){
-    try{ const rows=await rt.db.list(c); for(const r of rows){ try{ await rt.db.remove(c, r.id); }catch(_e){} } }catch(_e){}
-  }
+  const rt=window.SeekerRT; if(!rt) throw new Error(tt('该端暂不支持','Not supported here'));
+  return clearCollectionsSafely(rt, window.SeekerShell.collections());
 }
 export function clearAllDataFlow(){
   const G=window.SeekerGuardrail;
@@ -51,9 +49,9 @@ export function clearAllDataFlow(){
   const n=window.SeekerShell.collections().length;
   G.confirmDestructive({
     title:tt('清空所有业务数据?','Clear all data?'),
-    detail:tt('将删除全部应用的业务数据与对话历史(共 '+n+' 个数据集合,含已停用应用)。个人信息与设置不受影响。清空前会自动存一份备份,可日后导入恢复。','Deletes all apps\' business data and chat history ('+n+' collections, including disabled apps). Personal info and settings stay. A backup is saved first — you can re-import it later.'),
+    detail:tt('将删除全部应用的业务数据与对话历史(共 '+n+' 个数据集合,含已停用应用)。个人信息与设置不受影响。删除前必须先保存一份可从本页导入恢复的 JSON 备份;备份失败则不会删除。','Deletes all apps\' business data and chat history ('+n+' collections, including disabled apps). Personal info and settings stay. An importable JSON backup must be saved first; if backup fails, nothing is deleted.'),
     confirmLabel:tt('清空','Clear'),
-    onConfirm:async()=>{ await clearAllCollections(); window.SeekerShell.notifyDataCleared(); markOnboarded(); toast(tt('已清空 · 备份已存,正在刷新…','Cleared · backup saved, reloading…')); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 700); },
+    onConfirm:async()=>{ try{ const result=await clearAllCollections(); window.SeekerShell.notifyDataCleared(); markOnboarded(); toast(tt('已清空 · 可恢复备份: ','Cleared · recoverable backup: ')+result.backupPath); setTimeout(()=>{ try{ location.reload(); }catch(_e){} }, 1200); }catch(e){ toast(tt('清空失败,未报告成功: ','Clear failed; no success was reported: ')+errText(e)); } },
   });
 }
 

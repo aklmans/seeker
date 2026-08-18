@@ -69,12 +69,14 @@ export interface DbApi {
    * 无论调用者是 UI、Agent 还是 widget,都走同一护栏。
    */
   remove(collection: Collection, id: string): Promise<Record | null>;
-  /** 全量导出到本地文件(redact=true 剔除 profile 供分享);返回文件路径。 */
+  /** 全量便携导出到本地 JSON(redact=true 剔除平台私密数据供分享);返回文件路径。 */
   export(redact: boolean): Promise<string>;
-  /** 从 JSON 字符串导入(校验版本 + 导入前快照 + 合并 upsert);返回各集合导入条数。 */
+  /** 从 JSON 字符串导入(校验版本 + 导入前快照 + 单事务合并 upsert);返回各集合导入条数。 */
   import(json: string): Promise<{ [collection: string]: number }>;
-  /** 即时备份(VACUUM INTO);返回备份文件路径。 */
+  /** 即时便携 JSON 备份(可由 import 恢复);返回备份文件路径/下载文件名。 */
   backup(): Promise<string>;
+  /** 先生成完整便携备份,再原子清空指定通用集合。任一步失败均不得报告成功。 */
+  clear(collections: Collection[]): Promise<{ backupPath: string; deleted: number }>;
 }
 
 // ── 隐私字段(rt.profile)── 隐私红线 ─────────────────────────────

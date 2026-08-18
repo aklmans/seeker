@@ -6,6 +6,7 @@
  * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用。
  */
 import { NotImplementedError, notImpl } from './errors.js';
+import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
 
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ (['db', 'ai', 'secret', 'capability']),
@@ -13,10 +14,12 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 5; // v5:platform_projects(Project PJ1);v4:platform_schedules;v3:platform_skills;v2:assets_*。onupgradeneeded 增量建 store,既有数据不动
+const DB_VERSION = 6; // v6:便携保全 memories/doc_chunks;v5:platform_projects;v4:platform_schedules;v3:platform_skills;v2:assets_*
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
 const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects'];
 const KV_STORES = ['profile', 'settings', 'meta'];
+// Web 暂无记忆/RAG 执行能力,但仍保全桌面便携包中的私有数据,以便再次导出回桌面时不丢失。
+const PRIVATE_STORES = ['memories', 'doc_chunks'];
 
 /** @type {Promise<any> | null} */
 let dbPromise = null;
@@ -29,7 +32,7 @@ function openDb() {
     const req = idb.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      COLLECTIONS.forEach((s) => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' }); });
+      [...COLLECTIONS, ...PRIVATE_STORES].forEach((s) => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' }); });
       KV_STORES.forEach((s) => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'k' }); });
     };
     req.onsuccess = () => resolve(req.result);
@@ -40,6 +43,14 @@ function openDb() {
 /** @param {any} req @returns {Promise<any>} */
 function reqDone(req) {
   return new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
+}
+/** @param {IDBTransaction} tx @returns {Promise<void>} */
+function txDone(tx) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('IndexedDB 事务失败'));
+    tx.onabort = () => reject(tx.error || new Error('IndexedDB 事务已回滚'));
+  });
 }
 /** @param {string} name @param {IDBTransactionMode} mode @returns {Promise<any>} IDBObjectStore */
 function store(name, mode) {
@@ -81,13 +92,96 @@ async function bundleAll(redact) {
   const collections = {};
   for (const c of COLLECTIONS) collections[c] = await listAll(c);
   return {
+    format: 'seeker-backup',
+    formatVersion: 2,
     schemaVersion: DB_VERSION,
     exportedAt: Date.now(),
     redacted: !!redact,
     collections,
     settings: await kvAll('settings'),
     profile: redact ? {} : await kvAll('profile'),
+    capabilities: redact ? { memories: [], documents: [] } : {
+      memories: await listAll('memories'),
+      documents: await listAll('doc_chunks'),
+    },
+    preferences: collectPortablePreferences(),
   };
+}
+
+/** @param {any} bundle */
+function validateBundle(bundle) {
+  if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) throw new Error('导入文件顶层必须是 JSON 对象');
+  const formatVersion = Number.isInteger(bundle.formatVersion) ? bundle.formatVersion : 1;
+  if (formatVersion < 1 || formatVersion > 2) throw new Error('导入文件格式不受支持: v' + formatVersion);
+  if (!bundle.collections || typeof bundle.collections !== 'object' || Array.isArray(bundle.collections)) throw new Error('导入文件缺少 collections 对象');
+  for (const c of COLLECTIONS) {
+    if (bundle.collections[c] !== undefined && !Array.isArray(bundle.collections[c])) throw new Error('集合 ' + c + ' 必须是数组');
+    for (const rec of (bundle.collections[c] || [])) if (!rec || typeof rec !== 'object' || rec.id === undefined) throw new Error('集合 ' + c + ' 含缺少 id 的记录');
+  }
+  const cap = bundle.capabilities;
+  if (cap !== undefined && (!cap || typeof cap !== 'object' || Array.isArray(cap))) throw new Error('capabilities 必须是对象');
+  for (const [field] of [['memories'], ['documents']]) {
+    if (cap && cap[field] !== undefined && !Array.isArray(cap[field])) throw new Error('capabilities.' + field + ' 必须是数组');
+    for (const rec of ((cap && cap[field]) || [])) if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string') throw new Error('capabilities.' + field + ' 含非法记录');
+  }
+}
+
+/** @param {any} bundle @returns {Promise<{[c:string]:number}>} */
+async function importBundle(bundle) {
+  validateBundle(bundle);
+  const db = await openDb();
+  const stores = [...COLLECTIONS, ...KV_STORES, ...PRIVATE_STORES];
+  const tx = db.transaction(stores, 'readwrite');
+  /** @type {{[c:string]:number}} */
+  const counts = {};
+  for (const c of COLLECTIONS) {
+    const records = bundle.collections[c] || [];
+    const target = tx.objectStore(c);
+    for (const rec of records) target.put(rec);
+    if (records.length) counts[c] = records.length;
+  }
+  for (const kv of ['profile', 'settings']) {
+    const obj = bundle[kv] || {};
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) { tx.abort(); throw new Error(kv + ' 必须是对象'); }
+    const target = tx.objectStore(kv);
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v !== 'string') { tx.abort(); throw new Error(kv + '.' + k + ' 必须是字符串'); }
+      target.put({ k, v });
+    }
+  }
+  const cap = bundle.capabilities || {};
+  const privateRows = [
+    ['memories', cap.memories || []],
+    ['doc_chunks', cap.documents || []],
+  ];
+  for (const [storeName, rows] of privateRows) {
+    const target = tx.objectStore(storeName);
+    for (const rec of /** @type {any[]} */ (rows)) target.put(rec);
+    if (rows.length) counts[storeName === 'doc_chunks' ? 'documents' : storeName] = rows.length;
+  }
+  await txDone(tx);
+  restorePortablePreferences(bundle.preferences);
+  return counts;
+}
+
+/** @param {string[]} collections @returns {Promise<{backupPath:string,deleted:number}>} */
+async function clearWithBackup(collections) {
+  const unique = [...new Set(collections)];
+  if (!unique.length) throw new Error('没有要清空的数据集合');
+  unique.forEach((c) => { if (!COLLECTIONS.includes(c)) throw new Error('未知或受保护的集合: ' + c); });
+  // downloadJson 抛错时不会进入事务；成功后才开始删除。
+  const backupPath = downloadJson(await bundleAll(false), 'seeker-backup-' + Date.now() + '.json');
+  const db = await openDb();
+  const tx = db.transaction(unique, 'readwrite');
+  let deleted = 0;
+  for (const c of unique) {
+    const target = tx.objectStore(c);
+    const countReq = target.count();
+    countReq.onsuccess = () => { deleted += Number(countReq.result) || 0; };
+    target.clear();
+  }
+  await txDone(tx);
+  return { backupPath, deleted };
 }
 
 // ── Web 演示 AI 代理(同源 /api/chat)────────────────────────────────────────
@@ -192,27 +286,9 @@ export function createWebRuntime() {
         return snap;
       },
       export: async (redact) => downloadJson(await bundleAll(redact), 'seeker-export' + (redact ? '-redacted' : '') + '-' + Date.now() + '.json'),
-      import: async (json) => {
-        const bundle = JSON.parse(json);
-        /** @type {{[c:string]:number}} */
-        const counts = {};
-        const cols = (bundle && bundle.collections) || {};
-        for (const c of COLLECTIONS) {
-          const arr = Array.isArray(cols[c]) ? cols[c] : [];
-          if (!arr.length) continue;
-          const s = await store(c, 'readwrite');
-          let n = 0;
-          for (const rec of arr) { if (rec && rec.id !== undefined) { await reqDone(s.put(rec)); n++; } }
-          counts[c] = n;
-        }
-        for (const kv of ['profile', 'settings']) {
-          const obj = (bundle && bundle[kv]) || {};
-          const s = await store(kv, 'readwrite');
-          for (const k of Object.keys(obj)) await reqDone(s.put({ k, v: String(obj[k]) }));
-        }
-        return counts;
-      },
+      import: async (json) => importBundle(JSON.parse(json)),
       backup: async () => downloadJson(await bundleAll(false), 'seeker-backup-' + Date.now() + '.json'),
+      clear: (collections) => clearWithBackup(collections),
     },
 
     profile: {

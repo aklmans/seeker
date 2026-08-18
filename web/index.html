@@ -1170,8 +1170,9 @@ import { renderSettings } from './platform/shell/settings.js';
 import { renderCapabilityCenter } from './platform/shell/capability-center.js';
 import { renderAbout } from './platform/shell/about.js';
 import { renderSkillPlaza } from './platform/shell/skill-plaza.js';
+import { clearCollectionsSafely } from './platform/runtime/data-clear.js';
 import { GROUPS, PAGES } from './platform/shell/shell-state.js';
-import { toast } from './platform/shell/toast.js';
+import { errText, toast } from './platform/shell/toast.js';
 /* ============ SHELL BOOT(壳装配 · 多应用平台阶段1)· 3.y 注册链 module 化 ============ */
 /* 载序:registry@858(module)+ manifest×2(module)均已 deferred 先跑 → window.SeekerShell 就绪、apps 已注册;
    本 module setShell/PAGES.push(pages())/GROUPS 在此 deferred 执行(不再 parse-time),下方 INIT-module 再消费填好的 PAGES。 */
@@ -1224,10 +1225,7 @@ function shellReassemble(){
 // 清某应用数据(按 manifest.collections 逐集合;清前自动备份;清后 reload 让内存从空 DB 重新水合)。
 async function clearAppData(app){
   const rt=window.SeekerRT; if(!rt||!rt.db) return;
-  try{ if(rt.db.backup) await rt.db.backup(); }catch(_e){}
-  for(const coll of (app.collections||[])){
-    try{ const rows=await rt.db.list(coll); for(const r of (rows||[])){ if(r&&r.id!=null) await rt.db.remove(coll, r.id); } }catch(_e){}
-  }
+  return clearCollectionsSafely(rt, app.collections||[]);
 }
 function renderAppMgr(m){
   const S=window.SeekerShell;
@@ -1262,9 +1260,9 @@ function renderAppMgr(m){
     const a=S.list().find(x=>x.id===b.dataset.appclr); if(!a) return;
     const G=window.SeekerGuardrail; if(!G||!G.confirmDestructive){ toast(tt('该端暂不支持','Not supported here')); return; }
     G.confirmDestructive({ title:tt('清除应用数据?','Clear app data?'),
-      detail:tt('将清除「','Will clear "')+tt(a.name.zh,a.name.en)+tt('」的全部数据(已自动备份,可从设置导入恢复)','" — all its data (auto-backed up; restore via Settings import)'),
+      detail:tt('将清除「','Will clear "')+tt(a.name.zh,a.name.en)+tt('」的全部数据。删除前必须先保存可从设置导入恢复的 JSON 备份;备份失败则不会删除。','" — all its data. An importable JSON backup must be saved first; if backup fails, nothing is deleted.'),
       confirmLabel:tt('清除','Clear'),
-      onConfirm:async()=>{ await clearAppData(a); toast(tt('已清除,即将刷新','Cleared, reloading')); setTimeout(()=>location.reload(), 600); } });
+      onConfirm:async()=>{ try{ const result=await clearAppData(a); toast(tt('已清除 · 可恢复备份: ','Cleared · recoverable backup: ')+result.backupPath); setTimeout(()=>location.reload(), 1200); }catch(e){ toast(tt('清除失败,未报告成功: ','Clear failed; no success was reported: ')+errText(e)); } } });
   });
 }
 function openAppManager(){

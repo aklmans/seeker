@@ -6,6 +6,7 @@
  * db / capability 仍占位(#3 / #2)。
  */
 import { notImpl } from './errors.js';
+import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
 import { runAppTool } from '../capability/app-tools/run.js';
 
 /** 桌面端「全功能」:所有能力都在。 */
@@ -139,9 +140,16 @@ export function createDesktopRuntime() {
       get: (collection, id) => invoke('db_get', { collection, id: String(id) }),
       upsert: (collection, record) => invoke('db_upsert', { collection, record }),
       remove: (collection, id) => invoke('db_remove', { collection, id: String(id) }), // 返快照 → toastUndo
-      export: (redact) => invoke('db_export', { redact: !!redact }),
-      import: (json) => invoke('db_import', { json }),
-      backup: () => invoke('db_backup'),
+      export: (redact) => invoke('db_export', { redact: !!redact, preferences: collectPortablePreferences() }),
+      import: async (json) => {
+        const counts = await invoke('db_import', { json });
+        // 后端先完成事务恢复；JSON 已被其验证过,此处只恢复窄白名单偏好。
+        const bundle = JSON.parse(json);
+        restorePortablePreferences(bundle && bundle.preferences);
+        return counts;
+      },
+      backup: () => invoke('db_backup', { preferences: collectPortablePreferences() }),
+      clear: (collections) => invoke('db_clear', { collections, preferences: collectPortablePreferences() }),
     },
 
     profile: {
