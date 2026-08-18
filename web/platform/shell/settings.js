@@ -94,7 +94,7 @@ export function renderSettings(){
     </div>
     <div class="lock-note" style="margin-top:14px;max-width:640px;"><span class="li">🔒</span><span>${tt('隐私优先:以上联系方式字段不参与任何 AI 处理。AI 生成简历时只重写专业内容(概要 / 技能 / 经历),绝不触碰你的联系方式与身份信息。','Privacy first: the contact fields above never go through AI. When generating resumes, AI only rewrites professional content (summary / skills / experience) — never your contact or identity info.')}</span></div>
     ${extendHTML('profile')}`;
-  const proto=[['openai','OpenAI 兼容'],['anthropic','Anthropic'],['gemini','Gemini'],['ollama','Ollama 本地'],['other','其他']];
+  const proto=[['openai','OpenAI 兼容'],['anthropic','Anthropic'],['gemini','Gemini'],['ollama','Ollama 本地']];
   const sttEng=[['browser','浏览器(免费)'],['whisper','Whisper 自托管'],['deepgram','Deepgram'],['groq','Groq'],['other','其他']];
   const ttsEng=[['browser','浏览器(免费)'],['kokoro','Kokoro/Piper 自托管'],['deepgram','Deepgram Aura'],['eleven','ElevenLabs'],['other','其他']];
   const sttSelf=MODEL.stt!=='browser', ttsSelf=MODEL.tts!=='browser';
@@ -173,7 +173,16 @@ export function renderSettings(){
   wireBackupPolicy();
   $$('#page-settings [data-tc]').forEach(b=>b.onclick=()=>{setState.trainCounts=(b.dataset.tc==='on');saveSettings();rerenderPages();renderSettings();toast(setState.trainCounts?'已开启:训练计入能力成长':'已关闭训练计入');}); // ③renderSkills()→rerenderPages()(通用重渲,平台不具名调 jobseek 渲染器)
   $$('#page-settings [data-mmode]').forEach(b=>b.onclick=()=>{MODEL.mode=b.dataset.mmode;renderSettings();});
-  const mp=$('#mdProto'); if(mp) mp.onchange=()=>{MODEL.protocol=mp.value;MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com',ollama:'http://localhost:11434/v1',other:''})[mp.value];MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku',gemini:'gemini-1.5-flash',ollama:'qwen2.5',other:''})[mp.value];renderSettings();};
+  const mp=$('#mdProto'); if(mp) mp.onchange=()=>{
+    MODEL.protocol=mp.value;
+    MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com/v1beta',ollama:'http://localhost:11434/v1'})[mp.value]||'';
+    MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku-latest',gemini:'gemini-2.5-flash',ollama:'qwen2.5'})[mp.value]||'';
+    if(settingsPersistOn()){
+      window.SeekerRT.ai.setConfig({protocol:MODEL.protocol,baseUrl:MODEL.baseUrl,model:MODEL.model})
+        .then(()=>{ toast(tt('已切换模型协议','Model protocol switched')); renderSettings(); })
+        .catch(e=>toast(errText(e)));
+    }else renderSettings();
+  };
   const mb=$('#mdBase'); if(mb) mb.oninput=()=>{MODEL.baseUrl=mb.value;};
   const mk=$('#mdKey'); if(mk) mk.oninput=()=>{MODEL.apiKey=mk.value;};
   const mks=$('#mdKeyShow'); if(mks) mks.onclick=()=>{const f=$('#mdKey');if(!f)return;f.type=f.type==='password'?'text':'password';mks.textContent=f.type==='password'?'显示':'隐藏';};
@@ -305,6 +314,7 @@ async function wireModelConfigDesktop(){
   const cfgPh=()=>tt('已配置 · 留空则保持不变','Configured · leave blank to keep');
   try{
     const c=await rt.ai.getConfig();
+    MODEL.protocol=c.protocol||'openai'; const proto=$('#mdProto'); if(proto) proto.value=MODEL.protocol;
     base.value=c.baseUrl||''; if(embed) embed.value=c.embedModel||''; if(ua) ua.value=c.userAgent||'';
     MODEL.models=Array.isArray(c.models)?c.models:[]; MODEL.model=c.model||''; renderModelList(); // 用后端真实已存模型列表覆盖重渲
     if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : 'sk-…'; }

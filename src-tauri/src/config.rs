@@ -1,4 +1,4 @@
-//! Provider 非密钥配置(base_url / model)。
+//! Provider 非密钥配置(protocol / base_url / model)。
 //!
 //! 这些**不是密钥**(设置页要显示),存 app 配置目录下的 `provider.json`。
 //! 密钥仍只进钥匙串(见 `secret`)。`ai_config_get` 返回非密钥配置 + key 的
@@ -12,8 +12,25 @@ use tauri::{AppHandle, Manager};
 
 const KEY_ACCOUNT: &str = "provider.openai.key";
 
+/// 模型供应商的线上协议。旧版 `provider.json` 没有该字段,反序列化时必须保持原来的
+/// OpenAI-compatible 行为,不能因升级改变现有端点的请求格式。
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderProtocol {
+    #[default]
+    Openai,
+    Anthropic,
+    Gemini,
+    /// Ollama 当前走其官方 OpenAI-compatible `/v1/chat/completions` 接口；单独保留枚举值,
+    /// 便于能力矩阵给出本地模型特有的提示与限制。
+    Ollama,
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ProviderConfig {
+    /// 线上协议。`serde(default)` 令无此字段的旧配置无损迁移为 OpenAI-compatible。
+    #[serde(default)]
+    pub protocol: ProviderProtocol,
     #[serde(default)]
     pub base_url: String,
     /// 当前启用的模型(active)。必在 `models` 内(get 时兜底补入)。
@@ -55,6 +72,7 @@ fn save(app: &AppHandle, c: &ProviderConfig) -> Result<(), String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigView {
+    protocol: ProviderProtocol,
     base_url: String,
     model: String,
     embed_model: String,
@@ -81,6 +99,7 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
         models.insert(0, c.model.clone());
     }
     Ok(ConfigView {
+        protocol: c.protocol,
         base_url: c.base_url,
         model: c.model,
         embed_model: c.embed_model,
@@ -93,12 +112,16 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
 #[tauri::command]
 pub fn ai_config_set(
     app: AppHandle,
+    protocol: Option<ProviderProtocol>,
     base_url: Option<String>,
     model: Option<String>,
     embed_model: Option<String>,
     user_agent: Option<String>,
 ) -> Result<(), String> {
     let mut c = load(&app);
+    if let Some(p) = protocol {
+        c.protocol = p;
+    }
     if let Some(b) = base_url {
         c.base_url = b.trim().to_string();
     }
@@ -119,6 +142,33 @@ pub fn ai_config_set(
         c.user_agent = ua.trim().to_string();
     }
     save(&app, &c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_provider_config_defaults_to_openai_compatible() {
+        let c: ProviderConfig = serde_json::from_str(
+            r#"{"base_url":"https://example.test/v1","model":"legacy-model"}"#,
+        )
+        .unwrap();
+        assert_eq!(c.protocol, ProviderProtocol::Openai);
+        assert_eq!(c.model, "legacy-model");
+    }
+
+    #[test]
+    fn provider_protocol_round_trips_as_stable_lowercase_value() {
+        let c = ProviderConfig {
+            protocol: ProviderProtocol::Anthropic,
+            ..ProviderConfig::default()
+        };
+        let json = serde_json::to_value(c).unwrap();
+        assert_eq!(json["protocol"], "anthropic");
+        let restored: ProviderConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.protocol, ProviderProtocol::Anthropic);
+    }
 }
 
 /// 选当前使用的模型(从已保存列表;不在列表则容错补入)。

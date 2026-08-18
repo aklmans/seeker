@@ -153,6 +153,8 @@ export interface AiStream {
 }
 
 export interface AiConfig {
+  /** 线上协议；旧配置缺省为 openai。 */
+  protocol: 'openai' | 'anthropic' | 'gemini' | 'ollama';
   baseUrl: string;
   /** 当前启用的模型(active)。 */
   model: string;
@@ -212,8 +214,8 @@ export interface AiApi {
   extract(req: { prompt: string; imageDataUrl?: string | null }): Promise<string>;
   /** 读取非密钥 provider 配置 + key 状态(不含明文)。 */
   getConfig(): Promise<AiConfig>;
-  /** 写非密钥配置(baseUrl/model/embedModel);model 非空 = 加入已存列表 + 设为当前;key 走 rt.secret.set 进钥匙串。 */
-  setConfig(patch: { baseUrl?: string; model?: string; embedModel?: string; userAgent?: string }): Promise<void>;
+  /** 写非密钥配置(protocol/baseUrl/model/embedModel);model 非空 = 加入已存列表 + 设为当前;key 走 rt.secret.set 进钥匙串。 */
+  setConfig(patch: { protocol?: AiConfig['protocol']; baseUrl?: string; model?: string; embedModel?: string; userAgent?: string }): Promise<void>;
   /** 一协议多模型:从已保存列表选当前使用的模型。 */
   selectModel(model: string): Promise<void>;
   /** 删除一个已保存模型(删当前则改用剩余第一个)。 */

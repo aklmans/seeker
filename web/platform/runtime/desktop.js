@@ -182,6 +182,7 @@ export function createDesktopRuntime() {
       getConfig: () => invoke('ai_config_get'),
       setConfig: (patch) =>
         invoke('ai_config_set', {
+          protocol: patch.protocol ?? null,
           baseUrl: patch.baseUrl ?? null,
           model: patch.model ?? null,
           embedModel: patch.embedModel ?? null,
