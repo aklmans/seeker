@@ -6,7 +6,7 @@
  *    因步2 把 dispatch 迁到 body **末位** module(在本 module 之后),注册仍早于 dispatch(第5轮不变式 by construction 保住)。
  *  ★red-line(逐字保留):resumes 集合只存专业模块结构、**联系方式绝不入 resumes**(走独立 profile 实时渲染)→ query_data('resumes') 天然不含联系方式。 */
 
-/* ===== #3 D1b:jobs 数据走仓库(桌面持久化;web 沿用内存 mock) ===== */
+/* ===== #3 D1b:jobs 数据走统一仓库(桌面 SQLite / Web IndexedDB) ===== */
 import { ACTIONS, JOBS, SKILLS } from '../data.js';
 import { IV_RECORDS, MASTER, RESUME_TAILORED } from './intake-action.js';
 import { renderInterview } from './interview.js';

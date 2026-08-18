@@ -2,17 +2,17 @@
 /** 平台 · 通用集合数据引擎 collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl + persistMsg。
  *  ★红线(逐字保留):只处理通用集合(rt.db.upsert/list),隐私表(profile)走独立 rt.profile、永不经此
  *  —— persist 永不把 profile 写通用 AI 可读集(合 D3 / profile 硬隔离)。集合 id 键经 SeekerShell.collId 契约问应用(§1 纯净、无 jobseek knowledge)。
- *  依赖 isDesktop/window.SeekerRT(运行时全局)。classic 消费者(persistence/settings/copilot-chrome/cards/assets 等)按全局名调不变。
+ *  依赖 window.SeekerRT 的 db 能力(桌面 SQLite / Web IndexedDB 同契约)。classic 消费者(persistence/settings/copilot-chrome/cards/assets 等)按全局名调不变。
  *  __msgSeq(message 序号,persistMsg 内 ++)= 模块内私有、外部不消费 → 不上桥(无分裂)。 */
-/* ---- 持久化条件 + 壳 onboarding 状态(归属:平台):jobsPersistOn(桌面+SeekerRT)+ onboarded/markOnboarded。
+/* ---- 持久化条件 + 壳 onboarding 状态(归属:平台):jobsPersistOn(rt.db 可用)+ onboarded/markOnboarded。
    ★归平台理据:hydrateColl(本引擎,通用集合)按"有数据→已上手"调 markOnboarded = **shell 级 onboarding**(非 jobseek 专属),
    留平台避免平台→apps 反向依赖('jh-seeded-jobs' 是旧版迁移键、逐字保留)。demo 态(demoMode/setDemoMode/SEED/captureSeed)= jobseek,留 apps。 ---- */
-import { isDesktop } from './shell-keys.js';
 import { currentProjectId } from './project-state.js'; // ★PJ2:消息按项目分组(零 import 叶子,无环;默认工作区不写字段=既有数据零回归)
-export function jobsPersistOn(){ return typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT; }
+import { dbPersistenceAvailable } from '../runtime/persistence-capability.js';
+export function jobsPersistOn(){ return dbPersistenceAvailable(window.SeekerRT); }
 export function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
 export function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
-export function collPersistOn(){ return jobsPersistOn(); } // 同条件:桌面 + SeekerRT
+export function collPersistOn(){ return jobsPersistOn(); } // 同条件:运行时真实提供 db(SQLite / IndexedDB)
 // 种子守卫:首启把内存 mock 作种子写一次;之后(含"清空所有数据"后)不再播种,演示数据不复活。
 export function seededColl(name){ try{ return localStorage.getItem('jh-seeded-'+name)==='1'; }catch(_e){ return false; } }
 export function markSeededColl(name){ try{ localStorage.setItem('jh-seeded-'+name,'1'); }catch(_e){} }
