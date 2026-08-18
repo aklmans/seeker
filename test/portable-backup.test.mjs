@@ -6,6 +6,7 @@ import {
   restorePortablePreferences,
 } from '../web/platform/runtime/portable-prefs.js';
 import { clearCollectionsSafely } from '../web/platform/runtime/data-clear.js';
+import { normalizeBackupPolicy, persistBackupPolicy } from '../web/platform/runtime/backup-policy.js';
 
 function storage(seed = {}) {
   const values = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));
@@ -79,4 +80,17 @@ test('备份失败或没有可恢复路径时不降级为逐行删除、不报�
 
   const lying = { db: { clear: async () => ({ backupPath: '', deleted: 9 }) } };
   await assert.rejects(clearCollectionsSafely(lying, ['jobs']), /备份未返回可恢复路径/);
+});
+
+test('自动备份策略以后端返回为准，写失败则交还旧 UI 值', async () => {
+  assert.deepEqual(normalizeBackupPolicy({ enabled: false, lastBackupAt: 123 }), { value: 'off', lastBackupAt: 123 });
+  assert.deepEqual(normalizeBackupPolicy({ enabled: true, lastBackupAt: null }), { value: 'on', lastBackupAt: null });
+
+  const saved = await persistBackupPolicy('on', 'off', async (enabled) => ({ enabled, lastBackupAt: 456 }));
+  assert.deepEqual(saved, { ok: true, value: 'off', lastBackupAt: 456, error: null });
+
+  const failed = await persistBackupPolicy('on', 'off', async () => { throw new Error('disk locked'); });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.value, 'on', '失败必须回滚到旧 UI 值');
+  assert.match(String(failed.error), /disk locked/);
 });

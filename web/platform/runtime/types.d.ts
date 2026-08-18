@@ -77,6 +77,10 @@ export interface DbApi {
   backup(): Promise<string>;
   /** 先生成完整便携备份,再原子清空指定通用集合。任一步失败均不得报告成功。 */
   clear(collections: Collection[]): Promise<{ backupPath: string; deleted: number }>;
+  /** 自动备份策略的窄视图；Web 返回 supported=false,不伪装浏览器能后台备份。 */
+  getBackupPolicy(): Promise<{ supported: boolean; enabled: boolean; lastBackupAt: number | null }>;
+  /** 只修改自动备份布尔策略,不开放通用 settings 表。 */
+  setBackupPolicy(enabled: boolean): Promise<{ supported: boolean; enabled: boolean; lastBackupAt: number | null }>;
 }
 
 // ── 隐私字段(rt.profile)── 隐私红线 ─────────────────────────────

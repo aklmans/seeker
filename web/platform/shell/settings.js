@@ -13,14 +13,16 @@
  *   ④ data-tc(训练计入能力成长)wiring 的 renderSkills() → rerenderPages()(通用重渲,平台已有机制,避免平台具名调 jobseek 渲染器)。 */
 import { PROFILE, persistProfileField } from './profile.js'; // ★批8:profile 转 module,PROFILE/persistProfileField 改 import(profile.js 不上 window 桥、隐私最小暴露);本文件仍是唯一改 PROFILE 入口(data-pf 输入、Agent 不可达)。
 import { $, $$, el } from './dom.js';
+import { normalizeBackupPolicy, persistBackupPolicy } from '../runtime/backup-policy.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
 import { openModal } from './modal.js';
 import { currentPage, frontis, go, renderTopActions, rerenderPages, signFoot } from './nav.js';
 import { isDesktop } from './shell-keys.js';
-import { clearAllDataFlow, saveSettings, setState, settingsPersistOn } from './shell-state.js';
+import { clearAllDataFlow, hydrateSettings, saveSettings, setState, settingsPersistOn } from './shell-state.js';
 import { errText, toast } from './toast.js'; // ★P1-c:toastUndo 随记忆管理搬迁至 memory-docs.js,此处已无消费者
 let settingsState={tab:'basic'};
+let backupPolicyHydrated=false, backupPolicyLoading=false, backupLastAt=null;
 const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
   stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
 const SET_TABS_SHELL=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['data',['数据管理','Data']],['about',['关于','About']]];
@@ -70,6 +72,13 @@ export function renderSettings(){
   const sections={};
   const appSpecs=window.SeekerShell.appSettings();
   const extendHTML=tabId=>appSpecs.flatMap(s=>(s.extend&&s.extend[tabId])?[s.extend[tabId].render()]:[]).join('');
+  const desktopBackup=typeof isDesktop==='function'&&isDesktop();
+  const backupControl=desktopBackup
+    ? seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.autobackup,'ab')
+    : `<span style="font-size:12px;color:var(--ink-3);">${tt('仅桌面端支持','Desktop only')}</span>`;
+  const backupLast=desktopBackup
+    ? (!backupPolicyHydrated?tt('读取中…','Loading…'):(backupLastAt?new Date(backupLastAt).toLocaleString():tt('尚无自动备份','No automatic backup yet')))
+    : tt('浏览器无法后台自动备份','Browsers cannot run background backups');
   sections.basic=`<p class="seclabel">— BASIC</p><h2 class="sectitle">${tt('外观与偏好','Appearance & preferences')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:560px;">
     ${row(tt('主题模式','Theme'),seg([['light',tt('浅色','Light')],['dark',tt('深色','Dark')],['system',tt('跟随系统','System')]],setState.theme,'theme'))}
     ${row(tt('正文字号','Font size'),seg([['13','13'],['14','14'],['15','15'],['16','16']],setState.fontsize,'fs'))}
@@ -128,9 +137,9 @@ export function renderSettings(){
     ${extendHTML('data')}
     ${row(tt('导出数据','Export data'),`<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="dataExport">${tt('导出 JSON','Export JSON')}</button><button class="btn" id="dataExportRedacted">${tt('脱敏导出','Export (redacted)')}</button></div>`)}
     ${row(tt('导入数据','Import data'),`<button class="btn" id="dataImport">${tt('导入文件','Import file')}</button><input type="file" id="dataImportFile" accept=".json,application/json" style="display:none">`)}
-    ${row(tt('自动备份','Auto backup'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.autobackup,'ab'))}
+    ${row(tt('自动备份','Auto backup'),backupControl)}
     ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
-    ${row(tt('上次备份','Last backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">2026.05.18 14:30</span>`)}
+    ${row(tt('上次自动备份','Last automatic backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">${backupLast}</span>`)}
     <!-- 「演示空状态 · 查看引导态」行(showEmptyState=jobseek 符号)已随批11B 末件迁入 jobseek 的 data extend(dataResumeRowHTML,extendHTML('data') 位),平台不再裸读 apps 符号。 -->
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
     ${row(tt('会话历史','Chat history'),`<button class="btn" id="mgrHistory">${tt('查看与清除','View & clear')}</button>`)}
@@ -161,7 +170,7 @@ export function renderSettings(){
   $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setState.lang=b.dataset.lang;try{localStorage.setItem('jh-lang',b.dataset.lang);}catch(e){}renderSettings();toast(b.dataset.lang==='en'?'English (demo)':'已切换为中文');});
   $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;saveSettings();renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});
   $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>{setState.motion=b.dataset.motion;saveSettings();renderSettings();});
-  $$('#page-settings [data-ab]').forEach(b=>b.onclick=()=>{setState.autobackup=b.dataset.ab;saveSettings();renderSettings();toast('自动备份已'+(b.dataset.ab==='on'?'开启':'关闭'));});
+  wireBackupPolicy();
   $$('#page-settings [data-tc]').forEach(b=>b.onclick=()=>{setState.trainCounts=(b.dataset.tc==='on');saveSettings();rerenderPages();renderSettings();toast(setState.trainCounts?'已开启:训练计入能力成长':'已关闭训练计入');}); // ③renderSkills()→rerenderPages()(通用重渲,平台不具名调 jobseek 渲染器)
   $$('#page-settings [data-mmode]').forEach(b=>b.onclick=()=>{MODEL.mode=b.dataset.mmode;renderSettings();});
   const mp=$('#mdProto'); if(mp) mp.onchange=()=>{MODEL.protocol=mp.value;MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com',ollama:'http://localhost:11434/v1',other:''})[mp.value];MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku',gemini:'gemini-1.5-flash',ollama:'qwen2.5',other:''})[mp.value];renderSettings();};
@@ -193,6 +202,42 @@ export function renderSettings(){
   appSpecs.forEach(s=>{ if(s.extend) Object.keys(s.extend).forEach(k=>{ const e=s.extend[k]; if(e&&typeof e.wire==='function') e.wire(); }); });
 }
 
+/* 自动备份策略:桌面 SQLite 是唯一真相源；localStorage 仅作首帧镜像。写失败必须回滚 UI。 */
+function wireBackupPolicy(){
+  if(typeof isDesktop!=='function'||!isDesktop()||!window.SeekerRT||!window.SeekerRT.db) return;
+  const buttons=$$('#page-settings [data-ab]'), rt=window.SeekerRT;
+  if(!backupPolicyHydrated){
+    buttons.forEach(b=>{ b.disabled=true; });
+    if(backupPolicyLoading) return;
+    backupPolicyLoading=true;
+    rt.db.getBackupPolicy().then(view=>{
+      backupPolicyLoading=false; backupPolicyHydrated=true;
+      if(!view||view.supported===false) throw new Error(tt('该端不支持自动备份','Automatic backup is unsupported here'));
+      const state=normalizeBackupPolicy(view); setState.autobackup=state.value; backupLastAt=state.lastBackupAt;
+      saveSettings(); renderSettings();
+    }).catch(e=>{
+      backupPolicyLoading=false; backupPolicyHydrated=true;
+      buttons.forEach(b=>{ b.disabled=false; });
+      console.error('[settings] backup policy', e);
+    });
+    return;
+  }
+  buttons.forEach(b=>b.onclick=async()=>{
+    const prev=setState.autobackup, next=b.dataset.ab==='off'?'off':'on';
+    if(next===prev) return;
+    setState.autobackup=next; saveSettings(); renderSettings();
+    const result=await persistBackupPolicy(prev,next,(enabled)=>rt.db.setBackupPolicy(enabled));
+    if(result.ok){
+      setState.autobackup=result.value; backupLastAt=result.lastBackupAt;
+      saveSettings();
+      toast(next==='on'?tt('自动备份已开启','Automatic backup enabled'):tt('自动备份已关闭','Automatic backup disabled'));
+    }else{
+      setState.autobackup=prev; saveSettings(); renderSettings();
+      toast(tt('自动备份设置未保存:','Backup setting was not saved: ')+errText(result.error));
+    }
+  });
+}
+
 /* D3:导出 / 脱敏导出 / 导入按 rt.db 能力接线(桌面写文件、Web 下载 JSON)。导入用 <input type=file> 读文件,零新插件。 */
 function wireDataIO(){
   const exp=$('#dataExport'), expR=$('#dataExportRedacted'), imp=$('#dataImport'), impFile=$('#dataImportFile');
@@ -221,7 +266,9 @@ function wireDataIO(){
         rt.db.import(String(reader.result||'')).then(counts=>{
           const total=Object.values(counts||{}).reduce((a,b)=>a+(+b||0),0);
           toast(tt('已导入 ','Imported ')+total+tt(' 条(导入前已自动快照)',' records (snapshot taken first)'));
+          hydrateSettings(); backupPolicyHydrated=false; backupPolicyLoading=false;
           window.SeekerShell.notifyDataImported();   // §1 契约化(批11B 末件):原硬编码 hydrateJobs()(jobseek 符号)→ 广播,各应用按新库重水合
+          renderSettings(); // 重新读取导入包里的 SQLite 备份策略,不让 localStorage 镜像覆盖真相。
         }).catch(e=>toast(tt('导入失败:','Import failed: ')+errText(e)));
         impFile.value='';
       };

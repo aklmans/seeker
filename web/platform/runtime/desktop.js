@@ -150,6 +150,8 @@ export function createDesktopRuntime() {
       },
       backup: () => invoke('db_backup', { preferences: collectPortablePreferences() }),
       clear: (collections) => invoke('db_clear', { collections, preferences: collectPortablePreferences() }),
+      getBackupPolicy: async () => ({ supported: true, ...(await invoke('backup_policy_get')) }),
+      setBackupPolicy: async (enabled) => ({ supported: true, ...(await invoke('backup_policy_set', { enabled: !!enabled })) }),
     },
 
     profile: {

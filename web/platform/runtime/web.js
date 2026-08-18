@@ -289,6 +289,8 @@ export function createWebRuntime() {
       import: async (json) => importBundle(JSON.parse(json)),
       backup: async () => downloadJson(await bundleAll(false), 'seeker-backup-' + Date.now() + '.json'),
       clear: (collections) => clearWithBackup(collections),
+      getBackupPolicy: async () => ({ supported: false, enabled: false, lastBackupAt: null }),
+      setBackupPolicy: () => notImpl('rt.db.setBackupPolicy', 'web'),
     },
 
     profile: {
