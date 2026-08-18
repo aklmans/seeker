@@ -94,6 +94,7 @@ pub fn run() {
             data::db_export,
             data::db_import,
             data::db_backup,
+            data::db_clear,
             data::memory_list,
             data::memory_clear,
             data::memory_clear_undoable,

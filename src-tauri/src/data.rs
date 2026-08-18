@@ -9,7 +9,7 @@
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -26,33 +26,30 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// collection → 表名**白名单**。`profile` / `secrets` / `meta` / `settings` **不在此** ——
-/// 通用 `db_*` 碰不到它们(隐私/密钥隔离从这里就成立)。
+/// collection → 表名**静态白名单**。便携导出直接遍历同一张表,从结构上避免「新集合可写、却忘了备份」。
+/// `profile` / `secrets` / `meta` / `settings` **不在此** —— 通用 `db_*` 碰不到它们;
+/// `capability.rs::QUERYABLE` 仍是更小、独立的 AI 可读硬白名单,这里的集中不扩大 AI 权限。
+const COLLECTION_TABLES: &[(&str, &str)] = &[
+    ("jobs", "jobs"),
+    ("skills", "skills"),
+    ("actions", "actions"),
+    ("resumes", "resumes"),
+    ("iv_records", "iv_records"),
+    ("messages", "messages"),
+    // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀。
+    ("assets_prompts", "assets_prompts"),
+    ("assets_notes", "assets_notes"),
+    // 以下平台集合可由管理面 CRUD,但故意不进 QUERYABLE、Agent 永不可写。
+    ("platform_skills", "platform_skills"),
+    ("platform_schedules", "platform_schedules"),
+    ("platform_projects", "platform_projects"),
+];
+
 fn table_for(collection: &str) -> Result<&'static str, String> {
-    match collection {
-        "jobs" => Ok("jobs"),
-        "skills" => Ok("skills"),
-        "actions" => Ok("actions"),
-        "resumes" => Ok("resumes"),
-        "iv_records" => Ok("iv_records"),
-        "messages" => Ok("messages"),
-        // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀;隐私表(profile/secrets/meta/settings)仍不在此。
-        "assets_prompts" => Ok("assets_prompts"),
-        "assets_notes" => Ok("assets_notes"),
-        // 平台 Skills(可执行技能 · proposal-skills.md S1):平台级用户能力,非 app ⇒ platform_ 前缀。
-        // db_* 可访问(管理面 CRUD),但**故意不进 QUERYABLE**(capability.rs)——Skill 是用户指令、非 AI 检索数据,永不 AI 可读。
-        "platform_skills" => Ok("platform_skills"),
-        // 平台 Scheduled tasks(proposal-scheduled-tasks SC1):调度配置=用户配置非 AI 数据,
-        // db_* 可访问(管理面 CRUD)但**故意不进 QUERYABLE**;且**永不注册任何可写本集合的
-        // capability/app-tool** —— Agent 能排任务 = 自我持续执行通路(第95轮 [建议]-强,加即拆除本红线)。
-        "platform_schedules" => Ok("platform_schedules"),
-        // 平台 Project(目标工作区 · proposal-project PJ1):项目配置(名/指令/归档态)=用户配置非 AI 数据,
-        // db_* 可访问(管理面 CRUD)但**故意不进 QUERYABLE**;且**永不注册任何可写本集合的
-        // capability/app-tool** —— Agent 能创建/改项目 = 自改「每轮注入的指令」= 自我提示注入通路
-        // (第98轮,与「不能自排任务」同族;加即拆除本红线)。
-        "platform_projects" => Ok("platform_projects"),
-        other => Err(format!("未知或受保护的集合: {other}")),
-    }
+    COLLECTION_TABLES
+        .iter()
+        .find_map(|(name, table)| (*name == collection).then_some(*table))
+        .ok_or_else(|| format!("未知或受保护的集合: {collection}"))
 }
 
 /// 打开(或创建)本地数据库,跑迁移(迁移前自动快照、每步事务失败回滚)。
@@ -333,74 +330,393 @@ pub fn profile_set(db: State<'_, Db>, k: String, v: String) -> Result<(), String
     Ok(())
 }
 
-// ── 导出 / 导入 / 备份(#3 D3)──────────────────────────────────
-// 全量导出含 profile(本地备份用);脱敏导出 redact=true 剔除 profile 供分享/调试。
-// 导入前自动快照;profile 仅整体随备份导入/导出,绝不进 AI 提示(那条红线在 ai_chat 侧)。
+// ── 便携导出 / 事务导入 / 安全清空(#3 D3)────────────────────────
+// `formatVersion` 是 JSON 线格式版本,与 SQLite `schemaVersion` 分开。完整备份含 profile、设置、
+// 全部通用集合、长期记忆与文档;密钥只在系统钥匙串,结构上没有进入本模块的路径。
+// `redact=true` 至少移除 profile / 记忆 / 文档这些平台私密数据,供分享和诊断。
 
-#[tauri::command]
-pub fn db_export(app: AppHandle, db: State<'_, Db>, redact: bool) -> Result<String, String> {
-    let conn = db.0.lock().unwrap();
-    let mut collections = Map::new();
-    for c in [
-        "jobs",
-        "skills",
-        "actions",
-        "resumes",
-        "iv_records",
-        "messages",
-    ] {
-        let mut stmt = conn
-            .prepare(&format!("SELECT data_json FROM {c} ORDER BY id"))
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| r.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
-        let mut arr = Vec::new();
-        for r in rows {
-            if let Ok(v) = serde_json::from_str::<Value>(&r.map_err(|e| e.to_string())?) {
-                arr.push(v);
-            }
-        }
-        collections.insert(c.to_string(), Value::Array(arr));
+const PORTABLE_FORMAT_VERSION: i64 = 2;
+
+fn read_collection(conn: &Connection, table: &str) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare(&format!("SELECT data_json FROM {table} ORDER BY id"))
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        let text = row.map_err(|e| e.to_string())?;
+        out.push(
+            serde_json::from_str::<Value>(&text)
+                .map_err(|e| format!("集合 {table} 含损坏 JSON,备份已中止: {e}"))?,
+        );
     }
-    let read_kv = |tbl: &str| -> Result<Map<String, Value>, String> {
-        let mut m = Map::new();
-        let mut s = conn
-            .prepare(&format!("SELECT k, v FROM {tbl}"))
-            .map_err(|e| e.to_string())?;
-        let rs = s
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-            .map_err(|e| e.to_string())?;
-        for r in rs {
-            let (k, v) = r.map_err(|e| e.to_string())?;
-            m.insert(k, Value::String(v));
+    Ok(out)
+}
+
+fn read_kv(conn: &Connection, table: &str) -> Result<Map<String, Value>, String> {
+    // table 仅由本模块字面量调用(profile/settings),不接收用户输入。
+    let mut out = Map::new();
+    let mut stmt = conn
+        .prepare(&format!("SELECT k, v FROM {table} ORDER BY k"))
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (k, v) = row.map_err(|e| e.to_string())?;
+        out.insert(k, Value::String(v));
+    }
+    Ok(out)
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn hex_decode(value: &str) -> Result<Vec<u8>, String> {
+    if value.len() % 2 != 0 {
+        return Err("embeddingHex 长度必须为偶数".into());
+    }
+    fn nibble(b: u8) -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
         }
-        Ok(m)
-    };
-    let settings = read_kv("settings")?;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let hi = nibble(pair[0]).ok_or_else(|| "embeddingHex 含非十六进制字符".to_string())?;
+            let lo = nibble(pair[1]).ok_or_else(|| "embeddingHex 含非十六进制字符".to_string())?;
+            Ok((hi << 4) | lo)
+        })
+        .collect()
+}
+
+fn read_memories_for_backup(conn: &Connection) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, fact, embedding, created_at FROM memories ORDER BY id")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let embedding: Option<Vec<u8>> = r.get(2)?;
+            Ok(json!({
+                "id": r.get::<_, String>(0)?,
+                "fact": r.get::<_, String>(1)?,
+                "embeddingHex": embedding.map(|v| hex_encode(&v)),
+                "createdAt": r.get::<_, i64>(3)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.map(|r| r.map_err(|e| format!("长期记忆含损坏行,备份已中止: {e}")))
+        .collect()
+}
+
+fn read_documents_for_backup(conn: &Connection) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, doc_id, doc_name, text, embedding, created_at FROM doc_chunks ORDER BY id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            let embedding: Option<Vec<u8>> = r.get(4)?;
+            Ok(json!({
+                "id": r.get::<_, String>(0)?,
+                "docId": r.get::<_, String>(1)?,
+                "docName": r.get::<_, String>(2)?,
+                "text": r.get::<_, String>(3)?,
+                "embeddingHex": embedding.map(|v| hex_encode(&v)),
+                "createdAt": r.get::<_, i64>(5)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.map(|r| r.map_err(|e| format!("知识库含损坏行,备份已中止: {e}")))
+        .collect()
+}
+
+fn portable_preference_key(key: &str) -> bool {
+    const EXACT: &[&str] = &[
+        "jh-settings",
+        "jh-theme",
+        "jh-lang",
+        "jh-sbw",
+        "jh-agentw",
+        "jh-demonote",
+        "jh-onboarded",
+        "jh-demo",
+        "jh-project",
+        "seeker-apps",
+    ];
+    if EXACT.contains(&key) {
+        return true;
+    }
+    key.strip_prefix("jh-seeded-").is_some_and(|suffix| {
+        !suffix.is_empty()
+            && suffix.len() <= 64
+            && suffix
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    })
+}
+
+fn sanitize_preferences(preferences: Option<Value>) -> Map<String, Value> {
+    preferences
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(k, v)| portable_preference_key(k) && v.is_string())
+        .collect()
+}
+
+fn build_portable_bundle(
+    conn: &Connection,
+    redact: bool,
+    preferences: Option<Value>,
+) -> Result<Value, String> {
+    let mut collections = Map::new();
+    for (collection, table) in COLLECTION_TABLES {
+        collections.insert(
+            (*collection).to_string(),
+            Value::Array(read_collection(conn, table)?),
+        );
+    }
     let profile = if redact {
         Map::new()
     } else {
-        read_kv("profile")?
+        read_kv(conn, "profile")?
     };
-    let bundle = json!({
-        "schemaVersion": schema_version(&conn),
+    let capabilities = if redact {
+        json!({ "memories": [], "documents": [] })
+    } else {
+        json!({
+            "memories": read_memories_for_backup(conn)?,
+            "documents": read_documents_for_backup(conn)?,
+        })
+    };
+    Ok(json!({
+        "format": "seeker-backup",
+        "formatVersion": PORTABLE_FORMAT_VERSION,
+        // 兼容 v1 导入器继续读取 schemaVersion;新格式明确它是 SQLite schema 版本。
+        "schemaVersion": schema_version(conn),
         "exportedAt": now_ms(),
         "redacted": redact,
         "collections": collections,
-        "settings": settings,
+        "settings": read_kv(conn, "settings")?,
         "profile": profile,
-    });
+        "capabilities": capabilities,
+        "preferences": sanitize_preferences(preferences),
+    }))
+}
+
+fn validate_bundle_header(bundle: &Value) -> Result<(), String> {
+    let root = bundle
+        .as_object()
+        .ok_or_else(|| "导入文件顶层必须是 JSON 对象".to_string())?;
+    let format_version = root
+        .get("formatVersion")
+        .and_then(Value::as_i64)
+        .unwrap_or(1); // 兼容既有 v1(无独立 formatVersion)
+    if !(1..=PORTABLE_FORMAT_VERSION).contains(&format_version) {
+        return Err(format!(
+            "导入文件格式 v{format_version} 不受支持,当前最高 v{PORTABLE_FORMAT_VERSION}"
+        ));
+    }
+    let imported_schema = root
+        .get("schemaVersion")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let latest = MIGRATIONS.last().map(|m| m.0).unwrap_or(0);
+    if imported_schema > latest {
+        return Err(format!(
+            "导入文件版本 v{imported_schema} 高于当前应用 v{latest},请升级应用后再导入"
+        ));
+    }
+    if root.get("collections").and_then(Value::as_object).is_none() {
+        return Err("导入文件缺少 collections 对象".into());
+    }
+    Ok(())
+}
+
+fn required_string<'a>(row: &'a Map<String, Value>, field: &str) -> Result<&'a str, String> {
+    row.get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("能力数据字段 {field} 必须是字符串"))
+}
+
+fn required_i64(row: &Map<String, Value>, field: &str) -> Result<i64, String> {
+    row.get(field)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| format!("能力数据字段 {field} 必须是整数"))
+}
+
+fn optional_embedding(row: &Map<String, Value>) -> Result<Option<Vec<u8>>, String> {
+    match row.get("embeddingHex") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => Ok(Some(hex_decode(v)?)),
+        Some(_) => Err("能力数据字段 embeddingHex 必须是字符串或 null".into()),
+    }
+}
+
+fn import_kv(conn: &Connection, table: &str, value: Option<&Value>) -> Result<(), String> {
+    let Some(value) = value else { return Ok(()) };
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{table} 必须是对象"))?;
+    for (k, v) in object {
+        let text = v
+            .as_str()
+            .ok_or_else(|| format!("{table}.{k} 必须是字符串"))?;
+        conn.execute(
+            &format!("INSERT OR REPLACE INTO {table} (k, v) VALUES (?1, ?2)"),
+            params![k, text],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn import_portable_bundle(
+    conn: &mut Connection,
+    bundle: &Value,
+) -> Result<Map<String, Value>, String> {
+    validate_bundle_header(bundle)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut counts = Map::new();
+    let collections = bundle["collections"]
+        .as_object()
+        .ok_or_else(|| "导入文件缺少 collections 对象".to_string())?;
+    for (collection, table) in COLLECTION_TABLES {
+        let Some(value) = collections.get(*collection) else {
+            continue;
+        };
+        let records = value
+            .as_array()
+            .ok_or_else(|| format!("集合 {collection} 必须是数组"))?;
+        for record in records {
+            upsert_into(&tx, table, record)?;
+        }
+        counts.insert((*collection).to_string(), Value::from(records.len()));
+    }
+    import_kv(&tx, "profile", bundle.get("profile"))?;
+    import_kv(&tx, "settings", bundle.get("settings"))?;
+
+    if let Some(capabilities) = bundle.get("capabilities") {
+        let capabilities = capabilities
+            .as_object()
+            .ok_or_else(|| "capabilities 必须是对象".to_string())?;
+        if let Some(memories) = capabilities.get("memories") {
+            let memories = memories
+                .as_array()
+                .ok_or_else(|| "capabilities.memories 必须是数组".to_string())?;
+            for value in memories {
+                let row = value
+                    .as_object()
+                    .ok_or_else(|| "记忆条目必须是对象".to_string())?;
+                tx.execute(
+                    "INSERT OR REPLACE INTO memories (id, fact, embedding, created_at) VALUES (?1,?2,?3,?4)",
+                    params![
+                        required_string(row, "id")?,
+                        required_string(row, "fact")?,
+                        optional_embedding(row)?,
+                        required_i64(row, "createdAt")?,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            counts.insert("memories".into(), Value::from(memories.len()));
+        }
+        if let Some(documents) = capabilities.get("documents") {
+            let documents = documents
+                .as_array()
+                .ok_or_else(|| "capabilities.documents 必须是数组".to_string())?;
+            for value in documents {
+                let row = value
+                    .as_object()
+                    .ok_or_else(|| "文档片段必须是对象".to_string())?;
+                tx.execute(
+                    "INSERT OR REPLACE INTO doc_chunks (id, doc_id, doc_name, text, embedding, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                    params![
+                        required_string(row, "id")?,
+                        required_string(row, "docId")?,
+                        required_string(row, "docName")?,
+                        required_string(row, "text")?,
+                        optional_embedding(row)?,
+                        required_i64(row, "createdAt")?,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            counts.insert("documents".into(), Value::from(documents.len()));
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(counts)
+}
+
+fn write_portable_bundle(dir: &Path, stem: &str, bundle: &Value) -> Result<PathBuf, String> {
+    let text = serde_json::to_string_pretty(bundle).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{stem}-{}.json", now_ms()));
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn clear_collections_transactionally(
+    conn: &mut Connection,
+    collections: &[String],
+) -> Result<usize, String> {
+    if collections.is_empty() {
+        return Err("没有要清空的数据集合".into());
+    }
+    let mut seen = HashSet::new();
+    let mut tables = Vec::new();
+    for collection in collections {
+        let table = table_for(collection)?;
+        if seen.insert(table) {
+            tables.push(table);
+        }
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut deleted = 0usize;
+    for table in tables {
+        deleted += tx
+            .execute(&format!("DELETE FROM {table}"), [])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(deleted)
+}
+
+#[tauri::command]
+pub fn db_export(
+    app: AppHandle,
+    db: State<'_, Db>,
+    redact: bool,
+    preferences: Option<Value>,
+) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let bundle = build_portable_bundle(&conn, redact, preferences)?;
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("exports");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let suffix = if redact { "-redacted" } else { "" };
-    let path = dir.join(format!("seeker-export{suffix}-{}.json", now_ms()));
-    let text = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    let path = write_portable_bundle(&dir, &format!("seeker-export{suffix}"), &bundle)?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -408,78 +724,62 @@ pub fn db_export(app: AppHandle, db: State<'_, Db>, redact: bool) -> Result<Stri
 pub fn db_import(app: AppHandle, db: State<'_, Db>, json: String) -> Result<Value, String> {
     let bundle: Value =
         serde_json::from_str(&json).map_err(|_| "无法解析导入文件(非合法 JSON)".to_string())?;
-    let imp_ver = bundle
-        .get("schemaVersion")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let latest = MIGRATIONS.last().map(|m| m.0).unwrap_or(0);
-    if imp_ver > latest {
-        return Err(format!(
-            "导入文件版本 v{imp_ver} 高于当前应用 v{latest},请升级应用后再导入"
-        ));
-    }
+    validate_bundle_header(&bundle)?;
     let backups = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("backups");
-    let conn = db.0.lock().unwrap();
-    let _ = snapshot(&conn, &backups, latest); // 导入前快照(best-effort)
-    let mut counts = Map::new();
-    if let Some(cols) = bundle.get("collections").and_then(|v| v.as_object()) {
-        for (c, arr) in cols {
-            let Ok(table) = table_for(c) else { continue }; // 跳过未知/受保护集合
-            let mut n: i64 = 0;
-            if let Some(records) = arr.as_array() {
-                for rec in records {
-                    if upsert_into(&conn, table, rec).is_ok() {
-                        n += 1;
-                    }
-                }
-            }
-            counts.insert(c.clone(), Value::from(n));
-        }
-    }
-    if let Some(p) = bundle.get("profile").and_then(|v| v.as_object()) {
-        for (k, v) in p {
-            if let Some(s) = v.as_str() {
-                conn.execute(
-                    "INSERT OR REPLACE INTO profile (k, v) VALUES (?1, ?2)",
-                    params![k, s],
-                )
-                .map_err(|e| e.to_string())?;
-            }
-        }
-    }
-    if let Some(st) = bundle.get("settings").and_then(|v| v.as_object()) {
-        for (k, v) in st {
-            if let Some(s) = v.as_str() {
-                conn.execute(
-                    "INSERT OR REPLACE INTO settings (k, v) VALUES (?1, ?2)",
-                    params![k, s],
-                )
-                .map_err(|e| e.to_string())?;
-            }
-        }
-    }
-    Ok(Value::Object(counts))
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    // 导入前快照是回滚逃生口,失败必须中止导入,不能再 best-effort。
+    snapshot(&conn, &backups, schema_version(&conn))?;
+    Ok(Value::Object(import_portable_bundle(&mut conn, &bundle)?))
 }
 
-/// 即时备份:VACUUM INTO 一份一致副本到 backups/,返回路径。
+/// 用户可恢复的即时备份:写入与 db_import 同格式的 JSON,不再生成设置页无法恢复的 `.db`。
 #[tauri::command]
-pub fn db_backup(app: AppHandle, db: State<'_, Db>) -> Result<String, String> {
+pub fn db_backup(
+    app: AppHandle,
+    db: State<'_, Db>,
+    preferences: Option<Value>,
+) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let bundle = build_portable_bundle(&conn, false, preferences)?;
     let backups = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("backups");
-    std::fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
-    let path = backups.join(format!("seeker-backup-{}.db", now_ms()));
-    let conn = db.0.lock().unwrap();
-    let p = path.to_string_lossy().replace('\'', "''");
-    conn.execute_batch(&format!("VACUUM INTO '{p}'"))
-        .map_err(|e| e.to_string())?;
+    let path = write_portable_bundle(&backups, "seeker-backup", &bundle)?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// 破坏性清空的唯一桌面入口:先完整落盘可导入 JSON,再在一个 SQLite 事务里删除目标集合。
+/// 任一阶段失败都会在删除前中止或由事务回滚,前端不得逐行 best-effort 删除后谎报成功。
+#[tauri::command]
+pub fn db_clear(
+    app: AppHandle,
+    db: State<'_, Db>,
+    collections: Vec<String>,
+    preferences: Option<Value>,
+) -> Result<Value, String> {
+    let backups = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("backups");
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    // 先验证全部集合,避免备份完才发现调用者越权/拼错。
+    for collection in &collections {
+        table_for(collection)?;
+    }
+    let bundle = build_portable_bundle(&conn, false, preferences)?;
+    let path = write_portable_bundle(&backups, "seeker-backup", &bundle)?;
+    let deleted = clear_collections_transactionally(&mut conn, &collections)?;
+    Ok(json!({
+        "backupPath": path.to_string_lossy(),
+        "deleted": deleted,
+    }))
 }
 
 // ── 长期记忆存储(#2 C2)──────────────────────────────────────────
@@ -4063,6 +4363,181 @@ mod tests {
         conn.execute("DELETE FROM doc_chunks", []).unwrap();
         assert_eq!(super::doc_restore_rows(&conn, &snap_all).unwrap(), 3);
         assert_eq!(super::doc_chunks_all(&conn).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn portable_backup_covers_every_collection_private_capabilities_and_safe_preferences() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-portable-{}", now_ms()));
+        migrate(&mut conn, &tmp).unwrap();
+        for (collection, table) in super::COLLECTION_TABLES {
+            super::upsert_into(
+                &conn,
+                table,
+                &serde_json::json!({ "id": format!("{collection}-1"), "kind": collection }),
+            )
+            .unwrap();
+        }
+        conn.execute("INSERT INTO profile (k,v) VALUES ('name','Ada')", [])
+            .unwrap();
+        conn.execute("INSERT INTO settings (k,v) VALUES ('autobackup','off')", [])
+            .unwrap();
+        super::memory_add(&conn, "m1", "偏好远程", &[0.25, -0.5]).unwrap();
+        super::doc_chunks_insert(&conn, "d1", "JD", &[("Rust".into(), vec![0.75])]).unwrap();
+
+        let bundle = super::build_portable_bundle(
+            &conn,
+            false,
+            Some(serde_json::json!({
+                "jh-theme": "dark",
+                "jh-seeded-assets_notes": "1",
+                "jh-democode": "must-not-export",
+                "api-key": "must-not-export",
+            })),
+        )
+        .unwrap();
+        assert_eq!(bundle["format"], "seeker-backup");
+        assert_eq!(bundle["formatVersion"], super::PORTABLE_FORMAT_VERSION);
+        let collections = bundle["collections"].as_object().unwrap();
+        assert_eq!(collections.len(), super::COLLECTION_TABLES.len());
+        for (collection, _) in super::COLLECTION_TABLES {
+            assert_eq!(collections[*collection].as_array().unwrap().len(), 1);
+        }
+        assert_eq!(bundle["profile"]["name"], "Ada");
+        assert_eq!(bundle["settings"]["autobackup"], "off");
+        assert_eq!(
+            bundle["capabilities"]["memories"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(
+            bundle["capabilities"]["documents"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(bundle["preferences"]["jh-theme"], "dark");
+        assert_eq!(bundle["preferences"]["jh-seeded-assets_notes"], "1");
+        assert!(bundle["preferences"].get("jh-democode").is_none());
+        assert!(bundle["preferences"].get("api-key").is_none());
+        assert!(
+            bundle.get("secrets").is_none(),
+            "便携格式结构上没有 secrets"
+        );
+
+        let redacted = super::build_portable_bundle(&conn, true, None).unwrap();
+        assert!(redacted["profile"].as_object().unwrap().is_empty());
+        assert!(redacted["capabilities"]["memories"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        assert!(redacted["capabilities"]["documents"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn portable_backup_round_trip_preserves_every_recoverable_domain() {
+        let mut source = Connection::open_in_memory().unwrap();
+        let mut restored = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-roundtrip-{}", now_ms()));
+        migrate(&mut source, &tmp.join("source")).unwrap();
+        migrate(&mut restored, &tmp.join("restored")).unwrap();
+        for (collection, table) in super::COLLECTION_TABLES {
+            super::upsert_into(
+                &source,
+                table,
+                &serde_json::json!({ "id": format!("{collection}-id"), "value": 7 }),
+            )
+            .unwrap();
+        }
+        source
+            .execute("INSERT INTO profile VALUES ('city','LA')", [])
+            .unwrap();
+        source
+            .execute("INSERT INTO settings VALUES ('autobackup','off')", [])
+            .unwrap();
+        super::memory_add(&source, "m", "事实", &[1.0, -2.0]).unwrap();
+        super::doc_chunks_insert(&source, "doc", "资料", &[("正文".into(), vec![3.0])]).unwrap();
+        let bundle = super::build_portable_bundle(&source, false, None).unwrap();
+
+        let counts = super::import_portable_bundle(&mut restored, &bundle).unwrap();
+        for (collection, table) in super::COLLECTION_TABLES {
+            assert_eq!(counts[*collection], 1);
+            assert_eq!(super::read_collection(&restored, table).unwrap().len(), 1);
+        }
+        assert_eq!(counts["memories"], 1);
+        assert_eq!(counts["documents"], 1);
+        let again = super::build_portable_bundle(&restored, false, None).unwrap();
+        assert_eq!(again["collections"], bundle["collections"]);
+        assert_eq!(again["profile"], bundle["profile"]);
+        assert_eq!(again["settings"], bundle["settings"]);
+        assert_eq!(again["capabilities"], bundle["capabilities"]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn portable_import_and_clear_are_transactional() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-portable-tx-{}", now_ms()));
+        migrate(&mut conn, &tmp).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER reject_boom BEFORE INSERT ON skills WHEN NEW.id='boom' BEGIN SELECT RAISE(ABORT,'boom'); END;",
+        )
+        .unwrap();
+        let bundle = serde_json::json!({
+            "format": "seeker-backup",
+            "formatVersion": 2,
+            "schemaVersion": super::schema_version(&conn),
+            "collections": {
+                "skills": [
+                    {"id":"first","name":"first"},
+                    {"id":"boom","name":"boom"}
+                ]
+            }
+        });
+        assert!(super::import_portable_bundle(&mut conn, &bundle).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM skills", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0,
+            "第二条失败必须回滚第一条"
+        );
+
+        super::upsert_into(&conn, "jobs", &serde_json::json!({"id":"j"})).unwrap();
+        super::upsert_into(&conn, "skills", &serde_json::json!({"id":"keep"})).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER reject_delete BEFORE DELETE ON skills BEGIN SELECT RAISE(ABORT,'keep'); END;",
+        )
+        .unwrap();
+        let targets = vec!["jobs".to_string(), "skills".to_string()];
+        assert!(super::clear_collections_transactionally(&mut conn, &targets).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1,
+            "后一个集合删除失败必须把先删的 jobs 回滚"
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM skills", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn portable_header_rejects_future_wire_format() {
+        let future = serde_json::json!({
+            "formatVersion": super::PORTABLE_FORMAT_VERSION + 1,
+            "schemaVersion": 0,
+            "collections": {}
+        });
+        assert!(super::validate_bundle_header(&future)
+            .unwrap_err()
+            .contains("不受支持"));
     }
 
     #[test]
