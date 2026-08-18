@@ -52,6 +52,7 @@ npm run build:all        # 产出 .app / .dmg(src-tauri/target/release/bundle/)
 # 开发:cd src-tauri && cargo run
 npm test                 # 单元测试
 npm run typecheck        # tsc
+npm run test:e2e         # Playwright Chromium（首次先 npx playwright install chromium）
 ```
 
 ## 架构
@@ -67,6 +68,7 @@ src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP ·
 
 技术栈:**Tauri 2**(Rust + 系统 WebView)· 原生 HTML/CSS/JS(**无前端框架**)· SQLite / IndexedDB。
 新增一个应用 ≈ 一个目录 + 一份 manifest,平台零改动。
+运行时、数据所有权、AI 协议矩阵与扩展检查表见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**。
 
 ## 反馈
 
