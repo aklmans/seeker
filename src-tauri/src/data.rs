@@ -2347,7 +2347,7 @@ pub fn doc_undo(
 
 // ── 周期性自动备份(平台 backlog)──────────────────────────────────
 // 开应用时若距上次自动备份超阈值,则 VACUUM INTO 一份 + 修剪旧自动备份(保留最近 N)。
-// 默认开;`settings.autobackup='off'` 可关(设置页开关接 settings 待 domain 接线)。
+// 默认开;`settings.autobackup='off'` 可关。只经下方窄命令读写,不把通用 settings 表暴露给前端/Agent。
 // 与「迁移前快照」(seeker-pre-*)、「手动备份」(seeker-backup-*)区分:自动备份名 seeker-auto-*。
 
 const AUTO_BACKUP_INTERVAL_MS: i64 = 24 * 60 * 60 * 1000; // 24h
@@ -2361,6 +2361,43 @@ fn kv_get(conn: &Connection, table: &str, k: &str) -> Option<String> {
         |r| r.get::<_, String>(0),
     )
     .ok()
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupPolicyView {
+    enabled: bool,
+    last_backup_at: Option<i64>,
+}
+
+fn backup_policy(conn: &Connection) -> BackupPolicyView {
+    BackupPolicyView {
+        enabled: kv_get(conn, "settings", "autobackup").as_deref() != Some("off"),
+        last_backup_at: kv_get(conn, "meta", "last_auto_backup").and_then(|v| v.parse().ok()),
+    }
+}
+
+fn set_backup_policy(conn: &Connection, enabled: bool) -> Result<BackupPolicyView, String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (k, v) VALUES ('autobackup', ?1)",
+        params![if enabled { "on" } else { "off" }],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(backup_policy(conn))
+}
+
+/// 自动备份策略的只读视图。Agent/能力注册表没有此命令,设置只能由管理 UI 修改。
+#[tauri::command]
+pub fn backup_policy_get(db: State<'_, Db>) -> Result<BackupPolicyView, String> {
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    Ok(backup_policy(&conn))
+}
+
+/// 窄写入口:只接受布尔开关,无法借此读写任意 settings 键。
+#[tauri::command]
+pub fn backup_policy_set(db: State<'_, Db>, enabled: bool) -> Result<BackupPolicyView, String> {
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    set_backup_policy(&conn, enabled)
 }
 
 /// 距上次备份是否到期(纯函数,便于测试)。
@@ -4546,6 +4583,28 @@ mod tests {
         assert!(super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS)); // 恰好满阈值 → 到期
         assert!(super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS + 1));
         assert!(!super::backup_due(0, super::AUTO_BACKUP_INTERVAL_MS - 1));
+    }
+
+    #[test]
+    fn backup_policy_is_single_source_of_truth_for_auto_backup() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-policy-{}", now_ms()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        migrate(&mut conn, &tmp).unwrap();
+        assert!(super::backup_policy(&conn).enabled, "缺省必须开启");
+        assert_eq!(super::backup_policy(&conn).last_backup_at, None);
+
+        let off = super::set_backup_policy(&conn, false).unwrap();
+        assert!(!off.enabled);
+        super::auto_backup_if_due(&conn, &tmp).unwrap();
+        assert_eq!(auto_count(&tmp), 0, "关闭后即使到期也不得创建自动备份");
+
+        let on = super::set_backup_policy(&conn, true).unwrap();
+        assert!(on.enabled);
+        super::auto_backup_if_due(&conn, &tmp).unwrap();
+        assert_eq!(auto_count(&tmp), 1, "重新开启后到期应创建自动备份");
+        assert!(super::backup_policy(&conn).last_backup_at.is_some());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     fn auto_count(dir: &std::path::Path) -> usize {
