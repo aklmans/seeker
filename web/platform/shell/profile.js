@@ -1,4 +1,4 @@
-// @ts-nocheck —— profile 通道(rt.profile · 红线隔离);持久化按运行时 profile 能力,桌面/Web 同契约。
+// @ts-check
 /** 平台 · profile 通道(个人隐私字段落盘/水合)—— ★★双红线:
  *  ① profile 硬隔离:persistProfileField 只经 rt.profile.set、hydrateProfile 只经 rt.profile.getAll,**绝不串 rt.db**
  *     —— 与 data-store.js 的通用集合引擎(rt.db)**物理分离 = 模块边界即红线边界**;后端 capability.rs QUERYABLE 不含 profile,AI 永不读/写 profile。
@@ -11,7 +11,9 @@
 import { currentPage } from './nav.js';
 import { profilePersistenceAvailable } from '../runtime/persistence-capability.js';
 import { renderSettings } from './settings.js';
+/** @type {Record<string, string>} */
 export const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
+/** @param {string} k @param {unknown} v */
 export function persistProfileField(k, v){ if(profilePersistenceAvailable(window.SeekerRT)) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
 async function hydrateProfile(){
   if(!profilePersistenceAvailable(window.SeekerRT)) return;

@@ -41,7 +41,11 @@ export type Collection =
   | 'resumes'
   | 'iv_records'
   | 'messages'
-  | 'settings';
+  | 'assets_prompts'
+  | 'assets_notes'
+  | 'platform_skills'
+  | 'platform_schedules'
+  | 'platform_projects';
 //  注:'profile'(隐私字段)与 'secrets'(密钥)**不在此**——前者走独立隔离仓库、
 //  AI 永不读取;后者只进钥匙串(见 SecretApi)。
 

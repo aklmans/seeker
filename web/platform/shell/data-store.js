@@ -1,4 +1,4 @@
-// @ts-nocheck —— 3.y 步3 中层:通用集合数据引擎 + 持久化条件/壳 onboarding 状态 classic 全局 → ES module(export)+ 过渡 window 桥。逻辑逐字节。
+// @ts-check
 /** 平台 · 通用集合数据引擎 collPersistOn/seededColl/markSeededColl/withCollId/persistColl/hydrateColl + persistMsg。
  *  ★红线(逐字保留):只处理通用集合(rt.db.upsert/list),隐私表(profile)走独立 rt.profile、永不经此
  *  —— persist 永不把 profile 写通用 AI 可读集(合 D3 / profile 硬隔离)。集合 id 键经 SeekerShell.collId 契约问应用(§1 纯净、无 jobseek knowledge)。
@@ -14,20 +14,24 @@ export function onboarded(){ try{ return localStorage.getItem('jh-onboarded')===
 export function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
 export function collPersistOn(){ return jobsPersistOn(); } // 同条件:运行时真实提供 db(SQLite / IndexedDB)
 // 种子守卫:首启把内存 mock 作种子写一次;之后(含"清空所有数据"后)不再播种,演示数据不复活。
+/** @param {string} name */
 export function seededColl(name){ try{ return localStorage.getItem('jh-seeded-'+name)==='1'; }catch(_e){ return false; } }
+/** @param {string} name */
 export function markSeededColl(name){ try{ localStorage.setItem('jh-seeded-'+name,'1'); }catch(_e){} }
-/** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。 */
+/** 给无 id 的集合补 id(skills 用 name 作天然键);其余(actions/iv_records)已有数值 id。
+ * @param {import('../runtime/types').Collection} name @param {any} r @returns {any} */
 export function withCollId(name, r){
   if(r && r.id!=null) return r;
   const id = window.SeekerShell.collId(name, r);           // 集合 id 键规则经契约问应用(如 skills→name);平台无 jobseek knowledge
   return Object.assign({ id: id!=null ? id : ('r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)) }, r);
 }
-/** 整集合 upsert(变更后调用)。 @param {string} name @param {any[]} arr */
+/** 整集合 upsert(变更后调用)。 @param {import('../runtime/types').Collection} name @param {any[]} arr */
 export function persistColl(name, arr){
   if(!collPersistOn()) return;
   for(const r of arr){ window.SeekerRT.db.upsert(name, withCollId(name, r)).catch(e=>console.error('[data] upsert '+name, e)); }
 }
-/** 水合:载仓库;首启把内存 mock 作种子写入;再用仓库内容替换内存数组(就地)。 */
+/** 水合:载仓库;空库清空内存种子,有数据则替换内存数组(就地)。
+ * @param {import('../runtime/types').Collection} name @param {any[]} arr */
 export async function hydrateColl(name, arr){
   if(!collPersistOn()) return;
   try{
@@ -41,13 +45,15 @@ export async function hydrateColl(name, arr){
    不存招呼语 / 建议 chip / 富卡片 / widget(皆为临时 UI;widget 会话内重渲)。surface=cop|agent。
    隐私:messages 已移出后端 QUERYABLE → AI 不可 query_data('messages') 挖掘历史(经 History 拿上下文)。 */
 let __msgSeq=0;  // 模块内私有(persistMsg 内 ++)、外部不消费 → 不上桥,无分裂
+/** @param {string} surface @param {string} role @param {unknown} text @param {any[] | undefined} cards */
 export function persistMsg(surface, role, text, cards){
   if(!collPersistOn()) return;
-  text = String(text==null?'':text);
+  const messageText = String(text==null?'':text);
   const hasCards = Array.isArray(cards) && cards.length>0;
-  if(!text.trim() && !hasCards) return;                 // 纯空且无卡才跳过(纯卡片回复仍持久)
+  if(!messageText.trim() && !hasCards) return;                 // 纯空且无卡才跳过(纯卡片回复仍持久)
   const ts = Date.now();
-  const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:text, ts:ts };
+  /** @type {any} */
+  const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:messageText, ts:ts };
   const pj = currentProjectId(); if(pj) rec.projectId = pj;   // ★PJ2:当前项目分组;默认工作区('')不写字段(既有消息天然归它)
   if(hasCards) rec.cards = cards;                        // 可持久化卡指令 [{kind,data}](view 卡;不含 resume-edit 提案)
   window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
