@@ -4,7 +4,7 @@
 
 ## 1 · 这是什么
 
-**探索者 · Seeker** —— 本地优先的个人 AI Agent 平台:一个壳,N 个可开关的小应用。对话即入口(Agent 判断该做什么并执行),能力中心统一管理 连接器(MCP)/ 应用工具 / 记忆 / 知识库 / Skills / 定时任务 / 项目。首个应用是求职工作台,关掉它数据也保留。
+**探索者 · Seeker** —— 本地优先的个人 AI Agent 工作台。对话负责查询、技能与即时操作，任务中心负责可恢复、可验证的持续执行；能力中心统一管理连接器（MCP）、应用工具、记忆、知识库、Skills、定时任务和项目。业务应用通过 manifest 注册，可按需启用或关闭，数据仍保留在本地。
 
 **分发面**:桌面(Tauri 2,macOS/Windows)+ Web 演示(静态托管;自托管时经 `server/demo-proxy.mjs` 可接真模型)。
 
@@ -13,14 +13,14 @@
 - **Tauri 2**:Rust 核 + 系统 WebView。不用 Electron。
 - **前端原生 HTML/CSS/JS,不引入任何前端框架**;ES module,平台层 `@ts-check`(tsc 必须 0 error)。
 - 数据:桌面 SQLite / 网页 IndexedDB,弹性 schema(骨架列 + `data_json`),加字段优先改 JSON 不写迁移。
-- AI:BYO 多协议(OpenAI 兼容 / Anthropic / Gemini / Ollama),中立内部格式 + 适配器;前端只发文字收 token 流。
+- AI：BYO 多协议（OpenAI-compatible / Anthropic / Gemini / Ollama），中立内部格式 + 出网边界适配器。
 
 ## 3 · 架构与目录
 
 ```
 web/
-├── platform/        # 平台层(稳定 · 业务无关):壳/契约/AI 网关/能力层/护栏/安全渲染/运行时适配
-└── apps/            # 小应用层:每应用一目录,互不 import,只经 SeekerShell.* 契约与壳通信
+├── platform/        # 平台运行时层(稳定 · 业务无关):契约/AI 网关/能力层/护栏/安全渲染/运行时适配
+└── apps/            # 业务应用层:每应用一目录,互不 import,只经 SeekerShell.* 契约通信
     ├── jobseek/     #   求职工作台
     └── assets/      #   数据资产(Prompt 库 / 笔记)
 src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP · 能力 registry(能力强制点在这里)
@@ -32,7 +32,7 @@ docs/                # 面向用户的文档(QUICKSTART / FEEDBACK / DEPLOY-DEMO
 
 ## 4 · 不可违背的红线(每段代码都要守)
 
-1. **本地优先** —— 数据默认存本机、默认不外发;联网只为调用户自填的模型端点。
+1. **本地优先** —— 数据默认存本机、默认不外发；只有用户主动配置或触发的模型、连接器和网页能力可以联网。
 2. **密钥只进系统钥匙串** —— 绝不入库/配置文件/前端/日志;前端只见 `configured/empty`。Web 演示代理的上游 key 只存服务器环境,浏览器只持低价值访问码。
 3. **隐私字段 AI 永不可读** —— `profile` 独立存储,类型层面无「导出给 AI」路径;能力层 `QUERYABLE` 是**静态常量硬底**(`profile/messages/settings/secrets` 永不在内,切勿重构成动态);应用数据 AI 可读走三层闸(应用启用 ∩ manifest 默认 ∩ 用户授权),强制点在 `query_data` invoke,非提示层暗示。
 4. **设置不能经对话修改**;AI 不能给自己排定时任务、不能改项目指令 —— 自我持续/自我改写通路必须结构性缺席。
@@ -66,4 +66,4 @@ npm run build:all        # 打包 .app/.dmg(src-tauri/target/release/bundle/)
 
 ## 7 · 当前阶段
 
-产品已公开发布(v0.1.x),**以稳定与真实用户反馈为先**:bug 修复与发布工程优先;新功能先提 issue 讨论再动手,不自行扩大范围(少即是多)。
+产品已公开发布 v0.2.0，首个受控 Task Agent 工作流是“岗位投递包”。**以稳定与真实用户反馈为先**：bug 修复与发布工程优先；新功能先提 issue 讨论再动手，不自行扩大范围（少即是多）。
