@@ -299,6 +299,17 @@ fn upsert_into(conn: &Connection, table: &str, record: &Value) -> Result<(), Str
     Ok(())
 }
 
+/// 内部平台模块写一条通用记录：仍经过 `table_for` 静态白名单，不开放 SQL/table 名给调用方。
+/// Task Agent 用它持久化管理面状态；这不会让集合进入 capability::QUERYABLE。
+pub(crate) fn upsert_record(
+    conn: &Connection,
+    collection: &str,
+    record: &Value,
+) -> Result<(), String> {
+    let table = table_for(collection)?;
+    upsert_into(conn, table, record)
+}
+
 #[tauri::command]
 pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
     let table = table_for(&collection)?;

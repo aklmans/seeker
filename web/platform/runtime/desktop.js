@@ -12,7 +12,7 @@ import { runAppTool } from '../capability/app-tools/run.js';
 /** 桌面端「全功能」:所有能力都在。 */
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ ([
-    'db', 'ai', 'secret', 'capability',
+    'db', 'ai', 'secret', 'capability', 'agentExecution',
     'voice', 'tray', 'globalShortcut', 'deepLink', 'autoUpdate',
   ]),
 );
@@ -152,6 +152,18 @@ export function createDesktopRuntime() {
       clear: (collections) => invoke('db_clear', { collections, preferences: collectPortablePreferences() }),
       getBackupPolicy: async () => ({ supported: true, ...(await invoke('backup_policy_get')) }),
       setBackupPolicy: async (enabled) => ({ supported: true, ...(await invoke('backup_policy_set', { enabled: !!enabled })) }),
+    },
+
+    agent: {
+      createTask: (draft) => invoke('agent_task_create', { draft }),
+      listTasks: () => invoke('agent_task_list'),
+      getTask: (taskId) => invoke('agent_task_get', { taskId }),
+      listRuns: (taskId) => invoke('agent_run_list', { taskId }),
+      getRun: (runId) => invoke('agent_run_get', { runId }),
+      listSteps: (runId) => invoke('agent_step_list', { id: runId }),
+      listArtifacts: (taskId) => invoke('agent_artifact_list', { id: taskId }),
+      listApprovals: (runId) => invoke('agent_approval_list', { id: runId }),
+      listEvents: (runId) => invoke('agent_event_list', { id: runId }),
     },
 
     profile: {

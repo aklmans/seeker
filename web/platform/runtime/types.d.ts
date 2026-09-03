@@ -23,6 +23,7 @@ export type Feature =
   | 'ai'
   | 'secret'
   | 'capability'
+  | 'agentExecution'
   | 'voice'
   | 'tray'
   | 'globalShortcut'
@@ -504,6 +505,116 @@ export interface WebApi {
   verifySources(urls: string[]): Promise<Array<{ url: string; ok: boolean; title?: string | null; error?: string }>>;
 }
 
+// ── Task Agent(rt.agent)────────────────────────────────────────
+
+export type AgentTaskStatus =
+  | 'draft' | 'queued' | 'running' | 'waiting_input' | 'waiting_approval'
+  | 'paused' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+export type AgentRunStatus =
+  | 'created' | 'planning' | 'running' | 'waiting_input' | 'waiting_approval'
+  | 'paused' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+export type AgentStepStatus =
+  | 'pending' | 'running' | 'waiting_approval' | 'succeeded' | 'failed'
+  | 'skipped' | 'cancelled' | 'outcome_unknown';
+export type AgentEffect =
+  | 'read_only' | 'local_create' | 'local_mutate'
+  | 'destructive' | 'external_draft' | 'external_commit';
+
+export interface AgentTaskDraft {
+  /** v0.2 唯一可执行工作流；未知工作流由 Rust 核拒绝。 */
+  workflowId: 'job_application_package';
+  projectId?: string;
+  title?: string;
+  goal?: string;
+  inputs: { jobIds: string[]; resumeId: string; language?: 'zh' | 'en' };
+}
+
+export interface AgentTask extends Record {
+  projectId: string;
+  workflowId: string;
+  title: string;
+  goal: string;
+  inputs: { jobIds: string[]; resumeId: string; language: 'zh' | 'en' };
+  constraints: string[];
+  deliverables: Array<{ kind: string; format?: string; required?: boolean }>;
+  successCriteria: Array<{ kind: string }>;
+  capabilityScope: {
+    collections: string[];
+    tools: string[];
+    effects: AgentEffect[];
+    maxSteps: number;
+    maxAttempts: number;
+  };
+  createdBy: 'user' | 'schedule';
+  status: AgentTaskStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgentRun extends Record {
+  taskId: string;
+  status: AgentRunStatus;
+  currentStepId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgentStep extends Record {
+  taskId: string;
+  runId: string;
+  title: string;
+  kind: 'read' | 'reason' | 'generate' | 'write' | 'verify';
+  tool?: string;
+  effect: AgentEffect;
+  status: AgentStepStatus;
+  attempt: number;
+}
+
+export interface AgentArtifact extends Record {
+  taskId: string;
+  runId: string;
+  stepId: string;
+  kind: string;
+  name: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  verified: boolean;
+  path?: string;
+}
+
+export interface AgentApproval extends Record {
+  taskId: string;
+  runId: string;
+  stepId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  effect: AgentEffect;
+}
+
+export interface AgentEvent extends Record {
+  taskId: string;
+  runId: string;
+  type: string;
+  message: string;
+  createdAt: number;
+}
+
+/**
+ * Task Agent 管理面。模型工具表中不存在这些方法；TaskSpec 权限由 Rust workflow 固定生成。
+ * Web 端只提供已导入记录的查看能力，createTask 明确降级，不伪装可以执行。
+ */
+export interface AgentApi {
+  createTask(draft: AgentTaskDraft): Promise<AgentTask>;
+  listTasks(): Promise<AgentTask[]>;
+  getTask(taskId: string): Promise<AgentTask | null>;
+  listRuns(taskId: string): Promise<AgentRun[]>;
+  getRun(runId: string): Promise<AgentRun | null>;
+  listSteps(runId: string): Promise<AgentStep[]>;
+  listArtifacts(taskId: string): Promise<AgentArtifact[]>;
+  listApprovals(runId: string): Promise<AgentApproval[]>;
+  listEvents(runId: string): Promise<AgentEvent[]>;
+}
+
 // ── 顶层 Runtime ────────────────────────────────────────────────
 
 export interface RuntimeApi {
@@ -520,6 +631,7 @@ export interface RuntimeApi {
   readonly mcp: McpApi;
   readonly render: RenderApi;
   readonly web: WebApi;
+  readonly agent: AgentApi;
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

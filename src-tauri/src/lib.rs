@@ -1,3 +1,4 @@
+mod agent;
 mod ai;
 mod capability;
 mod config;
@@ -86,6 +87,15 @@ pub fn run() {
             ai::ai_extract,
             ai::ai_generate,
             ai::ai_app_tool_result,
+            agent::agent_task_create,
+            agent::agent_task_list,
+            agent::agent_task_get,
+            agent::agent_run_list,
+            agent::agent_run_get,
+            agent::agent_step_list,
+            agent::agent_artifact_list,
+            agent::agent_approval_list,
+            agent::agent_event_list,
             data::db_list,
             data::db_get,
             data::db_upsert,

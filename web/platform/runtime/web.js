@@ -295,6 +295,19 @@ export function createWebRuntime() {
       setBackupPolicy: () => notImpl('rt.db.setBackupPolicy', 'web'),
     },
 
+    // Web 只保全/展示从桌面便携包带来的任务记录，不伪装能在浏览器执行本地 Agent。
+    agent: {
+      createTask: () => notImpl('rt.agent.createTask', 'web'),
+      listTasks: () => listAll('platform_agent_tasks'),
+      getTask: async (taskId) => { const s = await store('platform_agent_tasks', 'readonly'); return (await reqDone(s.get(taskId))) ?? null; },
+      listRuns: async (taskId) => (await listAll('platform_agent_runs')).filter((r) => r && r.taskId === taskId),
+      getRun: async (runId) => { const s = await store('platform_agent_runs', 'readonly'); return (await reqDone(s.get(runId))) ?? null; },
+      listSteps: async (runId) => (await listAll('platform_agent_steps')).filter((r) => r && r.runId === runId),
+      listArtifacts: async (taskId) => (await listAll('platform_agent_artifacts')).filter((r) => r && r.taskId === taskId),
+      listApprovals: async (runId) => (await listAll('platform_agent_approvals')).filter((r) => r && r.runId === runId),
+      listEvents: async (runId) => (await listAll('platform_agent_events')).filter((r) => r && r.runId === runId),
+    },
+
     profile: {
       getAll: () => kvAll('profile'),
       set: async (k, v) => { const s = await store('profile', 'readwrite'); await reqDone(s.put({ k, v: String(v) })); },
