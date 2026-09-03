@@ -628,7 +628,16 @@ mod tests {
                 cmd: "agent_task_create".into(),
                 callback: tauri::ipc::CallbackFn(0),
                 error: tauri::ipc::CallbackFn(1),
-                url: "tauri://localhost".parse().unwrap(),
+                // Tauri 的 Windows/Android WebView 使用 http origin；桌面 Apple/Linux
+                // mock runtime 则使用 tauri scheme。测试请求必须与实际平台 origin 一致，
+                // 否则 ACL 会在命令进入 handler 前以 "Plugin not found" 拒绝。
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
                 body: tauri::ipc::InvokeBody::Json(json!({
                     "draft": {
                         "workflowId": JOB_PACKAGE,
