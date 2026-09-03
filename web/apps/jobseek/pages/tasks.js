@@ -36,6 +36,7 @@ const ARTIFACT_NAMES = {
   tailored_resume: ['针对性简历', 'Tailored resume'],
   cover_letter: ['求职信草稿', 'Cover letter draft'],
   interview_checklist: ['面试准备清单', 'Interview checklist'],
+  opportunity_report: ['机会雷达报告', 'Opportunity radar report'],
 };
 
 const view = {
@@ -66,8 +67,9 @@ function statusClass(status) {
 
 /** @param {AgentTask} task @param {AgentRun | null} run @param {AgentArtifact[]} artifacts @returns {TaskViewState} */
 function taskViewState(task, run, artifacts) {
+  const requiredArtifacts = task.workflowId === 'job_opportunity_radar' ? 1 : 4;
   const trustBroken = run?.status === 'succeeded' &&
-    (artifacts.length !== 4 || artifacts.some((artifact) => artifact.verified !== true || artifact.validationStatus === 'invalid'));
+    (artifacts.length !== requiredArtifacts || artifacts.some((artifact) => artifact.verified !== true || artifact.validationStatus === 'invalid'));
   return { run, artifacts, displayedStatus: trustBroken ? 'interrupted' : task.status, trustBroken };
 }
 /** @param {number | undefined} epoch */
@@ -148,8 +150,10 @@ function eventsHTML(events) {
 /** @param {AgentTask} task @param {TaskViewState} taskState @param {AgentStep[]} steps @param {AgentEvent[]} events @param {DbRecord[]} jobs */
 function detailHTML(task, taskState, steps, events, jobs) {
   const { run, artifacts, displayedStatus, trustBroken } = taskState;
-  const labels = task.inputs.jobIds.map((id) => jobLabel(jobs.find((job) => idOf(job) === str(id)) || { id }));
-  const canRun = task.status === 'draft' || task.status === 'failed';
+  const inputs = /** @type {any} */ (task.inputs);
+  const radar = task.workflowId === 'job_opportunity_radar';
+  const labels = radar ? [] : (inputs.jobIds || []).map((/** @type {string} */ id) => jobLabel(jobs.find((job) => idOf(job) === str(id)) || { id }));
+  const canRun = task.status === 'draft' || task.status === 'failed' || (radar && task.status === 'succeeded');
   const canPause = run?.status === 'running';
   const canResume = run?.status === 'paused' || run?.status === 'interrupted';
   const canCancel = !!run && !TERMINAL.has(run.status);
@@ -157,8 +161,8 @@ function detailHTML(task, taskState, steps, events, jobs) {
     <div class="agent-task-heading"><div><p class="seclabel">— TASK SPEC</p><h2 class="sectitle">${cEsc(task.title)}<span class="dot">.</span></h2></div><span class="agent-task-status ${statusClass(displayedStatus)}">${cEsc(statusText(displayedStatus))}</span></div>
     <p class="agent-task-copy">${cEsc(task.goal)}</p>
     ${trustBroken ? `<p class="agent-task-error">${tt('当前运行的产物可信状态不完整，任务不能视为已完成。', 'The current run has incomplete artifact trust state and cannot be treated as complete.')}</p>` : ''}
-    <dl class="agent-task-spec"><div><dt>${tt('岗位输入', 'Job inputs')}</dt><dd>${labels.map(cEsc).join('<br>')}</dd></div><div><dt>${tt('源简历', 'Source resume')}</dt><dd>${cEsc(task.inputs.resumeId)}</dd></div><div><dt>${tt('授权效果', 'Authorized effects')}</dt><dd>${task.capabilityScope.effects.map((effect) => cEsc(effect)).join(' · ')}</dd></div><div><dt>${tt('成功条件', 'Success gate')}</dt><dd>${tt('4 个文件存在、格式有效且摘要一致', '4 files exist, have valid formats, and match their hashes')}</dd></div></dl>
-    ${rt.available('agentExecution') ? `<div class="agent-task-actions">${canRun ? `<button class="btn btn-accent" data-agent-action="start">${tt('开始执行', 'Start run')} →</button>` : ''}${canPause ? `<button class="btn" data-agent-action="pause">${tt('暂停', 'Pause')}</button>` : ''}${canResume ? `<button class="btn btn-accent" data-agent-action="resume">${tt('继续', 'Resume')} →</button>` : ''}${canCancel ? `<button class="btn" data-agent-action="cancel">${tt('取消任务', 'Cancel task')}</button>` : ''}</div>` : `<p class="agent-task-note">${tt('网页端仅查看从桌面备份导入的任务记录；真实执行和本地文件只在桌面版可用。', 'The web version only displays task records imported from a desktop backup. Execution and local files require the desktop app.')}</p>`}
+    <dl class="agent-task-spec">${radar ? `<div><dt>${tt('目标职位', 'Target roles')}</dt><dd>${(inputs.criteria?.roles || []).map(cEsc).join('<br>')}</dd></div><div><dt>${tt('机会来源', 'Sources')}</dt><dd>${cEsc(str((inputs.sources || []).length))} ${tt('项受控来源', 'controlled source(s)')}</dd></div>` : `<div><dt>${tt('岗位输入', 'Job inputs')}</dt><dd>${labels.map(cEsc).join('<br>')}</dd></div><div><dt>${tt('源简历', 'Source resume')}</dt><dd>${cEsc(str(inputs.resumeId))}</dd></div>`}<div><dt>${tt('授权效果', 'Authorized effects')}</dt><dd>${task.capabilityScope.effects.map((effect) => cEsc(effect)).join(' · ')}</dd></div><div><dt>${tt('成功条件', 'Success gate')}</dt><dd>${radar ? tt('候选已验链、去重，报告摘要一致', 'Candidates verified and deduplicated; report hash matches') : tt('4 个文件存在、格式有效且摘要一致', '4 files exist, have valid formats, and match their hashes')}</dd></div></dl>
+    ${rt.available('agentExecution') ? `<div class="agent-task-actions">${canRun ? `<button class="btn btn-accent" data-agent-action="start">${radar && task.status === 'succeeded' ? tt('再次扫描', 'Scan again') : tt('开始执行', 'Start run')} →</button>` : ''}${canPause ? `<button class="btn" data-agent-action="pause">${tt('暂停', 'Pause')}</button>` : ''}${canResume ? `<button class="btn btn-accent" data-agent-action="resume">${tt('继续', 'Resume')} →</button>` : ''}${canCancel ? `<button class="btn" data-agent-action="cancel">${tt('取消任务', 'Cancel task')}</button>` : ''}</div>` : `<p class="agent-task-note">${tt('网页端仅查看从桌面备份导入的任务记录；真实执行和本地文件只在桌面版可用。', 'The web version only displays task records imported from a desktop backup. Execution and local files require the desktop app.')}</p>`}
     ${run?.error ? `<p class="agent-task-error">${cEsc(str(run.error))}</p>` : ''}
     <div class="sec"><p class="seclabel">— EXECUTION</p><h3 class="sectitle">${tt('执行计划', 'Execution plan')}<span class="dot">.</span></h3>${stepsHTML(steps)}</div>
     <div class="sec"><p class="seclabel">— ARTIFACTS</p><h3 class="sectitle">${tt('任务产物', 'Artifacts')}<span class="dot">.</span></h3>${artifactsHTML(artifacts)}</div>

@@ -357,7 +357,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,.nav-item:focus-vi
 .dotsrow span:hover{border-color:var(--accent);}
 
 /* ===== Task Agent ===== */
-#page-tasks{container-type:inline-size;}
+#page-tasks,#page-opportunities{container-type:inline-size;}
 .agent-task-layout{display:grid; grid-template-columns:minmax(250px,0.68fr) minmax(420px,1.32fr); gap:0; border-bottom:0.5px solid var(--border);}
 .agent-task-sidebar{padding-right:28px; border-right:0.5px solid var(--border);}
 .agent-task-main{padding-left:30px; min-width:0;}
@@ -410,6 +410,17 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,.nav-item:focus-vi
 .agent-task-muted,.agent-task-note,.agent-task-error{margin:16px 0 0; font-size:12px; line-height:1.7;}
 .agent-task-muted{color:var(--ink-3);}
 .agent-task-note{padding:11px 13px; border-left:2px solid var(--status-info); background:var(--bg-subtle); color:var(--ink-3);}
+.radar-filters{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;}
+.radar-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px;}
+.radar-card{min-width:0;padding:17px;border:.5px solid var(--border);background:var(--bg-elevated);}
+.radar-card.is-unverified{border-left:2px solid var(--status-warn);}
+.radar-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
+.radar-card-head h3{margin:7px 0 0;font-size:14px;overflow-wrap:anywhere;}
+.radar-card-head strong{font-family:var(--font-mono);font-size:22px;color:var(--accent);}
+.radar-card>p{margin:13px 0;color:var(--ink-3);font-size:12px;line-height:1.65;}
+.radar-meta,.radar-skills{display:flex;gap:7px;flex-wrap:wrap;font-family:var(--font-mono);font-size:9.5px;color:var(--ink-3);}
+.radar-skills{margin-top:9px;}.radar-skills span{padding:2px 6px;border:.5px solid var(--border);}
+.radar-schedule{margin-top:14px!important;}
 
 @media (max-width:980px){
   .agent-task-layout{grid-template-columns:1fr;}
@@ -420,7 +431,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,.nav-item:focus-vi
   .agent-task-layout{grid-template-columns:1fr;}
   .agent-task-sidebar{padding-right:0; border-right:0;}
   .agent-task-main{padding-left:0;}
-  .agent-task-choices,.agent-task-spec,.agent-artifact-grid{grid-template-columns:1fr;}
+  .agent-task-choices,.agent-task-spec,.agent-artifact-grid,.radar-grid{grid-template-columns:1fr;}
   .agent-task-spec>div{border-right:0;}
   .agent-task-spec>div:nth-last-child(-n+2){border-bottom:0.5px solid var(--border);}
   .agent-task-spec>div:last-child{border-bottom:0;}
@@ -1075,7 +1086,7 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
     <div class="sidebar-foot">
       <button class="iconbtn foot-ic" id="themeBtn2" title="切换主题"></button>
       <button class="iconbtn foot-ic" id="langBtn" title="切换语言" style="font-family:var(--font-sans);font-size:12px;">中</button>
-      <span class="ver" style="margin-left:auto;">v 0.2.0</span>
+      <span class="ver" style="margin-left:auto;">v 0.3.0</span>
     </div>
     <div class="sb-resize" id="sbResize"></div>
   </aside>

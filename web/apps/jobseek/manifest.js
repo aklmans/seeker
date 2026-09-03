@@ -12,6 +12,7 @@ import { renderAnalysis } from './pages/analysis.js';
 import { renderSkills } from './pages/skills.js';
 import { renderActions } from './pages/actions.js';
 import { openTaskComposer, renderTasks } from './pages/tasks.js';
+import { openOpportunityComposer, renderOpportunities } from './pages/opportunities.js';
 import { renderMatch } from './logic/match.js';
 import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
 import { renderInterview } from './logic/interview.js';
@@ -59,6 +60,8 @@ import { setState } from '../../platform/shell/shell-state.js';
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M4 6l1.3 1.3L7.5 5"/><path d="M4 11.7l1.3 1.3L7.5 10.7"/><path d="M4 17.3l1.3 1.3L7.5 16.3"/></svg>',
     tasks:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.5h8M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1z"/><path d="M7 5.5H5.5A1.5 1.5 0 0 0 4 7v13h16V7a1.5 1.5 0 0 0-1.5-1.5H17"/><path d="m8 12 2 2 5-5M8 17h8"/></svg>',
+    opportunities:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4M11 7.5v7M7.5 11h7"/></svg>',
     interview:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M8.5 9.5h7M8.5 13h4"/></svg>',
   };
@@ -88,6 +91,7 @@ import { setState } from '../../platform/shell/shell-state.js';
       { id: 'tasks', label: '任务中心', en: 'Tasks', abbr: '任', eyebrow: 'TASK AGENT', group: 'core', icon: ICONS.tasks, render: () => renderTasks() },
       { id: 'match', label: '智能匹配', en: 'Smart Match', abbr: '匹', eyebrow: 'SMART MATCH', group: 'core', ai: true, icon: ICONS.match, render: () => renderMatch() },
       { id: 'resumes', label: '我的简历', en: 'Resume', abbr: '历', eyebrow: 'RESUMES', group: 'core', ai: true, icon: ICONS.resumes, render: () => renderResumes() },
+      { id: 'opportunities', label: '机会雷达', en: 'Radar', abbr: '雷', eyebrow: 'OPPORTUNITY RADAR', group: 'research', icon: ICONS.opportunities, render: () => renderOpportunities() },
       { id: 'jobs', label: '目标岗位', en: 'Jobs', abbr: '岗', count: '12/20', group: 'research', icon: ICONS.jobs, liveCount: () => `${JOBS.length}/${setState.goal || 20}`, render: () => renderJobs() },
       { id: 'analysis', label: '岗位分析', en: 'Analysis', abbr: '析', group: 'research', icon: ICONS.analysis, render: () => renderAnalysis() },
       { id: 'skills', label: '职业资产', en: 'Assets', abbr: '产', group: 'growth', icon: ICONS.skills, render: () => renderSkills() },
@@ -117,12 +121,13 @@ import { setState } from '../../platform/shell/shell-state.js';
     // §1 契约化(批11B · pageNew):平台快捷键 Mod+N / 新建入口按 pageId 取本应用「创建」动作。
     // 无参箭头包装(契约返回 () => void;openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价)。
     // 惰性(体在调用时求值)→ manifest eval 不 eager 读 openNewJob/openNewAction、无载序前移。
-    pageNew: (pageId) => ({ tasks: () => openTaskComposer(), jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
+    pageNew: (pageId) => ({ tasks: () => openTaskComposer(), opportunities: () => openOpportunityComposer(), jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
     // §1 契约化(批11B · pageActions):平台 nav.renderTopActions 原硬编码本应用顶栏动作 map,逐字迁入。
     // 惰性:fn 闭包点击时求值;tt 每次 pageActions() 调用重求值(语言切换即时,与原 nav 每次 renderTopActions 重建 map 同);manifest eval 顶层零 eager 读。
     pageActions: (pageId) => ({
       overview: [{ t: tt('智能匹配', 'Smart match'), a: 'btn-accent', fn: () => go('match') }],
       tasks: [{ t: tt('+ 新建任务', '+ New task'), a: 'btn-accent', fn: () => openTaskComposer() }],
+      opportunities: [{ t: tt('+ 新建雷达', '+ New radar'), a: 'btn-accent', fn: () => openOpportunityComposer() }],
       match: [{ t: tt('我的简历', 'My resume'), fn: () => openResumeModal() }],
       resumes: [{ t: tt('+ 生成针对性简历', '+ Tailored resume'), a: 'btn-accent', fn: () => resumeGenerate(resumeState.jobId, renderResumes) }],
       jobs: [{ t: tt('+ 录入岗位', '+ Add job'), a: 'btn-accent', fn: () => openNewJob() }],

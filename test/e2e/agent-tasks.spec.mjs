@@ -118,3 +118,61 @@ test('只展示当前运行产物，未验证产物失去绿色可信状态且�
   await expect.poll(() => taskPage.locator('.agent-artifact-grid').evaluate((node) => getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
   await expect(taskPage.locator('.agent-artifact h3')).toBeVisible();
 });
+
+test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受或打开文件', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const now = Date.now();
+    for (const [collection, record] of [
+      ['platform_agent_tasks', {
+        id: 'task_radar_e2e', workflowId: 'job_opportunity_radar', projectId: 'default',
+        title: '后端机会雷达', goal: '发现并验证目标机会', status: 'succeeded', createdBy: 'user',
+        inputs: {
+          criteria: { roles: ['Backend Engineer'], locations: ['Remote'], remotePreference: 'remote', requiredSkills: ['Rust'] },
+          sources: [{ kind: 'mcp', server: 'search', tool: 'web_search' }], language: 'zh',
+        },
+        constraints: [], deliverables: [], successCriteria: [],
+        capabilityScope: { collections: ['job_opportunities'], tools: [], effects: ['read_only', 'external_read', 'local_create'], maxSteps: 12, maxAttempts: 2 },
+        createdAt: now, updatedAt: now,
+      }],
+      ['platform_agent_runs', { id: 'run_radar_e2e', taskId: 'task_radar_e2e', status: 'succeeded', createdAt: now, updatedAt: now }],
+      ['platform_agent_steps', {
+        id: 'step_radar_e2e_verify', taskId: 'task_radar_e2e', runId: 'run_radar_e2e', order: 6,
+        key: 'verify_radar_report', title: '验证机会报告', tool: 'verify_artifact', effect: 'read_only', status: 'succeeded', attempt: 1,
+      }],
+      ['platform_agent_artifacts', {
+        id: 'artifact_radar_e2e', taskId: 'task_radar_e2e', runId: 'run_radar_e2e', stepId: 'step_radar_e2e_verify',
+        kind: 'opportunity_report', name: 'opportunity-report.md', mime: 'text/markdown', size: 512,
+        sha256: 'abcdef0123456789', verified: true, validationStatus: 'verified', path: '/desktop-only/opportunity-report.md',
+      }],
+      ['job_opportunities', {
+        id: 'opportunity_e2e', dedupeKey: 'stable-e2e', status: 'new', title: 'Backend Engineer',
+        company: 'Acme <Research>', role: 'Backend Engineer', location: 'Remote', remote: 'remote',
+        requiredSkills: ['Rust', 'SQL'], summary: 'Build reliable systems', url: 'https://jobs.example.com/1',
+        sourceVerified: true, sourceVerifiedAt: now, matchScore: 95, taskId: 'task_radar_e2e', lastRunId: 'run_radar_e2e', firstObservedAt: now, observedAt: now,
+      }],
+    ]) await window.SeekerRT.db.upsert(collection, record);
+  });
+
+  await page.reload();
+  await page.locator('.nav-item[data-id="opportunities"]').click();
+  const radarPage = page.locator('#page-opportunities');
+  await expect(radarPage).toContainText('Acme <Research>');
+  await expect(radarPage).toContainText('95.0');
+  await expect(radarPage).toContainText(/来源已验证|Source verified/);
+  await expect(radarPage.getByRole('button', { name: /查看来源|Open source/ })).toHaveCount(1);
+  await expect(radarPage.getByRole('button', { name: /接受为岗位|Accept as job/ })).toHaveCount(0);
+  await expect(radarPage.getByRole('button', { name: /标为已审|Mark reviewed/ })).toHaveCount(0);
+  await expect(radarPage.locator('script')).toHaveCount(0);
+
+  await page.locator('#topActions').getByRole('button', { name: /新建雷达|New radar/ }).click();
+  await expect(radarPage).toContainText(/网页端只展示从桌面备份导入的机会|web version only displays opportunities imported/);
+  await expect(radarPage.locator('[data-radar-create]')).toHaveCount(0);
+
+  await page.locator('.nav-item[data-id="tasks"]').click();
+  const taskPage = page.locator('#page-tasks');
+  await expect(taskPage).toContainText('后端机会雷达');
+  await expect(taskPage).toContainText('opportunity-report.md');
+  await expect(taskPage.getByRole('button', { name: /打开文件|Open file/ })).toBeDisabled();
+  await expect(taskPage.getByRole('button', { name: /预览|Preview/ })).toHaveCount(0);
+});

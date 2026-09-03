@@ -910,7 +910,8 @@ pub async fn mcp_list(app: AppHandle, mgr: State<'_, McpManager>) -> Result<Valu
                     entry["tools"] = json!(tools
                         .iter()
                         .map(|t| json!({
-                            "name": t.name, "description": t.description, "readOnly": t.read_only,
+                            "name": t.name, "description": t.description,
+                            "inputSchema": t.input_schema, "readOnly": t.read_only,
                         }))
                         .collect::<Vec<_>>());
                 }

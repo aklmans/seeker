@@ -437,7 +437,7 @@ export interface McpServerInfo {
   /** 是否已连接(enabled 且握手成功)。 */
   connected: boolean;
   toolCount: number;
-  tools: Array<{ name: string; description: string; readOnly: boolean }>;
+  tools: Array<{ name: string; description: string; inputSchema: unknown; readOnly: boolean }>;
   /** 连接失败时的错误(否则 null)。 */
   error: string | null;
 }
@@ -521,10 +521,9 @@ export type AgentStepStatus =
   | 'skipped' | 'cancelled' | 'outcome_unknown';
 export type AgentEffect =
   | 'read_only' | 'local_create' | 'local_mutate'
-  | 'destructive' | 'external_draft' | 'external_commit';
+  | 'destructive' | 'external_read' | 'external_draft' | 'external_commit';
 
-export interface AgentTaskDraft {
-  /** v0.2 唯一可执行工作流；未知工作流由 Rust 核拒绝。 */
+export interface JobPackageTaskDraft {
   workflowId: 'job_application_package';
   projectId?: string;
   title?: string;
@@ -532,12 +531,40 @@ export interface AgentTaskDraft {
   inputs: { jobIds: string[]; resumeId: string; language?: 'zh' | 'en' };
 }
 
+export interface OpportunityRadarInputs {
+  criteria: {
+    roles: string[];
+    seniority?: string[];
+    locations?: string[];
+    remotePreference?: 'any' | 'remote' | 'hybrid' | 'onsite';
+    requiredSkills?: string[];
+    excludedKeywords?: string[];
+    watchedCompanies?: string[];
+  };
+  sources: Array<
+    | { kind: 'url'; url: string }
+    | { kind: 'mcp'; server: string; tool: string }
+  >;
+  limits?: { maxQueries?: number; maxSources?: number; maxSourceCalls?: number; maxResults?: number };
+  language?: 'zh' | 'en';
+}
+
+export interface OpportunityRadarTaskDraft {
+  workflowId: 'job_opportunity_radar';
+  projectId?: string;
+  title?: string;
+  goal?: string;
+  inputs: OpportunityRadarInputs;
+}
+
+export type AgentTaskDraft = JobPackageTaskDraft | OpportunityRadarTaskDraft;
+
 export interface AgentTask extends Record {
   projectId: string;
   workflowId: string;
   title: string;
   goal: string;
-  inputs: { jobIds: string[]; resumeId: string; language: 'zh' | 'en' };
+  inputs: JobPackageTaskDraft['inputs'] | OpportunityRadarInputs;
   constraints: string[];
   deliverables: Array<{ kind: string; format?: string; required?: boolean }>;
   successCriteria: Array<{ kind: string }>;
@@ -605,6 +632,27 @@ export interface AgentEvent extends Record {
   createdAt: number;
 }
 
+export interface JobOpportunity extends Record {
+  dedupeKey: string;
+  status: 'new' | 'reviewed' | 'accepted' | 'dismissed' | 'stale';
+  title: string;
+  company: string;
+  role: string;
+  location: string;
+  remote: string;
+  requiredSkills: string[];
+  summary: string;
+  url: string;
+  sourceVerified: boolean;
+  sourceVerifiedAt: number;
+  matchScore: number;
+  taskId: string;
+  lastRunId: string;
+  firstObservedAt: number;
+  observedAt: number;
+  jobId?: string | null;
+}
+
 /**
  * Task Agent 管理面。模型工具表中不存在这些方法；TaskSpec 权限由 Rust workflow 固定生成。
  * Web 端只提供已导入记录的查看能力，createTask 明确降级，不伪装可以执行。
@@ -621,6 +669,10 @@ export interface AgentApi {
   openArtifact(artifactId: string): Promise<void>;
   listApprovals(runId: string): Promise<AgentApproval[]>;
   listEvents(runId: string): Promise<AgentEvent[]>;
+  listOpportunities(): Promise<JobOpportunity[]>;
+  setOpportunityStatus(opportunityId: string, status: 'new' | 'reviewed' | 'dismissed' | 'stale'): Promise<JobOpportunity>;
+  acceptOpportunity(opportunityId: string): Promise<{ opportunity: JobOpportunity; job: Record; undoToken: string }>;
+  undoOpportunity(token: string): Promise<JobOpportunity>;
   /** 启动一个新运行；同一任务同时只能有一个非终态运行。 */
   start(taskId: string): Promise<AgentRun>;
   /** 请求在当前安全检查点暂停。 */
