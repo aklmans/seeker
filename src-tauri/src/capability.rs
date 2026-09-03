@@ -660,6 +660,18 @@ mod tests {
         //   capability/app-tool** —— Agent 能改项目 = 自改「每轮注入的指令」= 自我提示注入通路
         //   (自我改写行为基线,比自排任务更直接);写半由 registry caps.len 断言承重(同 schedules)。
         assert!(!is_queryable("platform_projects"));
+        // Task Agent 的目标/运行/步骤/产物/审批/事件是管理面状态:模型只能收协调器的当前步最小投影,
+        // 永不可 query_data 挖掘或伪造自己的运行状态。
+        for collection in [
+            "platform_agent_tasks",
+            "platform_agent_runs",
+            "platform_agent_steps",
+            "platform_agent_artifacts",
+            "platform_agent_approvals",
+            "platform_agent_events",
+        ] {
+            assert!(!is_queryable(collection), "{collection} 不得进入 QUERYABLE");
+        }
         // 暴露给 LLM 的工具枚举同样不含 profile / platform_skills。
         let schema = DataQuery.schema().unwrap();
         let en = schema.parameters["properties"]["collection"]["enum"].to_string();

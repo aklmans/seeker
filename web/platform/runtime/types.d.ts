@@ -45,7 +45,14 @@ export type Collection =
   | 'assets_notes'
   | 'platform_skills'
   | 'platform_schedules'
-  | 'platform_projects';
+  | 'platform_projects'
+  /** Task Agent 管理集合:可持久化/备份,但不进入 AI QUERYABLE。 */
+  | 'platform_agent_tasks'
+  | 'platform_agent_runs'
+  | 'platform_agent_steps'
+  | 'platform_agent_artifacts'
+  | 'platform_agent_approvals'
+  | 'platform_agent_events';
 //  注:'profile'(隐私字段)与 'secrets'(密钥)**不在此**——前者走独立隔离仓库、
 //  AI 永不读取;后者只进钥匙串(见 SecretApi)。
 

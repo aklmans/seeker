@@ -7,6 +7,7 @@ import {
 } from '../web/platform/runtime/portable-prefs.js';
 import { clearCollectionsSafely } from '../web/platform/runtime/data-clear.js';
 import { normalizeBackupPolicy, persistBackupPolicy } from '../web/platform/runtime/backup-policy.js';
+import { readFileSync } from 'node:fs';
 
 function storage(seed = {}) {
   const values = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));
@@ -93,4 +94,17 @@ test('自动备份策略以后端返回为准，写失败则交还旧 UI 值', a
   assert.equal(failed.ok, false);
   assert.equal(failed.value, 'on', '失败必须回滚到旧 UI 值');
   assert.match(String(failed.error), /disk locked/);
+});
+
+test('Web 便携策略覆盖 Task Agent 六集合，分享导出对它们统一置空', () => {
+  const source = readFileSync(new URL('../web/platform/runtime/web.js', import.meta.url), 'utf8');
+  const collections = [
+    'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps',
+    'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events',
+  ];
+  for (const collection of collections) {
+    assert.ok(source.includes(`'${collection}'`), `${collection} 必须进入 Web IndexedDB 白名单`);
+  }
+  assert.match(source, /redact && REDACTED_COLLECTIONS\.has\(c\) \? \[\] : await listAll\(c\)/,
+    'redact 分享导出必须结构性置空 Task Agent 集合');
 });

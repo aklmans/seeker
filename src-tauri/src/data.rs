@@ -43,6 +43,24 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
     ("platform_skills", "platform_skills"),
     ("platform_schedules", "platform_schedules"),
     ("platform_projects", "platform_projects"),
+    // Task Agent 运行域:管理面可读写、便携备份覆盖,但永久排除在 capability::QUERYABLE 之外。
+    ("platform_agent_tasks", "platform_agent_tasks"),
+    ("platform_agent_runs", "platform_agent_runs"),
+    ("platform_agent_steps", "platform_agent_steps"),
+    ("platform_agent_artifacts", "platform_agent_artifacts"),
+    ("platform_agent_approvals", "platform_agent_approvals"),
+    ("platform_agent_events", "platform_agent_events"),
+];
+
+/// 分享型导出不携带任务运行细节。任务目标/事件可能含用户文本,artifact 路径还会泄露本机用户名。
+/// 完整 backup 仍覆盖这些集合；这里只影响显式 `redact=true` 的分享/诊断包。
+const REDACTED_COLLECTIONS: &[&str] = &[
+    "platform_agent_tasks",
+    "platform_agent_runs",
+    "platform_agent_steps",
+    "platform_agent_artifacts",
+    "platform_agent_approvals",
+    "platform_agent_events",
 ];
 
 fn table_for(collection: &str) -> Result<&'static str, String> {
@@ -127,6 +145,17 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (
         8,
         "CREATE TABLE IF NOT EXISTS platform_projects (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    // Task Agent v0.2:任务/运行/步骤/产物/审批/事件全部持久化,用于检查点恢复与可验证交付。
+    // 这些表进入 table_for 供**管理面**仓库使用,但不进 QUERYABLE,模型不能查询或改写自身运行状态。
+    (
+        9,
+        "CREATE TABLE IF NOT EXISTS platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS platform_agent_artifacts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS platform_agent_approvals (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -487,10 +516,12 @@ fn build_portable_bundle(
 ) -> Result<Value, String> {
     let mut collections = Map::new();
     for (collection, table) in COLLECTION_TABLES {
-        collections.insert(
-            (*collection).to_string(),
-            Value::Array(read_collection(conn, table)?),
-        );
+        let rows = if redact && REDACTED_COLLECTIONS.contains(collection) {
+            Vec::new()
+        } else {
+            read_collection(conn, table)?
+        };
+        collections.insert((*collection).to_string(), Value::Array(rows));
     }
     let profile = if redact {
         Map::new()
@@ -4270,6 +4301,17 @@ mod tests {
         assert!(table_for("platform_projects").is_ok());
         assert_eq!(table_for("platform_projects").unwrap(), "platform_projects");
         assert_eq!(table_for("platform_skills").unwrap(), "platform_skills");
+        // Task Agent 六集合可由管理面持久化,但 AI 可读性由 capability.rs 的独立硬白名单拒绝。
+        for collection in [
+            "platform_agent_tasks",
+            "platform_agent_runs",
+            "platform_agent_steps",
+            "platform_agent_artifacts",
+            "platform_agent_approvals",
+            "platform_agent_events",
+        ] {
+            assert_eq!(table_for(collection).unwrap(), collection);
+        }
     }
 
     #[test]
@@ -4472,6 +4514,20 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+        for collection in super::REDACTED_COLLECTIONS {
+            assert!(
+                redacted["collections"][*collection]
+                    .as_array()
+                    .unwrap()
+                    .is_empty(),
+                "redact 分享包必须排除 {collection}"
+            );
+            assert_eq!(
+                bundle["collections"][*collection].as_array().unwrap().len(),
+                1,
+                "完整备份必须保全 {collection}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
