@@ -17,6 +17,9 @@ test('空数组、空字符串和空占位简历都不是有效职业资料', ()
     { skills: ['2026'] },
     { skills: ['ftp://example.com'] },
     { skills: ['github.com/aklman'] },
+    { skills: ['www.example.com'] },
+    { skills: ['example.com:443'] },
+    { skills: ['user@example.com'] },
     { summary: 'Sep 2026' },
     { other: { active: true, website: 'https://example.test' } },
   ]) {
@@ -39,6 +42,9 @@ test('岗位必须同时包含公司、职位，以及 JD 或必备技能', () =
     { co: 'Acme', role: 'Engineer', need: ['2026'] },
     { co: 'Acme', role: 'Engineer', need: ['ftp://example.com'] },
     { co: 'Acme', role: 'Engineer', need: ['github.com/aklman'] },
+    { co: 'Acme', role: 'Engineer', need: ['www.example.com'] },
+    { co: 'Acme', role: 'Engineer', need: ['example.com:443'] },
+    { co: 'Acme', role: 'Engineer', need: ['user@example.com'] },
   ]) assert.equal(hasJobContent(job), false);
 
   for (const job of [
@@ -48,6 +54,8 @@ test('岗位必须同时包含公司、职位，以及 JD 或必备技能', () =
     { co: 'Acme', role: 'Engineer', need: ['Socket.IO'] },
     { co: 'Acme', role: 'Engineer', need: ['VB.NET'] },
     { co: 'Acme', role: 'Engineer', requiredSkills: ['Spring.io'] },
+    { co: 'Acme', role: 'Engineer', requiredSkills: ['Socket.IO@2'] },
+    { co: 'Acme', role: 'Engineer', requiredSkills: ['Socket.IO@2.0'] },
   ]) assert.equal(hasJobContent(job), true);
 });
 
@@ -62,6 +70,8 @@ test('真实经历或约定的实质字段可以作为 Agent 输入', () => {
     { skills: ['Socket.IO'] },
     { skills: ['VB.NET'] },
     { skills: ['Spring.io'] },
+    { skills: ['Socket.IO@2'] },
+    { skills: ['Socket.IO@2.0'] },
   ]) {
     assert.equal(hasProfessionalContent(resume), true);
   }

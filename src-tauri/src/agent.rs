@@ -76,7 +76,27 @@ fn string_array(value: Option<&Value>, max: usize) -> Vec<String> {
         .collect()
 }
 
-fn text_is_link_only(text: &str, allow_bare_domain: bool) -> bool {
+fn text_is_domain_suffix(text: &str) -> bool {
+    (2..=24).contains(&text.len()) && text.chars().all(|ch| ch.is_ascii_alphabetic())
+        || text.strip_prefix("xn--").is_some_and(|rest| {
+            !rest.is_empty()
+                && rest
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        })
+}
+
+fn text_is_email_like(text: &str) -> bool {
+    let Some((local, domain)) = text.rsplit_once('@') else {
+        return false;
+    };
+    let Some((domain_name, suffix)) = domain.rsplit_once('.') else {
+        return false;
+    };
+    !local.is_empty() && !domain_name.is_empty() && text_is_domain_suffix(suffix)
+}
+
+fn text_is_link_only(text: &str, allow_ambiguous_dotted_term: bool) -> bool {
     if text.chars().any(char::is_whitespace) {
         return false;
     }
@@ -90,12 +110,13 @@ fn text_is_link_only(text: &str, allow_bare_domain: bool) -> bool {
             return true;
         }
     }
-    if lower.starts_with("mailto:") || (lower.contains('@') && lower.contains('.')) {
+    if lower.starts_with("mailto:") || text_is_email_like(&lower) {
         return true;
     }
-    if allow_bare_domain && !lower.contains(['/', '?', '#']) {
-        return false;
+    if lower.starts_with("www.") {
+        return true;
     }
+    let has_locator_syntax = lower.contains(['/', '?', '#']);
     let authority = lower
         .strip_prefix("//")
         .unwrap_or(&lower)
@@ -103,10 +124,11 @@ fn text_is_link_only(text: &str, allow_bare_domain: bool) -> bool {
         .next()
         .unwrap_or("")
         .trim_end_matches('.');
-    let host = authority
+    let port = authority
         .rsplit_once(':')
-        .filter(|(_, port)| !port.is_empty() && port.chars().all(|ch| ch.is_ascii_digit()))
-        .map_or(authority, |(host, _)| host);
+        .filter(|(_, port)| !port.is_empty() && port.chars().all(|ch| ch.is_ascii_digit()));
+    let has_port = port.is_some();
+    let host = port.map_or(authority, |(host, _)| host);
     let labels = host.split('.').collect::<Vec<_>>();
     if labels.len() == 4
         && labels.iter().all(|label| {
@@ -130,18 +152,13 @@ fn text_is_link_only(text: &str, allow_bare_domain: bool) -> bool {
         return false;
     }
     let tld = labels.last().copied().unwrap_or("");
-    (2..=24).contains(&tld.len()) && tld.chars().all(|ch| ch.is_ascii_alphabetic())
-        || tld.strip_prefix("xn--").is_some_and(|rest| {
-            !rest.is_empty()
-                && rest
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-        })
+    let is_domain = text_is_domain_suffix(tld);
+    is_domain && (!allow_ambiguous_dotted_term || has_locator_syntax || has_port)
 }
 
-fn text_is_substantive(text: &str, allow_bare_domain: bool) -> bool {
+fn text_is_substantive(text: &str, allow_ambiguous_dotted_term: bool) -> bool {
     let text = text.trim();
-    if text.is_empty() || text_is_link_only(text, allow_bare_domain) {
+    if text.is_empty() || text_is_link_only(text, allow_ambiguous_dotted_term) {
         return false;
     }
     let lower = text.to_lowercase();
@@ -198,15 +215,15 @@ fn text_is_substantive(text: &str, allow_bare_domain: bool) -> bool {
     !words.is_empty() && !words.iter().all(|word| PLACEHOLDERS.contains(word))
 }
 
-fn value_has_substantive_text(value: &Value, allow_bare_domain: bool) -> bool {
+fn value_has_substantive_text(value: &Value, allow_ambiguous_dotted_term: bool) -> bool {
     match value {
-        Value::String(text) => text_is_substantive(text, allow_bare_domain),
+        Value::String(text) => text_is_substantive(text, allow_ambiguous_dotted_term),
         Value::Array(values) => values
             .iter()
-            .any(|value| value_has_substantive_text(value, allow_bare_domain)),
+            .any(|value| value_has_substantive_text(value, allow_ambiguous_dotted_term)),
         Value::Object(values) => values
             .values()
-            .any(|value| value_has_substantive_text(value, allow_bare_domain)),
+            .any(|value| value_has_substantive_text(value, allow_ambiguous_dotted_term)),
         _ => false,
     }
 }
@@ -708,6 +725,9 @@ mod tests {
             json!({ "id": "r1", "skills": ["2026"] }),
             json!({ "id": "r1", "skills": ["ftp://example.com"] }),
             json!({ "id": "r1", "skills": ["github.com/aklman"] }),
+            json!({ "id": "r1", "skills": ["www.example.com"] }),
+            json!({ "id": "r1", "skills": ["example.com:443"] }),
+            json!({ "id": "r1", "skills": ["user@example.com"] }),
             json!({
                 "id": "r1",
                 "work": [{ "org": " ", "title": "", "date": "2026", "bullets": ["\n"] }],
@@ -736,6 +756,9 @@ mod tests {
             json!({ "id": "r1", "skills": ["2026"] }),
             json!({ "id": "r1", "skills": ["ftp://example.com"] }),
             json!({ "id": "r1", "skills": ["github.com/aklman"] }),
+            json!({ "id": "r1", "skills": ["www.example.com"] }),
+            json!({ "id": "r1", "skills": ["example.com:443"] }),
+            json!({ "id": "r1", "skills": ["user@example.com"] }),
         ] {
             let error = invoke_agent_task_create(valid_job.clone(), resume).unwrap_err();
             assert!(error
@@ -787,6 +810,21 @@ mod tests {
             .unwrap_or_default()
             .contains("岗位没有有效内容"));
 
+        for locator in ["www.example.com", "example.com:443", "user@example.com"] {
+            let error = invoke_agent_task_create(
+                json!({
+                    "id": "j1", "co": "Acme", "role": "Engineer",
+                    "need": [locator]
+                }),
+                json!({ "id": "r1", "skills": ["Socket.IO"] }),
+            )
+            .unwrap_err();
+            assert!(error
+                .as_str()
+                .unwrap_or_default()
+                .contains("岗位没有有效内容"));
+        }
+
         let error = invoke_agent_task_create(
             json!({
                 "id": "j1", "co": "example.com", "role": "Engineer",
@@ -813,7 +851,13 @@ mod tests {
 
     #[test]
     fn agent_task_create_accepts_substantive_job_and_resume() {
-        for technology in ["Socket.IO", "VB.NET", "Spring.io"] {
+        for technology in [
+            "Socket.IO",
+            "VB.NET",
+            "Spring.io",
+            "Socket.IO@2",
+            "Socket.IO@2.0",
+        ] {
             let task = invoke_agent_task_create(
                 json!({
                     "id": "j1", "co": "Acme", "role": "Engineer", "need": [technology]
@@ -848,6 +892,8 @@ mod tests {
             json!({ "skills": ["Socket.IO"] }),
             json!({ "skills": ["VB.NET"] }),
             json!({ "skills": ["Spring.io"] }),
+            json!({ "skills": ["Socket.IO@2"] }),
+            json!({ "skills": ["Socket.IO@2.0"] }),
         ] {
             assert!(resume_has_professional_content(&resume));
         }
