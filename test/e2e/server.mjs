@@ -18,6 +18,14 @@ const contentTypes = {
 createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url || '/', 'http://localhost').pathname);
+    if (pathname === '/api/health') {
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+      res.end('{"ok":true}');
+      return;
+    }
     let file = resolve(root, `.${pathname}`);
     if (file !== root && !file.startsWith(root + sep)) {
       res.writeHead(403).end('Forbidden');

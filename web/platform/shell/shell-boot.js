@@ -100,8 +100,8 @@ function webDemoNote(){
     }
   };
   render();
-  // 探针:同 runtime 的探活路径(相对 api/health);成功且未填码 → 升级出「输入访问码」入口。
-  try{ fetch('api/health').then(r=>{ if(r&&r.ok){ demoProxyProbe=true; render(); } }).catch(()=>{}); }catch(_e){}
+  // 与 runtime 共用单一探针；成功且未填码 → 升级出「输入访问码」入口。
+  if(ai && typeof ai.probeChat==='function') ai.probeChat().then(ok=>{ if(ok){ demoProxyProbe=true; render(); } }).catch(()=>{});
   // 401 清码回滚:runtime 清掉无效码后广播 → 顶栏从「已接真模型」乐观态退回「输入访问码」入口(不留假状态)。
   window.addEventListener('seeker-demo-code-cleared', render);
 }

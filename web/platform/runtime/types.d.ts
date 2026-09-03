@@ -211,6 +211,8 @@ export interface AiApi {
    * 桌面运行时不实现(桌面支先短路);纯聊天面 —— 工具/记忆/连接器仍是桌面能力。
    */
   chatReady?(): boolean;
+  /** 【仅 web 运行时】共享的演示代理健康探针；重复调用不会重复请求。 */
+  probeChat?(): Promise<boolean>;
   /** 【仅 web 运行时】写入演示访问码(localStorage;门票非密钥)。 */
   setChatCode?(v: string): void;
   /** 非流式补全(= stream 收齐)。 */

@@ -1,11 +1,26 @@
 import { expect, test } from '@playwright/test';
 
+const browserErrors = new WeakMap();
+
 test.beforeEach(async ({ page }) => {
+  const errors = [];
+  browserErrors.set(page, errors);
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(`console.error: ${message.text()}`); });
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('requestfailed', (request) => errors.push(`requestfailed: ${request.url()} (${request.failure()?.errorText || 'unknown'})`));
+  page.on('response', (response) => { if (response.status() >= 400) errors.push(`response ${response.status()}: ${response.url()}`); });
   await page.addInitScript(() => localStorage.setItem('jh-onboarded', 'done'));
 });
 
+test.afterEach(async ({ page }) => {
+  expect(browserErrors.get(page) || []).toEqual([]);
+});
+
 test('Web 任务中心明确降级，不伪装能创建或执行', async ({ page }) => {
+  const healthRequests = [];
+  page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/health') healthRequests.push(request.url()); });
   await page.goto('/');
+  await expect.poll(() => healthRequests.length).toBe(1);
   await page.locator('.nav-item[data-id="tasks"]').click();
 
   await expect(page.locator('#page-tasks')).toContainText(/桌面任务记录|Desktop task records/);
@@ -32,10 +47,21 @@ test('导入的任务记录可查看步骤、校验摘要与审计事件', async
       }],
       ['platform_agent_runs', { id: 'run_e2e', taskId: 'task_e2e', status: 'succeeded', createdAt: now, updatedAt: now }],
       ['platform_agent_steps', { id: 'step_e2e', taskId: 'task_e2e', runId: 'run_e2e', order: 0, title: '验证任务产物', tool: 'verify_artifact', effect: 'read_only', status: 'succeeded', attempt: 1 }],
-      ['platform_agent_artifacts', { id: 'artifact_e2e', taskId: 'task_e2e', runId: 'run_e2e', stepId: 'step_e2e', kind: 'match_report', name: 'match-report.md', mime: 'text/markdown', size: 1024, sha256: '0123456789abcdef', verified: true, path: '/desktop-only/path' }],
       ['platform_agent_events', { id: 'event_e2e', taskId: 'task_e2e', runId: 'run_e2e', type: 'run_succeeded', message: '任务已完成并通过验证', messageEn: 'Task completed and verified', createdAt: now, updatedAt: now }],
     ];
     for (const [collection, record] of records) await window.SeekerRT.db.upsert(collection, record);
+    for (const [index, artifact] of [
+      ['match_report', 'match-report.md', 'text/markdown'],
+      ['tailored_resume', 'tailored-resume.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['cover_letter', 'cover-letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['interview_checklist', 'interview-checklist.md', 'text/markdown'],
+    ].entries()) {
+      await window.SeekerRT.db.upsert('platform_agent_artifacts', {
+        id: `artifact_e2e_${index}`, taskId: 'task_e2e', runId: 'run_e2e', stepId: 'step_e2e',
+        kind: artifact[0], name: artifact[1], mime: artifact[2], size: 1024,
+        sha256: `0123456789abcdef${index}`, verified: true, validationStatus: 'verified', path: '/desktop-only/path',
+      });
+    }
   });
 
   await page.reload();
@@ -45,6 +71,47 @@ test('导入的任务记录可查看步骤、校验摘要与审计事件', async
   await expect(taskPage).toContainText('验证任务产物');
   await expect(taskPage).toContainText('SHA-256 0123456789');
   await expect(taskPage).toContainText('任务已完成并通过验证');
-  await expect(taskPage.getByRole('button', { name: /打开文件|Open file/ })).toBeDisabled();
+  const openButtons = taskPage.getByRole('button', { name: /打开文件|Open file/ });
+  await expect(openButtons).toHaveCount(4);
+  for (let index = 0; index < 4; index += 1) await expect(openButtons.nth(index)).toBeDisabled();
   await expect(taskPage.getByRole('button', { name: /预览|Preview/ })).toHaveCount(0);
+});
+
+test('只展示当前运行产物，未验证产物失去绿色可信状态且窄分栏为单列', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const now = Date.now();
+    for (const [collection, record] of [
+      ['jobs', { id: 'job_trust', co: 'Trust Test', role: 'Agent Engineer' }],
+      ['platform_agent_tasks', {
+        id: 'task_trust', workflowId: 'job_application_package', projectId: 'default', title: '可信状态测试', goal: '只展示当前运行',
+        status: 'succeeded', createdBy: 'user', inputs: { jobIds: ['job_trust'], resumeId: 'r__master__', language: 'zh' },
+        constraints: [], deliverables: [], successCriteria: [],
+        capabilityScope: { collections: ['jobs', 'skills', 'resumes'], tools: [], effects: ['read_only', 'local_create'], maxSteps: 12, maxAttempts: 2 },
+        createdAt: now, updatedAt: now,
+      }],
+      ['platform_agent_runs', { id: 'run_old', taskId: 'task_trust', status: 'succeeded', createdAt: now - 1000, updatedAt: now - 1000 }],
+      ['platform_agent_runs', { id: 'run_current', taskId: 'task_trust', status: 'succeeded', createdAt: now, updatedAt: now }],
+      ['platform_agent_artifacts', {
+        id: 'artifact_old', taskId: 'task_trust', runId: 'run_old', stepId: 'step_old', kind: 'match_report',
+        name: 'old-run-must-not-appear.md', mime: 'text/markdown', size: 20, sha256: 'oldhash', verified: true, validationStatus: 'verified',
+      }],
+      ['platform_agent_artifacts', {
+        id: 'artifact_current', taskId: 'task_trust', runId: 'run_current', stepId: 'step_current', kind: 'match_report',
+        name: 'current-unverified-artifact-name.md', mime: 'text/markdown', size: 20, sha256: 'newhash', verified: false, validationStatus: 'invalid', validationError: 'SHA-256 mismatch',
+      }],
+    ]) await window.SeekerRT.db.upsert(collection, record);
+  });
+
+  await page.reload();
+  await page.locator('.nav-item[data-id="tasks"]').click();
+  const taskPage = page.locator('#page-tasks');
+  await expect(taskPage).toContainText('current-unverified-artifact-name.md');
+  await expect(taskPage).not.toContainText('old-run-must-not-appear.md');
+  await expect(taskPage).toContainText(/未验证 \/ 需要处理|Unverified \/ action needed/);
+  await expect(taskPage.locator('.agent-artifact')).toHaveClass(/is-unverified/);
+  await expect(taskPage.getByRole('button', { name: /打开文件|Open file/ })).toBeDisabled();
+  await expect(taskPage.locator('.agent-task-detail > .agent-task-heading .agent-task-status')).toContainText(/已中断|Interrupted/);
+  await expect.poll(() => taskPage.locator('.agent-artifact-grid').evaluate((node) => getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
+  await expect(taskPage.locator('.agent-artifact h3')).toBeVisible();
 });

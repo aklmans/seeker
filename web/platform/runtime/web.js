@@ -187,12 +187,19 @@ async function clearWithBackup(collections) {
 }
 
 // ── Web 演示 AI 代理(同源 /api/chat)────────────────────────────────────────
-// 探活:模块 eval 即发一次 GET api/health(相对路径 → Pages 子路径/自托管根都对)。
-// 失败(GitHub Pages / preview 无代理)静默置否 —— 一切照旧降级 canned,零控制台噪音。
+// 单一探活:runtime 与顶部演示条共享同一个 Promise，避免重复请求和状态漂移。
+// 相对路径适配 Pages 子路径/自托管根；失败静默降级 canned，不制造应用日志噪音。
 let demoProxyOk = false;
-try {
-  fetch('api/health').then((r) => { if (r && r.ok) demoProxyOk = true; }).catch(() => {});
-} catch { /* 非浏览器环境 */ }
+const demoProxyProbe = (() => {
+  try {
+    return fetch('api/health')
+      .then((response) => {
+        demoProxyOk = !!(response && response.ok);
+        return demoProxyOk;
+      })
+      .catch(() => false);
+  } catch { return Promise.resolve(false); }
+})();
 /** 访问码(朋友门票,非密钥;localStorage 持有,可随时清)。 */
 function demoCode() { try { return (localStorage.getItem('jh-democode') || '').trim(); } catch { return ''; } }
 /** 会话内短历史:historyKey → 轮次(仅内存,刷新即清;镜像桌面 G2 的“最近若干轮”语义)。 */
@@ -333,6 +340,8 @@ export function createWebRuntime() {
       },
       /** 演示代理探活结果 + 访问码在手 —— 壳层 aiChatAvailable 的 web 支(桌面运行时无此方法)。 */
       chatReady: () => demoProxyOk && !!demoCode(),
+      /** 与演示条共享模块级单一探活，不额外发起请求。 */
+      probeChat: () => demoProxyProbe,
       /** 供壳层访问码入口写码(只存 localStorage;它是门票不是密钥)。 @param {string} v */
       setChatCode: (v) => { try { localStorage.setItem('jh-democode', String(v || '').trim()); } catch { /* 私隐模式等 */ } },
       complete: () => notImpl('rt.ai.complete', 'web'),
