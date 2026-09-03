@@ -310,6 +310,15 @@ pub(crate) fn upsert_record(
     upsert_into(conn, table, record)
 }
 
+/// Task Agent 协调器按确定 id 清理未完成的内部记录。集合仍经过同一静态白名单，
+/// 不向前端或模型开放任意表名。
+pub(crate) fn delete_record(conn: &Connection, collection: &str, id: &str) -> Result<(), String> {
+    let table = table_for(collection)?;
+    conn.execute(&format!("DELETE FROM {table} WHERE id = ?1"), params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
     let table = table_for(&collection)?;

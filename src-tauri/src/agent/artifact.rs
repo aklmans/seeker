@@ -489,7 +489,40 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
-fn write_to_root(root: &Path, input: &PackageInput<'_>) -> Result<Vec<Value>, String> {
+fn artifact_records(
+    dir: &Path,
+    input: &PackageInput<'_>,
+    payloads: &[ArtifactPayload],
+) -> Vec<Value> {
+    payloads
+        .iter()
+        .map(|payload| {
+            json!({
+                "id": format!("artifact_{}_{}", input.run_id, payload.kind),
+                "taskId": input.task_id,
+                "runId": input.run_id,
+                "stepId": format!("step_{}_write", input.run_id),
+                "kind": payload.kind,
+                "name": payload.name,
+                "mime": payload.mime,
+                "size": payload.bytes.len(),
+                "sha256": sha256(&payload.bytes),
+                "verified": false,
+                "validationStatus": "pending",
+                "validationError": Value::Null,
+                "path": dir.join(payload.name).to_string_lossy(),
+                "createdAt": input.now,
+                "updatedAt": input.now,
+            })
+        })
+        .collect()
+}
+
+fn write_to_root_with_fault(
+    root: &Path,
+    input: &PackageInput<'_>,
+    fail_file_at: Option<usize>,
+) -> Result<Vec<Value>, String> {
     let PackageInput {
         task_id,
         run_id,
@@ -497,34 +530,68 @@ fn write_to_root(root: &Path, input: &PackageInput<'_>) -> Result<Vec<Value>, St
         analysis,
         questions,
         language,
-        now,
+        now: _,
     } = input;
     if !safe_id(task_id) || !safe_id(run_id) {
         return Err("非法 task/run id".into());
     }
-    let dir = root.join(task_id).join(run_id);
+    let task_dir = root.join(task_id);
+    let dir = task_dir.join(run_id);
+    let staging = task_dir.join(format!(".{run_id}.staging"));
     let payloads = build_payloads(snapshot, analysis, questions, language)?;
-    let mut records = Vec::new();
-    for payload in payloads {
-        let path = dir.join(payload.name);
-        atomic_write(&path, &payload.bytes)?;
-        records.push(json!({
-            "id": format!("artifact_{run_id}_{}", payload.kind),
-            "taskId": task_id,
-            "runId": run_id,
-            "stepId": format!("step_{run_id}_write"),
-            "kind": payload.kind,
-            "name": payload.name,
-            "mime": payload.mime,
-            "size": payload.bytes.len(),
-            "sha256": sha256(&payload.bytes),
-            "verified": false,
-            "path": path.to_string_lossy(),
-            "createdAt": *now,
-            "updatedAt": *now,
-        }));
+    let records = artifact_records(&dir, input, &payloads);
+
+    if dir.exists() {
+        for payload in &payloads {
+            let bytes = std::fs::read(dir.join(payload.name))
+                .map_err(|error| format!("已有投递包不完整，需先协调: {error}"))?;
+            if bytes.len() != payload.bytes.len() || sha256(&bytes) != sha256(&payload.bytes) {
+                return Err("已有投递包与本次确定性输出不一致，需先协调".into());
+            }
+        }
+        return Ok(records);
+    }
+
+    std::fs::create_dir_all(&task_dir).map_err(|e| e.to_string())?;
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
+    let write_result = (|| {
+        for (index, payload) in payloads.iter().enumerate() {
+            if fail_file_at == Some(index + 1) {
+                return Err(format!("故障注入：第 {} 个产物写入失败", index + 1));
+            }
+            atomic_write(&staging.join(payload.name), &payload.bytes)?;
+        }
+        std::fs::rename(&staging, &dir).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
     }
     Ok(records)
+}
+
+fn write_to_root(root: &Path, input: &PackageInput<'_>) -> Result<Vec<Value>, String> {
+    write_to_root_with_fault(root, input, None)
+}
+
+pub(super) fn cleanup_run_output(root: &Path, task_id: &str, run_id: &str) -> Result<(), String> {
+    if !safe_id(task_id) || !safe_id(run_id) {
+        return Err("非法 task/run id".into());
+    }
+    let task_dir = root.join(task_id);
+    for path in [
+        task_dir.join(run_id),
+        task_dir.join(format!(".{run_id}.staging")),
+    ] {
+        if path.exists() {
+            std::fs::remove_dir_all(path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn write_job_package(
@@ -571,6 +638,8 @@ fn validate_record(root: &Path, record: &Value) -> Result<(Value, PathBuf, Vec<u
     }
     let mut copy = record.clone();
     copy["verified"] = Value::Bool(true);
+    copy["validationStatus"] = json!("verified");
+    copy["validationError"] = Value::Null;
     Ok((copy, path, bytes))
 }
 
@@ -745,6 +814,64 @@ mod tests {
             .unwrap_err()
             .contains("路径逃逸"));
         let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nth_file_failure_never_publishes_a_partial_package() {
+        let (snapshot, analysis) = fixture();
+        for fail_at in 1..=4 {
+            let root = std::env::temp_dir().join(format!(
+                "seeker-agent-artifact-fault-{}-{fail_at}",
+                super::super::now_ms()
+            ));
+            let result = write_to_root_with_fault(
+                &root,
+                &PackageInput {
+                    task_id: "task_1",
+                    run_id: "run_1",
+                    snapshot: &snapshot,
+                    analysis: &analysis,
+                    questions:
+                        "Question one?\nQuestion two?\nQuestion three?\nQuestion four?\nQuestion five?",
+                    language: "en",
+                    now: 1,
+                },
+                Some(fail_at),
+            );
+            assert!(result.unwrap_err().contains(&format!("第 {fail_at} 个")));
+            assert!(!root.join("task_1/run_1").exists());
+            assert!(!root.join("task_1/.run_1.staging").exists());
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    #[test]
+    fn coordinated_retry_removes_old_output_before_recreating_package() {
+        let (snapshot, analysis) = fixture();
+        let root = std::env::temp_dir().join(format!(
+            "seeker-agent-artifact-retry-{}",
+            super::super::now_ms()
+        ));
+        let input = PackageInput {
+            task_id: "task_1",
+            run_id: "run_1",
+            snapshot: &snapshot,
+            analysis: &analysis,
+            questions:
+                "Question one?\nQuestion two?\nQuestion three?\nQuestion four?\nQuestion five?",
+            language: "en",
+            now: 1,
+        };
+        let first = write_to_root(&root, &input).unwrap();
+        std::fs::write(first[0]["path"].as_str().unwrap(), b"stale").unwrap();
+
+        cleanup_run_output(&root, "task_1", "run_1").unwrap();
+        assert!(!root.join("task_1/run_1").exists());
+
+        let retried = write_to_root(&root, &input).unwrap();
+        assert_eq!(retried.len(), 4);
+        assert!(verify_artifacts(&root, &retried).is_ok());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

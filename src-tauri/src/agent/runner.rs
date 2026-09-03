@@ -2,9 +2,9 @@
 
 use super::{artifact, fresh_id, now_ms, ARTIFACTS, EVENTS, RUNS, STEPS, TASKS};
 use crate::ai::{generate_agent_text, AgentGenerateOutcome};
-use crate::data::{get_record, list_records, upsert_record, Db};
+use crate::data::{delete_record, get_record, list_records, upsert_record, Db};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -40,6 +40,24 @@ impl RunControl {
 
 #[derive(Default)]
 pub struct AgentRuns(Mutex<HashMap<String, RunControl>>);
+
+fn reserve_run(runs: &AgentRuns, run_id: &str) -> Result<RunControl, String> {
+    let mut active = runs.0.lock().map_err(|_| "运行锁中毒".to_string())?;
+    match active.entry(run_id.to_string()) {
+        Entry::Occupied(_) => Err("运行已经在执行".into()),
+        Entry::Vacant(slot) => {
+            let control = RunControl::new();
+            slot.insert(control.clone());
+            Ok(control)
+        }
+    }
+}
+
+fn release_run(runs: &AgentRuns, run_id: &str) {
+    if let Ok(mut active) = runs.0.lock() {
+        active.remove(run_id);
+    }
+}
 
 fn set_fields(record: &mut Value, fields: &[(&str, Value)]) -> Result<(), String> {
     let target = record
@@ -243,9 +261,14 @@ fn spawn_run(app: AppHandle, run_id: String, control: RunControl) {
     tauri::async_runtime::spawn(async move {
         if let Err(error) = execute_run(&app, &run_id, &control).await {
             log::error!("[agent] run {run_id} 协调器失败: {error}");
+            if let Err(converge_error) = converge_unhandled_failure(&app, &run_id, &error) {
+                log::error!(
+                    "[agent] run {run_id} 无法收敛异常状态，将由下次启动恢复: {converge_error}"
+                );
+            }
         }
         if let Some(runs) = app.try_state::<AgentRuns>() {
-            runs.0.lock().unwrap().remove(&run_id);
+            release_run(&runs, &run_id);
         }
     });
 }
@@ -267,11 +290,7 @@ pub async fn agent_run_start(
         .as_str()
         .ok_or_else(|| "内部错误:运行缺少 id".to_string())?
         .to_string();
-    let control = RunControl::new();
-    runs.0
-        .lock()
-        .unwrap()
-        .insert(run_id.clone(), control.clone());
+    let control = reserve_run(&runs, &run_id)?;
     spawn_run(app, run_id, control);
     Ok(run)
 }
@@ -296,23 +315,21 @@ pub async fn agent_run_resume(
     runs: State<'_, AgentRuns>,
     run_id: String,
 ) -> Result<(), String> {
-    if runs.0.lock().unwrap().contains_key(&run_id) {
-        return Err("运行已经在执行".into());
-    }
-    {
+    let control = reserve_run(&runs, &run_id)?;
+    let initialized = (|| {
         let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
         let run =
             get_record(&conn, RUNS, &run_id)?.ok_or_else(|| format!("运行不存在: {run_id}"))?;
         if !matches!(run["status"].as_str(), Some("paused" | "interrupted")) {
             return Err("只有已暂停或已中断的运行可以继续".into());
         }
+        drop(conn);
+        reconcile_unknown_steps(&app, &run_id)
+    })();
+    if let Err(error) = initialized {
+        release_run(&runs, &run_id);
+        return Err(error);
     }
-    reconcile_unknown_steps(&app, &run_id)?;
-    let control = RunControl::new();
-    runs.0
-        .lock()
-        .unwrap()
-        .insert(run_id.clone(), control.clone());
     spawn_run(app, run_id, control);
     Ok(())
 }
@@ -365,11 +382,17 @@ pub fn agent_run_cancel(
 
 /// 只自动协调当前唯一幂等副作用 `write_artifact`：
 /// - 四项记录及文件均可验证 → 认定步骤已完成；
-/// - 完全没有记录 → 文件写入尚未形成可见提交，可安全重放固定路径的原子写；
-/// - 部分记录或校验失败 → 保留 outcome_unknown，要求用户检查，绝不覆盖现场。
+/// - 没有记录、部分记录或校验失败 → 先清理该 run 的受控目录和记录，再允许重放；
+/// - 清理或事务任一步失败 → 保留 outcome_unknown，继续禁止新运行和本次恢复。
 fn reconcile_unknown_steps(app: &AppHandle, run_id: &str) -> Result<(), String> {
+    let root = artifact::artifact_root(app)?;
     let db = app.state::<Db>();
-    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let run = get_record(&conn, RUNS, run_id)?.ok_or_else(|| format!("运行不存在: {run_id}"))?;
+    let task_id = run["taskId"]
+        .as_str()
+        .ok_or_else(|| "运行缺少 taskId".to_string())?
+        .to_string();
     for step in ordered_steps(&conn, run_id)? {
         if step["status"] != "outcome_unknown" {
             continue;
@@ -379,32 +402,93 @@ fn reconcile_unknown_steps(app: &AppHandle, run_id: &str) -> Result<(), String> 
             return Err("存在无法自动协调的未知副作用，请检查运行记录".into());
         }
         let artifacts = related(&conn, ARTIFACTS, "runId", run_id)?;
-        if artifacts.is_empty() {
-            update_record(&conn, STEPS, &step_id, &[("status", json!("pending"))])?;
+        if let Ok(verified) = artifact::verify_artifacts(&root, &artifacts) {
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
+            for record in &verified {
+                upsert_record(&tx, ARTIFACTS, record)?;
+            }
+            update_record(
+                &tx,
+                STEPS,
+                &step_id,
+                &[
+                    ("status", json!("succeeded")),
+                    (
+                        "output",
+                        json!({
+                            "artifactIds": verified.iter().map(|record| record["id"].clone()).collect::<Vec<_>>(),
+                            "reconciled": true,
+                        }),
+                    ),
+                    ("error", Value::Null),
+                ],
+            )?;
+            let event = append_event_conn(
+                &tx,
+                &task_id,
+                run_id,
+                "step_reconciled",
+                "已验证未知结果，继续后续步骤",
+                "Unknown outcome verified; continuing with later steps",
+            )?;
+            tx.commit().map_err(|e| e.to_string())?;
+            emit_event(app, &event);
             continue;
         }
-        let verified = artifact::verify_artifacts(&artifact::artifact_root(app)?, &artifacts)
-            .map_err(|error| format!("投递包结果未知且无法自动验证: {error}"))?;
-        for record in &verified {
-            upsert_record(&conn, ARTIFACTS, record)?;
+
+        artifact::cleanup_run_output(&root, &task_id, run_id)
+            .map_err(|error| format!("投递包结果未知且清理失败: {error}"))?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for record in &artifacts {
+            let artifact_id = value_id(record);
+            if !artifact_id.is_empty() {
+                delete_record(&tx, ARTIFACTS, &artifact_id)?;
+            }
         }
         update_record(
-            &conn,
+            &tx,
             STEPS,
             &step_id,
             &[
-                ("status", json!("succeeded")),
-                (
-                    "output",
-                    json!({
-                        "artifactIds": verified.iter().map(|record| record["id"].clone()).collect::<Vec<_>>(),
-                        "reconciled": true,
-                    }),
-                ),
+                ("status", json!("pending")),
+                ("output", Value::Null),
+                ("error", Value::Null),
             ],
         )?;
+        let event = append_event_conn(
+            &tx,
+            &task_id,
+            run_id,
+            "step_reconciled_retry",
+            "未知产物已清理，将重新执行写入步骤",
+            "Unknown artifacts cleaned; the write step will be retried",
+        )?;
+        tx.commit().map_err(|e| e.to_string())?;
+        emit_event(app, &event);
     }
     Ok(())
+}
+
+fn persist_artifact_records_with_fault(
+    conn: &mut rusqlite::Connection,
+    records: &[Value],
+    fail_record_at: Option<usize>,
+) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (index, record) in records.iter().enumerate() {
+        if fail_record_at == Some(index + 1) {
+            return Err(format!("故障注入：第 {} 条产物记录保存失败", index + 1));
+        }
+        upsert_record(&tx, ARTIFACTS, record)?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn persist_artifact_records(
+    conn: &mut rusqlite::Connection,
+    records: &[Value],
+) -> Result<(), String> {
+    persist_artifact_records_with_fault(conn, records, None)
 }
 
 fn related(
@@ -649,10 +733,8 @@ async fn execute_step(
                 },
             )?;
             let db = app.state::<Db>();
-            let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
-            for record in &records {
-                upsert_record(&conn, ARTIFACTS, record)?;
-            }
+            let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+            persist_artifact_records(&mut conn, &records)?;
             Ok(StepOutcome::Done(json!({
                 "artifactIds": records.iter().map(|record| record["id"].clone()).collect::<Vec<_>>()
             })))
@@ -671,10 +753,8 @@ async fn execute_step(
             };
             let verified = artifact::verify_artifacts(&artifact::artifact_root(app)?, &records)?;
             let db = app.state::<Db>();
-            let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
-            for record in &verified {
-                upsert_record(&conn, ARTIFACTS, record)?;
-            }
+            let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+            persist_artifact_records(&mut conn, &verified)?;
             Ok(StepOutcome::Done(
                 json!({ "verified": true, "count": verified.len() }),
             ))
@@ -691,7 +771,8 @@ fn settle_requested(
     request: u8,
 ) -> Result<(), String> {
     let db = app.state::<Db>();
-    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     let (status, kind, zh, en) = if request == REQUEST_CANCEL {
         ("cancelled", "run_cancelled", "任务已取消", "Task cancelled")
     } else {
@@ -703,11 +784,12 @@ fn settle_requested(
         } else {
             "pending"
         };
-        update_record(&conn, STEPS, step_id, &[("status", json!(step_status))])?;
+        update_record(&tx, STEPS, step_id, &[("status", json!(step_status))])?;
     }
-    update_record(&conn, RUNS, run_id, &[("status", json!(status))])?;
-    update_record(&conn, TASKS, task_id, &[("status", json!(status))])?;
-    let event = append_event_conn(&conn, task_id, run_id, kind, zh, en)?;
+    update_record(&tx, RUNS, run_id, &[("status", json!(status))])?;
+    update_record(&tx, TASKS, task_id, &[("status", json!(status))])?;
+    let event = append_event_conn(&tx, task_id, run_id, kind, zh, en)?;
+    tx.commit().map_err(|e| e.to_string())?;
     emit_event(app, &event);
     Ok(())
 }
@@ -721,30 +803,198 @@ fn fail_run(
 ) -> Result<(), String> {
     let safe_error: String = error.chars().take(500).collect();
     let db = app.state::<Db>();
-    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     update_record(
-        &conn,
+        &tx,
         STEPS,
         step_id,
-        &[("status", json!("failed")), ("error", json!(safe_error))],
+        &[
+            ("status", json!("failed")),
+            ("error", json!(safe_error.clone())),
+        ],
     )?;
     update_record(
-        &conn,
+        &tx,
         RUNS,
         run_id,
-        &[("status", json!("failed")), ("error", json!(safe_error))],
+        &[
+            ("status", json!("failed")),
+            ("error", json!(safe_error.clone())),
+        ],
     )?;
-    update_record(&conn, TASKS, task_id, &[("status", json!("failed"))])?;
+    update_record(&tx, TASKS, task_id, &[("status", json!("failed"))])?;
     let event = append_event_conn(
-        &conn,
+        &tx,
         task_id,
         run_id,
         "run_failed",
         &format!("任务失败：{safe_error}"),
         &format!("Task failed: {safe_error}"),
     )?;
+    tx.commit().map_err(|e| e.to_string())?;
     emit_event(app, &event);
     Ok(())
+}
+
+fn mark_outcome_unknown(
+    app: &AppHandle,
+    task_id: &str,
+    run_id: &str,
+    step_id: &str,
+    error: &str,
+) -> Result<(), String> {
+    let safe_error: String = error.chars().take(500).collect();
+    let db = app.state::<Db>();
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    update_record(
+        &tx,
+        STEPS,
+        step_id,
+        &[
+            ("status", json!("outcome_unknown")),
+            ("error", json!(safe_error.clone())),
+        ],
+    )?;
+    update_record(
+        &tx,
+        RUNS,
+        run_id,
+        &[
+            ("status", json!("interrupted")),
+            ("error", json!(safe_error.clone())),
+        ],
+    )?;
+    update_record(&tx, TASKS, task_id, &[("status", json!("interrupted"))])?;
+    let event = append_event_conn(
+        &tx,
+        task_id,
+        run_id,
+        "step_outcome_unknown",
+        &format!("步骤产生副作用后结果未知：{safe_error}"),
+        &format!("Step outcome is unknown after side effects: {safe_error}"),
+    )?;
+    tx.commit().map_err(|e| e.to_string())?;
+    emit_event(app, &event);
+    Ok(())
+}
+
+fn converge_unhandled_failure_conn(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    error: &str,
+) -> Result<Option<Value>, String> {
+    let run = get_record(conn, RUNS, run_id)?.ok_or_else(|| format!("运行不存在: {run_id}"))?;
+    if matches!(
+        run["status"].as_str(),
+        Some("succeeded" | "failed" | "cancelled")
+    ) {
+        return Ok(None);
+    }
+    let task_id = run["taskId"]
+        .as_str()
+        .ok_or_else(|| "运行缺少 taskId".to_string())?
+        .to_string();
+    let current_step_id = run["currentStepId"].as_str().unwrap_or("").to_string();
+    let current_step = if current_step_id.is_empty() {
+        None
+    } else {
+        get_record(conn, STEPS, &current_step_id)?
+    };
+    let uncertain = current_step.as_ref().is_some_and(|step| {
+        step["status"] == "running" && step["effect"].as_str() != Some("read_only")
+    });
+    let safe_error: String = error.chars().take(500).collect();
+    let terminal = if uncertain { "interrupted" } else { "failed" };
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    if let Some(step) = current_step {
+        let step_id = value_id(&step);
+        if !step_id.is_empty()
+            && !matches!(step["status"].as_str(), Some("succeeded" | "cancelled"))
+        {
+            update_record(
+                &tx,
+                STEPS,
+                &step_id,
+                &[
+                    (
+                        "status",
+                        json!(if uncertain {
+                            "outcome_unknown"
+                        } else {
+                            "failed"
+                        }),
+                    ),
+                    ("error", json!(safe_error.clone())),
+                ],
+            )?;
+        }
+    }
+    update_record(
+        &tx,
+        RUNS,
+        run_id,
+        &[
+            ("status", json!(terminal)),
+            ("error", json!(safe_error.clone())),
+        ],
+    )?;
+    if get_record(&tx, TASKS, &task_id)?.is_some() {
+        update_record(&tx, TASKS, &task_id, &[("status", json!(terminal))])?;
+    }
+    let event = append_event_conn(
+        &tx,
+        &task_id,
+        run_id,
+        if uncertain {
+            "run_interrupted"
+        } else {
+            "run_failed"
+        },
+        &format!("协调器异常，任务已收敛：{safe_error}"),
+        &format!("Coordinator error; run converged: {safe_error}"),
+    )?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(Some(event))
+}
+
+fn converge_unhandled_failure(app: &AppHandle, run_id: &str, error: &str) -> Result<(), String> {
+    let db = app.state::<Db>();
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    if let Some(event) = converge_unhandled_failure_conn(&mut conn, run_id, error)? {
+        emit_event(app, &event);
+    }
+    Ok(())
+}
+
+fn complete_run_conn(
+    conn: &mut rusqlite::Connection,
+    task_id: &str,
+    run_id: &str,
+) -> Result<Value, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    update_record(
+        &tx,
+        RUNS,
+        run_id,
+        &[
+            ("status", json!("succeeded")),
+            ("currentStepId", Value::Null),
+            ("error", Value::Null),
+        ],
+    )?;
+    update_record(&tx, TASKS, task_id, &[("status", json!("succeeded"))])?;
+    let event = append_event_conn(
+        &tx,
+        task_id,
+        run_id,
+        "run_succeeded",
+        "任务已完成并通过验证",
+        "Task completed and verified",
+    )?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(event)
 }
 
 async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Result<(), String> {
@@ -764,23 +1014,25 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
 
     {
         let db = app.state::<Db>();
-        let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+        let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
         let current = get_record(&conn, RUNS, run_id)?
             .and_then(|r| r["status"].as_str().map(ToString::to_string))
             .unwrap_or_default();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
         if current == "created" {
-            update_record(&conn, RUNS, run_id, &[("status", json!("planning"))])?;
+            update_record(&tx, RUNS, run_id, &[("status", json!("planning"))])?;
         }
-        update_record(&conn, RUNS, run_id, &[("status", json!("running"))])?;
-        update_record(&conn, TASKS, &task_id, &[("status", json!("running"))])?;
+        update_record(&tx, RUNS, run_id, &[("status", json!("running"))])?;
+        update_record(&tx, TASKS, &task_id, &[("status", json!("running"))])?;
         let event = append_event_conn(
-            &conn,
+            &tx,
             &task_id,
             run_id,
             "run_started",
             "开始执行任务",
             "Task started",
         )?;
+        tx.commit().map_err(|e| e.to_string())?;
         emit_event(app, &event);
     }
 
@@ -806,14 +1058,7 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
         match step["status"].as_str().unwrap_or("") {
             "succeeded" => continue,
             "outcome_unknown" => {
-                fail_run(
-                    app,
-                    &task_id,
-                    run_id,
-                    &step_id,
-                    "步骤副作用结果未知，需要人工核验后重新运行",
-                )?;
-                return Ok(());
+                return Err("步骤副作用结果未知，必须先完成协调".into());
             }
             "pending" | "failed" => {}
             other => {
@@ -839,10 +1084,11 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
         }
         {
             let db = app.state::<Db>();
-            let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+            let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
             let attempt = step["attempt"].as_u64().unwrap_or(0) + 1;
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
             let running = update_record(
-                &conn,
+                &tx,
                 STEPS,
                 &step_id,
                 &[
@@ -851,9 +1097,9 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
                     ("error", Value::Null),
                 ],
             )?;
-            update_record(&conn, RUNS, run_id, &[("currentStepId", json!(step_id))])?;
+            update_record(&tx, RUNS, run_id, &[("currentStepId", json!(step_id))])?;
             let event = append_event_conn(
-                &conn,
+                &tx,
                 &task_id,
                 run_id,
                 "step_started",
@@ -863,21 +1109,23 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
                     running["titleEn"].as_str().unwrap_or("task step")
                 ),
             )?;
+            tx.commit().map_err(|e| e.to_string())?;
             emit_event(app, &event);
         }
 
         match execute_step(app, &task, run_id, &step, &control.token).await {
             Ok(StepOutcome::Done(output)) => {
                 let db = app.state::<Db>();
-                let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+                let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+                let tx = conn.transaction().map_err(|e| e.to_string())?;
                 update_record(
-                    &conn,
+                    &tx,
                     STEPS,
                     &step_id,
                     &[("status", json!("succeeded")), ("output", output)],
                 )?;
                 let event = append_event_conn(
-                    &conn,
+                    &tx,
                     &task_id,
                     run_id,
                     "step_succeeded",
@@ -887,6 +1135,7 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
                         step["titleEn"].as_str().unwrap_or("task step")
                     ),
                 )?;
+                tx.commit().map_err(|e| e.to_string())?;
                 emit_event(app, &event);
             }
             Ok(StepOutcome::Cancelled) => {
@@ -894,7 +1143,11 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
                 return Ok(());
             }
             Err(error) => {
-                fail_run(app, &task_id, run_id, &step_id, &error)?;
+                if step["effect"] == "read_only" {
+                    fail_run(app, &task_id, run_id, &step_id, &error)?;
+                } else {
+                    mark_outcome_unknown(app, &task_id, run_id, &step_id, &error)?;
+                }
                 return Ok(());
             }
         }
@@ -914,25 +1167,10 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
         )?;
         return Ok(());
     }
-    update_record(
-        &conn,
-        RUNS,
-        run_id,
-        &[
-            ("status", json!("succeeded")),
-            ("currentStepId", Value::Null),
-            ("error", Value::Null),
-        ],
-    )?;
-    update_record(&conn, TASKS, &task_id, &[("status", json!("succeeded"))])?;
-    let event = append_event_conn(
-        &conn,
-        &task_id,
-        run_id,
-        "run_succeeded",
-        "任务已完成并通过验证",
-        "Task completed and verified",
-    )?;
+    drop(conn);
+    let db = app.state::<Db>();
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let event = complete_run_conn(&mut conn, &task_id, run_id)?;
     emit_event(app, &event);
     Ok(())
 }
@@ -982,6 +1220,46 @@ pub fn recover_open_runs(conn: &rusqlite::Connection) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn agent_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_artifacts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed_running(conn: &rusqlite::Connection, effect: &str) {
+        upsert_record(
+            conn,
+            TASKS,
+            &json!({ "id": "task_1", "status": "running", "updatedAt": 1 }),
+        )
+        .unwrap();
+        upsert_record(
+            conn,
+            RUNS,
+            &json!({
+                "id": "run_1", "taskId": "task_1", "status": "running",
+                "currentStepId": "step_1", "updatedAt": 1
+            }),
+        )
+        .unwrap();
+        upsert_record(
+            conn,
+            STEPS,
+            &json!({
+                "id": "step_1", "taskId": "task_1", "runId": "run_1",
+                "status": "running", "effect": effect, "updatedAt": 1
+            }),
+        )
+        .unwrap();
+    }
 
     #[test]
     fn fixed_workflow_has_bounded_ordered_effects() {
@@ -1033,14 +1311,7 @@ mod tests {
 
     #[test]
     fn startup_recovery_marks_side_effect_outcome_unknown_without_replay() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
-        )
-        .unwrap();
+        let conn = agent_db();
         upsert_record(
             &conn,
             TASKS,
@@ -1084,5 +1355,134 @@ mod tests {
             "outcome_unknown"
         );
         assert_eq!(list_records(&conn, EVENTS).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn nth_artifact_record_failure_rolls_back_the_entire_batch() {
+        for fail_at in 1..=4 {
+            let mut conn = agent_db();
+            let records = (1..=4)
+                .map(|index| {
+                    json!({
+                        "id": format!("artifact_{index}"),
+                        "taskId": "task_1",
+                        "runId": "run_1",
+                        "updatedAt": index,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let error = persist_artifact_records_with_fault(&mut conn, &records, Some(fail_at))
+                .unwrap_err();
+            assert!(error.contains(&format!("第 {fail_at} 条")));
+            assert!(list_records(&conn, ARTIFACTS).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn concurrent_resume_reservation_invokes_fake_provider_once() {
+        use std::sync::{Arc, Barrier};
+
+        let runs = Arc::new(AgentRuns::default());
+        let barrier = Arc::new(Barrier::new(8));
+        let provider_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let workers = (0..8)
+            .map(|_| {
+                let runs = Arc::clone(&runs);
+                let barrier = Arc::clone(&barrier);
+                let provider_calls = Arc::clone(&provider_calls);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    if reserve_run(&runs, "run_1").is_ok() {
+                        provider_calls.fetch_add(1, Ordering::SeqCst);
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(provider_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(runs.0.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn failed_resume_initialization_releases_its_reservation() {
+        let runs = AgentRuns::default();
+        reserve_run(&runs, "run_1").unwrap();
+        release_run(&runs, "run_1");
+        assert!(reserve_run(&runs, "run_1").is_ok());
+    }
+
+    #[test]
+    fn unhandled_side_effect_error_converges_to_unknown_in_one_transaction() {
+        let mut conn = agent_db();
+        seed_running(&conn, "local_create");
+        let event = converge_unhandled_failure_conn(&mut conn, "run_1", "disk uncertain")
+            .unwrap()
+            .unwrap();
+        assert_eq!(event["type"], "run_interrupted");
+        assert_eq!(
+            get_record(&conn, STEPS, "step_1").unwrap().unwrap()["status"],
+            "outcome_unknown"
+        );
+        assert_eq!(
+            get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            get_record(&conn, TASKS, "task_1").unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(list_records(&conn, EVENTS).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn state_or_event_save_failure_is_recovered_on_next_startup() {
+        for trigger in [
+            "CREATE TRIGGER fail_save BEFORE INSERT ON platform_agent_runs BEGIN SELECT RAISE(FAIL, 'state save failed'); END;",
+            "CREATE TRIGGER fail_save BEFORE INSERT ON platform_agent_events BEGIN SELECT RAISE(FAIL, 'event save failed'); END;",
+        ] {
+            let mut conn = agent_db();
+            seed_running(&conn, "read_only");
+            conn.execute_batch(trigger).unwrap();
+            assert!(converge_unhandled_failure_conn(&mut conn, "run_1", "boom").is_err());
+            assert_eq!(
+                get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+                "running"
+            );
+            conn.execute_batch("DROP TRIGGER fail_save;").unwrap();
+            assert_eq!(recover_open_runs(&conn).unwrap(), 1);
+            assert_eq!(
+                get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+                "interrupted"
+            );
+        }
+    }
+
+    #[test]
+    fn final_completion_failure_cannot_leave_a_false_success() {
+        let mut conn = agent_db();
+        seed_running(&conn, "read_only");
+        conn.execute_batch(
+            "CREATE TRIGGER fail_completion_event BEFORE INSERT ON platform_agent_events
+             BEGIN SELECT RAISE(FAIL, 'completion event failed'); END;",
+        )
+        .unwrap();
+        assert!(complete_run_conn(&mut conn, "task_1", "run_1").is_err());
+        assert_eq!(
+            get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+            "running"
+        );
+        assert_eq!(
+            get_record(&conn, TASKS, "task_1").unwrap().unwrap()["status"],
+            "running"
+        );
+        conn.execute_batch("DROP TRIGGER fail_completion_event;")
+            .unwrap();
+        converge_unhandled_failure_conn(&mut conn, "run_1", "completion failed").unwrap();
+        assert_eq!(
+            get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+            "failed"
+        );
     }
 }
