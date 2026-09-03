@@ -98,6 +98,21 @@ fn validate_fetch_url(url: &str) -> Result<reqwest::Url, String> {
     Ok(u)
 }
 
+fn redirect_target(current: &reqwest::Url, location: &str) -> Result<reqwest::Url, String> {
+    let next = current
+        .join(location)
+        .map_err(|e| format!("重定向目标无效:{e}"))?;
+    validate_fetch_url(next.as_str())
+}
+
+fn append_bounded(buf: &mut Vec<u8>, chunk: &[u8], max_body: usize) -> Result<(), String> {
+    if chunk.len() > max_body.saturating_sub(buf.len()) {
+        return Err(format!("响应体超过 {} 字节上限", max_body));
+    }
+    buf.extend_from_slice(chunk);
+    Ok(())
+}
+
 // ── 零依赖 HTML → 纯文本(Unicode 安全:char 级扫描)────────────────
 
 fn ci_match(hay: &[char], at: usize, needle: &[char]) -> bool {
@@ -244,9 +259,7 @@ async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String>
                 .get(reqwest::header::LOCATION)
                 .and_then(|v| v.to_str().ok())
                 .ok_or("重定向缺 Location 头")?;
-            current = current
-                .join(loc)
-                .map_err(|e| format!("重定向目标无效:{e}"))?;
+            current = redirect_target(&current, loc)?;
             continue;
         }
         if !status.is_success() {
@@ -267,17 +280,13 @@ async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String>
         if !text_ok {
             return Err(format!("不支持的内容类型:{ctype}(仅抓网页 / 文本)"));
         }
-        // 大小上限:流式读到 max_body 即停。
+        // 大小上限:超过即拒，不能把截断正文伪装成完整来源。
         use futures_util::StreamExt;
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("读取响应失败:{e}"))?;
-            buf.extend_from_slice(&chunk);
-            if buf.len() >= max_body {
-                buf.truncate(max_body);
-                break;
-            }
+            append_bounded(&mut buf, &chunk, max_body)?;
         }
         return Ok((is_html, String::from_utf8_lossy(&buf).into_owned()));
     }
@@ -427,6 +436,23 @@ mod tests {
         assert!(validate_fetch_url("data:text/html,<b>x</b>").is_err());
         assert!(validate_fetch_url("javascript:alert(1)").is_err()); // open_external 的 XSS 闸
         assert!(validate_fetch_url("not a url").is_err());
+    }
+
+    #[test]
+    fn redirects_revalidate_scheme_and_body_limit_is_not_silent_truncation() {
+        let base = validate_fetch_url("https://example.com/jobs/1").unwrap();
+        assert_eq!(
+            redirect_target(&base, "../2").unwrap().as_str(),
+            "https://example.com/2"
+        );
+        assert!(redirect_target(&base, "file:///etc/passwd").is_err());
+        assert!(redirect_target(&base, "data:text/plain,secret").is_err());
+
+        let mut body = Vec::new();
+        append_bounded(&mut body, b"1234", 5).unwrap();
+        assert_eq!(body, b"1234");
+        assert!(append_bounded(&mut body, b"56", 5).is_err());
+        assert_eq!(body, b"1234", "超限块不能留下部分截断正文");
     }
 
     #[test]

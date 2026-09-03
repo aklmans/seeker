@@ -1468,6 +1468,7 @@ mod tests {
                 .unwrap_err()
                 .contains("已拒绝")
         );
+        assert!(list_records(&conn, "jobs").unwrap().is_empty());
         opportunity_set_status_inner(&conn, "opportunity_1", "reviewed").unwrap();
         let accepted = opportunity_accept_inner(&mut conn, &trash, "opportunity_1", 11).unwrap();
         let token = accepted["undoToken"].as_str().unwrap();

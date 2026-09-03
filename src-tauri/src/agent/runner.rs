@@ -1799,7 +1799,10 @@ mod tests {
                         "excludedKeywords": ["unpaid"],
                         "watchedCompanies": ["Acme"]
                     },
-                    "sources": [{ "kind": "mcp", "server": "search", "tool": "web_search" }],
+                    "sources": [
+                        { "kind": "mcp", "server": "search", "tool": "web_search" },
+                        { "kind": "url", "url": "https://careers.example.com/jobs" }
+                    ],
                     "language": "en"
                 }
             }),
@@ -1812,6 +1815,29 @@ mod tests {
         upsert_record(&conn, TASKS, &task).unwrap();
         let run = prepare_new_run(&mut conn, &task).unwrap();
         (task_id, value_id(&run))
+    }
+
+    #[test]
+    fn radar_cannot_start_a_second_run_while_one_is_active() {
+        let root = test_root("radar-active-run");
+        let app = test_app(root.clone());
+        let handle = app.handle().clone();
+        let (task_id, _run_id) = seed_radar_run(&handle);
+        let db = handle.state::<Db>();
+        let mut conn = db.0.lock().unwrap();
+        let task = get_record(&conn, TASKS, &task_id).unwrap().unwrap();
+        assert!(prepare_new_run(&mut conn, &task).is_err());
+        assert_eq!(
+            list_records(&conn, RUNS)
+                .unwrap()
+                .into_iter()
+                .filter(|run| run["taskId"] == task_id)
+                .count(),
+            1
+        );
+        drop(conn);
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     fn lifecycle_resume() -> Value {
@@ -2801,6 +2827,52 @@ mod tests {
         let run = get_record(&conn, RUNS, &run_id).unwrap().unwrap();
         assert_eq!(run["status"], "failed");
         assert!(run["error"].as_str().unwrap().contains("source timeout"));
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+        assert!(list_records(&conn, radar::OPPORTUNITIES)
+            .unwrap()
+            .is_empty());
+        assert!(related(&conn, ARTIFACTS, "runId", &run_id)
+            .unwrap()
+            .is_empty());
+        drop(conn);
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn radar_cancel_waits_for_external_checkpoint_then_stops_all_later_work() {
+        let root = test_root("radar-cancel");
+        let app = test_app(root.clone());
+        let handle = app.handle().clone();
+        let (_task_id, run_id) = seed_radar_run(&handle);
+        let provider = RadarProvider::new(r#"{"candidates":[]}"#);
+        let source = BlockingRadarSource::default();
+        let control = RunControl::new();
+        let started = source.started.notified();
+        let execution = execute_run_with_sources(&handle, &run_id, &control, &provider, &source);
+        let cancel = async {
+            started.await;
+            control.request(REQUEST_CANCEL);
+            source.release.notify_one();
+        };
+        let (result, ()) = tokio::join!(execution, cancel);
+        result.unwrap();
+
+        let db = handle.state::<Db>();
+        let conn = db.0.lock().unwrap();
+        assert_eq!(
+            get_record(&conn, RUNS, &run_id).unwrap().unwrap()["status"],
+            "cancelled"
+        );
+        assert_eq!(
+            step_by_key(&conn, &run_id, "discover").unwrap()["status"],
+            "succeeded"
+        );
+        assert_eq!(
+            step_by_key(&conn, &run_id, "normalize").unwrap()["status"],
+            "pending"
+        );
+        assert_eq!(source.searches.load(Ordering::SeqCst), 1);
         assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
         assert!(list_records(&conn, radar::OPPORTUNITIES)
             .unwrap()
