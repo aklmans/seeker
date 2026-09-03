@@ -77,7 +77,7 @@ pending -> running -> succeeded
                     \-> outcome_unknown
 ```
 
-`succeeded` 只能在 verifier 全部通过后写入。启动恢复将遗留的 planning/running 状态改为
+`succeeded` 只能在 verifier 全部通过后写入。启动恢复将遗留的 created/planning/running 状态改为
 interrupted，不自动继续。`outcome_unknown` 禁止盲重试，必须先验证副作用是否发生；并发
 继续请求先原子预占 run，同一时刻只有一个执行器能进入，初始化失败会释放预占。
 
@@ -124,8 +124,10 @@ idempotency key；四项本地文件先写入 run 级 staging 目录，写齐后
 不重放 succeeded 步骤。
 
 源简历必须至少含一项真实工作、项目、教育内容，或 summary/skills/strengths/certs/
-languages/honors/portfolio/research/other 之一的非空专业内容。前端用相同规则提前过滤，Rust
-在创建任务和执行读取时均重新校验，空数组、空字符串和仅含日期/链接/布尔占位的记录无效。
+languages/honors/portfolio/research/other 之一的实质专业内容。前端用相同规则提前过滤，Rust
+在创建任务和执行读取时均重新校验；空数组、空字符串，以及仅含日期、布尔值、URL、纯域名或
+邮箱的记录无效。所有能让简历通过校验的字段都会确定性写入定制简历；summary 等可用事实也会
+作为求职信证据，不会出现“输入有效但核心产物完全丢失该内容”的情况。
 
 artifact 卡片默认只展示当前 run。只有持久化 `verified=true` 且未标 invalid 的记录可以
 预览/打开；每次打开仍现场校验受控目录、大小、格式与 SHA-256。篡改会原子写回失效状态和
