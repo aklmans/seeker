@@ -1,6 +1,6 @@
 //! Task Agent 可恢复顺序协调器。
 
-use super::{artifact, fresh_id, now_ms, ARTIFACTS, EVENTS, RUNS, STEPS, TASKS};
+use super::{artifact, fresh_id, now_ms, workflow, ARTIFACTS, EVENTS, RUNS, STEPS, TASKS};
 use crate::ai::{generate_agent_text, AgentGenerateOutcome};
 use crate::data::{delete_record, get_record, list_records, upsert_record, Db};
 use async_trait::async_trait;
@@ -141,86 +141,9 @@ fn emit_event<R: Runtime>(app: &AppHandle<R>, event: &Value) {
     let _ = app.emit("agent_event", event);
 }
 
+#[cfg(test)]
 fn fixed_steps(task_id: &str, run_id: &str, now: i64) -> Vec<Value> {
-    [
-        (
-            "load",
-            "读取任务输入",
-            "Load task inputs",
-            "read",
-            "load_records",
-            "read_only",
-            "读取岗位、简历和职业资产快照",
-            "result",
-        ),
-        (
-            "analyze",
-            "计算岗位匹配",
-            "Score job matches",
-            "reason",
-            "analyze_match",
-            "read_only",
-            "得到可复算的岗位评分与推荐岗位",
-            "schema",
-        ),
-        (
-            "generate",
-            "生成面试问题",
-            "Generate interview questions",
-            "generate",
-            "generate_documents",
-            "read_only",
-            "得到基于目标 JD 的面试问题",
-            "result",
-        ),
-        (
-            "write",
-            "生成投递包",
-            "Write application package",
-            "write",
-            "write_artifact",
-            "local_create",
-            "写入四类真实文件",
-            "file",
-        ),
-        (
-            "verify",
-            "验证任务产物",
-            "Verify artifacts",
-            "verify",
-            "verify_artifact",
-            "read_only",
-            "验证文件存在、结构、大小和 SHA-256",
-            "file",
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(
-        |(order, (key, zh, en, kind, tool, effect, expected, verification))| {
-            json!({
-                "id": format!("step_{run_id}_{key}"),
-                "taskId": task_id,
-                "runId": run_id,
-                "key": key,
-                "order": order,
-                "title": zh,
-                "titleEn": en,
-                "kind": kind,
-                "tool": tool,
-                "effect": effect,
-                "status": "pending",
-                "attempt": 0,
-                "expectedOutput": expected,
-                "verification": { "kind": verification },
-                "output": Value::Null,
-                "error": Value::Null,
-                "createdAt": now,
-                "updatedAt": now,
-            })
-        },
-    )
-    .collect()
+    workflow::build_steps(workflow::JOB_PACKAGE, task_id, run_id, now).unwrap()
 }
 
 fn active_status(status: &str) -> bool {
@@ -241,7 +164,10 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
         .as_str()
         .ok_or_else(|| "任务缺少 id".to_string())?;
     let status = task["status"].as_str().unwrap_or("");
-    if !matches!(status, "draft" | "failed") {
+    let workflow_id = task["workflowId"].as_str().unwrap_or("");
+    let workflow_spec = workflow::get(workflow_id)?;
+    let rerunnable_success = workflow_id == workflow::OPPORTUNITY_RADAR && status == "succeeded";
+    if !matches!(status, "draft" | "failed") && !rerunnable_success {
         return Err(format!("当前任务状态不能开始新运行: {status}"));
     }
     if list_records(conn, RUNS)?
@@ -252,7 +178,7 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
     }
     let now = now_ms();
     let run_id = fresh_id("run", now);
-    let steps = fixed_steps(task_id, &run_id, now);
+    let steps = workflow::build_steps(workflow_id, task_id, &run_id, now)?;
     let run = json!({
         "id": run_id,
         "taskId": task_id,
@@ -260,7 +186,7 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
         "currentStepId": Value::Null,
         "plan": {
             "version": 1,
-            "summary": "读取输入、确定性评分、生成面试问题、写入并验证投递包",
+            "summary": workflow_spec.summary,
             "stepIds": steps.iter().map(|s| s["id"].clone()).collect::<Vec<_>>(),
         },
         "budget": { "maxSteps": 12, "maxAttempts": 2 },
