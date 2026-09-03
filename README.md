@@ -15,6 +15,7 @@
 ## 特性
 
 - **Agent-native** —— Agent 窗口即入口,一切功能皆工具;斜杠命令面板 + 快捷 chips + 项目工作区(每个项目独立对话线与定制指令)
+- **真正执行的任务中心** —— 用户确认 TaskSpec 后按可恢复步骤运行岗位投递任务,生成 2 个 DOCX + 2 个 Markdown;只有文件格式、大小和 SHA-256 全部复验通过才算完成
 - **能力中心(全真,无 mock)** —— 连接器(MCP 本地/远程)· 应用工具 · 记忆 · 知识库 · Skills(自建/导入/工具限定)· 定时任务 · 项目,统一查看与管理
 - **多应用平台** —— 壳 + manifest 注册的小应用,可开关、可排序;关应用 = UI/AI 即刻下架、数据保留。内置:求职工作台(智能匹配 / 简历 / 面试陪练 / 市场价值)、数据资产(Prompt 库 / 笔记,支持 Markdown)
 - **BYO 多协议 AI** —— OpenAI 兼容 / Anthropic / Gemini / Ollama(本地免费),自带 Key、自选模型;前端只发文字收 token 流
@@ -69,6 +70,7 @@ src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP ·
 技术栈:**Tauri 2**(Rust + 系统 WebView)· 原生 HTML/CSS/JS(**无前端框架**)· SQLite / IndexedDB。
 新增一个应用 ≈ 一个目录 + 一份 manifest,平台零改动。
 运行时、数据所有权、AI 协议矩阵与扩展检查表见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**。
+Task Agent 的状态机与安全边界见 **[docs/AGENT-TASKS.md](docs/AGENT-TASKS.md)**，体验验收脚本见 **[docs/AGENT-TASKS-ACCEPTANCE.md](docs/AGENT-TASKS-ACCEPTANCE.md)**。
 
 ## 反馈
 

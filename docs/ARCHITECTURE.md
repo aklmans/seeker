@@ -41,6 +41,38 @@ Rust 内部使用一份 canonical message/tool 形状，`src-tauri/src/provider.
 
 系统提示、项目指令、历史和不可信资料在 canonical 层组装；适配器不得自行读取 profile。工具结果返回模型前仍须经过既有的 Untrusted 框定与破坏性护栏。
 
+## Task Agent 运行域
+
+`任务中心`是独立于聊天工具循环的受控执行面。前端只负责收集用户选择、展示 TaskSpec、
+调用 `RuntimeApi.agent` 和呈现状态；权限缩减、状态转换、文件写入、恢复与完成判定全部在
+Rust 核完成。
+
+```text
+可信 UI 确认 1–5 个岗位 + 专业简历
+  → Rust 生成固定 TaskSpec 与 5 步顺序计划
+  → 读取 jobs / skills / resumes 快照
+  → 确定性计算匹配分数
+  → 无工具、无历史、无 profile 的模型调用生成 5 道问题
+  → 原子写入 2 个 DOCX + 2 个 Markdown
+  → 重读文件并校验目录、格式、大小与 SHA-256
+  → 全部通过后才写 succeeded
+```
+
+运行元数据落在 `platform_agent_tasks/runs/steps/artifacts/approvals/events` 六个集合；它们可
+进入完整便携备份，但永久排除在 AI `QUERYABLE` 之外。`profile` 仍走独立通道，任务只读
+取不含联系方式的专业简历记录；artifact 路径由平台在应用数据目录内生成，模型与前端均
+不能提交任意路径。
+
+暂停和取消通过运行级 cancellation token 在安全检查点生效。应用重启不会偷偷续跑：
+遗留的 planning/running 运行改为 interrupted；正在执行的只读步骤回到 pending，副作用
+步骤改为 outcome_unknown。当前唯一副作用步骤是幂等的原子文件写入；恢复前 Rust 会先
+核对四项记录和磁盘文件，只有“全部验证通过”或“完全未提交”两种情况可以继续。
+
+桌面端具备真实执行与本地文件能力；Web 端只保全、导入并展示任务记录，所有执行和打开
+文件方法都明确返回不支持，界面不提供伪执行入口。完整状态机、权限和预算见
+[AGENT-TASKS.md](AGENT-TASKS.md)，人工验收见
+[AGENT-TASKS-ACCEPTANCE.md](AGENT-TASKS-ACCEPTANCE.md)。
+
 ## 新增应用检查表
 
 1. 在 `web/apps/<id>/manifest.js` 注册页面、集合、AI 默认授权和生命周期钩子。
