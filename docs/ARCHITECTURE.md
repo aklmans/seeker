@@ -66,7 +66,7 @@ Rust 核完成。工作流由编译期静态注册表定义；v0.3 注册 `job_a
 
 暂停和取消通过运行级 cancellation token 在安全检查点生效。应用重启不会偷偷续跑：
 遗留的 created/planning/running 运行改为 interrupted；正在执行的只读步骤回到 pending，副作用
-步骤改为 outcome_unknown。当前唯一副作用步骤先在 run 级 staging 目录写齐四个文件，再以
+步骤改为 outcome_unknown。岗位投递包的文件副作用步骤先在 run 级 staging 目录写齐四个文件，再以
 目录 rename 发布；四条 artifact 记录也在单一 SQLite 事务中提交。副作用开始后的错误不会
 降级成普通 failed。恢复前 Rust 会核对记录和磁盘：完整且可信则承认成功；不完整则必须先
 清掉该 run 的受控目录和记录，清理或事务失败时继续保持 outcome_unknown，禁止重放。

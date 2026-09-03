@@ -6,6 +6,8 @@
 
 **v0.2.0 已发布：** 首个完整任务闭环是“岗位投递包”。选择 1–5 个岗位与一份专业简历后，Seeker 会按受控步骤选择最匹配岗位，生成匹配报告、针对性简历、求职信和面试清单，并在全部文件通过完整性验证后才宣告完成。
 
+**v0.3.0 开发版新增：机会雷达。** 你可以选择固定招聘页或兼容的只读搜索 MCP，设置职位、地点、技能和排除词；Seeker 会受控检索、逐条验链、确定性去重评分，将结果放进独立待审队列并生成真实报告。只有你明确接受后，候选才会进入目标岗位。
+
 [下载桌面版](https://github.com/aklmans/seeker/releases/latest) · [在线体验](https://aklmans.github.io/seeker/) · [快速开始](docs/QUICKSTART.md)
 
 ![Task Agent 任务中心 —— 可恢复执行计划与可信产物](docs/screenshots/04-task-agent.png)
@@ -20,6 +22,7 @@
 
 - **真正执行的任务 Agent** —— 任务先明确输入、权限和成功条件，再按可恢复步骤运行；暂停、继续、取消和退出恢复都有可信状态，不靠模型自述“已经完成”
 - **机器验证的真实产物** —— 岗位投递任务生成 2 个 DOCX + 2 个 Markdown；文件格式、大小和 SHA-256 全部复验通过后才算成功
+- **机会雷达与待审队列** —— 对用户选择的来源做有界搜索和 Rust 验链，候选先去重评分、保留来源与发现时间，再由用户逐条接受或拒绝
 - **对话与任务双入口** —— 对话适合查询、调用技能和即时操作；需要持续执行、生成产物的工作进入任务中心，由 Rust 状态机管理
 - **本地优先与明确授权** —— 桌面数据存入 SQLite，Web 数据存入 IndexedDB；只有用户主动配置或触发的模型、连接器和网页能力会访问网络
 - **统一能力中心** —— 管理本地/远程 MCP、应用工具、记忆、知识库、Skills、定时任务和项目；不可用能力明确降级，不伪装成功
@@ -27,7 +30,7 @@
 - **BYO 多协议 AI** —— 支持 OpenAI-compatible、Anthropic、Gemini 与 Ollama，自带 Key、自选模型
 - **中英双语 · 深浅主题**
 
-> **当前边界：** v0.2 只开放“岗位投递包”固定任务流，不提供任意 Shell、任意文件写入、多 Agent、自由 DAG、自动投递或外部承诺动作。
+> **当前边界：** v0.3 只开放“岗位投递包”和“机会雷达”两条编译期固定任务流，不提供任意 Shell、任意文件写入、多 Agent、自由 DAG、自动投递或外部承诺动作。
 
 ## 安全模型(不是口号,是结构)
 
@@ -77,7 +80,7 @@ src-tauri/           # Rust 核：SQLite · 钥匙串 · AI 工具循环 · MCP 
 技术栈：**Tauri 2**（Rust + 系统 WebView）· 原生 HTML/CSS/JavaScript（无前端框架）· SQLite / IndexedDB。
 新增一个应用约等于增加一个目录和一份 manifest，平台运行时无需随之改动。
 运行时、数据所有权、AI 协议矩阵与扩展检查表见 [架构文档](docs/ARCHITECTURE.md)。
-Task Agent 的状态机与安全边界见 [Task Agent 契约](docs/AGENT-TASKS.md)，体验验收步骤见 [验收手册](docs/AGENT-TASKS-ACCEPTANCE.md)。
+Task Agent 的状态机与安全边界见 [Task Agent 契约](docs/AGENT-TASKS.md)，岗位投递包体验验收见 [v0.2 验收手册](docs/AGENT-TASKS-ACCEPTANCE.md)，机会雷达的权限、数据与验收矩阵见 [v0.3 机会雷达契约](docs/OPPORTUNITY-RADAR.md)。
 
 ## 反馈
 
