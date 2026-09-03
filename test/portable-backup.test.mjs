@@ -96,11 +96,11 @@ test('自动备份策略以后端返回为准，写失败则交还旧 UI 值', a
   assert.match(String(failed.error), /disk locked/);
 });
 
-test('Web 便携策略覆盖 Task Agent 六集合，分享导出对它们统一置空', () => {
+test('Web 便携策略覆盖 Task Agent 与机会候选，分享导出对它们统一置空', () => {
   const source = readFileSync(new URL('../web/platform/runtime/web.js', import.meta.url), 'utf8');
   const collections = [
     'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps',
-    'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events',
+    'job_opportunities', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events',
   ];
   for (const collection of collections) {
     assert.ok(source.includes(`'${collection}'`), `${collection} 必须进入 Web IndexedDB 白名单`);

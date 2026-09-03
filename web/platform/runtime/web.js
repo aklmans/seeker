@@ -14,11 +14,11 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 7; // v7:Task Agent 六集合;v6:便携保全 memories/doc_chunks;v5:platform_projects;v4:platform_schedules;v3:platform_skills;v2:assets_*
+const DB_VERSION = 8; // v8:机会雷达候选;v7:Task Agent 六集合;v6:便携保全 memories/doc_chunks;v5:platform_projects;v4:platform_schedules;v3:platform_skills;v2:assets_*
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
 // 分享型导出排除任务文本、审批/事件与本机 artifact 路径；完整 backup 仍保全。
-const REDACTED_COLLECTIONS = new Set(['platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
+const REDACTED_COLLECTIONS = new Set(['job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
 const KV_STORES = ['profile', 'settings', 'meta'];
 // Web 暂无记忆/RAG 执行能力,但仍保全桌面便携包中的私有数据,以便再次导出回桌面时不丢失。
 const PRIVATE_STORES = ['memories', 'doc_chunks'];

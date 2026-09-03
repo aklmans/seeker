@@ -660,6 +660,8 @@ mod tests {
         //   capability/app-tool** —— Agent 能改项目 = 自改「每轮注入的指令」= 自我提示注入通路
         //   (自我改写行为基线,比自排任务更直接);写半由 registry caps.len 断言承重(同 schedules)。
         assert!(!is_queryable("platform_projects"));
+        // 机会雷达候选含外部来源正文与用户审阅状态，只能由受控任务/UI 访问。
+        assert!(!is_queryable("job_opportunities"));
         // Task Agent 的目标/运行/步骤/产物/审批/事件是管理面状态:模型只能收协调器的当前步最小投影,
         // 永不可 query_data 挖掘或伪造自己的运行状态。
         for collection in [

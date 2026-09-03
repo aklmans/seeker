@@ -35,6 +35,8 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
     ("actions", "actions"),
     ("resumes", "resumes"),
     ("iv_records", "iv_records"),
+    // 机会雷达候选:用户审阅前与正式 jobs 隔离；管理面可读写，但不进入 AI QUERYABLE。
+    ("job_opportunities", "job_opportunities"),
     ("messages", "messages"),
     // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀。
     ("assets_prompts", "assets_prompts"),
@@ -55,6 +57,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
 /// 分享型导出不携带任务运行细节。任务目标/事件可能含用户文本,artifact 路径还会泄露本机用户名。
 /// 完整 backup 仍覆盖这些集合；这里只影响显式 `redact=true` 的分享/诊断包。
 const REDACTED_COLLECTIONS: &[&str] = &[
+    "job_opportunities",
     "platform_agent_tasks",
     "platform_agent_runs",
     "platform_agent_steps",
@@ -156,6 +159,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
          CREATE TABLE IF NOT EXISTS platform_agent_artifacts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS platform_agent_approvals (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    // Opportunity Radar v0.3:独立待审机会池，不直接污染正式 jobs。
+    (
+        10,
+        "CREATE TABLE IF NOT EXISTS job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -4308,6 +4316,7 @@ mod tests {
         assert!(table_for("meta").is_err());
         // 业务集合可访问。
         assert!(table_for("jobs").is_ok());
+        assert_eq!(table_for("job_opportunities").unwrap(), "job_opportunities");
         assert!(table_for("messages").is_ok());
         // 平台 Skills:db_* 可访问(管理面 CRUD),但不可与 jobseek 的 `skills`(技能库)混淆。
         assert!(table_for("platform_skills").is_ok());

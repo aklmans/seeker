@@ -75,7 +75,7 @@ import { setState } from '../../platform/shell/shell-state.js';
       en: 'Research jobs, match smartly, tailor resumes, prep interviews',
     },
     // D1:既有集合由 jobseek 认领(messages 归对话 chrome=壳,见 BOOT 的 setShell)。
-    collections: ['jobs', 'skills', 'actions', 'resumes', 'iv_records'],
+    collections: ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities'],
     aiReadable: 'default-on',
     groups: {
       core: { zh: '核心', en: 'CORE' },

@@ -41,6 +41,7 @@ export type Collection =
   | 'actions'
   | 'resumes'
   | 'iv_records'
+  | 'job_opportunities'
   | 'messages'
   | 'assets_prompts'
   | 'assets_notes'
