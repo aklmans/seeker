@@ -76,24 +76,11 @@ fn string_array(value: Option<&Value>, max: usize) -> Vec<String> {
         .collect()
 }
 
-fn text_is_link_only(text: &str) -> bool {
+fn text_is_link_only(text: &str, allow_bare_domain: bool) -> bool {
     if text.chars().any(char::is_whitespace) {
         return false;
     }
     let lower = text.to_lowercase();
-    if matches!(
-        lower.as_str(),
-        "node.js"
-            | "react.js"
-            | "vue.js"
-            | "next.js"
-            | "nuxt.js"
-            | "three.js"
-            | "d3.js"
-            | "asp.net"
-    ) {
-        return false;
-    }
     if let Some((scheme, rest)) = lower.split_once("://") {
         if !rest.is_empty()
             && scheme.chars().enumerate().all(|(index, ch)| {
@@ -105,6 +92,9 @@ fn text_is_link_only(text: &str) -> bool {
     }
     if lower.starts_with("mailto:") || (lower.contains('@') && lower.contains('.')) {
         return true;
+    }
+    if allow_bare_domain && !lower.contains(['/', '?', '#']) {
+        return false;
     }
     let authority = lower
         .strip_prefix("//")
@@ -140,19 +130,18 @@ fn text_is_link_only(text: &str) -> bool {
         return false;
     }
     let tld = labels.last().copied().unwrap_or("");
-    tld != "js"
-        && ((2..=24).contains(&tld.len()) && tld.chars().all(|ch| ch.is_ascii_alphabetic())
-            || tld.strip_prefix("xn--").is_some_and(|rest| {
-                !rest.is_empty()
-                    && rest
-                        .chars()
-                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-            }))
+    (2..=24).contains(&tld.len()) && tld.chars().all(|ch| ch.is_ascii_alphabetic())
+        || tld.strip_prefix("xn--").is_some_and(|rest| {
+            !rest.is_empty()
+                && rest
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        })
 }
 
-fn text_is_substantive(text: &str) -> bool {
+fn text_is_substantive(text: &str, allow_bare_domain: bool) -> bool {
     let text = text.trim();
-    if text.is_empty() || text_is_link_only(text) {
+    if text.is_empty() || text_is_link_only(text, allow_bare_domain) {
         return false;
     }
     let lower = text.to_lowercase();
@@ -209,11 +198,15 @@ fn text_is_substantive(text: &str) -> bool {
     !words.is_empty() && !words.iter().all(|word| PLACEHOLDERS.contains(word))
 }
 
-fn value_has_substantive_text(value: &Value) -> bool {
+fn value_has_substantive_text(value: &Value, allow_bare_domain: bool) -> bool {
     match value {
-        Value::String(text) => text_is_substantive(text),
-        Value::Array(values) => values.iter().any(value_has_substantive_text),
-        Value::Object(values) => values.values().any(value_has_substantive_text),
+        Value::String(text) => text_is_substantive(text, allow_bare_domain),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| value_has_substantive_text(value, allow_bare_domain)),
+        Value::Object(values) => values
+            .values()
+            .any(|value| value_has_substantive_text(value, allow_bare_domain)),
         _ => false,
     }
 }
@@ -247,7 +240,7 @@ pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
             entries.iter().any(|entry| {
                 fields
                     .iter()
-                    .any(|field| value_has_substantive_text(&entry[*field]))
+                    .any(|field| value_has_substantive_text(&entry[*field], false))
             })
         })
     }) {
@@ -255,7 +248,6 @@ pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
     }
     [
         "summary",
-        "skills",
         "strengths",
         "certs",
         "languages",
@@ -265,19 +257,21 @@ pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
         "other",
     ]
     .iter()
-    .any(|field| value_has_substantive_text(&resume[*field]))
+    .any(|field| value_has_substantive_text(&resume[*field], false))
+        || value_has_substantive_text(&resume["skills"], true)
 }
 
 /// 可执行岗位至少需要公司、职位，以及 JD 或必备技能之一。
 pub(super) fn job_has_professional_content(job: &Value) -> bool {
-    let any_field = |fields: &[&str]| {
+    let any_field = |fields: &[&str], allow_bare_domain| {
         fields
             .iter()
-            .any(|field| value_has_substantive_text(&job[*field]))
+            .any(|field| value_has_substantive_text(&job[*field], allow_bare_domain))
     };
-    any_field(&["co", "company"])
-        && any_field(&["role", "title"])
-        && any_field(&["jd", "description", "need", "requiredSkills"])
+    any_field(&["co", "company"], false)
+        && any_field(&["role", "title"], false)
+        && (any_field(&["jd", "description"], false)
+            || any_field(&["need", "requiredSkills"], true))
 }
 
 fn validate_task_inputs(conn: &rusqlite::Connection, task: &Value) -> Result<(), String> {
@@ -712,6 +706,8 @@ mod tests {
             json!({ "id": "r1", "portfolio": "ftp://example.com" }),
             json!({ "id": "r1", "summary": "2026-09-03" }),
             json!({ "id": "r1", "skills": ["2026"] }),
+            json!({ "id": "r1", "skills": ["ftp://example.com"] }),
+            json!({ "id": "r1", "skills": ["github.com/aklman"] }),
             json!({
                 "id": "r1",
                 "work": [{ "org": " ", "title": "", "date": "2026", "bullets": ["\n"] }],
@@ -738,6 +734,8 @@ mod tests {
             json!({ "id": "r1", "portfolio": "ftp://example.com" }),
             json!({ "id": "r1", "summary": "2026-09-03" }),
             json!({ "id": "r1", "skills": ["2026"] }),
+            json!({ "id": "r1", "skills": ["ftp://example.com"] }),
+            json!({ "id": "r1", "skills": ["github.com/aklman"] }),
         ] {
             let error = invoke_agent_task_create(valid_job.clone(), resume).unwrap_err();
             assert!(error
@@ -764,6 +762,45 @@ mod tests {
         }
 
         let error = invoke_agent_task_create(
+            json!({
+                "id": "j1", "co": "Acme", "role": "Engineer",
+                "need": ["ftp://example.com"]
+            }),
+            json!({ "id": "r1", "skills": ["Socket.IO"] }),
+        )
+        .unwrap_err();
+        assert!(error
+            .as_str()
+            .unwrap_or_default()
+            .contains("岗位没有有效内容"));
+
+        let error = invoke_agent_task_create(
+            json!({
+                "id": "j1", "co": "Acme", "role": "Engineer",
+                "need": ["github.com/aklman"]
+            }),
+            json!({ "id": "r1", "skills": ["Socket.IO"] }),
+        )
+        .unwrap_err();
+        assert!(error
+            .as_str()
+            .unwrap_or_default()
+            .contains("岗位没有有效内容"));
+
+        let error = invoke_agent_task_create(
+            json!({
+                "id": "j1", "co": "example.com", "role": "Engineer",
+                "jd": "Build reliable systems"
+            }),
+            json!({ "id": "r1", "skills": ["Socket.IO"] }),
+        )
+        .unwrap_err();
+        assert!(error
+            .as_str()
+            .unwrap_or_default()
+            .contains("岗位没有有效内容"));
+
+        let error = invoke_agent_task_create(
             json!({ "id": "j1" }),
             json!({ "id": "r1", "skills": ["Rust"] }),
         )
@@ -776,6 +813,18 @@ mod tests {
 
     #[test]
     fn agent_task_create_accepts_substantive_job_and_resume() {
+        for technology in ["Socket.IO", "VB.NET", "Spring.io"] {
+            let task = invoke_agent_task_create(
+                json!({
+                    "id": "j1", "co": "Acme", "role": "Engineer", "need": [technology]
+                }),
+                json!({ "id": "r1", "skills": [technology] }),
+            )
+            .unwrap();
+            assert_eq!(task["status"], "draft");
+            assert_eq!(task["inputs"]["jobIds"], json!(["j1"]));
+        }
+
         let task = invoke_agent_task_create(
             json!({
                 "id": "j1", "co": "Acme", "role": "Engineer", "need": ["Rust"]
@@ -796,6 +845,9 @@ mod tests {
             json!({ "strengths": "Distributed systems" }),
             json!({ "skills": ["Rust"] }),
             json!({ "skills": ["Node.js"] }),
+            json!({ "skills": ["Socket.IO"] }),
+            json!({ "skills": ["VB.NET"] }),
+            json!({ "skills": ["Spring.io"] }),
         ] {
             assert!(resume_has_professional_content(&resume));
         }

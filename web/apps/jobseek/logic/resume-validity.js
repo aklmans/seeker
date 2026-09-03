@@ -11,7 +11,7 @@ const ENTRY_FIELDS = {
 };
 
 const SUBSTANTIVE_FIELDS = [
-  'summary', 'skills', 'strengths', 'certs', 'languages', 'honors', 'portfolio', 'research', 'other',
+  'summary', 'strengths', 'certs', 'languages', 'honors', 'portfolio', 'research', 'other',
 ];
 
 const DATE_OR_PLACEHOLDER_WORDS = new Set([
@@ -20,16 +20,14 @@ const DATE_OR_PLACEHOLDER_WORDS = new Set([
   'dec', 'december', 'present', 'current', 'now', 'true', 'false', 'yes', 'no', 'null', 'undefined',
   'n', 'a', 'na', 'tbd', 'unknown', 'placeholder', '年', '月', '日', '至今', '当前',
 ]);
-const DOTTED_TECH_NAMES = new Set(['node.js', 'react.js', 'vue.js', 'next.js', 'nuxt.js', 'three.js', 'd3.js', 'asp.net']);
-
-/** @param {string} value */
-function isLinkOnly(value) {
+/** @param {string} value @param {boolean} allowBareDomain */
+function isLinkOnly(value, allowBareDomain) {
   if (/\s/.test(value)) return false;
   const lower = value.toLowerCase();
-  if (DOTTED_TECH_NAMES.has(lower)) return false;
   const scheme = lower.indexOf('://');
   if (scheme > 0 && /^[a-z][a-z0-9+.-]*$/.test(lower.slice(0, scheme)) && lower.length > scheme + 3) return true;
   if (lower.startsWith('mailto:') || /^\S+@\S+\.\S+$/.test(lower)) return true;
+  if (allowBareDomain && !/[/?#]/.test(lower)) return false;
   let authority = lower.replace(/^\/\//, '').split(/[/?#]/, 1)[0].replace(/\.$/, '');
   const port = authority.lastIndexOf(':');
   if (port > 0 && /^\d+$/.test(authority.slice(port + 1))) authority = authority.slice(0, port);
@@ -37,23 +35,23 @@ function isLinkOnly(value) {
   if (labels.length === 4 && labels.every((label) => /^\d{1,3}$/.test(label) && Number(label) <= 255)) return true;
   if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) return false;
   const tld = labels.at(-1) || '';
-  return tld !== 'js' && (/^[a-z]{2,24}$/.test(tld) || /^xn--[a-z0-9-]+$/.test(tld));
+  return /^[a-z]{2,24}$/.test(tld) || /^xn--[a-z0-9-]+$/.test(tld);
 }
 
-/** @param {string} value */
-function isSubstantiveText(value) {
+/** @param {string} value @param {boolean} allowBareDomain */
+function isSubstantiveText(value, allowBareDomain) {
   const text = value.trim();
   if (!text) return false;
-  if (isLinkOnly(text)) return false;
+  if (isLinkOnly(text, allowBareDomain)) return false;
   const words = text.match(/\p{L}+/gu) || [];
   return words.length > 0 && !words.every((word) => DATE_OR_PLACEHOLDER_WORDS.has(word.toLowerCase()));
 }
 
-/** @param {unknown} value */
-function hasSubstantiveText(value) {
-  if (typeof value === 'string') return isSubstantiveText(value);
-  if (Array.isArray(value)) return value.some(hasSubstantiveText);
-  if (value && typeof value === 'object') return Object.values(value).some(hasSubstantiveText);
+/** @param {unknown} value @param {boolean} [allowBareDomain] @returns {boolean} */
+function hasSubstantiveText(value, allowBareDomain = false) {
+  if (typeof value === 'string') return isSubstantiveText(value, allowBareDomain);
+  if (Array.isArray(value)) return value.some((item) => hasSubstantiveText(item, allowBareDomain));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => hasSubstantiveText(item, allowBareDomain));
   return false;
 }
 
@@ -64,7 +62,7 @@ export function hasProfessionalContent(resume) {
     if (!Array.isArray(entries)) continue;
     if (entries.some((entry) => entry && typeof entry === 'object' && fields.some((field) => hasSubstantiveText(entry[field])))) return true;
   }
-  return SUBSTANTIVE_FIELDS.some((field) => hasSubstantiveText(resume[field]));
+  return hasSubstantiveText(resume.skills, true) || SUBSTANTIVE_FIELDS.some((field) => hasSubstantiveText(resume[field]));
 }
 
 /**
@@ -75,6 +73,6 @@ export function hasJobContent(job) {
   const company = hasSubstantiveText(job.co) || hasSubstantiveText(job.company);
   const role = hasSubstantiveText(job.role) || hasSubstantiveText(job.title);
   const requirements = hasSubstantiveText(job.jd) || hasSubstantiveText(job.description) ||
-    hasSubstantiveText(job.need) || hasSubstantiveText(job.requiredSkills);
+    hasSubstantiveText(job.need, true) || hasSubstantiveText(job.requiredSkills, true);
   return company && role && requirements;
 }

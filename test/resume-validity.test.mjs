@@ -15,6 +15,8 @@ test('空数组、空字符串和空占位简历都不是有效职业资料', ()
     { portfolio: 'ftp://example.com' },
     { summary: '2026-09-03' },
     { skills: ['2026'] },
+    { skills: ['ftp://example.com'] },
+    { skills: ['github.com/aklman'] },
     { summary: 'Sep 2026' },
     { other: { active: true, website: 'https://example.test' } },
   ]) {
@@ -28,18 +30,24 @@ test('岗位必须同时包含公司、职位，以及 JD 或必备技能', () =
     { id: 'j1' },
     { co: 'Acme', role: 'Engineer' },
     { co: 'https://example.com', role: 'Engineer', jd: 'Build systems' },
+    { co: 'example.com', role: 'Engineer', jd: 'Build systems' },
     { co: 'Acme', role: '2026-09-03', need: ['Rust'] },
     { co: 'Acme', role: 'Engineer', jd: 'https://example.com' },
     { co: 'Acme', role: 'Engineer', jd: 'example.com' },
     { co: 'Acme', role: 'Engineer', jd: 'github.com/aklman' },
     { co: 'Acme', role: 'Engineer', jd: 'ftp://example.com' },
     { co: 'Acme', role: 'Engineer', need: ['2026'] },
+    { co: 'Acme', role: 'Engineer', need: ['ftp://example.com'] },
+    { co: 'Acme', role: 'Engineer', need: ['github.com/aklman'] },
   ]) assert.equal(hasJobContent(job), false);
 
   for (const job of [
     { co: 'Acme', role: 'Engineer', jd: 'Build reliable systems' },
     { co: 'Acme', role: 'Engineer', need: ['Rust'] },
     { company: 'Acme', title: 'Engineer', requiredSkills: ['Rust'] },
+    { co: 'Acme', role: 'Engineer', need: ['Socket.IO'] },
+    { co: 'Acme', role: 'Engineer', need: ['VB.NET'] },
+    { co: 'Acme', role: 'Engineer', requiredSkills: ['Spring.io'] },
   ]) assert.equal(hasJobContent(job), true);
 });
 
@@ -51,6 +59,9 @@ test('真实经历或约定的实质字段可以作为 Agent 输入', () => {
     { strengths: 'Distributed systems' },
     { skills: ['Rust'] },
     { skills: ['Node.js'] },
+    { skills: ['Socket.IO'] },
+    { skills: ['VB.NET'] },
+    { skills: ['Spring.io'] },
   ]) {
     assert.equal(hasProfessionalContent(resume), true);
   }

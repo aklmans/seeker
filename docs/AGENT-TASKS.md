@@ -125,8 +125,10 @@ idempotency key；四项本地文件先写入 run 级 staging 目录，写齐后
 
 源简历必须至少含一项真实工作、项目、教育内容，或 summary/skills/strengths/certs/
 languages/honors/portfolio/research/other 之一的实质专业内容。前端用相同规则提前过滤，Rust
-在创建任务和执行读取时均重新校验；空数组、空字符串，以及仅含日期、布尔值、URL、纯域名或
-邮箱的记录无效。所有能让简历通过校验的字段都会确定性写入定制简历；summary 等可用事实也会
+在创建任务和执行读取时均重新校验；空数组、空字符串，以及仅含日期、布尔值、URL、邮箱，或
+在叙述/公司/作品集等字段中仅含纯域名的记录无效。`skills/need/requiredSkills` 按技能字段语义
+允许 `Socket.IO`、`VB.NET`、`Spring.io` 等无协议、无路径的点号技术名，不维护技术名白名单；
+显式 URL 仍无效。所有能让简历通过校验的字段都会确定性写入定制简历；summary 等可用事实也会
 作为求职信证据，不会出现“输入有效但核心产物完全丢失该内容”的情况。
 
 artifact 卡片默认只展示当前 run。只有持久化 `verified=true` 且未标 invalid 的记录可以
