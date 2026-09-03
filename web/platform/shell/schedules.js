@@ -37,6 +37,10 @@ function lastLabel(n) {
   const st =
     n.last_status === 'ok' ? tt('已运行', 'ran') :
     n.last_status === 'started' ? tt('已发起(结果见对话)', 'started — see conversation') :
+    n.last_status === 'agent-started' ? tt('雷达已发起(结果见任务中心)', 'radar started — see task center') :
+    n.last_status === 'agent-active' ? tt('已有运行，已跳过', 'active run — skipped') :
+    n.last_status === 'agent-task-missing' ? tt('雷达任务已删除，未运行', 'radar task missing — did not run') :
+    n.last_status === 'agent-task-blocked' ? tt('目标不是可调度的雷达任务，未运行', 'target is not a schedulable radar task — did not run') :
     n.last_status === 'skill-missing' ? tt('Skill 已删除,未运行', 'skill missing — did not run') :
     n.last_status === 'skill-blocked' ? tt('Skill 不可运行(草稿/待审阅),未运行', 'skill not runnable (draft/unreviewed) — did not run') :
     n.last_status === 'error' ? tt('出错', 'errored') + (n.last_error ? ':' + n.last_error : '') : n.last_status;
@@ -57,7 +61,7 @@ export async function renderSchedules(box) {
   const list = rows.length
     ? rows
         .map((n) => {
-          const name = skillName(n.skillId);
+          const name = n.agentTaskId ? tt('机会雷达', 'Opportunity radar') + ' · ' + n.agentTaskId : skillName(n.skillId);
           return `<div style="padding:11px 0;border-bottom:0.5px solid var(--border);">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
           <span style="font-size:13.5px;color:var(--ink);font-weight:600;">${name ? cEsc(name) : tt('(Skill 已删除)', '(skill deleted)')}</span>
@@ -71,11 +75,11 @@ export async function renderSchedules(box) {
       </div>`;
         })
         .join('')
-    : `<p style="color:var(--ink-3);font-size:12px;padding:8px 0;line-height:1.7;max-width:560px;">${tt('还没有定时任务。选一枚 Skill、定个时间 —— 到点 Agent 自动跑它(仅 Seeker 开着时)。', 'No scheduled tasks yet. Pick a skill and a time — the Agent runs it on schedule (while Seeker is open).')}</p>`;
+    : `<p style="color:var(--ink-3);font-size:12px;padding:8px 0;line-height:1.7;max-width:560px;">${tt('还没有定时任务。可以在这里安排 Skill，或在机会雷达中安排扫描（仅 Seeker 开着时）。', 'No scheduled tasks yet. Schedule a skill here or a scan from Opportunity Radar (while Seeker is open).')}</p>`;
   box.innerHTML =
     `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="scAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建定时任务', '+ New scheduled task')}</button></div>` +
     list +
-    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('仅 Seeker 开着时触发(到点后一分钟内);错过的排点不补跑。运行结果出现在 Agent 对话里;若涉及删除等操作,Agent 只会提议、等你回来确认。', 'Fires only while Seeker is open (within a minute of the scheduled time); missed runs are skipped, not replayed. Output appears in the Agent conversation; anything destructive is only proposed — it waits for your confirmation.')}</p>`;
+    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('仅 Seeker 开着时触发(到点后一分钟内);错过的排点不补跑。Skill 结果出现在 Agent 对话，雷达结果出现在任务中心；若涉及删除等操作，Agent 只会提议、等你回来确认。', 'Fires only while Seeker is open (within a minute of the scheduled time); missed runs are skipped. Skill output appears in the Agent conversation and radar output in the task center; destructive actions are only proposed and wait for your confirmation.')}</p>`;
   const add = $('#scAdd', box);
   if (add) /** @type {HTMLElement} */ (add).onclick = () => openScheduleModal(box, '');
   $$('[data-sctoggle]', box).forEach((b) => {
@@ -92,7 +96,12 @@ export async function renderSchedules(box) {
     };
   });
   $$('[data-scedit]', box).forEach((b) => {
-    /** @type {HTMLElement} */ (b).onclick = () => openScheduleModal(box, /** @type {HTMLElement} */ (b).dataset.scedit || '');
+    /** @type {HTMLElement} */ (b).onclick = () => {
+      const id = /** @type {HTMLElement} */ (b).dataset.scedit || '';
+      const row = rows.find((item) => item.id === id);
+      if (row?.agentTaskId) openAgentScheduleModal(box, id);
+      else openScheduleModal(box, id);
+    };
   });
   $$('[data-scdel]', box).forEach((b) => {
     /** @type {HTMLElement} */ (b).onclick = async () => {
@@ -117,6 +126,24 @@ export async function renderSchedules(box) {
       });
     };
   });
+}
+
+/** 编辑机会雷达计划；目标 task 不可在这里偷换，只允许改排点。 @param {HTMLElement} box @param {string} id */
+function openAgentScheduleModal(box, id) {
+  const n = normSchedule(listSchedules().find((item) => item.id === id));
+  openModal(
+    `<div class="modal-head"><div><p class="eyebrow">— OPPORTUNITY RADAR</p><h2 style="margin-top:5px;">${tt('编辑雷达计划', 'Edit radar schedule')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
+    <div class="modal-body"><div class="set-row"><span class="sk">Task</span><span class="mono">${cEsc(n.agentTaskId)}</span></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('频率', 'Repeat')}</span><select class="input" id="scAgentKind"><option value="daily"${n.kind === 'daily' ? ' selected' : ''}>${tt('每天', 'Daily')}</option><option value="weekly"${n.kind === 'weekly' ? ' selected' : ''}>${tt('每周（周一）', 'Weekly (Monday)')}</option></select></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('时间', 'Time')}</span><input class="input" id="scAgentTime" value="${cEsc(n.time)}" placeholder="09:00"></div><p style="font-size:11px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('仅 Seeker 开着时触发；错过不补跑；已有运行时不会重入。', 'Runs only while Seeker is open; missed runs are skipped; an active run is never re-entered.')}</p></div>
+    <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="scAgentSave">${tt('保存', 'Save')}</button></div>`, true);
+  const save = $('#scAgentSave');
+  if (save) /** @type {HTMLElement} */ (save).onclick = async () => {
+    const time = String((/** @type {HTMLInputElement|null} */ ($('#scAgentTime')))?.value || '').trim();
+    if (!/^(\d{1,2}):(\d{2})$/.test(time)) { toast(tt('时间格式 HH:MM，如 09:00', 'Time must be HH:MM, e.g. 09:00')); return; }
+    try {
+      await saveSchedule({ ...n, kind: /** @type {any} */ ((/** @type {HTMLSelectElement} */ ($('#scAgentKind'))).value), time, dow: 1, updated_at: Date.now() });
+      closeModal(); await renderSchedules(box); toast(tt('已保存', 'Saved'));
+    } catch (error) { toast(errText(error)); }
+  };
 }
 
 /** 新建·编辑模态(空 id = 新建)。Skill 选择器只列**可运行且已审阅**(红线,fire 侧守卫仍兜底)。

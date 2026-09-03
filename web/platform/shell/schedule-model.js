@@ -10,12 +10,13 @@
  *   (`!is_queryable("platform_schedules")` + 工具枚举不含)+ 本注释 + types.d.ts Schedule 注释。
  *   调度 CRUD 只在能力中心管理面(§4-2「不可经对话改」延伸);Agent 只能引导用户去管理面。
  *
- * ★无人值守语义:到点 fire = 把该 Skill 当作用户在那一刻点了「运行」(经 runSkill,红线全继承);
- *   破坏性依旧只能提议等用户确认(结构性 fail-closed,无预授权)。
+ * ★无人值守语义:Skill 到点 fire = 用户预先确认的「运行」重放(经 runSkill,红线全继承)；
+ *   机会雷达则只能重放可信 UI 绑定的固定 task，并在触发端和 Rust 核双重验证。两者都不授予
+ *   新权限；破坏性依旧只能提议等用户确认(结构性 fail-closed,无预授权)。
  */
 
 /**
- * @typedef {{id:string, skillId:string, kind:('daily'|'weekly'), time:string, dow:number,
+ * @typedef {{id:string, skillId:string, agentTaskId:string, kind:('daily'|'weekly'), time:string, dow:number,
  *   enabled:boolean, created_at:number, last_run_at:number, last_status:string, last_missed:number, last_error:string}} NormSchedule
  */
 
@@ -32,6 +33,7 @@ export function normSchedule(rec) {
   return {
     id: String(r.id == null ? '' : r.id),
     skillId: String(r.skillId == null ? '' : r.skillId),
+    agentTaskId: String(r.agentTaskId == null ? '' : r.agentTaskId),
     kind: r.kind === 'weekly' ? 'weekly' : 'daily',
     time: typeof r.time === 'string' ? r.time : '',
     dow: Number.isInteger(r.dow) && r.dow >= 0 && r.dow <= 6 ? r.dow : 0,
@@ -42,6 +44,22 @@ export function normSchedule(rec) {
     last_missed: Number.isInteger(r.last_missed) && r.last_missed >= 0 ? r.last_missed : 0, // SC2 错过提示(fire 时算好存下)
     last_error: typeof r.last_error === 'string' ? r.last_error : '', // SC2 settle 失败短讯(≤200 字,scheduler 截)
   };
+}
+
+/** 只有可信 UI 固定支持的机会雷达任务能成为 Agent 调度目标；导入记录不能借 id 启动任意工作流。
+ * @param {unknown} task @param {string} taskId @returns {boolean} */
+export function radarTaskSchedulable(task, taskId) {
+  const t = /** @type {any} */ (task && typeof task === 'object' ? task : {});
+  return String(t.id || '') === taskId
+    && t.workflowId === 'job_opportunity_radar'
+    && ['draft', 'failed', 'succeeded'].includes(String(t.status || ''));
+}
+
+/** 与 Rust `active_status` 同步：存在这些 run 时计划必须跳过，最终原子防线仍由后端负责。
+ * @param {unknown} run @returns {boolean} */
+export function agentRunBlocksSchedule(run) {
+  const status = String(/** @type {any} */ (run && typeof run === 'object' ? run : {}).status || '');
+  return ['created', 'planning', 'running', 'waiting_input', 'waiting_approval', 'paused', 'interrupted'].includes(status);
 }
 
 /**

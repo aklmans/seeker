@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normSchedule, scheduleDue, prevOccurrence, occurrencesSinceWatermark } from '../web/platform/shell/schedule-model.js';
+import { agentRunBlocksSchedule, normSchedule, occurrencesSinceWatermark, prevOccurrence, radarTaskSchedulable, scheduleDue } from '../web/platform/shell/schedule-model.js';
 
 // 固定基准:2026-07-15(周三)。本地时区构造。
 const at = (d, hh, mm) => new Date(2026, 6, d, hh, mm, 0, 0).getTime(); // 月份 6 = 7 月
@@ -99,4 +99,22 @@ test('normSchedule:SC2 字段归一(last_missed 非负整数 / last_error 字符
   assert.equal(normSchedule({ last_missed: 'x' }).last_missed, 0);
   assert.equal(normSchedule({ last_error: 'boom' }).last_error, 'boom');
   assert.equal(normSchedule({ last_error: 42 }).last_error, '');
+});
+
+test('normSchedule 保留可信 UI 创建的固定 Agent task 目标', () => {
+  const n = normSchedule({ id: 'radar', agentTaskId: 'task_1', enabled: true, kind: 'daily', time: '09:00' });
+  assert.equal(n.agentTaskId, 'task_1');
+  assert.equal(n.skillId, '');
+  assert.equal(scheduleDue({ ...n, created_at: at(WED - 1, 10, 0) }, at(WED, 10, 0)), true);
+});
+
+test('Agent 调度只接受可新建运行的机会雷达，且已有运行必须阻止重入', () => {
+  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_opportunity_radar', status: 'draft' }, 'task_1'), true);
+  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_application_package', status: 'draft' }, 'task_1'), false);
+  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_opportunity_radar', status: 'cancelled' }, 'task_1'), false);
+  assert.equal(radarTaskSchedulable({ id: 'other', workflowId: 'job_opportunity_radar', status: 'succeeded' }, 'task_1'), false);
+  for (const status of ['created', 'planning', 'running', 'waiting_input', 'waiting_approval', 'paused', 'interrupted']) {
+    assert.equal(agentRunBlocksSchedule({ status }), true, status);
+  }
+  for (const status of ['succeeded', 'failed', 'cancelled', '']) assert.equal(agentRunBlocksSchedule({ status }), false, status);
 });

@@ -263,8 +263,9 @@ export interface Skill {
 }
 
 /**
- * 平台 Scheduled task(定时跑 Skill · proposal-scheduled-tasks SC1)—— 到点 fire = 用户预先发起的
- * 「运行」重放(经 runSkill,四红线 + scoping + needsReview 全继承;破坏性只能提议等用户确认,无预授权)。
+ * 平台 Scheduled task(定时跑 Skill 或固定 Agent 工作流)—— 到点 fire = 用户预先发起的
+ * 「运行」重放。Skill 经 runSkill 继承护栏；雷达先验证固定 workflow/活动 run，再由 Rust Agent 核执行。
+ * 两者都不增加原任务权限，破坏性只能提议等用户确认，无预授权。
  *
  * ★★红线(第95轮 [建议]-强):**永不注册任何可写 `platform_schedules` 的 capability / app-tool** ——
  * Agent 能给自己排任务 = 自我持续执行通路(自激励循环 + BYO 成本)。本红线是「结构性缺席」,
@@ -275,7 +276,9 @@ export interface Schedule {
   /** 稳定 id(存储主键)。 */
   id: string;
   /** 要跑的 Skill id(fire 时按 id 查 skill-store;悬空 → no-op + last_status:'skill-missing' 如实记)。 */
-  skillId: string;
+  skillId?: string;
+  /** 用户在可信 UI 中选择的固定 Agent task；与 skillId 二选一。 */
+  agentTaskId?: string;
   /** 排点类型:每天 / 每周。 */
   kind: 'daily' | 'weekly';
   /** 排点时间 'HH:MM'(本地时区;无效 → 该调度永不 due,fail-safe 不误跑)。 */
@@ -288,8 +291,8 @@ export interface Schedule {
   created_at?: number;
   /** 上次 fire 时刻(水位;fire 后越过全部积压排点 = 错过不补跑)。 */
   last_run_at?: number;
-  /** 上次结果(SC2 语义):'started'=已发起(settle 后改判;app 中途退/mock 不回 settle 停此=诚实结局未知)
-   *  | 'ok'=流正常收 | 'error'=流失败(短讯在 last_error)| 'skill-missing'(悬空)| 'skill-blocked'(草稿/待审)。 */
+  /** 上次结果：Skill 使用 started/ok/error/skill-missing/skill-blocked；雷达使用
+   * agent-started/agent-active/agent-task-missing/agent-task-blocked/error。 */
   last_status?: string;
   /** 上次 fire 时被越过的排点数(错过不补跑,UI 如实提示;fire 时由 occurrencesSinceWatermark-1 算好存下)。 */
   last_missed?: number;
