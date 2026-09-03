@@ -660,6 +660,9 @@ pub(super) fn validated_file(
     app: &AppHandle,
     record: &Value,
 ) -> Result<(PathBuf, Vec<u8>), String> {
+    if record["verified"] != true || record["validationStatus"] == "invalid" {
+        return Err("artifact 尚未验证或已失效，不能读取或打开".into());
+    }
     let (_, path, bytes) = validate_record(&artifact_root(app)?, record)?;
     Ok((path, bytes))
 }

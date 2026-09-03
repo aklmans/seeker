@@ -580,6 +580,9 @@ export interface AgentArtifact extends Record {
   size: number;
   sha256: string;
   verified: boolean;
+  validationStatus?: 'pending' | 'verified' | 'invalid';
+  validationError?: string | null;
+  invalidatedAt?: number;
   path?: string;
 }
 

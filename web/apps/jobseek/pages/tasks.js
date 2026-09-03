@@ -11,6 +11,7 @@ import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { frontis, signFoot } from '../../../platform/shell/nav.js';
 import { errText, toast } from '../../../platform/shell/toast.js';
+import { hasProfessionalContent } from '../logic/resume-validity.js';
 
 /** @typedef {import('../../../platform/runtime/types').AgentTask} AgentTask */
 /** @typedef {import('../../../platform/runtime/types').AgentRun} AgentRun */
@@ -78,7 +79,7 @@ function loadingHTML() {
 function composerHTML(jobs, resumes) {
   if (!view.composing) return '';
   if (!rt.available('agentExecution')) return `<div class="sec agent-task-compose"><div class="agent-task-heading"><div><p class="seclabel">— DESKTOP REQUIRED</p><h2 class="sectitle">${tt('请在桌面版创建任务', 'Create tasks in the desktop app')}<span class="dot">.</span></h2></div><button class="btn-text" data-agent-close>${tt('收起', 'Close')}</button></div><p class="agent-task-note">${tt('网页端只保全和查看从桌面备份导入的任务记录，不会伪装执行本地 Agent 或创建文件。', 'The web version only preserves and displays task records imported from a desktop backup. It does not pretend to run the local Agent or create files.')}</p></div>`;
-  const sourceResumes = resumes.filter((resume) => resume.master === true || Array.isArray(resume.work) || Array.isArray(resume.projects) || Array.isArray(resume.edu));
+  const sourceResumes = resumes.filter(hasProfessionalContent);
   const jobOptions = jobs.map((job, index) => `<label class="agent-task-choice">
     <input type="checkbox" data-agent-job="${cEsc(idOf(job))}" ${index < Math.min(3, jobs.length) ? 'checked' : ''}>
     <span><b>${cEsc(jobLabel(job))}</b><small>${cEsc(str(job.city || job.pay || ''))}</small></span>
@@ -118,10 +119,11 @@ function stepsHTML(steps) {
 
 /** @param {AgentArtifact[]} artifacts */
 function artifactsHTML(artifacts) {
-  if (!artifacts.length) return `<p class="agent-task-muted">${tt('验证通过的文件会出现在这里。', 'Verified files will appear here.')}</p>`;
+  if (!artifacts.length) return `<p class="agent-task-muted">${tt('当前运行还没有产物。', 'The current run has no artifacts yet.')}</p>`;
   return `<div class="agent-artifact-grid">${artifacts.map((artifact) => {
     const label = /** @type {Record<string, string[]>} */ (ARTIFACT_NAMES)[artifact.kind] || [artifact.name, artifact.name];
-    return `<article class="agent-artifact"><div><span class="agent-artifact-kind">${cEsc(tt(label[0], label[1]))}</span><h3>${cEsc(artifact.name)}</h3><p>${Math.ceil((artifact.size || 0) / 1024)} KiB · SHA-256 ${cEsc(str(artifact.sha256).slice(0, 10))}…</p></div><div class="agent-task-actions">${artifact.mime === 'text/markdown' && rt.available('agentExecution') ? `<button class="btn-text" data-agent-preview="${cEsc(idOf(artifact))}">${tt('预览', 'Preview')}</button>` : ''}<button class="btn" data-agent-open="${cEsc(idOf(artifact))}" ${rt.available('agentExecution') ? '' : 'disabled'}>${tt('打开文件', 'Open file')}</button></div></article>`;
+    const trusted = artifact.verified === true && artifact.validationStatus !== 'invalid';
+    return `<article class="agent-artifact ${trusted ? 'is-verified' : 'is-unverified'}"><div><span class="agent-artifact-kind">${cEsc(tt(label[0], label[1]))}</span><span class="agent-artifact-trust">${trusted ? tt('已验证', 'Verified') : tt('未验证 / 需要处理', 'Unverified / action needed')}</span><h3>${cEsc(artifact.name)}</h3><p>${Math.ceil((artifact.size || 0) / 1024)} KiB · SHA-256 ${cEsc(str(artifact.sha256).slice(0, 10))}…</p>${artifact.validationError ? `<p class="agent-task-error">${cEsc(str(artifact.validationError))}</p>` : ''}</div><div class="agent-task-actions">${artifact.mime === 'text/markdown' && rt.available('agentExecution') ? `<button class="btn-text" data-agent-preview="${cEsc(idOf(artifact))}" ${trusted ? '' : 'disabled'}>${tt('预览', 'Preview')}</button>` : ''}<button class="btn" data-agent-open="${cEsc(idOf(artifact))}" ${rt.available('agentExecution') && trusted ? '' : 'disabled'}>${tt('打开文件', 'Open file')}</button></div></article>`;
   }).join('')}</div><pre class="agent-artifact-preview" data-agent-preview-host hidden></pre>`;
 }
 
@@ -134,13 +136,16 @@ function eventsHTML(events) {
 /** @param {AgentTask} task @param {AgentRun | null} run @param {AgentStep[]} steps @param {AgentArtifact[]} artifacts @param {AgentEvent[]} events @param {DbRecord[]} jobs */
 function detailHTML(task, run, steps, artifacts, events, jobs) {
   const labels = task.inputs.jobIds.map((id) => jobLabel(jobs.find((job) => idOf(job) === str(id)) || { id }));
+  const trustBroken = run?.status === 'succeeded' && (artifacts.length !== 4 || artifacts.some((artifact) => artifact.verified !== true || artifact.validationStatus === 'invalid'));
+  const displayedStatus = trustBroken ? 'interrupted' : task.status;
   const canRun = task.status === 'draft' || task.status === 'failed';
   const canPause = run?.status === 'running';
   const canResume = run?.status === 'paused' || run?.status === 'interrupted';
   const canCancel = !!run && !TERMINAL.has(run.status);
   return `<div class="agent-task-detail">
-    <div class="agent-task-heading"><div><p class="seclabel">— TASK SPEC</p><h2 class="sectitle">${cEsc(task.title)}<span class="dot">.</span></h2></div><span class="agent-task-status ${statusClass(task.status)}">${cEsc(statusText(task.status))}</span></div>
+    <div class="agent-task-heading"><div><p class="seclabel">— TASK SPEC</p><h2 class="sectitle">${cEsc(task.title)}<span class="dot">.</span></h2></div><span class="agent-task-status ${statusClass(displayedStatus)}">${cEsc(statusText(displayedStatus))}</span></div>
     <p class="agent-task-copy">${cEsc(task.goal)}</p>
+    ${trustBroken ? `<p class="agent-task-error">${tt('当前运行的产物可信状态不完整，任务不能视为已完成。', 'The current run has incomplete artifact trust state and cannot be treated as complete.')}</p>` : ''}
     <dl class="agent-task-spec"><div><dt>${tt('岗位输入', 'Job inputs')}</dt><dd>${labels.map(cEsc).join('<br>')}</dd></div><div><dt>${tt('源简历', 'Source resume')}</dt><dd>${cEsc(task.inputs.resumeId)}</dd></div><div><dt>${tt('授权效果', 'Authorized effects')}</dt><dd>${task.capabilityScope.effects.map((effect) => cEsc(effect)).join(' · ')}</dd></div><div><dt>${tt('成功条件', 'Success gate')}</dt><dd>${tt('4 个文件存在、格式有效且摘要一致', '4 files exist, have valid formats, and match their hashes')}</dd></div></dl>
     ${rt.available('agentExecution') ? `<div class="agent-task-actions">${canRun ? `<button class="btn btn-accent" data-agent-action="start">${tt('开始执行', 'Start run')} →</button>` : ''}${canPause ? `<button class="btn" data-agent-action="pause">${tt('暂停', 'Pause')}</button>` : ''}${canResume ? `<button class="btn btn-accent" data-agent-action="resume">${tt('继续', 'Resume')} →</button>` : ''}${canCancel ? `<button class="btn" data-agent-action="cancel">${tt('取消任务', 'Cancel task')}</button>` : ''}</div>` : `<p class="agent-task-note">${tt('网页端仅查看从桌面备份导入的任务记录；真实执行和本地文件只在桌面版可用。', 'The web version only displays task records imported from a desktop backup. Execution and local files require the desktop app.')}</p>`}
     ${run?.error ? `<p class="agent-task-error">${cEsc(str(run.error))}</p>` : ''}
@@ -166,6 +171,7 @@ async function paint(tasks, jobs, resumes) {
     [runs, artifacts] = await Promise.all([rt.agent.listRuns(idOf(selected)), rt.agent.listArtifacts(idOf(selected))]);
     runs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     run = runs[0] || null;
+    artifacts = run ? artifacts.filter((artifact) => artifact.runId === idOf(run)) : [];
     if (run) [steps, events] = await Promise.all([rt.agent.listSteps(idOf(run)), rt.agent.listEvents(idOf(run))]);
     steps.sort((a, b) => Number(/** @type {any} */ (a).order ?? 999) - Number(/** @type {any} */ (b).order ?? 999));
     events.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -264,13 +270,13 @@ async function previewArtifact(artifactId) {
     const text = await rt.agent.readArtifact(artifactId);
     const host = /** @type {HTMLElement | null} */ ($('#page-tasks [data-agent-preview-host]'));
     if (host) { host.textContent = text; host.hidden = false; host.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-  } catch (error) { toast(tt('预览失败：', 'Preview failed: ') + errText(error)); }
+  } catch (error) { toast(tt('预览失败：', 'Preview failed: ') + errText(error)); schedulePoll(true, 100); }
 }
 
 /** @param {string} artifactId */
 async function openArtifact(artifactId) {
   try { await rt.agent.openArtifact(artifactId); }
-  catch (error) { toast(tt('打开失败：', 'Open failed: ') + errText(error)); }
+  catch (error) { toast(tt('打开失败：', 'Open failed: ') + errText(error)); schedulePoll(true, 100); }
 }
 
 export function openTaskComposer() { view.composing = true; void refresh(false); }

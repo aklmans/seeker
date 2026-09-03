@@ -550,6 +550,9 @@ fn load_snapshot(conn: &rusqlite::Connection, task: &Value) -> Result<Value, Str
         .ok_or_else(|| "任务缺少 resumeId".to_string())?;
     let resume = get_record(conn, "resumes", resume_id)?
         .ok_or_else(|| format!("输入简历已不存在: {resume_id}"))?;
+    if !super::resume_has_professional_content(&resume) {
+        return Err("输入简历没有有效职业资料，请先填写工作、项目、教育或专业能力".into());
+    }
     let skills = list_records(conn, "skills")?;
     Ok(json!({ "jobs": jobs, "resume": resume, "skills": skills }))
 }
@@ -1155,6 +1158,11 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
 
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let current_run =
+        get_record(&conn, RUNS, run_id)?.ok_or_else(|| format!("运行不存在: {run_id}"))?;
+    if current_run["status"] != "running" {
+        return Ok(());
+    }
     let verify = step_by_key(&conn, run_id, "verify")?;
     if verify["status"] != "succeeded" || verify["output"]["verified"] != true {
         drop(conn);
@@ -1164,6 +1172,29 @@ async fn execute_run(app: &AppHandle, run_id: &str, control: &RunControl) -> Res
             run_id,
             verify["id"].as_str().unwrap_or(""),
             "产物验证没有通过",
+        )?;
+        return Ok(());
+    }
+    let artifacts = related(&conn, ARTIFACTS, "runId", run_id)?;
+    if artifacts.len() != 4 || artifacts.iter().any(|record| record["verified"] != true) {
+        drop(conn);
+        fail_run(
+            app,
+            &task_id,
+            run_id,
+            verify["id"].as_str().unwrap_or(""),
+            "产物可信状态不完整",
+        )?;
+        return Ok(());
+    }
+    if let Err(error) = artifact::verify_artifacts(&artifact::artifact_root(app)?, &artifacts) {
+        drop(conn);
+        fail_run(
+            app,
+            &task_id,
+            run_id,
+            verify["id"].as_str().unwrap_or(""),
+            &format!("最终产物校验失败: {error}"),
         )?;
         return Ok(());
     }

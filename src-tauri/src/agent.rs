@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 mod artifact;
 pub(crate) mod runner;
@@ -74,6 +74,81 @@ fn string_array(value: Option<&Value>, max: usize) -> Vec<String> {
         .take(max)
         .map(ToString::to_string)
         .collect()
+}
+
+fn value_has_text(value: &Value) -> bool {
+    match value {
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(values) => values.iter().any(value_has_text),
+        Value::Object(values) => values.values().any(value_has_text),
+        _ => false,
+    }
+}
+
+/// 有效职业资料必须含真实经历内容，或约定的专业字段；master 标志、日期、链接、布尔占位均不计入。
+pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
+    let entry_sections: [(&str, &[&str]); 3] = [
+        (
+            "work",
+            &["org", "title", "summary", "description", "bullets"],
+        ),
+        (
+            "projects",
+            &["name", "title", "summary", "description", "bullets"],
+        ),
+        (
+            "edu",
+            &[
+                "org",
+                "title",
+                "major",
+                "degree",
+                "summary",
+                "description",
+                "bullets",
+            ],
+        ),
+    ];
+    if entry_sections.iter().any(|(section, fields)| {
+        resume[*section].as_array().is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| fields.iter().any(|field| value_has_text(&entry[*field])))
+        })
+    }) {
+        return true;
+    }
+    [
+        "summary",
+        "skills",
+        "strengths",
+        "certs",
+        "languages",
+        "honors",
+        "portfolio",
+        "research",
+        "other",
+    ]
+    .iter()
+    .any(|field| value_has_text(&resume[*field]))
+}
+
+fn validate_task_inputs(conn: &rusqlite::Connection, task: &Value) -> Result<(), String> {
+    let inputs = task["inputs"]
+        .as_object()
+        .ok_or_else(|| "内部错误:任务 inputs 丢失".to_string())?;
+    for job_id in string_array(inputs.get("jobIds"), MAX_JOB_INPUTS) {
+        if get_record(conn, "jobs", &job_id)?.is_none() {
+            return Err(format!("所选岗位不存在: {job_id}"));
+        }
+    }
+    let resume_id = required_string(inputs, "resumeId")?;
+    let resume = get_record(conn, "resumes", resume_id)?
+        .ok_or_else(|| format!("所选简历不存在: {resume_id}"))?;
+    if !resume_has_professional_content(&resume) {
+        return Err("所选简历没有有效职业资料，请先填写工作、项目、教育或专业能力".into());
+    }
+    Ok(())
 }
 
 /// 用户输入 → 受信任 TaskSpec。调用方提供的 id/status/scope/deliverables/successCriteria 一律丢弃。
@@ -158,19 +233,8 @@ fn related_records(
 pub fn agent_task_create(db: State<'_, Db>, draft: Value) -> Result<Value, String> {
     let now = now_ms();
     let task = normalize_task_draft(draft, now)?;
-    let inputs = task["inputs"]
-        .as_object()
-        .ok_or_else(|| "内部错误:任务 inputs 丢失".to_string())?;
     let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
-    for job_id in string_array(inputs.get("jobIds"), MAX_JOB_INPUTS) {
-        if get_record(&conn, "jobs", &job_id)?.is_none() {
-            return Err(format!("所选岗位不存在: {job_id}"));
-        }
-    }
-    let resume_id = required_string(inputs, "resumeId")?;
-    if get_record(&conn, "resumes", resume_id)?.is_none() {
-        return Err(format!("所选简历不存在: {resume_id}"));
-    }
+    validate_task_inputs(&conn, &task)?;
     upsert_record(&conn, TASKS, &task)?;
     Ok(task)
 }
@@ -220,6 +284,119 @@ fn artifact_record(db: &Db, artifact_id: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("任务产物不存在: {artifact_id}"))
 }
 
+fn update_fields(record: &mut Value, fields: &[(&str, Value)]) -> Result<(), String> {
+    let object = record
+        .as_object_mut()
+        .ok_or_else(|| "Agent 记录不是对象".to_string())?;
+    for (field, value) in fields {
+        object.insert((*field).to_string(), value.clone());
+    }
+    object.insert("updatedAt".into(), json!(now_ms()));
+    Ok(())
+}
+
+fn invalidate_artifact_conn(
+    conn: &mut rusqlite::Connection,
+    record: &Value,
+    error: &str,
+) -> Result<Value, String> {
+    let artifact_id = record["id"]
+        .as_str()
+        .ok_or_else(|| "任务产物缺少 id".to_string())?;
+    let task_id = record["taskId"]
+        .as_str()
+        .ok_or_else(|| "任务产物缺少 taskId".to_string())?;
+    let run_id = record["runId"]
+        .as_str()
+        .ok_or_else(|| "任务产物缺少 runId".to_string())?;
+    let safe_error: String = error.chars().take(500).collect();
+    let now = now_ms();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let mut invalid = record.clone();
+    update_fields(
+        &mut invalid,
+        &[
+            ("verified", json!(false)),
+            ("validationStatus", json!("invalid")),
+            ("validationError", json!(safe_error.clone())),
+            ("invalidatedAt", json!(now)),
+        ],
+    )?;
+    upsert_record(&tx, ARTIFACTS, &invalid)?;
+
+    if let Some(mut run) = get_record(&tx, RUNS, run_id)? {
+        update_fields(
+            &mut run,
+            &[
+                ("status", json!("interrupted")),
+                ("error", json!(safe_error.clone())),
+            ],
+        )?;
+        upsert_record(&tx, RUNS, &run)?;
+    }
+    if let Some(mut task) = get_record(&tx, TASKS, task_id)? {
+        update_fields(&mut task, &[("status", json!("interrupted"))])?;
+        upsert_record(&tx, TASKS, &task)?;
+    }
+    if let Some(mut verify_step) = related_records(&tx, STEPS, "runId", run_id)?
+        .into_iter()
+        .find(|step| step["key"] == "verify")
+    {
+        update_fields(
+            &mut verify_step,
+            &[
+                ("status", json!("failed")),
+                ("error", json!(safe_error.clone())),
+            ],
+        )?;
+        upsert_record(&tx, STEPS, &verify_step)?;
+    }
+
+    let event = json!({
+        "id": fresh_id("event", now),
+        "taskId": task_id,
+        "runId": run_id,
+        "type": "artifact_invalidated",
+        "artifactId": artifact_id,
+        "message": format!("产物完整性校验失败：{safe_error}"),
+        "messageEn": format!("Artifact integrity validation failed: {safe_error}"),
+        "createdAt": now,
+        "updatedAt": now,
+    });
+    upsert_record(&tx, EVENTS, &event)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(event)
+}
+
+fn trusted_artifact_file(
+    app: &AppHandle,
+    db: &Db,
+    artifact_id: &str,
+) -> Result<(Value, std::path::PathBuf, Vec<u8>), String> {
+    let record = artifact_record(db, artifact_id)?;
+    if !artifact_record_is_trusted(&record) {
+        return Err("该产物未验证或已失效，需要处理后才能打开".into());
+    }
+    match artifact::validated_file(app, &record) {
+        Ok((path, bytes)) => Ok((record, path, bytes)),
+        Err(error) => {
+            let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+            if let Some(current) = get_record(&conn, ARTIFACTS, artifact_id)? {
+                if current["verified"] == true {
+                    let event = invalidate_artifact_conn(&mut conn, &current, &error)?;
+                    let _ = app.emit("agent_event", &event);
+                }
+            }
+            Err(format!("产物完整性校验失败，已标记为失效：{error}"))
+        }
+    }
+}
+
+fn artifact_record_is_trusted(record: &Value) -> bool {
+    record["verified"] == true && record["validationStatus"] != "invalid"
+}
+
 /// 仅允许读取已通过目录、大小、摘要和格式校验的 Markdown 产物；DOCX 由系统应用打开。
 #[tauri::command]
 pub fn agent_artifact_read_text(
@@ -231,7 +408,7 @@ pub fn agent_artifact_read_text(
     if record["mime"] != "text/markdown" {
         return Err("该产物不是可预览的 Markdown 文本".into());
     }
-    let (_, bytes) = artifact::validated_file(&app, &record)?;
+    let (_, _, bytes) = trusted_artifact_file(&app, &db, &artifact_id)?;
     if bytes.len() > 512 * 1024 {
         return Err("Markdown 产物超过 512 KiB 预览上限".into());
     }
@@ -245,8 +422,7 @@ pub fn agent_artifact_open(
     db: State<'_, Db>,
     artifact_id: String,
 ) -> Result<(), String> {
-    let record = artifact_record(&db, &artifact_id)?;
-    let (path, _) = artifact::validated_file(&app, &record)?;
+    let (_, path, _) = trusted_artifact_file(&app, &db, &artifact_id)?;
     #[cfg(target_os = "macos")]
     let mut command = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
@@ -312,5 +488,127 @@ mod tests {
         )
         .unwrap_err();
         assert!(missing_resume.contains("resumeId"));
+    }
+
+    #[test]
+    fn empty_or_placeholder_resume_is_rejected_by_authoritative_validation() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE resumes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+        )
+        .unwrap();
+        upsert_record(&conn, "jobs", &json!({ "id": "j1" })).unwrap();
+        let task = normalize_task_draft(
+            json!({
+                "workflowId": JOB_PACKAGE,
+                "inputs": { "jobIds": ["j1"], "resumeId": "r1" }
+            }),
+            1,
+        )
+        .unwrap();
+        for resume in [
+            json!({ "id": "r1", "master": true, "work": [], "projects": [], "edu": [] }),
+            json!({
+                "id": "r1",
+                "work": [{ "org": " ", "title": "", "date": "2026", "bullets": ["\n"] }],
+                "projects": [{ "name": "", "link": "https://example.test", "star": true }],
+                "strengths": "   "
+            }),
+        ] {
+            upsert_record(&conn, "resumes", &resume).unwrap();
+            assert!(validate_task_inputs(&conn, &task)
+                .unwrap_err()
+                .contains("没有有效职业资料"));
+        }
+    }
+
+    #[test]
+    fn real_experience_or_substantive_professional_field_is_accepted() {
+        for resume in [
+            json!({ "work": [{ "org": "Acme" }] }),
+            json!({ "projects": [{ "bullets": ["Built a queue"] }] }),
+            json!({ "edu": [{ "degree": "BSc Computer Science" }] }),
+            json!({ "strengths": "Distributed systems" }),
+            json!({ "skills": ["Rust"] }),
+        ] {
+            assert!(resume_has_professional_content(&resume));
+        }
+    }
+
+    #[test]
+    fn unverified_or_invalidated_artifact_is_never_trusted() {
+        assert!(!artifact_record_is_trusted(&json!({ "verified": false })));
+        assert!(!artifact_record_is_trusted(
+            &json!({ "verified": true, "validationStatus": "invalid" })
+        ));
+        assert!(artifact_record_is_trusted(&json!({ "verified": true })));
+        assert!(artifact_record_is_trusted(
+            &json!({ "verified": true, "validationStatus": "verified" })
+        ));
+    }
+
+    #[test]
+    fn tamper_invalidation_persists_trust_failure_and_audit_event() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_artifacts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+        )
+        .unwrap();
+        upsert_record(
+            &conn,
+            TASKS,
+            &json!({ "id": "task_1", "status": "succeeded" }),
+        )
+        .unwrap();
+        upsert_record(
+            &conn,
+            RUNS,
+            &json!({ "id": "run_1", "taskId": "task_1", "status": "succeeded" }),
+        )
+        .unwrap();
+        upsert_record(
+            &conn,
+            STEPS,
+            &json!({
+                "id": "step_run_1_verify", "taskId": "task_1", "runId": "run_1",
+                "key": "verify", "status": "succeeded"
+            }),
+        )
+        .unwrap();
+        let artifact = json!({
+            "id": "artifact_1", "taskId": "task_1", "runId": "run_1",
+            "verified": true, "validationStatus": "verified"
+        });
+        upsert_record(&conn, ARTIFACTS, &artifact).unwrap();
+
+        let event = invalidate_artifact_conn(&mut conn, &artifact, "SHA-256 mismatch").unwrap();
+        let invalid = get_record(&conn, ARTIFACTS, "artifact_1").unwrap().unwrap();
+        assert_eq!(invalid["verified"], false);
+        assert_eq!(invalid["validationStatus"], "invalid");
+        assert!(invalid["validationError"]
+            .as_str()
+            .unwrap()
+            .contains("SHA-256"));
+        assert_eq!(
+            get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            get_record(&conn, TASKS, "task_1").unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            get_record(&conn, STEPS, "step_run_1_verify")
+                .unwrap()
+                .unwrap()["status"],
+            "failed"
+        );
+        assert_eq!(event["type"], "artifact_invalidated");
+        assert_eq!(list_records(&conn, EVENTS).unwrap().len(), 1);
     }
 }
