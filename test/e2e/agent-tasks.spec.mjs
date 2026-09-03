@@ -111,6 +111,9 @@ test('只展示当前运行产物，未验证产物失去绿色可信状态且�
   await expect(taskPage).toContainText(/未验证 \/ 需要处理|Unverified \/ action needed/);
   await expect(taskPage.locator('.agent-artifact')).toHaveClass(/is-unverified/);
   await expect(taskPage.getByRole('button', { name: /打开文件|Open file/ })).toBeDisabled();
+  const listStatus = taskPage.locator('[data-agent-task="task_trust"] .agent-task-status');
+  await expect(listStatus).toContainText(/已中断|Interrupted/);
+  await expect(listStatus).not.toHaveClass(/is-ok/);
   await expect(taskPage.locator('.agent-task-detail > .agent-task-heading .agent-task-status')).toContainText(/已中断|Interrupted/);
   await expect.poll(() => taskPage.locator('.agent-artifact-grid').evaluate((node) => getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
   await expect(taskPage.locator('.agent-artifact h3')).toBeVisible();

@@ -19,6 +19,7 @@ import { hasJobContent, hasProfessionalContent } from '../logic/resume-validity.
 /** @typedef {import('../../../platform/runtime/types').AgentArtifact} AgentArtifact */
 /** @typedef {import('../../../platform/runtime/types').AgentEvent} AgentEvent */
 /** @typedef {import('../../../platform/runtime/types').Record} DbRecord */
+/** @typedef {{ run: AgentRun | null, artifacts: AgentArtifact[], displayedStatus: string, trustBroken: boolean }} TaskViewState */
 
 const ACTIVE = new Set(['queued', 'created', 'planning', 'running', 'waiting_input', 'waiting_approval']);
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
@@ -62,6 +63,13 @@ function statusClass(status) {
   if (ACTIVE.has(status)) return 'is-live';
   return '';
 }
+
+/** @param {AgentTask} task @param {AgentRun | null} run @param {AgentArtifact[]} artifacts @returns {TaskViewState} */
+function taskViewState(task, run, artifacts) {
+  const trustBroken = run?.status === 'succeeded' &&
+    (artifacts.length !== 4 || artifacts.some((artifact) => artifact.verified !== true || artifact.validationStatus === 'invalid'));
+  return { run, artifacts, displayedStatus: trustBroken ? 'interrupted' : task.status, trustBroken };
+}
 /** @param {number | undefined} epoch */
 function dateText(epoch) {
   if (!epoch || !Number.isFinite(epoch)) return '—';
@@ -99,13 +107,16 @@ function composerHTML(jobs, resumes) {
   </div>`;
 }
 
-/** @param {AgentTask[]} tasks */
-function taskListHTML(tasks) {
+/** @param {AgentTask[]} tasks @param {Map<string, TaskViewState>} taskStates */
+function taskListHTML(tasks, taskStates) {
   if (!tasks.length) return `<div class="guide-step"><span class="gnum">— 01</span><div><h3>${rt.available('agentExecution') ? tt('从一个可验收的任务开始', 'Start with a verifiable task') : tt('这里显示桌面任务记录', 'Desktop task records appear here')}</h3><p>${rt.available('agentExecution') ? tt('让 Seeker 比较 1–5 个岗位，生成简历、求职信、匹配报告和面试清单；只有四项文件都通过校验才算完成。', 'Let Seeker compare 1–5 jobs and create a resume, cover letter, match report, and interview checklist. Completion requires all four files to pass verification.') : tt('从桌面版导入完整备份后，可在网页端查看任务状态、步骤、校验摘要和审计记录；执行仍只发生在桌面端。', 'After importing a full desktop backup, you can inspect task status, steps, verification hashes, and audit logs here; execution remains desktop-only.')}</p>${rt.available('agentExecution') ? `<button class="btn btn-accent" data-agent-new style="margin-top:14px;">${tt('+ 新建任务', '+ New task')}</button>` : ''}</div></div>`;
-  return `<div class="agent-task-list">${tasks.map((task) => `<button class="agent-task-row ${idOf(task) === view.selectedTaskId ? 'is-selected' : ''}" data-agent-task="${cEsc(idOf(task))}">
-    <span><b>${cEsc(task.title || tt('岗位投递包', 'Application package'))}</b><small>${cEsc(dateText(task.updatedAt))}</small></span>
-    <span class="agent-task-status ${statusClass(task.status)}">${cEsc(statusText(task.status))}</span>
-  </button>`).join('')}</div>`;
+  return `<div class="agent-task-list">${tasks.map((task) => {
+    const status = taskStates.get(idOf(task))?.displayedStatus || task.status;
+    return `<button class="agent-task-row ${idOf(task) === view.selectedTaskId ? 'is-selected' : ''}" data-agent-task="${cEsc(idOf(task))}">
+      <span><b>${cEsc(task.title || tt('岗位投递包', 'Application package'))}</b><small>${cEsc(dateText(task.updatedAt))}</small></span>
+      <span class="agent-task-status ${statusClass(status)}">${cEsc(statusText(status))}</span>
+    </button>`;
+  }).join('')}</div>`;
 }
 
 /** @param {AgentStep[]} steps */
@@ -134,11 +145,10 @@ function eventsHTML(events) {
   return `<ol class="agent-task-events">${events.slice().reverse().map((event) => `<li><time>${cEsc(dateText(event.createdAt))}</time><span>${cEsc(tt(event.message, str(/** @type {any} */ (event).messageEn || event.message)))}</span></li>`).join('')}</ol>`;
 }
 
-/** @param {AgentTask} task @param {AgentRun | null} run @param {AgentStep[]} steps @param {AgentArtifact[]} artifacts @param {AgentEvent[]} events @param {DbRecord[]} jobs */
-function detailHTML(task, run, steps, artifacts, events, jobs) {
+/** @param {AgentTask} task @param {TaskViewState} taskState @param {AgentStep[]} steps @param {AgentEvent[]} events @param {DbRecord[]} jobs */
+function detailHTML(task, taskState, steps, events, jobs) {
+  const { run, artifacts, displayedStatus, trustBroken } = taskState;
   const labels = task.inputs.jobIds.map((id) => jobLabel(jobs.find((job) => idOf(job) === str(id)) || { id }));
-  const trustBroken = run?.status === 'succeeded' && (artifacts.length !== 4 || artifacts.some((artifact) => artifact.verified !== true || artifact.validationStatus === 'invalid'));
-  const displayedStatus = trustBroken ? 'interrupted' : task.status;
   const canRun = task.status === 'draft' || task.status === 'failed';
   const canPause = run?.status === 'running';
   const canResume = run?.status === 'paused' || run?.status === 'interrupted';
@@ -163,22 +173,25 @@ async function paint(tasks, jobs, resumes) {
   if (view.selectedTaskId && !tasks.some((task) => idOf(task) === view.selectedTaskId)) view.selectedTaskId = '';
   if (!view.selectedTaskId && tasks.length) view.selectedTaskId = idOf(tasks[0]);
   const selected = tasks.find((task) => idOf(task) === view.selectedTaskId) || null;
-  /** @type {AgentRun[]} */ let runs = [];
-  /** @type {AgentStep[]} */ let steps = [];
-  /** @type {AgentArtifact[]} */ let artifacts = [];
-  /** @type {AgentEvent[]} */ let events = [];
-  /** @type {AgentRun | null} */ let run = null;
-  if (selected) {
-    [runs, artifacts] = await Promise.all([rt.agent.listRuns(idOf(selected)), rt.agent.listArtifacts(idOf(selected))]);
+  /** @type {Map<string, TaskViewState>} */
+  const taskStates = new Map(await Promise.all(tasks.map(async (task) => {
+    const [runs, allArtifacts] = await Promise.all([rt.agent.listRuns(idOf(task)), rt.agent.listArtifacts(idOf(task))]);
     runs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    run = runs[0] || null;
-    artifacts = run ? artifacts.filter((artifact) => artifact.runId === idOf(run)) : [];
-    if (run) [steps, events] = await Promise.all([rt.agent.listSteps(idOf(run)), rt.agent.listEvents(idOf(run))]);
+    const latestRun = runs[0] || null;
+    const currentArtifacts = latestRun ? allArtifacts.filter((artifact) => artifact.runId === idOf(latestRun)) : [];
+    return /** @type {[string, TaskViewState]} */ ([idOf(task), taskViewState(task, latestRun, currentArtifacts)]);
+  })));
+  /** @type {AgentStep[]} */ let steps = [];
+  /** @type {AgentEvent[]} */ let events = [];
+  const selectedState = selected ? taskStates.get(idOf(selected)) || taskViewState(selected, null, []) : null;
+  const run = selectedState?.run || null;
+  if (run) {
+    [steps, events] = await Promise.all([rt.agent.listSteps(idOf(run)), rt.agent.listEvents(idOf(run))]);
     steps.sort((a, b) => Number(/** @type {any} */ (a).order ?? 999) - Number(/** @type {any} */ (b).order ?? 999));
     events.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   }
   host.innerHTML = frontis('TASK AGENT', tt('任务中心', 'Task center')) + composerHTML(jobs, resumes) +
-    `<div class="agent-task-layout"><section class="sec agent-task-sidebar"><div class="agent-task-heading"><div><p class="seclabel">— TASKS</p><h2 class="sectitle">${tt('任务', 'Tasks')}<span class="dot">.</span></h2></div>${tasks.length ? `<button class="btn-text" data-agent-new>${tt('+ 新建', '+ New')}</button>` : ''}</div>${taskListHTML(tasks)}</section><section class="sec agent-task-main">${selected ? detailHTML(selected, run, steps, artifacts, events, jobs) : `<p class="agent-task-muted">${tt('创建任务后，可在执行前检查其输入、权限与成功条件。', 'After creating a task, review its inputs, permissions, and success gate before running.')}</p>`}</section></div>` + signFoot();
+    `<div class="agent-task-layout"><section class="sec agent-task-sidebar"><div class="agent-task-heading"><div><p class="seclabel">— TASKS</p><h2 class="sectitle">${tt('任务', 'Tasks')}<span class="dot">.</span></h2></div>${tasks.length ? `<button class="btn-text" data-agent-new>${tt('+ 新建', '+ New')}</button>` : ''}</div>${taskListHTML(tasks, taskStates)}</section><section class="sec agent-task-main">${selected && selectedState ? detailHTML(selected, selectedState, steps, events, jobs) : `<p class="agent-task-muted">${tt('创建任务后，可在执行前检查其输入、权限与成功条件。', 'After creating a task, review its inputs, permissions, and success gate before running.')}</p>`}</section></div>` + signFoot();
   wire(run);
   const polling = selected && (ACTIVE.has(selected.status) || (run && ACTIVE.has(run.status)));
   schedulePoll(!!polling);
