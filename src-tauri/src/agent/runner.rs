@@ -1267,12 +1267,15 @@ async fn execute_run_with<R: Runtime, G: AgentTextGenerator<R>>(
     Ok(())
 }
 
-/// 应用启动恢复：执行态改为 interrupted；正在执行的副作用步骤改为 outcome_unknown。
-/// 不自动续跑，避免在用户不知情时重放动作。
-pub fn recover_open_runs(conn: &rusqlite::Connection) -> Result<usize, String> {
+/// 应用启动恢复：已提交但尚未启动的 created 和执行态统一改为 interrupted；正在执行的
+/// 副作用步骤改为 outcome_unknown。不自动续跑，避免在用户不知情时重放动作。
+pub fn recover_open_runs(conn: &mut rusqlite::Connection) -> Result<usize, String> {
     let mut recovered = 0;
     for run in list_records(conn, RUNS)? {
-        if !matches!(run["status"].as_str(), Some("planning" | "running")) {
+        if !matches!(
+            run["status"].as_str(),
+            Some("created" | "planning" | "running")
+        ) {
             continue;
         }
         let run_id = run["id"].as_str().unwrap_or("");
@@ -1280,11 +1283,14 @@ pub fn recover_open_runs(conn: &rusqlite::Connection) -> Result<usize, String> {
         if run_id.is_empty() || task_id.is_empty() {
             continue;
         }
-        update_record(conn, RUNS, run_id, &[("status", json!("interrupted"))])?;
-        if get_record(conn, TASKS, task_id)?.is_some() {
-            update_record(conn, TASKS, task_id, &[("status", json!("interrupted"))])?;
+        let task_exists = get_record(conn, TASKS, task_id)?.is_some();
+        let steps = related(conn, STEPS, "runId", run_id)?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        update_record(&tx, RUNS, run_id, &[("status", json!("interrupted"))])?;
+        if task_exists {
+            update_record(&tx, TASKS, task_id, &[("status", json!("interrupted"))])?;
         }
-        for step in related(conn, STEPS, "runId", run_id)? {
+        for step in steps {
             if step["status"] != "running" {
                 continue;
             }
@@ -1293,17 +1299,18 @@ pub fn recover_open_runs(conn: &rusqlite::Connection) -> Result<usize, String> {
                 _ => "outcome_unknown",
             };
             if let Some(step_id) = step["id"].as_str() {
-                update_record(conn, STEPS, step_id, &[("status", json!(status))])?;
+                update_record(&tx, STEPS, step_id, &[("status", json!(status))])?;
             }
         }
         append_event_conn(
-            conn,
+            &tx,
             task_id,
             run_id,
             "run_interrupted",
             "检测到上次运行中断，等待用户继续",
             "Previous run was interrupted; waiting for the user to resume",
         )?;
+        tx.commit().map_err(|e| e.to_string())?;
         recovered += 1;
     }
     Ok(recovered)
@@ -1561,7 +1568,7 @@ mod tests {
 
     #[test]
     fn startup_recovery_marks_side_effect_outcome_unknown_without_replay() {
-        let conn = agent_db();
+        let mut conn = agent_db();
         upsert_record(
             &conn,
             TASKS,
@@ -1587,7 +1594,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(recover_open_runs(&conn).unwrap(), 1);
+        assert_eq!(recover_open_runs(&mut conn).unwrap(), 1);
         assert_eq!(
             get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
             "interrupted"
@@ -1605,6 +1612,91 @@ mod tests {
             "outcome_unknown"
         );
         assert_eq!(list_records(&conn, EVENTS).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn created_run_committed_before_spawn_is_recovered_as_interrupted() {
+        let mut conn = agent_db();
+        let task = super::super::normalize_task_draft(
+            json!({
+                "workflowId": "job_application_package",
+                "inputs": { "jobIds": ["j1"], "resumeId": "r1" }
+            }),
+            1,
+        )
+        .unwrap();
+        let task_id = value_id(&task);
+        upsert_record(&conn, TASKS, &task).unwrap();
+
+        // 模拟 prepare_new_run 已提交、reserve_run / spawn_run 尚未发生即崩溃。
+        let run = prepare_new_run(&mut conn, &task).unwrap();
+        let run_id = value_id(&run);
+        assert_eq!(
+            get_record(&conn, TASKS, &task_id).unwrap().unwrap()["status"],
+            "queued"
+        );
+        assert_eq!(
+            get_record(&conn, RUNS, &run_id).unwrap().unwrap()["status"],
+            "created"
+        );
+        assert!(related(&conn, STEPS, "runId", &run_id)
+            .unwrap()
+            .iter()
+            .all(|step| step["status"] == "pending"));
+
+        assert_eq!(recover_open_runs(&mut conn).unwrap(), 1);
+        assert_eq!(
+            get_record(&conn, TASKS, &task_id).unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            get_record(&conn, RUNS, &run_id).unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert!(related(&conn, STEPS, "runId", &run_id)
+            .unwrap()
+            .iter()
+            .all(|step| step["status"] == "pending"));
+        let events = related(&conn, EVENTS, "runId", &run_id).unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events
+            .iter()
+            .any(|event| event["type"] == "run_interrupted"));
+    }
+
+    #[test]
+    fn created_recovery_rolls_back_task_and_run_when_audit_write_fails() {
+        let mut conn = agent_db();
+        let task = super::super::normalize_task_draft(
+            json!({
+                "workflowId": "job_application_package",
+                "inputs": { "jobIds": ["j1"], "resumeId": "r1" }
+            }),
+            1,
+        )
+        .unwrap();
+        let task_id = value_id(&task);
+        upsert_record(&conn, TASKS, &task).unwrap();
+        let run_id = value_id(&prepare_new_run(&mut conn, &task).unwrap());
+        conn.execute_batch(
+            "CREATE TRIGGER fail_recovery_event BEFORE INSERT ON platform_agent_events
+             BEGIN SELECT RAISE(FAIL, 'recovery event failed'); END;",
+        )
+        .unwrap();
+
+        assert!(recover_open_runs(&mut conn).is_err());
+        assert_eq!(
+            get_record(&conn, TASKS, &task_id).unwrap().unwrap()["status"],
+            "queued"
+        );
+        assert_eq!(
+            get_record(&conn, RUNS, &run_id).unwrap().unwrap()["status"],
+            "created"
+        );
+        assert!(related(&conn, STEPS, "runId", &run_id)
+            .unwrap()
+            .iter()
+            .all(|step| step["status"] == "pending"));
     }
 
     #[test]
@@ -1737,7 +1829,7 @@ mod tests {
                 "running"
             );
             conn.execute_batch("DROP TRIGGER fail_save;").unwrap();
-            assert_eq!(recover_open_runs(&conn).unwrap(), 1);
+            assert_eq!(recover_open_runs(&mut conn).unwrap(), 1);
             assert_eq!(
                 get_record(&conn, RUNS, "run_1").unwrap().unwrap()["status"],
                 "interrupted"

@@ -64,10 +64,10 @@ pub fn run() {
             //   可再生;**不碰** localStorage / seeker.db)。未变则零动作。best-effort、绝不因它阻断启动。
             bust_stale_webview_cache(app.handle());
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
-            let conn = data::open(app.handle())?;
+            let mut conn = data::open(app.handle())?;
             // 进程退出时不可能可靠完成执行中的 Agent 步骤。启动时只恢复为可审计的
             // interrupted / outcome_unknown，不在用户不知情时自动重放副作用。
-            agent::recover_open_runs(&conn)?;
+            agent::recover_open_runs(&mut conn)?;
             app.manage(data::Db(std::sync::Mutex::new(conn)));
             if cfg!(debug_assertions) {
                 app.handle().plugin(
