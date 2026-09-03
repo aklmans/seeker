@@ -18,7 +18,44 @@ fn main() {
     track(Path::new("../web"), &mut fp);
     println!("cargo:rustc-env=SEEKER_WEB_FP={:016x}", fnv1a(&fp));
     println!("cargo:rerun-if-changed=build.rs");
-    tauri_build::build();
+
+    let attributes = if is_windows_msvc_target() {
+        // `tauri-build` 默认把 Common Controls v6 manifest 只链接到应用 binary，
+        // 不会链接到 `cargo test` 生成的 lib test harness；一旦启用 `tauri/test`，
+        // harness 会在进入 Rust 测试前因缺少该依赖而报 STATUS_ENTRYPOINT_NOT_FOUND。
+        // 手动传给 rustc 可覆盖所有本包产物；同时关闭 tauri-build 的默认 manifest，
+        // 避免正式应用 binary 重复嵌入。上游问题：tauri-apps/tauri#13419。
+        embed_windows_manifest();
+        tauri_build::Attributes::new()
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest())
+    } else {
+        tauri_build::Attributes::new()
+    };
+
+    tauri_build::try_build(attributes).expect("failed to run Tauri build script");
+}
+
+fn is_windows_msvc_target() -> bool {
+    std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
+fn embed_windows_manifest() {
+    const WINDOWS_MANIFEST_FILE: &str = "windows-app-manifest.xml";
+
+    let manifest = std::env::current_dir()
+        .expect("failed to resolve the crate directory")
+        .join(WINDOWS_MANIFEST_FILE);
+    assert!(
+        manifest.is_file(),
+        "Windows application manifest is missing: {}",
+        manifest.display()
+    );
+
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    println!("cargo:rustc-link-arg=/WX");
 }
 
 /// 递归:声明目录(捕获增删文件的 mtime 变化)与每个文件的 rerun-if-changed,并把文件路径+mtime 累进指纹。
