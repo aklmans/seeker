@@ -57,6 +57,7 @@ pub fn run() {
         .manage(mcp::PendingConfirms::default())
         .manage(ai::PendingAppTools::default())
         .manage(agent::AgentRuns::default())
+        .manage(agent::OpportunityTrash::default())
         .setup(|app| {
             // ★前端缓存清扫(真机 bug 第二层):WKWebView 会把嵌入资产(tauri://localhost)缓存到磁盘,
             //   即便二进制重嵌了新前端,webview 仍可能供旧 HTML/JS ⇒ 更新后「看不到新功能」。
@@ -106,6 +107,10 @@ pub fn run() {
             agent::agent_artifact_open,
             agent::agent_approval_list,
             agent::agent_event_list,
+            agent::agent_opportunity_list,
+            agent::agent_opportunity_set_status,
+            agent::agent_opportunity_accept,
+            agent::agent_opportunity_undo,
             data::db_list,
             data::db_get,
             data::db_upsert,

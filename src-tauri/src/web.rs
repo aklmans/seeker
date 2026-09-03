@@ -285,7 +285,7 @@ async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String>
 }
 
 /// 抓取并抽纯文本(web_fetch 用):全文 + html→text。
-async fn fetch_guarded(url: &str) -> Result<String, String> {
+pub(crate) async fn fetch_guarded(url: &str) -> Result<String, String> {
     let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
     Ok(if is_html { html_to_text(&raw) } else { raw })
 }

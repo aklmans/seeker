@@ -1,4 +1,4 @@
-//! 岗位投递包的受控 artifact 生成、原子写入与机器验证。
+//! 固定工作流的受控 artifact 生成、原子写入与机器验证。
 //!
 //! 文件名和目录均由平台常量/平台生成 id 决定，模型没有路径输入面。简历事实段逐字来自用户
 //! 选择的 resumes 记录；模型只产生基于 JD 的面试问题，不能改写工作/项目/教育事实。
@@ -682,6 +682,60 @@ pub(super) fn write_job_package<R: Runtime>(
     write_to_root(&root, input)
 }
 
+pub(super) fn write_radar_report<R: Runtime>(
+    app: &AppHandle<R>,
+    task_id: &str,
+    run_id: &str,
+    bytes: Vec<u8>,
+    now: i64,
+) -> Result<Vec<Value>, String> {
+    if !safe_id(task_id) || !safe_id(run_id) || bytes.is_empty() {
+        return Err("非法或为空的机会报告".into());
+    }
+    let root = artifact_root(app)?;
+    let task_dir = root.join(task_id);
+    let dir = task_dir.join(run_id);
+    let staging = task_dir.join(format!(".{run_id}.staging"));
+    let name = "opportunity-report.md";
+    let record = json!({
+        "id": format!("artifact_{run_id}_opportunity_report"),
+        "taskId": task_id,
+        "runId": run_id,
+        "stepId": format!("step_{run_id}_write_radar_report"),
+        "kind": "opportunity_report",
+        "name": name,
+        "mime": "text/markdown",
+        "size": bytes.len(),
+        "sha256": sha256(&bytes),
+        "verified": false,
+        "validationStatus": "pending",
+        "validationError": Value::Null,
+        "path": dir.join(name).to_string_lossy(),
+        "createdAt": now,
+        "updatedAt": now,
+    });
+    if dir.exists() {
+        let existing = std::fs::read(dir.join(name))
+            .map_err(|error| format!("已有机会报告不完整，需先协调: {error}"))?;
+        if existing.len() != bytes.len() || sha256(&existing) != sha256(&bytes) {
+            return Err("已有机会报告与本次确定性输出不一致，需先协调".into());
+        }
+        return Ok(vec![record]);
+    }
+    std::fs::create_dir_all(&task_dir).map_err(|error| error.to_string())?;
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(|error| error.to_string())?;
+    }
+    std::fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    if let Err(error) = atomic_write(&staging.join(name), &bytes)
+        .and_then(|_| std::fs::rename(&staging, &dir).map_err(|error| error.to_string()))
+    {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    Ok(vec![record])
+}
+
 fn validate_record(root: &Path, record: &Value) -> Result<(Value, PathBuf, Vec<u8>), String> {
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
     let raw = record["path"]
@@ -720,8 +774,16 @@ fn validate_record(root: &Path, record: &Value) -> Result<(Value, PathBuf, Vec<u
 }
 
 pub(super) fn verify_artifacts(root: &Path, records: &[Value]) -> Result<Vec<Value>, String> {
+    verify_artifacts_for(root, records, REQUIRED_KINDS)
+}
+
+pub(super) fn verify_artifacts_for(
+    root: &Path,
+    records: &[Value],
+    required_kinds: &[&str],
+) -> Result<Vec<Value>, String> {
     let kinds: HashSet<&str> = records.iter().filter_map(|r| r["kind"].as_str()).collect();
-    for kind in REQUIRED_KINDS {
+    for kind in required_kinds {
         if !kinds.contains(kind) {
             return Err(format!("缺少必需 artifact: {kind}"));
         }

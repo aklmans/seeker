@@ -807,6 +807,16 @@ impl McpManager {
         }
     }
 
+    /// 机会雷达等固定工作流只连接用户明确选中的 server；不会为了调用一个来源而启动其他
+    /// 已配置 MCP。server 不存在或已禁用时响亮失败。
+    pub async fn ensure_named_connected(&self, app: &AppHandle, name: &str) -> Result<(), String> {
+        let cfg = load_servers(app)
+            .into_iter()
+            .find(|server| server.name == name && server.enabled)
+            .ok_or_else(|| format!("MCP server 不存在或已禁用:{name}"))?;
+        self.ensure_connected(&cfg).await.map(|_| ())
+    }
+
     /// 当前已连接 server 的全部工具描述符(网关组装工具表 + 调用路由)。
     pub async fn tool_descriptors(&self) -> Vec<McpToolDescriptor> {
         // 短持外锁快照 (name, Arc),释外锁后读各自 tools(不变,无锁;不阻塞在飞调用)。
