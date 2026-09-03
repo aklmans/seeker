@@ -8,7 +8,14 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
+
+#[cfg(test)]
+pub(super) struct TestArtifactRoot(pub PathBuf);
+
+#[cfg(test)]
+#[derive(Default)]
+pub(super) struct TestArtifactFault(pub std::sync::atomic::AtomicUsize);
 
 const DOCX_MIME: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const REQUIRED_KINDS: &[&str] = &[
@@ -594,15 +601,16 @@ pub(super) fn cleanup_run_output(root: &Path, task_id: &str, run_id: &str) -> Re
     Ok(())
 }
 
-pub(super) fn write_job_package(
-    app: &AppHandle,
+pub(super) fn write_job_package<R: Runtime>(
+    app: &AppHandle<R>,
     input: &PackageInput<'_>,
 ) -> Result<Vec<Value>, String> {
-    let root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("agent_artifacts");
+    let root = artifact_root(app)?;
+    #[cfg(test)]
+    if let Some(fault) = app.try_state::<TestArtifactFault>() {
+        let fail_at = fault.0.load(std::sync::atomic::Ordering::SeqCst);
+        return write_to_root_with_fault(&root, input, (fail_at > 0).then_some(fail_at));
+    }
     write_to_root(&root, input)
 }
 
@@ -656,8 +664,8 @@ pub(super) fn verify_artifacts(root: &Path, records: &[Value]) -> Result<Vec<Val
         .collect()
 }
 
-pub(super) fn validated_file(
-    app: &AppHandle,
+pub(super) fn validated_file<R: Runtime>(
+    app: &AppHandle<R>,
     record: &Value,
 ) -> Result<(PathBuf, Vec<u8>), String> {
     if record["verified"] != true || record["validationStatus"] == "invalid" {
@@ -667,7 +675,11 @@ pub(super) fn validated_file(
     Ok((path, bytes))
 }
 
-pub(super) fn artifact_root(app: &AppHandle) -> Result<PathBuf, String> {
+pub(super) fn artifact_root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if let Some(root) = app.try_state::<TestArtifactRoot>() {
+        return Ok(root.0.clone());
+    }
     Ok(app
         .path()
         .app_data_dir()

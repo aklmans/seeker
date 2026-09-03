@@ -43,3 +43,6 @@ async-trait = "0.1"
 base64 = "0.22"
 pdf-extract = "0.7"
 sha2 = "0.10"
+
+[dev-dependencies]
+tauri = { version = "2.11.2", features = ["test"] }

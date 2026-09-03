@@ -78,7 +78,8 @@ pending -> running -> succeeded
 ```
 
 `succeeded` 只能在 verifier 全部通过后写入。启动恢复将遗留的 planning/running 状态改为
-interrupted，不自动继续。`outcome_unknown` 禁止盲重试，必须先验证副作用是否发生。
+interrupted，不自动继续。`outcome_unknown` 禁止盲重试，必须先验证副作用是否发生；并发
+继续请求先原子预占 run，同一时刻只有一个执行器能进入，初始化失败会释放预占。
 
 ## 6. 工具 effect 与审批
 
@@ -117,8 +118,18 @@ v0.2 使用顺序计划，默认最多 12 步；每步默认最多 2 次可安�
 ## 9. 恢复与幂等
 
 每次状态转换、模型调用结论和工具结果都在进入下一步前落盘。动作步骤使用稳定的
-idempotency key；本地文件以临时文件 + 原子 rename 写入确定路径。恢复时读取最后成功
-检查点，不重放 succeeded 步骤。
+idempotency key；四项本地文件先写入 run 级 staging 目录，写齐后以目录 rename 一次发布，
+四条记录在一个 SQLite 事务中提交。文件或记录的部分失败进入 outcome_unknown；协调器只有
+在验证完整提交，或成功清掉该 run 的旧文件和记录后，才允许继续。恢复时读取最后成功检查点，
+不重放 succeeded 步骤。
+
+源简历必须至少含一项真实工作、项目、教育内容，或 summary/skills/strengths/certs/
+languages/honors/portfolio/research/other 之一的非空专业内容。前端用相同规则提前过滤，Rust
+在创建任务和执行读取时均重新校验，空数组、空字符串和仅含日期/链接/布尔占位的记录无效。
+
+artifact 卡片默认只展示当前 run。只有持久化 `verified=true` 且未标 invalid 的记录可以
+预览/打开；每次打开仍现场校验受控目录、大小、格式与 SHA-256。篡改会原子写回失效状态和
+审计事件，并把 run/task 改为 interrupted，不能继续显示绿色完成状态。
 
 ## 10. 发布门槛
 
