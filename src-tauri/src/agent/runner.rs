@@ -1900,6 +1900,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[tokio::test]
+    async fn minimal_summary_resume_completes_and_source_content_reaches_core_artifacts() {
+        let root = test_root("minimal-summary");
+        let app = test_app(root.clone());
+        let handle = app.handle().clone();
+        let source_fact = "Experienced backend engineer with reliable systems expertise";
+        let (_task_id, run_id) = seed_test_run(
+            &handle,
+            json!({ "summary": source_fact }),
+            "Build APIs",
+            true,
+        );
+        let provider = FakeProvider::success();
+
+        execute_run_with(&handle, &run_id, &RunControl::new(), &provider)
+            .await
+            .unwrap();
+
+        let db = handle.state::<Db>();
+        let conn = db.0.lock().unwrap();
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            get_record(&conn, RUNS, &run_id).unwrap().unwrap()["status"],
+            "succeeded"
+        );
+        let artifacts = related(&conn, ARTIFACTS, "runId", &run_id).unwrap();
+        assert_eq!(artifacts.len(), 4);
+        assert!(artifacts.iter().all(artifact_record_is_verified));
+        assert!(artifact::verify_artifacts(&root, &artifacts).is_ok());
+        for kind in ["tailored_resume", "cover_letter"] {
+            let artifact = artifacts
+                .iter()
+                .find(|artifact| artifact["kind"] == kind)
+                .unwrap();
+            let bytes = std::fs::read(artifact["path"].as_str().unwrap()).unwrap();
+            assert!(
+                String::from_utf8_lossy(&bytes).contains(source_fact),
+                "minimal source fact missing from {kind}"
+            );
+        }
+        drop(conn);
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     fn artifact_record_is_verified(record: &Value) -> bool {
         record["verified"] == true && record["validationStatus"] == "verified"
     }

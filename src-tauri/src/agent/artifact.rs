@@ -70,6 +70,37 @@ fn string_list(value: Option<&Value>) -> Vec<String> {
         .collect()
 }
 
+fn value_strings(value: Option<&Value>) -> Vec<String> {
+    fn collect(value: &Value, seen: &mut HashSet<String>, out: &mut Vec<String>) {
+        match value {
+            Value::String(text) => {
+                let text = text.trim();
+                if !text.is_empty() && seen.insert(text.to_string()) {
+                    out.push(text.to_string());
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    collect(value, seen, out);
+                }
+            }
+            Value::Object(values) => {
+                for value in values.values() {
+                    collect(value, seen, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    if let Some(value) = value {
+        collect(value, &mut seen, &mut out);
+    }
+    out
+}
+
 fn selected_job<'a>(snapshot: &'a Value, analysis: &Value) -> Result<&'a Value, String> {
     let selected = analysis
         .get("selectedJobId")
@@ -88,40 +119,41 @@ fn selected_score<'a>(analysis: &'a Value, selected: &str) -> Option<&'a Value> 
 }
 
 fn entry_blocks(value: Option<&Value>) -> Vec<DocBlock> {
-    value
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|row| {
-            let org = text(row, "org");
-            let name = text(row, "name");
-            let title = text(row, "title");
-            let primary = if org.is_empty() { name } else { org };
-            let head = [primary, title]
-                .into_iter()
-                .filter(|part| !part.is_empty())
-                .collect::<Vec<_>>()
-                .join(" · ");
-            if head.is_empty() {
-                return None;
-            }
-            Some(DocBlock::Entry {
+    let mut blocks = Vec::new();
+    for row in value.and_then(Value::as_array).into_iter().flatten() {
+        let mut seen = HashSet::new();
+        let head = ["org", "name", "title", "major", "degree"]
+            .into_iter()
+            .filter_map(|field| row[field].as_str().map(str::trim))
+            .filter(|part| !part.is_empty() && seen.insert((*part).to_string()))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let details = ["summary", "description", "bullets"]
+            .into_iter()
+            .flat_map(|field| value_strings(row.get(field)))
+            .collect::<Vec<_>>();
+        if head.is_empty() {
+            blocks.extend(details.into_iter().map(|text| DocBlock::Para { text }));
+        } else {
+            blocks.push(DocBlock::Entry {
                 head,
                 date: text(row, "date").to_string(),
-                bullets: string_list(row.get("bullets")),
-            })
-        })
-        .collect()
+                bullets: details,
+            });
+        }
+    }
+    blocks
 }
 
-fn push_text_section(sections: &mut Vec<DocSection>, label: &str, content: &str) {
-    let content = content.trim();
+fn push_value_section(sections: &mut Vec<DocSection>, label: &str, value: Option<&Value>) {
+    let content = value_strings(value);
     if !content.is_empty() {
         sections.push(DocSection {
             label: label.to_string(),
-            blocks: vec![DocBlock::Para {
-                text: content.to_string(),
-            }],
+            blocks: content
+                .into_iter()
+                .map(|text| DocBlock::Para { text })
+                .collect(),
         });
     }
 }
@@ -150,6 +182,24 @@ fn build_resume(snapshot: &Value, analysis: &Value, language: &str) -> Result<Do
             text: format!("{company} · {role}"),
         }],
     });
+    push_value_section(
+        &mut sections,
+        if language == "en" {
+            "Professional summary"
+        } else {
+            "职业概述"
+        },
+        resume.get("summary"),
+    );
+    push_value_section(
+        &mut sections,
+        if language == "en" {
+            "Skills"
+        } else {
+            "专业技能"
+        },
+        resume.get("skills"),
+    );
     if !matched.is_empty() {
         sections.push(DocSection {
             label: if language == "en" {
@@ -204,11 +254,14 @@ fn build_resume(snapshot: &Value, analysis: &Value, language: &str) -> Result<Do
         ("certs", "证书与认证", "Certifications"),
         ("languages", "语言能力", "Languages"),
         ("honors", "荣誉奖项", "Honors"),
+        ("portfolio", "作品集", "Portfolio"),
+        ("research", "研究经历", "Research"),
+        ("other", "其他职业信息", "Additional information"),
     ] {
-        push_text_section(
+        push_value_section(
             &mut sections,
             if language == "en" { en } else { zh },
-            text(resume, field),
+            resume.get(field),
         );
     }
     // profile 结构性不进入任务域；明确占位，绝不默默生成或抓取联系方式。
@@ -234,15 +287,30 @@ fn build_resume(snapshot: &Value, analysis: &Value, language: &str) -> Result<Do
 }
 
 fn source_evidence(resume: &Value) -> Vec<String> {
-    ["work", "projects"]
+    let mut candidates = value_strings(resume.get("summary"));
+    for section in ["work", "projects"] {
+        for entry in resume[section].as_array().into_iter().flatten() {
+            for field in ["summary", "description", "bullets"] {
+                candidates.extend(value_strings(entry.get(field)));
+            }
+        }
+    }
+    for field in [
+        "skills",
+        "strengths",
+        "certs",
+        "languages",
+        "honors",
+        "portfolio",
+        "research",
+        "other",
+    ] {
+        candidates.extend(value_strings(resume.get(field)));
+    }
+    let mut seen = HashSet::new();
+    candidates
         .into_iter()
-        .flat_map(|field| {
-            resume[field]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .flat_map(|entry| string_list(entry.get("bullets")))
-        })
+        .filter(|item| seen.insert(item.clone()))
         .take(3)
         .collect()
 }
@@ -741,6 +809,114 @@ mod tests {
             );
         }
         assert!(lossy.contains("did not expose profile data"));
+    }
+
+    #[test]
+    fn every_field_that_can_validate_a_resume_reaches_the_targeted_resume() {
+        let (base_snapshot, analysis) = fixture();
+        for (resume, source_fact) in [
+            (
+                json!({ "work": [{ "org": "Work organization token" }] }),
+                "Work organization token",
+            ),
+            (
+                json!({ "work": [{ "title": "Work title token" }] }),
+                "Work title token",
+            ),
+            (
+                json!({ "work": [{ "summary": "Work summary token" }] }),
+                "Work summary token",
+            ),
+            (
+                json!({ "work": [{ "description": "Work description token" }] }),
+                "Work description token",
+            ),
+            (
+                json!({ "work": [{ "bullets": ["Work bullet token"] }] }),
+                "Work bullet token",
+            ),
+            (
+                json!({ "projects": [{ "name": "Project name token" }] }),
+                "Project name token",
+            ),
+            (
+                json!({ "projects": [{ "title": "Project title token" }] }),
+                "Project title token",
+            ),
+            (
+                json!({ "projects": [{ "summary": "Project summary token" }] }),
+                "Project summary token",
+            ),
+            (
+                json!({ "projects": [{ "description": "Project description token" }] }),
+                "Project description token",
+            ),
+            (
+                json!({ "projects": [{ "bullets": ["Project bullet token"] }] }),
+                "Project bullet token",
+            ),
+            (
+                json!({ "edu": [{ "org": "Education organization token" }] }),
+                "Education organization token",
+            ),
+            (
+                json!({ "edu": [{ "title": "Education title token" }] }),
+                "Education title token",
+            ),
+            (
+                json!({ "edu": [{ "major": "Education major token" }] }),
+                "Education major token",
+            ),
+            (
+                json!({ "edu": [{ "degree": "Education degree token" }] }),
+                "Education degree token",
+            ),
+            (
+                json!({ "edu": [{ "summary": "Education summary token" }] }),
+                "Education summary token",
+            ),
+            (
+                json!({ "edu": [{ "description": "Education description token" }] }),
+                "Education description token",
+            ),
+            (
+                json!({ "edu": [{ "bullets": ["Education bullet token"] }] }),
+                "Education bullet token",
+            ),
+            (
+                json!({ "summary": "Professional summary token" }),
+                "Professional summary token",
+            ),
+            (
+                json!({ "skills": ["Node.js skill token"] }),
+                "Node.js skill token",
+            ),
+            (json!({ "strengths": "Strength token" }), "Strength token"),
+            (
+                json!({ "certs": ["Certification token"] }),
+                "Certification token",
+            ),
+            (json!({ "languages": ["Language token"] }), "Language token"),
+            (json!({ "honors": ["Honor token"] }), "Honor token"),
+            (
+                json!({ "portfolio": "Portfolio description token" }),
+                "Portfolio description token",
+            ),
+            (json!({ "research": "Research token" }), "Research token"),
+            (
+                json!({ "other": { "note": "Additional information token" } }),
+                "Additional information token",
+            ),
+        ] {
+            assert!(super::super::resume_has_professional_content(&resume));
+            let mut snapshot = base_snapshot.clone();
+            snapshot["resume"] = resume;
+            let bytes = render_docx(&build_resume(&snapshot, &analysis, "en").unwrap());
+            assert!(
+                String::from_utf8_lossy(&bytes).contains(source_fact),
+                "source fact missing from targeted resume: {source_fact}"
+            );
+        }
     }
 
     #[test]
