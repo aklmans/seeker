@@ -10,6 +10,9 @@ test('空数组、空字符串和空占位简历都不是有效职业资料', ()
     { projects: [{ name: '', link: 'https://example.test', star: true, bullets: [] }] },
     { edu: [{ org: '\n', title: '\t' }], strengths: '   ', certs: [] },
     { portfolio: 'https://example.com' },
+    { portfolio: 'example.com' },
+    { portfolio: 'github.com/aklman' },
+    { portfolio: 'ftp://example.com' },
     { summary: '2026-09-03' },
     { skills: ['2026'] },
     { summary: 'Sep 2026' },
@@ -27,6 +30,9 @@ test('岗位必须同时包含公司、职位，以及 JD 或必备技能', () =
     { co: 'https://example.com', role: 'Engineer', jd: 'Build systems' },
     { co: 'Acme', role: '2026-09-03', need: ['Rust'] },
     { co: 'Acme', role: 'Engineer', jd: 'https://example.com' },
+    { co: 'Acme', role: 'Engineer', jd: 'example.com' },
+    { co: 'Acme', role: 'Engineer', jd: 'github.com/aklman' },
+    { co: 'Acme', role: 'Engineer', jd: 'ftp://example.com' },
     { co: 'Acme', role: 'Engineer', need: ['2026'] },
   ]) assert.equal(hasJobContent(job), false);
 
@@ -44,6 +50,7 @@ test('真实经历或约定的实质字段可以作为 Agent 输入', () => {
     { edu: [{ degree: 'BSc Computer Science' }] },
     { strengths: 'Distributed systems' },
     { skills: ['Rust'] },
+    { skills: ['Node.js'] },
   ]) {
     assert.equal(hasProfessionalContent(resume), true);
   }

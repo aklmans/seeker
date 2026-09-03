@@ -76,21 +76,86 @@ fn string_array(value: Option<&Value>, max: usize) -> Vec<String> {
         .collect()
 }
 
-fn text_is_substantive(text: &str) -> bool {
-    let text = text.trim();
-    if text.is_empty() {
+fn text_is_link_only(text: &str) -> bool {
+    if text.chars().any(char::is_whitespace) {
         return false;
     }
     let lower = text.to_lowercase();
-    if !text.chars().any(char::is_whitespace)
-        && (lower.starts_with("http://")
-            || lower.starts_with("https://")
-            || lower.starts_with("www.")
-            || lower.starts_with("mailto:")
-            || (lower.contains('@') && lower.contains('.')))
+    if matches!(
+        lower.as_str(),
+        "node.js"
+            | "react.js"
+            | "vue.js"
+            | "next.js"
+            | "nuxt.js"
+            | "three.js"
+            | "d3.js"
+            | "asp.net"
+    ) {
+        return false;
+    }
+    if let Some((scheme, rest)) = lower.split_once("://") {
+        if !rest.is_empty()
+            && scheme.chars().enumerate().all(|(index, ch)| {
+                ch.is_ascii_alphabetic() || (index > 0 && matches!(ch, '0'..='9' | '+' | '-' | '.'))
+            })
+        {
+            return true;
+        }
+    }
+    if lower.starts_with("mailto:") || (lower.contains('@') && lower.contains('.')) {
+        return true;
+    }
+    let authority = lower
+        .strip_prefix("//")
+        .unwrap_or(&lower)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.');
+    let host = authority
+        .rsplit_once(':')
+        .filter(|(_, port)| !port.is_empty() && port.chars().all(|ch| ch.is_ascii_digit()))
+        .map_or(authority, |(host, _)| host);
+    let labels = host.split('.').collect::<Vec<_>>();
+    if labels.len() == 4
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label.chars().all(|ch| ch.is_ascii_digit())
+                && label.parse::<u8>().is_ok()
+        })
+    {
+        return true;
+    }
+    if labels.len() < 2
+        || labels.iter().any(|label| {
+            label.is_empty()
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        })
     {
         return false;
     }
+    let tld = labels.last().copied().unwrap_or("");
+    tld != "js"
+        && ((2..=24).contains(&tld.len()) && tld.chars().all(|ch| ch.is_ascii_alphabetic())
+            || tld.strip_prefix("xn--").is_some_and(|rest| {
+                !rest.is_empty()
+                    && rest
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+            }))
+}
+
+fn text_is_substantive(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() || text_is_link_only(text) {
+        return false;
+    }
+    let lower = text.to_lowercase();
     const PLACEHOLDERS: &[&str] = &[
         "jan",
         "january",
@@ -642,6 +707,9 @@ mod tests {
         for resume in [
             json!({ "id": "r1", "master": true, "work": [], "projects": [], "edu": [] }),
             json!({ "id": "r1", "portfolio": "https://example.com" }),
+            json!({ "id": "r1", "portfolio": "example.com" }),
+            json!({ "id": "r1", "portfolio": "github.com/aklman" }),
+            json!({ "id": "r1", "portfolio": "ftp://example.com" }),
             json!({ "id": "r1", "summary": "2026-09-03" }),
             json!({ "id": "r1", "skills": ["2026"] }),
             json!({
@@ -665,6 +733,9 @@ mod tests {
         });
         for resume in [
             json!({ "id": "r1", "portfolio": "https://example.com" }),
+            json!({ "id": "r1", "portfolio": "example.com" }),
+            json!({ "id": "r1", "portfolio": "github.com/aklman" }),
+            json!({ "id": "r1", "portfolio": "ftp://example.com" }),
             json!({ "id": "r1", "summary": "2026-09-03" }),
             json!({ "id": "r1", "skills": ["2026"] }),
         ] {
@@ -673,6 +744,23 @@ mod tests {
                 .as_str()
                 .unwrap_or_default()
                 .contains("没有有效职业资料"));
+        }
+
+        for link in [
+            "https://example.com",
+            "example.com",
+            "github.com/aklman",
+            "ftp://example.com",
+        ] {
+            let error = invoke_agent_task_create(
+                json!({ "id": "j1", "co": "Acme", "role": "Engineer", "jd": link }),
+                json!({ "id": "r1", "skills": ["Node.js"] }),
+            )
+            .unwrap_err();
+            assert!(error
+                .as_str()
+                .unwrap_or_default()
+                .contains("岗位没有有效内容"));
         }
 
         let error = invoke_agent_task_create(
@@ -707,6 +795,7 @@ mod tests {
             json!({ "edu": [{ "degree": "BSc Computer Science" }] }),
             json!({ "strengths": "Distributed systems" }),
             json!({ "skills": ["Rust"] }),
+            json!({ "skills": ["Node.js"] }),
         ] {
             assert!(resume_has_professional_content(&resume));
         }
