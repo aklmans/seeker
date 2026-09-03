@@ -129,4 +129,3 @@ test('源守卫：纯模型零 import，隐私/管理集合只以硬拒绝测试
   assert.ok(src.includes("['jobs', 'skills', 'resumes', 'iv_records']"));
   assert.ok(!/TASK_READABLE_COLLECTIONS[^\n]*(profile|platform_)/.test(src));
 });
-
