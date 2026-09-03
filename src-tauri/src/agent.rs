@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 mod artifact;
 pub(crate) mod runner;
@@ -213,6 +213,53 @@ related_command!(agent_step_list, STEPS, "runId");
 related_command!(agent_artifact_list, ARTIFACTS, "taskId");
 related_command!(agent_approval_list, APPROVALS, "runId");
 related_command!(agent_event_list, EVENTS, "runId");
+
+fn artifact_record(db: &Db, artifact_id: &str) -> Result<Value, String> {
+    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    get_record(&conn, ARTIFACTS, artifact_id)?
+        .ok_or_else(|| format!("任务产物不存在: {artifact_id}"))
+}
+
+/// 仅允许读取已通过目录、大小、摘要和格式校验的 Markdown 产物；DOCX 由系统应用打开。
+#[tauri::command]
+pub fn agent_artifact_read_text(
+    app: AppHandle,
+    db: State<'_, Db>,
+    artifact_id: String,
+) -> Result<String, String> {
+    let record = artifact_record(&db, &artifact_id)?;
+    if record["mime"] != "text/markdown" {
+        return Err("该产物不是可预览的 Markdown 文本".into());
+    }
+    let (_, bytes) = artifact::validated_file(&app, &record)?;
+    if bytes.len() > 512 * 1024 {
+        return Err("Markdown 产物超过 512 KiB 预览上限".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "Markdown 不是 UTF-8".to_string())
+}
+
+/// 用户明确点击后，用系统默认应用打开已验证的受控产物。路径来自平台生成记录，不接收任意路径。
+#[tauri::command]
+pub fn agent_artifact_open(
+    app: AppHandle,
+    db: State<'_, Db>,
+    artifact_id: String,
+) -> Result<(), String> {
+    let record = artifact_record(&db, &artifact_id)?;
+    let (path, _) = artifact::validated_file(&app, &record)?;
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let mut command = std::process::Command::new("xdg-open");
+    let status = command.arg(path).status().map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("系统应用打开产物失败: {status}"))
+    }
+}
 
 #[cfg(test)]
 mod tests {

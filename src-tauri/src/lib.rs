@@ -102,6 +102,8 @@ pub fn run() {
             agent::runner::agent_run_cancel,
             agent::agent_step_list,
             agent::agent_artifact_list,
+            agent::agent_artifact_read_text,
+            agent::agent_artifact_open,
             agent::agent_approval_list,
             agent::agent_event_list,
             data::db_list,

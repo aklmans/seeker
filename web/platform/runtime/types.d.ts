@@ -611,6 +611,8 @@ export interface AgentApi {
   getRun(runId: string): Promise<AgentRun | null>;
   listSteps(runId: string): Promise<AgentStep[]>;
   listArtifacts(taskId: string): Promise<AgentArtifact[]>;
+  readArtifact(artifactId: string): Promise<string>;
+  openArtifact(artifactId: string): Promise<void>;
   listApprovals(runId: string): Promise<AgentApproval[]>;
   listEvents(runId: string): Promise<AgentEvent[]>;
   /** 启动一个新运行；同一任务同时只能有一个非终态运行。 */

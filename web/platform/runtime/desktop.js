@@ -162,6 +162,8 @@ export function createDesktopRuntime() {
       getRun: (runId) => invoke('agent_run_get', { runId }),
       listSteps: (runId) => invoke('agent_step_list', { id: runId }),
       listArtifacts: (taskId) => invoke('agent_artifact_list', { id: taskId }),
+      readArtifact: (artifactId) => invoke('agent_artifact_read_text', { artifactId }),
+      openArtifact: (artifactId) => invoke('agent_artifact_open', { artifactId }),
       listApprovals: (runId) => invoke('agent_approval_list', { id: runId }),
       listEvents: (runId) => invoke('agent_event_list', { id: runId }),
       start: (taskId) => invoke('agent_run_start', { taskId }),

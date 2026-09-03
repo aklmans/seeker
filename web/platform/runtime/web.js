@@ -304,6 +304,8 @@ export function createWebRuntime() {
       getRun: async (runId) => { const s = await store('platform_agent_runs', 'readonly'); return (await reqDone(s.get(runId))) ?? null; },
       listSteps: async (runId) => (await listAll('platform_agent_steps')).filter((r) => r && r.runId === runId),
       listArtifacts: async (taskId) => (await listAll('platform_agent_artifacts')).filter((r) => r && r.taskId === taskId),
+      readArtifact: () => notImpl('rt.agent.readArtifact', 'web'),
+      openArtifact: () => notImpl('rt.agent.openArtifact', 'web'),
       listApprovals: async (runId) => (await listAll('platform_agent_approvals')).filter((r) => r && r.runId === runId),
       listEvents: async (runId) => (await listAll('platform_agent_events')).filter((r) => r && r.runId === runId),
       start: () => notImpl('rt.agent.start', 'web'),

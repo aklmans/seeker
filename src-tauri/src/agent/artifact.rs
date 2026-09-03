@@ -372,7 +372,6 @@ fn interview_checklist(
                 .trim()
         })
         .filter(|line| !line.is_empty())
-        .take(5)
         .map(ToString::to_string)
         .collect();
     if lines.len() != 5 {
@@ -540,49 +539,60 @@ pub(super) fn write_job_package(
     write_to_root(&root, input)
 }
 
-pub(super) fn verify_artifacts(root: &Path, records: &[Value]) -> Result<Vec<Value>, String> {
+fn validate_record(root: &Path, record: &Value) -> Result<(Value, PathBuf, Vec<u8>), String> {
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let raw = record["path"]
+        .as_str()
+        .ok_or_else(|| "artifact 缺少 path".to_string())?;
+    let path = std::fs::canonicalize(raw).map_err(|e| format!("artifact 不存在: {e}"))?;
+    if !path.starts_with(&root) {
+        return Err("artifact 路径逃逸受控目录".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    if bytes.is_empty() {
+        return Err(format!("artifact 为空: {raw}"));
+    }
+    if record["size"].as_u64() != Some(bytes.len() as u64)
+        || record["sha256"].as_str() != Some(sha256(&bytes).as_str())
+    {
+        return Err(format!("artifact 大小或 SHA-256 不匹配: {raw}"));
+    }
+    let mime = record["mime"].as_str().unwrap_or("");
+    if mime == DOCX_MIME {
+        if !bytes.starts_with(b"PK\x03\x04")
+            || !bytes
+                .windows("word/document.xml".len())
+                .any(|w| w == b"word/document.xml")
+        {
+            return Err(format!("DOCX 结构无效: {raw}"));
+        }
+    } else if mime == "text/markdown" && std::str::from_utf8(&bytes).is_err() {
+        return Err(format!("Markdown 不是 UTF-8: {raw}"));
+    }
+    let mut copy = record.clone();
+    copy["verified"] = Value::Bool(true);
+    Ok((copy, path, bytes))
+}
+
+pub(super) fn verify_artifacts(root: &Path, records: &[Value]) -> Result<Vec<Value>, String> {
     let kinds: HashSet<&str> = records.iter().filter_map(|r| r["kind"].as_str()).collect();
     for kind in REQUIRED_KINDS {
         if !kinds.contains(kind) {
             return Err(format!("缺少必需 artifact: {kind}"));
         }
     }
-    let mut verified = Vec::new();
-    for record in records {
-        let raw = record["path"]
-            .as_str()
-            .ok_or_else(|| "artifact 缺少 path".to_string())?;
-        let path = std::fs::canonicalize(raw).map_err(|e| format!("artifact 不存在: {e}"))?;
-        if !path.starts_with(&root) {
-            return Err("artifact 路径逃逸受控目录".into());
-        }
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        if bytes.is_empty() {
-            return Err(format!("artifact 为空: {raw}"));
-        }
-        if record["size"].as_u64() != Some(bytes.len() as u64)
-            || record["sha256"].as_str() != Some(sha256(&bytes).as_str())
-        {
-            return Err(format!("artifact 大小或 SHA-256 不匹配: {raw}"));
-        }
-        let mime = record["mime"].as_str().unwrap_or("");
-        if mime == DOCX_MIME {
-            if !bytes.starts_with(b"PK\x03\x04")
-                || !bytes
-                    .windows("word/document.xml".len())
-                    .any(|w| w == b"word/document.xml")
-            {
-                return Err(format!("DOCX 结构无效: {raw}"));
-            }
-        } else if mime == "text/markdown" && std::str::from_utf8(&bytes).is_err() {
-            return Err(format!("Markdown 不是 UTF-8: {raw}"));
-        }
-        let mut copy = record.clone();
-        copy["verified"] = Value::Bool(true);
-        verified.push(copy);
-    }
-    Ok(verified)
+    records
+        .iter()
+        .map(|record| validate_record(root, record).map(|(record, _, _)| record))
+        .collect()
+}
+
+pub(super) fn validated_file(
+    app: &AppHandle,
+    record: &Value,
+) -> Result<(PathBuf, Vec<u8>), String> {
+    let (_, path, bytes) = validate_record(&artifact_root(app)?, record)?;
+    Ok((path, bytes))
 }
 
 pub(super) fn artifact_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -650,6 +660,25 @@ mod tests {
     }
 
     #[test]
+    fn checklist_requires_exactly_five_questions() {
+        let (snapshot, analysis) = fixture();
+        let too_many = (1..=6)
+            .map(|index| format!("{index}. Question {index}?"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(interview_checklist(&snapshot, &analysis, &too_many, "en")
+            .unwrap_err()
+            .contains("实际得到 6 个"));
+
+        let exactly_five = (1..=5)
+            .map(|index| format!("{index}. Question {index}?"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let checklist = interview_checklist(&snapshot, &analysis, &exactly_five, "en").unwrap();
+        assert_eq!(checklist.matches("- [ ] Question").count(), 5);
+    }
+
+    #[test]
     fn atomic_write_is_idempotent_and_verifier_detects_tampering() {
         let (snapshot, analysis) = fixture();
         let root = std::env::temp_dir().join(format!(
@@ -699,12 +728,23 @@ mod tests {
 
     #[test]
     fn verifier_rejects_missing_kind_and_path_escape() {
-        let root = std::env::temp_dir().join(format!(
-            "seeker-agent-artifact-escape-{}",
-            super::super::now_ms()
-        ));
+        let stamp = super::super::now_ms();
+        let root = std::env::temp_dir().join(format!("seeker-agent-artifact-root-{stamp}"));
+        let outside =
+            std::env::temp_dir().join(format!("seeker-agent-artifact-outside-{stamp}.md"));
         std::fs::create_dir_all(&root).unwrap();
         assert!(verify_artifacts(&root, &[]).unwrap_err().contains("缺少"));
+        std::fs::write(&outside, b"outside").unwrap();
+        let outside_record = json!({
+            "path": outside.to_string_lossy(),
+            "mime": "text/markdown",
+            "size": 7,
+            "sha256": sha256(b"outside"),
+        });
+        assert!(validate_record(&root, &outside_record)
+            .unwrap_err()
+            .contains("路径逃逸"));
+        let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
