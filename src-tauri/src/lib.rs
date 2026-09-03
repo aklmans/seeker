@@ -56,6 +56,7 @@ pub fn run() {
         .manage(mcp::McpManager::default())
         .manage(mcp::PendingConfirms::default())
         .manage(ai::PendingAppTools::default())
+        .manage(agent::AgentRuns::default())
         .setup(|app| {
             // ★前端缓存清扫(真机 bug 第二层):WKWebView 会把嵌入资产(tauri://localhost)缓存到磁盘,
             //   即便二进制重嵌了新前端,webview 仍可能供旧 HTML/JS ⇒ 更新后「看不到新功能」。
@@ -64,6 +65,9 @@ pub fn run() {
             bust_stale_webview_cache(app.handle());
             // 打开本地数据库(失败则启动报错)并交由 State 持有。
             let conn = data::open(app.handle())?;
+            // 进程退出时不可能可靠完成执行中的 Agent 步骤。启动时只恢复为可审计的
+            // interrupted / outcome_unknown，不在用户不知情时自动重放副作用。
+            agent::recover_open_runs(&conn)?;
             app.manage(data::Db(std::sync::Mutex::new(conn)));
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -92,6 +96,10 @@ pub fn run() {
             agent::agent_task_get,
             agent::agent_run_list,
             agent::agent_run_get,
+            agent::runner::agent_run_start,
+            agent::runner::agent_run_pause,
+            agent::runner::agent_run_resume,
+            agent::runner::agent_run_cancel,
             agent::agent_step_list,
             agent::agent_artifact_list,
             agent::agent_approval_list,

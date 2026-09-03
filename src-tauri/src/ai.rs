@@ -389,6 +389,29 @@ async fn run_generate(
     }
 }
 
+/// Task Agent 复用的无工具文本生成结果。取消是正常控制流，不能伪装成普通错误。
+pub(crate) enum AgentGenerateOutcome {
+    Done(String),
+    Cancelled,
+}
+
+/// Task Agent 的窄生成入口：仍走 `run_generate` 的无工具、无历史、无 profile 和不可信内容框定。
+/// 不把 ChatError 类型泄露出 ai 模块，只返回已经脱敏、可给运行记录使用的错误文本。
+pub(crate) async fn generate_agent_text(
+    app: &AppHandle,
+    session_id: &str,
+    task: Option<&str>,
+    instruction: &str,
+    untrusted: Option<&str>,
+    token: CancellationToken,
+) -> Result<AgentGenerateOutcome, String> {
+    match run_generate(app, session_id, task, instruction, untrusted, token).await {
+        Ok((stop, _)) if stop == "cancelled" => Ok(AgentGenerateOutcome::Cancelled),
+        Ok((_stop, content)) => Ok(AgentGenerateOutcome::Done(content)),
+        Err(error) => Err(error.message),
+    }
+}
+
 /// 无工具流式生成(块(i))。事件同 `ai_chat`(`ai_chunk` / `ai_done` / `ai_error`),但**无 `ai_tool` / `ai_widget`**
 /// —— 本命令作用域无工具。见 `run_generate`。
 #[tauri::command]

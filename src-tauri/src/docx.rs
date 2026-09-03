@@ -20,9 +20,9 @@ pub struct DocModel {
 
 #[derive(Deserialize)]
 pub struct DocSection {
-    pub label: String,
+    pub(crate) label: String,
     #[serde(default)]
-    pub blocks: Vec<DocBlock>,
+    pub(crate) blocks: Vec<DocBlock>,
 }
 
 #[derive(Deserialize)]

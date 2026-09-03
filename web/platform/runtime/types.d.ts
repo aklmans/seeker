@@ -613,6 +613,16 @@ export interface AgentApi {
   listArtifacts(taskId: string): Promise<AgentArtifact[]>;
   listApprovals(runId: string): Promise<AgentApproval[]>;
   listEvents(runId: string): Promise<AgentEvent[]>;
+  /** 启动一个新运行；同一任务同时只能有一个非终态运行。 */
+  start(taskId: string): Promise<AgentRun>;
+  /** 请求在当前安全检查点暂停。 */
+  pause(runId: string): Promise<void>;
+  /** 从已暂停/中断运行继续；未知副作用必须先由 Rust 核协调。 */
+  resume(runId: string): Promise<void>;
+  /** 取消运行；已完成的本地产物不会假装回滚。 */
+  cancel(runId: string): Promise<void>;
+  /** 订阅运行事件；返回异步取消订阅函数。 */
+  subscribe(handler: (event: AgentEvent) => void): Promise<() => void>;
 }
 
 // ── 顶层 Runtime ────────────────────────────────────────────────

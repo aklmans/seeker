@@ -306,6 +306,11 @@ export function createWebRuntime() {
       listArtifacts: async (taskId) => (await listAll('platform_agent_artifacts')).filter((r) => r && r.taskId === taskId),
       listApprovals: async (runId) => (await listAll('platform_agent_approvals')).filter((r) => r && r.runId === runId),
       listEvents: async (runId) => (await listAll('platform_agent_events')).filter((r) => r && r.runId === runId),
+      start: () => notImpl('rt.agent.start', 'web'),
+      pause: () => notImpl('rt.agent.pause', 'web'),
+      resume: () => notImpl('rt.agent.resume', 'web'),
+      cancel: () => notImpl('rt.agent.cancel', 'web'),
+      subscribe: async () => () => {},
     },
 
     profile: {

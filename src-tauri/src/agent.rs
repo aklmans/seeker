@@ -11,6 +11,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
+mod artifact;
+pub(crate) mod runner;
+
+pub use runner::{recover_open_runs, AgentRuns};
+
 const TASKS: &str = "platform_agent_tasks";
 const RUNS: &str = "platform_agent_runs";
 const STEPS: &str = "platform_agent_steps";

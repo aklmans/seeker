@@ -164,6 +164,11 @@ export function createDesktopRuntime() {
       listArtifacts: (taskId) => invoke('agent_artifact_list', { id: taskId }),
       listApprovals: (runId) => invoke('agent_approval_list', { id: runId }),
       listEvents: (runId) => invoke('agent_event_list', { id: runId }),
+      start: (taskId) => invoke('agent_run_start', { taskId }),
+      pause: (runId) => invoke('agent_run_pause', { runId }),
+      resume: (runId) => invoke('agent_run_resume', { runId }),
+      cancel: (runId) => invoke('agent_run_cancel', { runId }),
+      subscribe: async (handler) => tauri().event.listen('agent_event', (/** @type {{payload: import('./types').AgentEvent}} */ event) => handler(event.payload)),
     },
 
     profile: {
