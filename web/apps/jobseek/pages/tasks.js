@@ -11,7 +11,7 @@ import { $, $$ } from '../../../platform/shell/dom.js';
 import { tt } from '../../../platform/shell/i18n.js';
 import { frontis, signFoot } from '../../../platform/shell/nav.js';
 import { errText, toast } from '../../../platform/shell/toast.js';
-import { hasProfessionalContent } from '../logic/resume-validity.js';
+import { hasJobContent, hasProfessionalContent } from '../logic/resume-validity.js';
 
 /** @typedef {import('../../../platform/runtime/types').AgentTask} AgentTask */
 /** @typedef {import('../../../platform/runtime/types').AgentRun} AgentRun */
@@ -79,13 +79,14 @@ function loadingHTML() {
 function composerHTML(jobs, resumes) {
   if (!view.composing) return '';
   if (!rt.available('agentExecution')) return `<div class="sec agent-task-compose"><div class="agent-task-heading"><div><p class="seclabel">— DESKTOP REQUIRED</p><h2 class="sectitle">${tt('请在桌面版创建任务', 'Create tasks in the desktop app')}<span class="dot">.</span></h2></div><button class="btn-text" data-agent-close>${tt('收起', 'Close')}</button></div><p class="agent-task-note">${tt('网页端只保全和查看从桌面备份导入的任务记录，不会伪装执行本地 Agent 或创建文件。', 'The web version only preserves and displays task records imported from a desktop backup. It does not pretend to run the local Agent or create files.')}</p></div>`;
+  const sourceJobs = jobs.filter(hasJobContent);
   const sourceResumes = resumes.filter(hasProfessionalContent);
-  const jobOptions = jobs.map((job, index) => `<label class="agent-task-choice">
-    <input type="checkbox" data-agent-job="${cEsc(idOf(job))}" ${index < Math.min(3, jobs.length) ? 'checked' : ''}>
+  const jobOptions = sourceJobs.map((job, index) => `<label class="agent-task-choice">
+    <input type="checkbox" data-agent-job="${cEsc(idOf(job))}" ${index < Math.min(3, sourceJobs.length) ? 'checked' : ''}>
     <span><b>${cEsc(jobLabel(job))}</b><small>${cEsc(str(job.city || job.pay || ''))}</small></span>
   </label>`).join('');
   const resumeOptions = sourceResumes.map((resume) => `<option value="${cEsc(idOf(resume))}">${cEsc(resume.master === true ? tt('主简历资料', 'Master resume data') : idOf(resume))}</option>`).join('');
-  const ready = jobs.length > 0 && sourceResumes.length > 0;
+  const ready = sourceJobs.length > 0 && sourceResumes.length > 0;
   return `<div class="sec agent-task-compose">
     <div class="agent-task-heading"><div><p class="seclabel">— NEW TASK</p><h2 class="sectitle">${tt('创建岗位投递包', 'Create application package')}<span class="dot">.</span></h2></div><button class="btn-text" data-agent-close>${tt('收起', 'Close')}</button></div>
     <p class="agent-task-copy">${tt('先确认输入和权限，再开始执行。最多选择 5 个岗位；系统只读取岗位、职业资产和所选专业简历，不读取联系方式。', 'Review inputs and permissions before running. Choose up to 5 jobs; Seeker reads only jobs, career assets, and the selected professional resume—never contact details.')}</p>

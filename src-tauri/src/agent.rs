@@ -76,11 +76,79 @@ fn string_array(value: Option<&Value>, max: usize) -> Vec<String> {
         .collect()
 }
 
-fn value_has_text(value: &Value) -> bool {
+fn text_is_substantive(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+    let lower = text.to_lowercase();
+    if !text.chars().any(char::is_whitespace)
+        && (lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("www.")
+            || lower.starts_with("mailto:")
+            || (lower.contains('@') && lower.contains('.')))
+    {
+        return false;
+    }
+    const PLACEHOLDERS: &[&str] = &[
+        "jan",
+        "january",
+        "feb",
+        "february",
+        "mar",
+        "march",
+        "apr",
+        "april",
+        "may",
+        "jun",
+        "june",
+        "jul",
+        "july",
+        "aug",
+        "august",
+        "sep",
+        "sept",
+        "september",
+        "oct",
+        "october",
+        "nov",
+        "november",
+        "dec",
+        "december",
+        "present",
+        "current",
+        "now",
+        "true",
+        "false",
+        "yes",
+        "no",
+        "null",
+        "undefined",
+        "n",
+        "a",
+        "na",
+        "tbd",
+        "unknown",
+        "placeholder",
+        "年",
+        "月",
+        "日",
+        "至今",
+        "当前",
+    ];
+    let words = lower
+        .split(|c: char| !c.is_alphabetic())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    !words.is_empty() && !words.iter().all(|word| PLACEHOLDERS.contains(word))
+}
+
+fn value_has_substantive_text(value: &Value) -> bool {
     match value {
-        Value::String(text) => !text.trim().is_empty(),
-        Value::Array(values) => values.iter().any(value_has_text),
-        Value::Object(values) => values.values().any(value_has_text),
+        Value::String(text) => text_is_substantive(text),
+        Value::Array(values) => values.iter().any(value_has_substantive_text),
+        Value::Object(values) => values.values().any(value_has_substantive_text),
         _ => false,
     }
 }
@@ -111,9 +179,11 @@ pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
     ];
     if entry_sections.iter().any(|(section, fields)| {
         resume[*section].as_array().is_some_and(|entries| {
-            entries
-                .iter()
-                .any(|entry| fields.iter().any(|field| value_has_text(&entry[*field])))
+            entries.iter().any(|entry| {
+                fields
+                    .iter()
+                    .any(|field| value_has_substantive_text(&entry[*field]))
+            })
         })
     }) {
         return true;
@@ -130,7 +200,19 @@ pub(super) fn resume_has_professional_content(resume: &Value) -> bool {
         "other",
     ]
     .iter()
-    .any(|field| value_has_text(&resume[*field]))
+    .any(|field| value_has_substantive_text(&resume[*field]))
+}
+
+/// 可执行岗位至少需要公司、职位，以及 JD 或必备技能之一。
+pub(super) fn job_has_professional_content(job: &Value) -> bool {
+    let any_field = |fields: &[&str]| {
+        fields
+            .iter()
+            .any(|field| value_has_substantive_text(&job[*field]))
+    };
+    any_field(&["co", "company"])
+        && any_field(&["role", "title"])
+        && any_field(&["jd", "description", "need", "requiredSkills"])
 }
 
 fn validate_task_inputs(conn: &rusqlite::Connection, task: &Value) -> Result<(), String> {
@@ -138,8 +220,12 @@ fn validate_task_inputs(conn: &rusqlite::Connection, task: &Value) -> Result<(),
         .as_object()
         .ok_or_else(|| "内部错误:任务 inputs 丢失".to_string())?;
     for job_id in string_array(inputs.get("jobIds"), MAX_JOB_INPUTS) {
-        if get_record(conn, "jobs", &job_id)?.is_none() {
-            return Err(format!("所选岗位不存在: {job_id}"));
+        let job = get_record(conn, "jobs", &job_id)?
+            .ok_or_else(|| format!("所选岗位不存在: {job_id}"))?;
+        if !job_has_professional_content(&job) {
+            return Err(format!(
+                "所选岗位没有有效内容: {job_id}（需包含公司、职位，以及 JD 或必备技能）"
+            ));
         }
     }
     let resume_id = required_string(inputs, "resumeId")?;
@@ -440,6 +526,45 @@ pub fn agent_artifact_open(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+
+    fn invoke_agent_task_create(job: Value, resume: Value) -> Result<Value, Value> {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE resumes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+        )
+        .unwrap();
+        upsert_record(&conn, "jobs", &job).unwrap();
+        upsert_record(&conn, "resumes", &resume).unwrap();
+        let app = mock_builder()
+            .manage(Db(std::sync::Mutex::new(conn)))
+            .invoke_handler(tauri::generate_handler![agent_task_create])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "agent_task_create".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "tauri://localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::Json(json!({
+                    "draft": {
+                        "workflowId": JOB_PACKAGE,
+                        "inputs": { "jobIds": ["j1"], "resumeId": "r1" }
+                    }
+                })),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|body| body.deserialize::<Value>().unwrap())
+    }
 
     #[test]
     fn task_draft_is_whitelisted_and_scope_cannot_be_escalated() {
@@ -498,7 +623,14 @@ mod tests {
              CREATE TABLE resumes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
         )
         .unwrap();
-        upsert_record(&conn, "jobs", &json!({ "id": "j1" })).unwrap();
+        upsert_record(
+            &conn,
+            "jobs",
+            &json!({
+                "id": "j1", "co": "Acme", "role": "Engineer", "need": ["Rust"]
+            }),
+        )
+        .unwrap();
         let task = normalize_task_draft(
             json!({
                 "workflowId": JOB_PACKAGE,
@@ -509,6 +641,9 @@ mod tests {
         .unwrap();
         for resume in [
             json!({ "id": "r1", "master": true, "work": [], "projects": [], "edu": [] }),
+            json!({ "id": "r1", "portfolio": "https://example.com" }),
+            json!({ "id": "r1", "summary": "2026-09-03" }),
+            json!({ "id": "r1", "skills": ["2026"] }),
             json!({
                 "id": "r1",
                 "work": [{ "org": " ", "title": "", "date": "2026", "bullets": ["\n"] }],
@@ -521,6 +656,47 @@ mod tests {
                 .unwrap_err()
                 .contains("没有有效职业资料"));
         }
+    }
+
+    #[test]
+    fn agent_task_create_rejects_placeholder_resume_and_incomplete_job() {
+        let valid_job = json!({
+            "id": "j1", "co": "Acme", "role": "Engineer", "jd": "Build reliable systems"
+        });
+        for resume in [
+            json!({ "id": "r1", "portfolio": "https://example.com" }),
+            json!({ "id": "r1", "summary": "2026-09-03" }),
+            json!({ "id": "r1", "skills": ["2026"] }),
+        ] {
+            let error = invoke_agent_task_create(valid_job.clone(), resume).unwrap_err();
+            assert!(error
+                .as_str()
+                .unwrap_or_default()
+                .contains("没有有效职业资料"));
+        }
+
+        let error = invoke_agent_task_create(
+            json!({ "id": "j1" }),
+            json!({ "id": "r1", "skills": ["Rust"] }),
+        )
+        .unwrap_err();
+        assert!(error
+            .as_str()
+            .unwrap_or_default()
+            .contains("岗位没有有效内容"));
+    }
+
+    #[test]
+    fn agent_task_create_accepts_substantive_job_and_resume() {
+        let task = invoke_agent_task_create(
+            json!({
+                "id": "j1", "co": "Acme", "role": "Engineer", "need": ["Rust"]
+            }),
+            json!({ "id": "r1", "projects": [{ "name": "Queue" }] }),
+        )
+        .unwrap();
+        assert_eq!(task["status"], "draft");
+        assert_eq!(task["inputs"]["jobIds"], json!(["j1"]));
     }
 
     #[test]

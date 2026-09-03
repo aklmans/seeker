@@ -586,7 +586,14 @@ fn load_snapshot(conn: &rusqlite::Connection, task: &Value) -> Result<Value, Str
     let job_ids = string_list(inputs.get("jobIds"));
     let mut jobs = Vec::new();
     for id in job_ids {
-        jobs.push(get_record(conn, "jobs", &id)?.ok_or_else(|| format!("输入岗位已不存在: {id}"))?);
+        let job =
+            get_record(conn, "jobs", &id)?.ok_or_else(|| format!("输入岗位已不存在: {id}"))?;
+        if !super::job_has_professional_content(&job) {
+            return Err(format!(
+                "输入岗位没有有效内容: {id}（需包含公司、职位，以及 JD 或必备技能）"
+            ));
+        }
+        jobs.push(job);
     }
     let resume_id = inputs["resumeId"]
         .as_str()
@@ -1539,6 +1546,17 @@ mod tests {
     fn empty_job_snapshot_fails_closed() {
         assert!(analyze_snapshot(&json!({ "jobs": [], "skills": [] })).is_err());
         assert!(analyze_snapshot(&json!({})).is_err());
+    }
+
+    #[test]
+    fn snapshot_reload_rejects_job_that_lost_substantive_content() {
+        let conn = agent_db();
+        upsert_record(&conn, "jobs", &json!({ "id": "j1" })).unwrap();
+        upsert_record(&conn, "resumes", &json!({ "id": "r1", "skills": ["Rust"] })).unwrap();
+        let task = json!({ "inputs": { "jobIds": ["j1"], "resumeId": "r1" } });
+        assert!(load_snapshot(&conn, &task)
+            .unwrap_err()
+            .contains("岗位没有有效内容"));
     }
 
     #[test]
