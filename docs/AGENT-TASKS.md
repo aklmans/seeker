@@ -1,4 +1,4 @@
-# Seeker Task Agent v0.2
+# Seeker Task Agent v0.3
 
 > 本文定义 Seeker 从聊天 Agent 升级为任务 Agent 的实现契约。产品与架构总原则仍以
 > `CLAUDE.md` 和 `docs/ARCHITECTURE.md` 为准；本文只描述任务运行域。
@@ -12,9 +12,13 @@ artifact，并以机器验证结果而不是模型自述决定任务是否完成
 普通聊天继续存在。聊天可以提出一份任务草稿，但只有用户在可信 UI 中确认后才能创建
 并启动运行。
 
-当前实现采用一个平台固定工作流，而不是让模型自由编排：读取输入 → 确定性匹配 →
+v0.3 新增「机会雷达」，把受控来源中的岗位机会整理为独立待审队列和已验证报告。实现采用
+编译期静态工作流注册表，而不是让模型自由编排。岗位投递包仍是：读取输入 → 确定性匹配 →
 生成五道面试题 → 原子写入四项产物 → 重新读取并校验。模型只参与面试题生成，其余选择、
 事实拼装、路径决定、状态转换和完成判定全部由 Rust 核执行。
+
+机会雷达的固定契约、数据边界和验收矩阵见
+[OPPORTUNITY-RADAR.md](OPPORTUNITY-RADAR.md)。
 
 ## 2. 明确不做
 
@@ -22,7 +26,7 @@ artifact，并以机器验证结果而不是模型自述决定任务是否完成
 - 不自动投递岗位、发送邮件、付款或执行其他外部承诺行为。
 - 不允许模型创建日程、项目、永久任务或改写任务授权范围。
 - 不允许任务域读取 profile、secrets、settings、projects 或 schedules。
-- v0.2 不承诺应用退出后继续运行；重启时将未决运行标为 interrupted，等待用户恢复。
+- 不承诺应用退出后继续运行；重启时将未决运行标为 interrupted，等待用户恢复。
 - 不引入多 Agent、DAG 编排或供应商专属 Agent 协议。
 
 ## 3. 信任边界
@@ -91,6 +95,7 @@ interrupted，不自动继续。`outcome_unknown` 禁止盲重试，必须先验
 | `local_create` | 仅任务 artifact 目录内自动执行 |
 | `local_mutate` | 只允许修改本任务产物；其他目标需确认 |
 | `destructive` | 逐次确认，复用 guardrail/undo |
+| `external_read` | 只允许读取 TaskSpec 固化的来源；受网络、次数与正文上限约束 |
 | `external_draft` | 可生成草稿，不执行外部承诺 |
 | `external_commit` | 逐次确认；v0.2 不提供真实实现 |
 

@@ -45,7 +45,8 @@ Rust 内部使用一份 canonical message/tool 形状，`src-tauri/src/provider.
 
 `任务中心`是独立于聊天工具循环的受控执行面。前端只负责收集用户选择、展示 TaskSpec、
 调用 `RuntimeApi.agent` 和呈现状态；权限缩减、状态转换、文件写入、恢复与完成判定全部在
-Rust 核完成。
+Rust 核完成。工作流由编译期静态注册表定义；v0.3 注册 `job_application_package` 与
+`job_opportunity_radar` 两项，不接受模型或用户提供的自由 DAG。
 
 ```text
 可信 UI 确认 1–5 个岗位 + 专业简历
@@ -86,6 +87,11 @@ summary 等可用事实也会进入求职信证据。模型不负责改写这些
 文件方法都明确返回不支持，界面不提供伪执行入口。完整状态机、权限和预算见
 [AGENT-TASKS.md](AGENT-TASKS.md)，人工验收见
 [AGENT-TASKS-ACCEPTANCE.md](AGENT-TASKS-ACCEPTANCE.md)。
+
+机会雷达把外部搜索限制在用户选择的只读 MCP 工具或固定 URL，查询只含职业关键词，不含
+profile 或简历；结果先进入独立 `job_opportunities` 待审集合，经 Rust 验链和确定性评分后生成
+`opportunity-report.md`。只有用户在可信 UI 明确接受，候选才事务性进入正式 `jobs`，并附真实
+撤销。完整契约与验收见 [OPPORTUNITY-RADAR.md](OPPORTUNITY-RADAR.md)。
 
 ## 新增应用检查表
 
