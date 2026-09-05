@@ -19,11 +19,12 @@ index.html
 
 | 数据 | 桌面真相源 | Web 真相源 | AI 可读规则 |
 | --- | --- | --- | --- |
-| jobs / skills / actions / resumes / assets | SQLite | IndexedDB | 应用启用 ∩ manifest 授权 ∩ 用户授权；Rust 静态白名单再兜底 |
+| jobs / job_opportunities / skills / actions / resumes / assets | SQLite | IndexedDB | 应用启用 ∩ manifest 授权 ∩ 用户授权；Rust 静态白名单再兜底 |
 | messages | SQLite | IndexedDB | 不在 `QUERYABLE`；只在当前多轮历史中使用 |
 | profile | 独立 profile 表 | 独立 profile store | 永不进入通用 `rt.db`，AI 无读取/写入接口 |
 | API key / MCP token | 系统钥匙串 | Web 不持有桌面密钥 | 前端只见状态，类型接口没有 `get()` |
 | memories / doc_chunks | SQLite 私有表 | IndexedDB 只保全便携包 | 仅能力实现访问，不开放通用集合查询 |
+| opportunity_verifications / agent call ledger | SQLite 私有表 | Web 无可信副本 | 不在通用集合与便携备份中；只由 Rust 验链和执行器维护 |
 | 自动备份策略 | SQLite settings | Web 明确不支持后台备份 | 只经窄命令 `backup_policy_get/set` |
 
 便携备份格式当前为 v2：通用集合、隔离 profile、设置、记忆/文档和便携偏好统一导出。导入先快照、校验后单事务合并；清空必须先得到可导入备份，再原子删除。
@@ -88,10 +89,14 @@ summary 等可用事实也会进入求职信证据。模型不负责改写这些
 [AGENT-TASKS.md](AGENT-TASKS.md)，人工验收见
 [AGENT-TASKS-ACCEPTANCE.md](AGENT-TASKS-ACCEPTANCE.md)。
 
-机会雷达把外部搜索限制在用户选择的只读 MCP 工具或固定 URL，查询只含职业关键词，不含
-profile 或简历；结果先进入独立 `job_opportunities` 待审集合，经 Rust 验链和确定性评分后生成
-`opportunity-report.md`。只有用户在可信 UI 明确接受，候选才事务性进入正式 `jobs`，并附真实
-撤销。完整契约与验收见 [OPPORTUNITY-RADAR.md](OPPORTUNITY-RADAR.md)。
+机会雷达把外部搜索限制在固定 URL，或用户在可信 UI 为手动运行明确授权的精确 MCP
+`server/tool`；MCP 的 `readOnlyHint` 只作不可信提示，含 MCP 的雷达不能被调度。查询只含职业
+关键词，不含 profile 或简历。整个 run 的来源调用与模型调用在 Rust 私有账本中逐次原子预占，
+硬上限覆盖检索和验链，不因暂停或崩溃重置。结果先进入独立 `job_opportunities` 待审集合，
+经硬筛选、Rust 验链和确定性评分后生成 `opportunity-report.md`。来源可信状态由不可经通用
+CRUD 或便携导入伪造的私有凭据证明；只有用户在可信 UI 明确接受，候选才事务性进入正式
+`jobs`。撤销会比较接受后的完整机会与岗位快照，任一侧后来变化即拒绝覆盖。完整契约与验收见
+[OPPORTUNITY-RADAR.md](OPPORTUNITY-RADAR.md)。
 
 ## 新增应用检查表
 
