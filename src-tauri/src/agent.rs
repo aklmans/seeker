@@ -423,7 +423,7 @@ fn radar_mcp_tools(task: &Value) -> Result<HashSet<(String, String)>, String> {
         return Ok(HashSet::new());
     }
     let snapshot = radar::load_snapshot(task)?;
-    Ok(snapshot["sources"]
+    snapshot["sources"]
         .as_array()
         .into_iter()
         .flatten()
@@ -437,7 +437,7 @@ fn radar_mcp_tools(task: &Value) -> Result<HashSet<(String, String)>, String> {
                 .ok_or_else(|| "MCP 来源缺少 tool".to_string())?;
             Ok((server.to_string(), tool.to_string()))
         })
-        .collect::<Result<HashSet<_>, String>>()?)
+        .collect::<Result<HashSet<_>, String>>()
 }
 
 fn persist_radar_mcp_authorization(
