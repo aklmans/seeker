@@ -198,6 +198,13 @@ const MIGRATIONS: &[(i64, &str)] = &[
          );
          CREATE INDEX IF NOT EXISTS idx_platform_agent_mcp_grants_task ON platform_agent_mcp_grants(task_id);",
     ),
+    // 机会验链凭据只有在整次 run 的最终成功事务中才激活；旧凭据默认未激活，
+    // 不能通过改写公开 run/step JSON 伪造成完整成功。
+    (
+        13,
+        "ALTER TABLE opportunity_verifications
+         ADD COLUMN run_succeeded_at INTEGER NOT NULL DEFAULT 0;",
+    ),
 ];
 
 fn schema_version(conn: &Connection) -> i64 {
@@ -4416,6 +4423,40 @@ mod tests {
             .query_row([], |_| Ok(true))
             .unwrap_or(false);
         assert!(has_state, "actions.state 应已升列");
+    }
+
+    #[test]
+    fn migration_13_keeps_existing_opportunity_receipts_unfinalized() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+             INSERT INTO meta (k, v) VALUES ('schema_version', '12');
+             CREATE TABLE opportunity_verifications (
+                 opportunity_id TEXT PRIMARY KEY,
+                 task_id TEXT NOT NULL,
+                 run_id TEXT NOT NULL,
+                 dedupe_key TEXT NOT NULL,
+                 url TEXT NOT NULL,
+                 fingerprint TEXT NOT NULL,
+                 verified_at INTEGER NOT NULL
+             );
+             INSERT INTO opportunity_verifications
+             VALUES ('opportunity_1', 'task_1', 'run_1', 'dedupe', 'https://example.com/1', 'fingerprint', 1);",
+        )
+        .unwrap();
+        let tmp = std::env::temp_dir().join(format!("seeker-test-migration-13-{}", now_ms()));
+        migrate(&mut conn, &tmp).unwrap();
+
+        let run_succeeded_at: i64 = conn
+            .query_row(
+                "SELECT run_succeeded_at FROM opportunity_verifications WHERE opportunity_id = 'opportunity_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(run_succeeded_at, 0);
+        assert_eq!(schema_version(&conn), 13);
+        let _ = std::fs::remove_dir_all(tmp);
     }
 
     #[test]

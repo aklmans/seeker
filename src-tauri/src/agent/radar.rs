@@ -548,6 +548,22 @@ pub(super) fn persist_verification_receipt(
     Ok(())
 }
 
+/// 仅由 runner 的最终成功事务调用：把本次 run 产生的验链凭据激活为完整成功证明。
+pub(super) fn finalize_verification_receipts(
+    conn: &rusqlite::Connection,
+    task_id: &str,
+    run_id: &str,
+    succeeded_at: i64,
+) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE opportunity_verifications
+         SET run_succeeded_at = ?3
+         WHERE task_id = ?1 AND run_id = ?2 AND run_succeeded_at = 0",
+        params![task_id, run_id, succeeded_at],
+    )
+    .map_err(|error| error.to_string())
+}
+
 pub(super) fn verification_receipt_matches(
     conn: &rusqlite::Connection,
     record: &Value,
@@ -561,7 +577,7 @@ pub(super) fn verification_receipt_matches(
     let (_, expected_dedupe_key) = opportunity_id(record_url);
     let receipt = conn
         .query_row(
-            "SELECT task_id, run_id, dedupe_key, url, fingerprint, verified_at
+            "SELECT task_id, run_id, dedupe_key, url, fingerprint, verified_at, run_succeeded_at
              FROM opportunity_verifications WHERE opportunity_id = ?1",
             params![opportunity_record_id],
             |row| {
@@ -572,15 +588,19 @@ pub(super) fn verification_receipt_matches(
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
                     row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
-    let Some((task_id, run_id, dedupe_key, url, fingerprint, verified_at)) = receipt else {
+    let Some((task_id, run_id, dedupe_key, url, fingerprint, verified_at, run_succeeded_at)) =
+        receipt
+    else {
         return Ok(false);
     };
-    Ok(record["sourceVerified"] == true
+    Ok(run_succeeded_at > 0
+        && record["sourceVerified"] == true
         && record["taskId"].as_str() == Some(task_id.as_str())
         && record["lastRunId"].as_str() == Some(run_id.as_str())
         && record["dedupeKey"].as_str() == Some(dedupe_key.as_str())
@@ -827,7 +847,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);",
+             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL, run_succeeded_at INTEGER NOT NULL DEFAULT 0);",
         )
         .unwrap();
         let criteria = json!({
@@ -842,6 +862,15 @@ mod tests {
         let first = rank_and_save(&mut conn, "task", "run1", &criteria, &verified, 10).unwrap();
         assert_eq!(first.len(), 1);
         assert_eq!(first[0]["matchScore"], 100.0);
+        assert!(
+            !verification_receipt_matches(&conn, &first[0]).unwrap(),
+            "候选入库后、run 最终成功前，私有凭据必须保持未激活"
+        );
+        assert_eq!(
+            finalize_verification_receipts(&conn, "task", "run1", 11).unwrap(),
+            1
+        );
+        assert!(verification_receipt_matches(&conn, &first[0]).unwrap());
         let id = first[0]["id"].as_str().unwrap();
         let mut reviewed = get_record(&conn, OPPORTUNITIES, id).unwrap().unwrap();
         reviewed["status"] = json!("dismissed");

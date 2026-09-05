@@ -1320,6 +1320,7 @@ fn complete_run_conn(
         ],
     )?;
     update_record(&tx, TASKS, task_id, &[("status", json!("succeeded"))])?;
+    radar::finalize_verification_receipts(&tx, task_id, run_id, now_ms())?;
     let event = append_event_conn(
         &tx,
         task_id,
@@ -1890,7 +1891,7 @@ mod tests {
              CREATE TABLE platform_agent_artifacts (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_call_ledger (run_id TEXT PRIMARY KEY, source_calls INTEGER NOT NULL DEFAULT 0, model_calls INTEGER NOT NULL DEFAULT 0);
-             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);
+             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL, run_succeeded_at INTEGER NOT NULL DEFAULT 0);
              CREATE TABLE job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE skills (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
@@ -2423,6 +2424,13 @@ mod tests {
     fn final_completion_failure_cannot_leave_a_false_success() {
         let mut conn = agent_db();
         seed_running(&conn, "read_only");
+        conn.execute(
+            "INSERT INTO opportunity_verifications
+             (opportunity_id, task_id, run_id, dedupe_key, url, fingerprint, verified_at)
+             VALUES ('opportunity_1', 'task_1', 'run_1', 'dedupe', 'https://example.com/1', 'fingerprint', 1)",
+            [],
+        )
+        .unwrap();
         conn.execute_batch(
             "CREATE TRIGGER fail_completion_event BEFORE INSERT ON platform_agent_events
              BEGIN SELECT RAISE(FAIL, 'completion event failed'); END;",
@@ -2436,6 +2444,17 @@ mod tests {
         assert_eq!(
             get_record(&conn, TASKS, "task_1").unwrap().unwrap()["status"],
             "running"
+        );
+        let run_succeeded_at: i64 = conn
+            .query_row(
+                "SELECT run_succeeded_at FROM opportunity_verifications WHERE opportunity_id = 'opportunity_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            run_succeeded_at, 0,
+            "最终事件失败必须连同私有成功激活一起回滚"
         );
         conn.execute_batch("DROP TRIGGER fail_completion_event;")
             .unwrap();

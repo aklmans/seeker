@@ -1627,7 +1627,7 @@ mod tests {
              CREATE TABLE platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);
+             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL, run_succeeded_at INTEGER NOT NULL DEFAULT 0);
              CREATE TABLE platform_agent_mcp_grants (task_id TEXT NOT NULL, server TEXT NOT NULL, tool TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY(task_id, server, tool));",
         )
         .unwrap();
@@ -1704,6 +1704,7 @@ mod tests {
             .unwrap()
             .unwrap();
         radar::persist_verification_receipt(conn, &record).unwrap();
+        radar::finalize_verification_receipts(conn, "task_1", "run_1", 2).unwrap();
         opportunity_id
     }
 
@@ -1886,6 +1887,35 @@ mod tests {
             .unwrap_err()
             .contains("可验证"));
         }
+    }
+
+    #[test]
+    fn failed_radar_run_cannot_be_retrusted_by_forging_public_run_status() {
+        let mut conn = opportunity_db();
+        let opportunity_id = seed_opportunity(&conn, "reviewed");
+        conn.execute(
+            "UPDATE opportunity_verifications SET run_succeeded_at = 0 WHERE opportunity_id = ?1",
+            rusqlite::params![opportunity_id],
+        )
+        .unwrap();
+
+        let mut run = get_record(&conn, RUNS, "run_1").unwrap().unwrap();
+        run["status"] = json!("failed");
+        upsert_record(&conn, RUNS, &run).unwrap();
+        run["status"] = json!("succeeded");
+        upsert_record(&conn, RUNS, &run).unwrap();
+
+        let listed = list_opportunities_inner(&conn).unwrap();
+        assert_eq!(listed[0]["sourceVerified"], false);
+        assert_eq!(listed[0]["sourceTrustStatus"], "invalid");
+        assert!(opportunity_accept_inner(
+            &mut conn,
+            &Mutex::new(HashMap::new()),
+            &opportunity_id,
+            20,
+        )
+        .unwrap_err()
+        .contains("可验证"));
     }
 
     #[test]
