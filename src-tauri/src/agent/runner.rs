@@ -266,10 +266,13 @@ fn reserve_call_budget<R: Runtime>(
     kind: CallBudgetKind,
     limit: usize,
 ) -> Result<bool, String> {
-    let (column, label) = match kind {
-        CallBudgetKind::Source => ("source_calls", "来源"),
-        CallBudgetKind::Model => ("model_calls", "模型"),
+    // TaskSpec 与步骤 checkpoint 都是可导入/可损坏的 JSON；最终硬上限必须在
+    // 私有账本写入点重新钳制，不能让持久化记录放大平台预算。
+    let (column, label, hard_limit) = match kind {
+        CallBudgetKind::Source => ("source_calls", "来源", 12usize),
+        CallBudgetKind::Model => ("model_calls", "模型", 1usize),
     };
+    let limit = limit.min(hard_limit);
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
     let changed = conn
@@ -3034,6 +3037,39 @@ mod tests {
         assert_eq!(source.calls.load(Ordering::SeqCst), 12);
         assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
         assert_eq!(radar::records_for_run(&conn, &run_id).unwrap().len(), 10);
+        drop(conn);
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn private_call_ledger_reapplies_compile_time_hard_limits() {
+        let root = test_root("radar-hard-call-budget");
+        let app = test_app(root.clone());
+        let handle = app.handle().clone();
+        let (_task_id, run_id) = seed_radar_run(&handle);
+
+        for _ in 0..12 {
+            assert!(
+                reserve_call_budget(&handle, &run_id, CallBudgetKind::Source, usize::MAX).unwrap()
+            );
+        }
+        assert!(
+            !reserve_call_budget(&handle, &run_id, CallBudgetKind::Source, usize::MAX).unwrap()
+        );
+        assert!(reserve_call_budget(&handle, &run_id, CallBudgetKind::Model, usize::MAX).unwrap());
+        assert!(!reserve_call_budget(&handle, &run_id, CallBudgetKind::Model, usize::MAX).unwrap());
+
+        let db = handle.state::<Db>();
+        let conn = db.0.lock().unwrap();
+        let counts: (i64, i64) = conn
+            .query_row(
+                "SELECT source_calls, model_calls FROM platform_agent_call_ledger WHERE run_id = ?1",
+                params![run_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (12, 1));
         drop(conn);
         drop(app);
         let _ = std::fs::remove_dir_all(root);
