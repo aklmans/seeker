@@ -758,10 +758,36 @@ pub fn agent_opportunity_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
     list_opportunities_inner(&conn)
 }
 
+fn opportunity_verification_is_trusted(
+    conn: &rusqlite::Connection,
+    opportunity: &Value,
+) -> Result<bool, String> {
+    if opportunity["sourceVerified"] != true {
+        return Ok(false);
+    }
+    let run_id = opportunity["lastRunId"].as_str().unwrap_or("");
+    let task_id = opportunity["taskId"].as_str().unwrap_or("");
+    if run_id.is_empty() || task_id.is_empty() {
+        return Ok(false);
+    }
+    let trusted_run = get_record(conn, RUNS, run_id)?
+        .is_some_and(|run| run["taskId"] == task_id && run["status"] == "succeeded");
+    if !trusted_run {
+        return Ok(false);
+    }
+    let trusted_step = list_records(conn, STEPS)?.into_iter().any(|step| {
+        step["taskId"] == task_id
+            && step["runId"] == run_id
+            && step["key"] == "verify_sources"
+            && step["status"] == "succeeded"
+    });
+    Ok(trusted_step && radar::verification_receipt_matches(conn, opportunity)?)
+}
+
 fn list_opportunities_inner(conn: &rusqlite::Connection) -> Result<Vec<Value>, String> {
     let mut records = list_records(conn, radar::OPPORTUNITIES)?;
     for record in &mut records {
-        if record["sourceVerified"] == true && !radar::verification_receipt_matches(conn, record)? {
+        if !opportunity_verification_is_trusted(conn, record)? {
             update_fields(
                 record,
                 &[
@@ -827,20 +853,10 @@ fn opportunity_accept_inner(
     let trusted_url = source_url
         .as_ref()
         .is_some_and(|url| matches!(url.scheme(), "http" | "https") && url.host_str().is_some());
-    let run_id = previous["lastRunId"].as_str().unwrap_or("");
-    let task_id = previous["taskId"].as_str().unwrap_or("");
-    let trusted_run = get_record(conn, RUNS, run_id)?
-        .is_some_and(|run| run["taskId"] == task_id && run["status"] == "succeeded");
-    let trusted_step = list_records(conn, STEPS)?.into_iter().any(|step| {
-        step["runId"] == run_id && step["key"] == "verify_sources" && step["status"] == "succeeded"
-    });
-    let trusted_receipt = radar::verification_receipt_matches(conn, &previous)?;
     if company.is_empty()
         || role.is_empty()
         || !trusted_url
-        || !trusted_run
-        || !trusted_step
-        || !trusted_receipt
+        || !opportunity_verification_is_trusted(conn, &previous)?
     {
         return Err("机会缺少可验证的公司、职位或来源 URL".into());
     }
@@ -1844,6 +1860,32 @@ mod tests {
         assert_eq!(listed[0]["sourceVerified"], false);
         assert_eq!(listed[0]["sourceVerifiedAt"], 0);
         assert_eq!(listed[0]["sourceTrustStatus"], "invalid");
+    }
+
+    #[test]
+    fn incomplete_or_failed_run_is_never_exposed_as_verified() {
+        for (collection, id, status) in [
+            (RUNS, "run_1", "running"),
+            (STEPS, "step_verify_1", "failed"),
+        ] {
+            let mut conn = opportunity_db();
+            let opportunity_id = seed_opportunity(&conn, "reviewed");
+            let mut record = get_record(&conn, collection, id).unwrap().unwrap();
+            record["status"] = json!(status);
+            upsert_record(&conn, collection, &record).unwrap();
+
+            let listed = list_opportunities_inner(&conn).unwrap();
+            assert_eq!(listed[0]["sourceVerified"], false, "{collection}={status}");
+            assert_eq!(listed[0]["sourceTrustStatus"], "invalid");
+            assert!(opportunity_accept_inner(
+                &mut conn,
+                &Mutex::new(HashMap::new()),
+                &opportunity_id,
+                20,
+            )
+            .unwrap_err()
+            .contains("可验证"));
+        }
     }
 
     #[test]
