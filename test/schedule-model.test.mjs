@@ -109,10 +109,12 @@ test('normSchedule 保留可信 UI 创建的固定 Agent task 目标', () => {
 });
 
 test('Agent 调度只接受可新建运行的机会雷达，且已有运行必须阻止重入', () => {
-  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_opportunity_radar', status: 'draft' }, 'task_1'), true);
-  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_application_package', status: 'draft' }, 'task_1'), false);
-  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_opportunity_radar', status: 'cancelled' }, 'task_1'), false);
-  assert.equal(radarTaskSchedulable({ id: 'other', workflowId: 'job_opportunity_radar', status: 'succeeded' }, 'task_1'), false);
+  const urlInputs = { inputs: { sources: [{ kind: 'url', url: 'https://jobs.example.com' }] } };
+  assert.equal(radarTaskSchedulable({ ...urlInputs, id: 'task_1', workflowId: 'job_opportunity_radar', status: 'draft' }, 'task_1'), true);
+  assert.equal(radarTaskSchedulable({ ...urlInputs, id: 'task_1', workflowId: 'job_application_package', status: 'draft' }, 'task_1'), false);
+  assert.equal(radarTaskSchedulable({ ...urlInputs, id: 'task_1', workflowId: 'job_opportunity_radar', status: 'cancelled' }, 'task_1'), false);
+  assert.equal(radarTaskSchedulable({ ...urlInputs, id: 'other', workflowId: 'job_opportunity_radar', status: 'succeeded' }, 'task_1'), false);
+  assert.equal(radarTaskSchedulable({ id: 'task_1', workflowId: 'job_opportunity_radar', status: 'draft', inputs: { sources: [{ kind: 'mcp', server: 'search', tool: 'web_search' }] } }, 'task_1'), false, 'MCP 不得无人值守调度');
   for (const status of ['created', 'planning', 'running', 'waiting_input', 'waiting_approval', 'paused', 'interrupted']) {
     assert.equal(agentRunBlocksSchedule({ status }), true, status);
   }

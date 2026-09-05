@@ -171,6 +171,7 @@ export function createDesktopRuntime() {
       acceptOpportunity: (opportunityId) => invoke('agent_opportunity_accept', { opportunityId }),
       undoOpportunity: (token) => invoke('agent_opportunity_undo', { token }),
       start: (taskId) => invoke('agent_run_start', { taskId }),
+      startScheduled: (taskId) => invoke('agent_run_start_scheduled', { taskId }),
       pause: (runId) => invoke('agent_run_pause', { runId }),
       resume: (runId) => invoke('agent_run_resume', { runId }),
       cancel: (runId) => invoke('agent_run_cancel', { runId }),

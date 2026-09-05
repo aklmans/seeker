@@ -543,9 +543,9 @@ export interface OpportunityRadarInputs {
   };
   sources: Array<
     | { kind: 'url'; url: string }
-    | { kind: 'mcp'; server: string; tool: string }
+    | { kind: 'mcp'; server: string; tool: string; userApproved?: boolean; authorization?: 'user_selected_exact_tool' }
   >;
-  limits?: { maxQueries?: number; maxSources?: number; maxSourceCalls?: number; maxResults?: number };
+  limits?: { maxQueries?: number; maxSources?: number; maxSourceCalls?: number; maxResults?: number; maxModelCalls?: number };
   language?: 'zh' | 'en';
 }
 
@@ -638,6 +638,7 @@ export interface JobOpportunity extends Record {
   title: string;
   company: string;
   role: string;
+  seniority?: string;
   location: string;
   remote: string;
   requiredSkills: string[];
@@ -675,6 +676,8 @@ export interface AgentApi {
   undoOpportunity(token: string): Promise<JobOpportunity>;
   /** 启动一个新运行；同一任务同时只能有一个非终态运行。 */
   start(taskId: string): Promise<AgentRun>;
+  /** 计划专用入口；Rust 再次确认为固定 URL 机会雷达，拒绝一切 MCP 来源。 */
+  startScheduled(taskId: string): Promise<AgentRun>;
   /** 请求在当前安全检查点暂停。 */
   pause(runId: string): Promise<void>;
   /** 从已暂停/中断运行继续；未知副作用必须先由 Rust 核协调。 */

@@ -17,6 +17,7 @@ const STATUS = {
   new: ['待审', 'New'], reviewed: ['已审阅', 'Reviewed'], accepted: ['已接受', 'Accepted'],
   dismissed: ['已拒绝', 'Dismissed'], stale: ['已过期', 'Stale'],
 };
+const RADAR_DOW = () => [tt('周日', 'Sunday'), tt('周一', 'Monday'), tt('周二', 'Tuesday'), tt('周三', 'Wednesday'), tt('周四', 'Thursday'), tt('周五', 'Friday'), tt('周六', 'Saturday')];
 
 /** @param {unknown} value */
 const str = (value) => value == null ? '' : String(value);
@@ -43,7 +44,7 @@ function mcpAcceptsQueryOnly(value) {
 function composerHTML(servers) {
   if (!state.composing) return '';
   if (!rt.available('agentExecution')) return `<section class="sec agent-task-compose"><div class="agent-task-heading"><h2 class="sectitle">${tt('桌面版执行', 'Desktop execution')}<span class="dot">.</span></h2><button class="btn-text" data-radar-close>${tt('收起', 'Close')}</button></div><p class="agent-task-note">${tt('网页端只展示从桌面备份导入的机会，不会伪装搜索、验链、写报告或接受岗位。', 'The web version only displays opportunities imported from desktop backups. It does not pretend to search, verify, write reports, or accept jobs.')}</p></section>`;
-  const tools = servers.flatMap((server) => server.connected ? server.tools.filter((tool) => tool.readOnly && mcpAcceptsQueryOnly(tool.inputSchema)).map((tool) => ({ server: server.name, tool: tool.name, description: tool.description })) : []);
+  const tools = servers.flatMap((server) => server.connected ? server.tools.filter((tool) => mcpAcceptsQueryOnly(tool.inputSchema)).map((tool) => ({ server: server.name, tool: tool.name, description: tool.description, claimedReadOnly: tool.readOnly })) : []);
   return `<section class="sec agent-task-compose">
     <div class="agent-task-heading"><div><p class="seclabel">— NEW RADAR</p><h2 class="sectitle">${tt('配置机会雷达', 'Configure opportunity radar')}<span class="dot">.</span></h2></div><button class="btn-text" data-radar-close>${tt('收起', 'Close')}</button></div>
     <p class="agent-task-copy">${tt('查询只发送职业关键词，不发送个人资料、联系方式或简历。候选先进入待审区，绝不会自动投递。', 'Queries contain professional keywords only—never profile, contact, or resume data. Candidates enter review first and are never auto-applied.')}</p>
@@ -52,10 +53,11 @@ function composerHTML(servers) {
     <div class="field-row"><div class="field"><label>${tt('远程偏好', 'Remote preference')}</label><select class="select" data-radar-remote><option value="any">${tt('不限', 'Any')}</option><option value="remote">${tt('远程', 'Remote')}</option><option value="hybrid">${tt('混合', 'Hybrid')}</option><option value="onsite">${tt('现场', 'On-site')}</option></select></div><div class="field"><label>${tt('排除关键词', 'Excluded keywords')}</label><input class="input" data-radar-excluded placeholder="unpaid, contract"></div></div>
     <div class="field"><label>${tt('关注公司', 'Watched companies')}</label><input class="input" data-radar-companies placeholder="Acme"></div>
     <div class="field"><label>${tt('固定招聘页 URL（每行一个）', 'Official careers URLs (one per line)')}</label><textarea class="textarea" data-radar-urls style="min-height:88px" placeholder="https://example.com/careers"></textarea></div>
-    <div class="field"><label>${tt('只读搜索 MCP（可多选）', 'Read-only search MCP tools')}</label><div class="agent-task-choices">${tools.length ? tools.map((item) => `<label class="agent-task-choice"><input type="checkbox" data-radar-mcp data-server="${cEsc(item.server)}" data-tool="${cEsc(item.tool)}"><span><b>${cEsc(item.server)} · ${cEsc(item.tool)}</b><small>${cEsc(item.description)}</small></span></label>`).join('') : `<p class="agent-task-muted">${tt('没有已连接的只读 MCP；可以仅使用上方固定 URL。搜索工具还必须声明字符串 query 参数，Rust 会再次校验。', 'No connected read-only MCP tools. You can use fixed URLs only. Search tools must also declare a string query parameter; Rust verifies this again.')}</p>`}</div></div>
+    <div class="field"><label>${tt('MCP 查询工具（仅手动扫描，可多选）', 'MCP query tools (manual scans only)')}</label><div class="agent-task-choices">${tools.length ? tools.map((item) => `<label class="agent-task-choice"><input type="checkbox" data-radar-mcp data-server="${cEsc(item.server)}" data-tool="${cEsc(item.tool)}"><span><b>${cEsc(item.server)} · ${cEsc(item.tool)}</b><small>${cEsc(item.description)} · ${item.claimedReadOnly ? tt('服务端自报只读（仅提示）', 'server claims read-only (advisory only)') : tt('未自报只读', 'does not claim read-only')}</small></span></label>`).join('') : `<p class="agent-task-muted">${tt('没有已连接且可仅用 query 调用的 MCP 工具；可以仅使用上方固定 URL。', 'No connected MCP tool can be called with query alone. You can use fixed URLs only.')}</p>`}</div></div>
+    ${tools.length ? `<label class="agent-task-choice"><input type="checkbox" data-radar-mcp-authorize><span><b>${tt('授权精确 MCP 调用', 'Authorize exact MCP calls')}</b><small>${tt('我理解 readOnlyHint 只是服务端自报；手动运行时允许调用上方选中的精确工具。含 MCP 的雷达不能创建定时计划。', 'I understand readOnlyHint is self-reported and authorize the exact selected tools for manual runs. A radar using MCP cannot be scheduled.')}</small></span></label>` : ''}
     <div class="agent-task-permission"><b>${tt('固定权限', 'Fixed permissions')}</b><span>job_opportunities</span><span>read_only · external_read · local_create</span><span>${tt('最多 4 条查询 / 12 次来源调用 / 40 条候选 / 1 次模型调用', 'Up to 4 queries / 12 source calls / 40 candidates / 1 model call')}</span></div>
-    <label class="agent-task-choice radar-schedule"><input type="checkbox" data-radar-schedule><span><b>${tt('创建定时计划', 'Create a schedule')}</b><small>${tt('仅 Seeker 开着时触发；错过不补跑', 'Runs only while Seeker is open; missed runs are not replayed')}</small></span></label>
-    <div class="field-row" data-radar-schedule-options hidden><div class="field"><label>${tt('频率', 'Repeat')}</label><select class="select" data-radar-kind><option value="daily">${tt('每天', 'Daily')}</option><option value="weekly">${tt('每周', 'Weekly')}</option></select></div><div class="field"><label>${tt('时间', 'Time')}</label><input class="input" type="time" data-radar-time value="09:00"></div></div>
+    <label class="agent-task-choice radar-schedule"><input type="checkbox" data-radar-schedule><span><b>${tt('创建定时计划', 'Create a schedule')}</b><small>${tt('仅适用于全部来源为固定 URL 的雷达；仅 Seeker 开着时触发，错过不补跑', 'Only available when every source is a fixed URL; runs while Seeker is open, and missed runs are skipped')}</small></span></label>
+    <div class="field-row" data-radar-schedule-options hidden><div class="field"><label>${tt('频率', 'Repeat')}</label><select class="select" data-radar-kind><option value="daily">${tt('每天', 'Daily')}</option><option value="weekly">${tt('每周', 'Weekly')}</option></select></div><div class="field" data-radar-dow-field hidden><label>${tt('星期', 'Day')}</label><select class="select" data-radar-dow>${RADAR_DOW().map((day, index) => `<option value="${index}"${index === new Date().getDay() ? ' selected' : ''}>${day}</option>`).join('')}</select></div><div class="field"><label>${tt('时间', 'Time')}</label><input class="input" type="time" data-radar-time value="09:00"></div></div>
     <div class="agent-task-actions"><button class="btn" data-radar-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" data-radar-create>${tt('创建并前往检查', 'Create and review')} →</button></div>
   </section>`;
 }
@@ -69,7 +71,7 @@ function listHTML(opportunities) {
     const actions = rt.available('agentExecution') && item.status !== 'accepted'
       ? `<button class="btn" data-radar-status="reviewed" data-opportunity="${cEsc(idOf(item))}">${tt('标为已审', 'Mark reviewed')}</button><button class="btn" data-radar-status="dismissed" data-opportunity="${cEsc(idOf(item))}">${tt('拒绝', 'Dismiss')}</button>${sourceTrusted ? `<button class="btn btn-accent" data-radar-accept="${cEsc(idOf(item))}">${tt('接受为岗位', 'Accept as job')} →</button>` : ''}`
       : '';
-    return `<article class="radar-card ${sourceTrusted ? '' : 'is-unverified'}"><div class="radar-card-head"><div><span class="agent-task-status ${item.status === 'accepted' ? 'is-ok' : ''}">${cEsc(statusText(item.status))}</span><span class="agent-artifact-trust">${sourceTrusted ? tt('来源已验证', 'Source verified') : tt('来源未验证 / 不能接受', 'Source unverified / cannot accept')}</span><h3>${cEsc(item.company)} · ${cEsc(item.role || item.title)}</h3></div><strong>${Number(item.matchScore || 0).toFixed(1)}</strong></div><p>${cEsc(item.summary || tt('暂无摘要', 'No summary'))}</p><div class="radar-meta"><span>${cEsc(item.location || '—')}</span><span>${cEsc(item.remote || '—')}</span><span>${cEsc(new Date(item.observedAt).toLocaleDateString())}</span></div><div class="radar-skills">${(item.requiredSkills || []).slice(0, 8).map((skill) => `<span>${cEsc(skill)}</span>`).join('')}</div><div class="agent-task-actions"><button class="btn-text" data-radar-open="${cEsc(item.url)}">${tt('查看来源', 'Open source')}</button>${actions}</div></article>`;
+    return `<article class="radar-card ${sourceTrusted ? '' : 'is-unverified'}"><div class="radar-card-head"><div><span class="agent-task-status ${item.status === 'accepted' ? 'is-ok' : ''}">${cEsc(statusText(item.status))}</span><span class="agent-artifact-trust">${sourceTrusted ? tt('来源已验证', 'Source verified') : tt('来源未验证 / 不能接受', 'Source unverified / cannot accept')}</span><h3>${cEsc(item.company)} · ${cEsc(item.role || item.title)}</h3></div><strong>${Number(item.matchScore || 0).toFixed(1)}</strong></div><p>${cEsc(item.summary || tt('暂无摘要', 'No summary'))}</p><div class="radar-meta">${item.seniority ? `<span>${cEsc(item.seniority)}</span>` : ''}<span>${cEsc(item.location || '—')}</span><span>${cEsc(item.remote || '—')}</span><span>${cEsc(new Date(item.observedAt).toLocaleDateString())}</span></div><div class="radar-skills">${(item.requiredSkills || []).slice(0, 8).map((skill) => `<span>${cEsc(skill)}</span>`).join('')}</div><div class="agent-task-actions"><button class="btn-text" data-radar-open="${cEsc(item.url)}">${tt('查看来源', 'Open source')}</button>${actions}</div></article>`;
   }).join('')}</div>`;
 }
 
@@ -94,6 +96,8 @@ function wire() {
   $$('#page-opportunities [data-radar-close]').forEach((node) => { /** @type {HTMLElement} */ (node).onclick = () => { state.composing = false; void refresh(); }; });
   const schedule = /** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-schedule]'));
   if (schedule) schedule.onchange = () => { const row = /** @type {HTMLElement|null} */ ($('#page-opportunities [data-radar-schedule-options]')); if (row) row.hidden = !schedule.checked; };
+  const kind = /** @type {HTMLSelectElement|null} */ ($('#page-opportunities [data-radar-kind]'));
+  if (kind) kind.onchange = () => { const day = /** @type {HTMLElement|null} */ ($('#page-opportunities [data-radar-dow-field]')); if (day) day.hidden = kind.value !== 'weekly'; };
   const create = /** @type {HTMLButtonElement|null} */ ($('#page-opportunities [data-radar-create]'));
   if (create) create.onclick = () => { void createRadar(create); };
   $$('#page-opportunities [data-radar-filter]').forEach((node) => { /** @type {HTMLElement} */ (node).onclick = () => { state.filter = str(/** @type {HTMLElement} */ (node).dataset.radarFilter); void refresh(); }; });
@@ -109,22 +113,25 @@ async function createRadar(button) {
   const urls = splitList(str(/** @type {HTMLTextAreaElement|null} */ ($('#page-opportunities [data-radar-urls]'))?.value));
   if (!roles.length) { toast(tt('请至少填写一个目标职位', 'Add at least one target role')); return; }
   if (urls.some((url) => !/^https?:\/\//i.test(url))) { toast(tt('固定来源仅支持 HTTP/HTTPS URL', 'Fixed sources must use HTTP/HTTPS URLs')); return; }
-  const mcp = $$('#page-opportunities [data-radar-mcp]').filter((node) => /** @type {HTMLInputElement} */ (node).checked).map((node) => ({ kind: /** @type {'mcp'} */ ('mcp'), server: str(/** @type {HTMLElement} */ (node).dataset.server), tool: str(/** @type {HTMLElement} */ (node).dataset.tool) }));
+  const mcp = $$('#page-opportunities [data-radar-mcp]').filter((node) => /** @type {HTMLInputElement} */ (node).checked).map((node) => ({ kind: /** @type {'mcp'} */ ('mcp'), server: str(/** @type {HTMLElement} */ (node).dataset.server), tool: str(/** @type {HTMLElement} */ (node).dataset.tool), userApproved: true }));
   const sources = [...urls.map((url) => ({ kind: /** @type {'url'} */ ('url'), url })), ...mcp];
-  if (!sources.length) { toast(tt('请至少选择一个固定 URL 或只读搜索 MCP', 'Choose at least one fixed URL or read-only search MCP')); return; }
+  if (!sources.length) { toast(tt('请至少选择一个固定 URL 或 MCP 查询工具', 'Choose at least one fixed URL or MCP query tool')); return; }
+  if (mcp.length && !(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-mcp-authorize]')))?.checked) { toast(tt('请先明确授权选中的 MCP 工具', 'Explicitly authorize the selected MCP tools first')); return; }
+  const schedule = /** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-schedule]'));
+  if (schedule?.checked && mcp.length) { toast(tt('含 MCP 来源的雷达只能手动运行，不能创建定时计划', 'A radar using MCP can only run manually and cannot be scheduled')); return; }
   state.busy = true; button.disabled = true;
   try {
     const task = await rt.agent.createTask({
       workflowId: 'job_opportunity_radar', title: tt('机会雷达扫描', 'Opportunity radar scan'),
       goal: tt('发现、验证并整理值得审阅的岗位机会', 'Discover, verify, and organize opportunities worth reviewing'),
-      inputs: { criteria: { roles, seniority: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-seniority]'))?.value)), locations: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-locations]'))?.value)), remotePreference: /** @type {any} */ (/** @type {HTMLSelectElement} */ ($('#page-opportunities [data-radar-remote]')).value), requiredSkills: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-skills]'))?.value)), excludedKeywords: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-excluded]'))?.value)), watchedCompanies: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-companies]'))?.value)) }, sources, language: 'zh' },
+      inputs: { criteria: { roles, seniority: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-seniority]'))?.value)), locations: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-locations]'))?.value)), remotePreference: /** @type {any} */ (/** @type {HTMLSelectElement} */ ($('#page-opportunities [data-radar-remote]')).value), requiredSkills: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-skills]'))?.value)), excludedKeywords: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-excluded]'))?.value)), watchedCompanies: splitList(str(/** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-companies]'))?.value)) }, sources, language: /** @type {'zh'|'en'} */ (tt('zh', 'en')) },
     });
-    const schedule = /** @type {HTMLInputElement|null} */ ($('#page-opportunities [data-radar-schedule]'));
     let scheduleError = '';
     if (schedule?.checked) {
       const now = Date.now();
       try {
-        await saveSchedule({ id: `sc_${idOf(task)}`, agentTaskId: idOf(task), kind: /** @type {any} */ (/** @type {HTMLSelectElement} */ ($('#page-opportunities [data-radar-kind]')).value), time: str(/** @type {HTMLInputElement} */ ($('#page-opportunities [data-radar-time]')).value), dow: 1, enabled: true, created_at: now, last_run_at: 0, last_status: '', updated_at: now });
+        const dow = Number((/** @type {HTMLSelectElement} */ ($('#page-opportunities [data-radar-dow]'))).value);
+        await saveSchedule({ id: `sc_${idOf(task)}`, agentTaskId: idOf(task), kind: /** @type {any} */ (/** @type {HTMLSelectElement} */ ($('#page-opportunities [data-radar-kind]')).value), time: str(/** @type {HTMLInputElement} */ ($('#page-opportunities [data-radar-time]')).value), dow, enabled: true, created_at: now, last_run_at: 0, last_status: '', updated_at: now });
       } catch (error) {
         scheduleError = errText(error);
       }

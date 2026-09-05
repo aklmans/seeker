@@ -96,7 +96,7 @@ export async function schedulerTick(now) {
   if (agentReady) {
     try {
       // 后端 prepare_new_run 仍会原子检查活动 run，关闭这里查询与启动之间的竞态窗口。
-      await rt.agent.start(sched.agentTaskId);
+      await rt.agent.startScheduled(sched.agentTaskId);
     } catch (error) {
       settleRun(sched.id, false, String((/** @type {any} */ (error))?.message || error));
       return { fired: sched.id, status: 'error', missed };

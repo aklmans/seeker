@@ -159,7 +159,8 @@ test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受�
   const radarPage = page.locator('#page-opportunities');
   await expect(radarPage).toContainText('Acme <Research>');
   await expect(radarPage).toContainText('95.0');
-  await expect(radarPage).toContainText(/来源已验证|Source verified/);
+  await expect(radarPage).toContainText(/来源未验证|Source unverified/);
+  await expect(radarPage.locator('.radar-card')).toHaveClass(/is-unverified/);
   await expect(radarPage.getByRole('button', { name: /查看来源|Open source/ })).toHaveCount(1);
   await expect(radarPage.getByRole('button', { name: /接受为岗位|Accept as job/ })).toHaveCount(0);
   await expect(radarPage.getByRole('button', { name: /标为已审|Mark reviewed/ })).toHaveCount(0);
@@ -175,4 +176,109 @@ test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受�
   await expect(taskPage).toContainText('opportunity-report.md');
   await expect(taskPage.getByRole('button', { name: /打开文件|Open file/ })).toBeDisabled();
   await expect(taskPage.getByRole('button', { name: /预览|Preview/ })).toHaveCount(0);
+});
+
+test('English 界面创建雷达时提交英文报告语言', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('jh-lang', 'en'));
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.SeekerRT.available = () => true;
+    window.SeekerRT.mcp.list = async () => [];
+    window.SeekerRT.agent.createTask = async (draft) => {
+      window.__radarDraft = draft;
+      return { id: 'task_english', ...draft, status: 'draft' };
+    };
+  });
+  await page.locator('.nav-item[data-id="opportunities"]').click();
+  await page.getByRole('button', { name: /New radar/ }).click();
+  await page.locator('[data-radar-roles]').fill('Backend Engineer');
+  await page.locator('[data-radar-urls]').fill('https://jobs.example.com/careers');
+  await page.locator('[data-radar-schedule]').check();
+  await page.locator('[data-radar-kind]').selectOption('weekly');
+  await page.locator('[data-radar-dow]').selectOption('3');
+  await page.getByRole('button', { name: /Create and review/ }).click();
+  await expect.poll(() => page.evaluate(() => window.__radarDraft?.inputs?.language)).toBe('en');
+  await expect.poll(() => page.evaluate(async () => (await window.SeekerRT.db.get('platform_schedules', 'sc_task_english'))?.dow)).toBe(3);
+});
+
+test('MCP readOnlyHint 仅作提示，必须显式授权且不能创建计划', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.SeekerRT.available = () => true;
+    window.SeekerRT.mcp.list = async () => [{
+      name: 'untrusted-search', connected: true, tools: [{
+        name: 'search', description: 'server-declared tool', readOnly: true,
+        inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+      }],
+    }];
+    window.__radarDrafts = [];
+    window.SeekerRT.agent.createTask = async (draft) => {
+      window.__radarDrafts.push(draft);
+      return { id: 'task_mcp', ...draft, status: 'draft' };
+    };
+  });
+  await page.locator('.nav-item[data-id="opportunities"]').click();
+  await page.getByRole('button', { name: /新建雷达|New radar/ }).click();
+  await page.locator('[data-radar-roles]').fill('Backend Engineer');
+  await page.locator('[data-radar-mcp]').check();
+  await page.locator('[data-radar-create]').click();
+  await expect.poll(() => page.evaluate(() => window.__radarDrafts.length)).toBe(0);
+
+  await page.locator('[data-radar-mcp-authorize]').check();
+  await page.locator('[data-radar-schedule]').check();
+  await page.locator('[data-radar-create]').click();
+  await expect.poll(() => page.evaluate(() => window.__radarDrafts.length)).toBe(0);
+
+  await page.locator('[data-radar-schedule]').uncheck();
+  await page.locator('[data-radar-create]').click();
+  await expect.poll(() => page.evaluate(() => window.__radarDrafts.length)).toBe(1);
+  expect(await page.evaluate(() => window.__radarDrafts[0].inputs.sources[0])).toEqual({
+    kind: 'mcp', server: 'untrusted-search', tool: 'search', userApproved: true,
+  });
+});
+
+test('schedulerTick 集成：启动受控雷达、跳过活动运行并持久化失败', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const runtime = window.SeekerRT;
+    const store = await import('/platform/shell/schedule-store.js');
+    const { schedulerTick } = await import('/platform/shell/scheduler.js');
+    const now = new Date(2026, 8, 5, 12, 0, 0, 0).getTime();
+    const base = { kind: 'daily', time: '09:00', dow: 6, enabled: true, created_at: now - 172_800_000, last_run_at: now - 172_800_000, updated_at: now };
+    const task = { id: 'task_sched', workflowId: 'job_opportunity_radar', status: 'draft', inputs: { sources: [{ kind: 'url', url: 'https://jobs.example.com' }] } };
+    let mode = 'start';
+    const starts = [];
+    runtime.agent.getTask = async () => task;
+    runtime.agent.listRuns = async () => mode === 'active' ? [{ status: 'running' }] : [];
+    runtime.agent.startScheduled = async (taskId) => {
+      starts.push(taskId);
+      if (mode === 'fail') throw new Error('scheduled start failed');
+      return { id: 'run_sched', taskId, status: 'created' };
+    };
+
+    await store.saveSchedule({ ...base, id: 'sc_start', agentTaskId: task.id });
+    const started = await schedulerTick(now);
+    const startedRecord = await runtime.db.get('platform_schedules', 'sc_start');
+
+    mode = 'active';
+    await store.saveSchedule({ ...base, id: 'sc_active', agentTaskId: task.id, updated_at: now + 1 });
+    const active = await schedulerTick(now);
+    const activeRecord = await runtime.db.get('platform_schedules', 'sc_active');
+
+    mode = 'fail';
+    await store.saveSchedule({ ...base, id: 'sc_fail', agentTaskId: task.id, updated_at: now + 2 });
+    const failed = await schedulerTick(now);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const failedRecord = await runtime.db.get('platform_schedules', 'sc_fail');
+    return { started, startedRecord, active, activeRecord, failed, failedRecord, starts };
+  });
+
+  expect(result.started.status).toBe('agent-started');
+  expect(result.startedRecord.last_status).toBe('agent-started');
+  expect(result.active.status).toBe('agent-active');
+  expect(result.activeRecord.last_status).toBe('agent-active');
+  expect(result.failed.status).toBe('error');
+  expect(result.failedRecord.last_status).toBe('error');
+  expect(result.failedRecord.last_error).toContain('scheduled start failed');
+  expect(result.starts).toEqual(['task_sched', 'task_sched']);
 });

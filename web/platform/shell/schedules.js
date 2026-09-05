@@ -133,14 +133,16 @@ function openAgentScheduleModal(box, id) {
   const n = normSchedule(listSchedules().find((item) => item.id === id));
   openModal(
     `<div class="modal-head"><div><p class="eyebrow">— OPPORTUNITY RADAR</p><h2 style="margin-top:5px;">${tt('编辑雷达计划', 'Edit radar schedule')}<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body"><div class="set-row"><span class="sk">Task</span><span class="mono">${cEsc(n.agentTaskId)}</span></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('频率', 'Repeat')}</span><select class="input" id="scAgentKind"><option value="daily"${n.kind === 'daily' ? ' selected' : ''}>${tt('每天', 'Daily')}</option><option value="weekly"${n.kind === 'weekly' ? ' selected' : ''}>${tt('每周（周一）', 'Weekly (Monday)')}</option></select></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('时间', 'Time')}</span><input class="input" id="scAgentTime" value="${cEsc(n.time)}" placeholder="09:00"></div><p style="font-size:11px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('仅 Seeker 开着时触发；错过不补跑；已有运行时不会重入。', 'Runs only while Seeker is open; missed runs are skipped; an active run is never re-entered.')}</p></div>
+    <div class="modal-body"><div class="set-row"><span class="sk">Task</span><span class="mono">${cEsc(n.agentTaskId)}</span></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('频率', 'Repeat')}</span><select class="input" id="scAgentKind"><option value="daily"${n.kind === 'daily' ? ' selected' : ''}>${tt('每天', 'Daily')}</option><option value="weekly"${n.kind === 'weekly' ? ' selected' : ''}>${tt('每周', 'Weekly')}</option></select></div><div class="set-row" id="scAgentDowRow" style="margin-top:10px;display:${n.kind === 'weekly' ? 'flex' : 'none'};"><span class="sk">${tt('星期', 'Day')}</span><select class="input" id="scAgentDow">${DOW().map((day, index) => `<option value="${index}"${index === n.dow ? ' selected' : ''}>${day}</option>`).join('')}</select></div><div class="set-row" style="margin-top:10px;"><span class="sk">${tt('时间', 'Time')}</span><input class="input" id="scAgentTime" value="${cEsc(n.time)}" placeholder="09:00"></div><p style="font-size:11px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('仅 Seeker 开着时触发；错过不补跑；已有运行时不会重入。', 'Runs only while Seeker is open; missed runs are skipped; an active run is never re-entered.')}</p></div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="scAgentSave">${tt('保存', 'Save')}</button></div>`, true);
+  const kind = /** @type {HTMLSelectElement|null} */ ($('#scAgentKind'));
+  if (kind) kind.onchange = () => { const row = $('#scAgentDowRow'); if (row) /** @type {HTMLElement} */ (row).style.display = kind.value === 'weekly' ? 'flex' : 'none'; };
   const save = $('#scAgentSave');
   if (save) /** @type {HTMLElement} */ (save).onclick = async () => {
     const time = String((/** @type {HTMLInputElement|null} */ ($('#scAgentTime')))?.value || '').trim();
     if (!/^(\d{1,2}):(\d{2})$/.test(time)) { toast(tt('时间格式 HH:MM，如 09:00', 'Time must be HH:MM, e.g. 09:00')); return; }
     try {
-      await saveSchedule({ ...n, kind: /** @type {any} */ ((/** @type {HTMLSelectElement} */ ($('#scAgentKind'))).value), time, dow: 1, updated_at: Date.now() });
+      await saveSchedule({ ...n, kind: /** @type {any} */ ((/** @type {HTMLSelectElement} */ ($('#scAgentKind'))).value), time, dow: Number((/** @type {HTMLSelectElement} */ ($('#scAgentDow'))).value), updated_at: Date.now() });
       closeModal(); await renderSchedules(box); toast(tt('已保存', 'Saved'));
     } catch (error) { toast(errText(error)); }
   };

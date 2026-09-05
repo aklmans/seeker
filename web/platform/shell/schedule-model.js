@@ -50,9 +50,12 @@ export function normSchedule(rec) {
  * @param {unknown} task @param {string} taskId @returns {boolean} */
 export function radarTaskSchedulable(task, taskId) {
   const t = /** @type {any} */ (task && typeof task === 'object' ? task : {});
+  const sources = Array.isArray(t.inputs?.sources) ? t.inputs.sources : [];
   return String(t.id || '') === taskId
     && t.workflowId === 'job_opportunity_radar'
-    && ['draft', 'failed', 'succeeded'].includes(String(t.status || ''));
+    && ['draft', 'failed', 'succeeded'].includes(String(t.status || ''))
+    && sources.length > 0
+    && sources.every((/** @type {any} */ source) => source?.kind === 'url');
 }
 
 /** 与 Rust `active_status` 同步：存在这些 run 时计划必须跳过，最终原子防线仍由后端负责。

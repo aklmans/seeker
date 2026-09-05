@@ -63,6 +63,12 @@ function store(name, mode) {
 function guard(c) {
   return COLLECTIONS.includes(c) ? null : Promise.reject(new Error('未知或受保护的集合: ' + c));
 }
+/** Web 只能保全/展示机会记录，没有 Rust 验链凭据；通用 CRUD 和导入必须降级信任。
+ * @param {any} record */
+function downgradeOpportunityTrust(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
+  return { ...record, sourceVerified: false, sourceVerifiedAt: 0, sourceTrustStatus: 'imported_unverified' };
+}
 /** @param {string} name @returns {Promise<any[]>} */
 async function listAll(name) {
   const s = await store(name, 'readonly');
@@ -139,7 +145,7 @@ async function importBundle(bundle) {
   for (const c of COLLECTIONS) {
     const records = bundle.collections[c] || [];
     const target = tx.objectStore(c);
-    for (const rec of records) target.put(rec);
+    for (const rec of records) target.put(c === 'job_opportunities' ? downgradeOpportunityTrust(rec) : rec);
     if (records.length) counts[c] = records.length;
   }
   for (const kv of ['profile', 'settings']) {
@@ -281,9 +287,10 @@ export function createWebRuntime() {
       upsert: async (collection, record) => {
         const bad = guard(collection);
         if (bad) return bad;
+        const stored = collection === 'job_opportunities' ? downgradeOpportunityTrust(record) : record;
         const s = await store(collection, 'readwrite');
-        await reqDone(s.put(record));
-        return /** @type {any} */ (record);
+        await reqDone(s.put(stored));
+        return /** @type {any} */ (stored);
       },
       remove: async (collection, id) => {
         const bad = guard(collection);
@@ -320,6 +327,7 @@ export function createWebRuntime() {
       acceptOpportunity: () => notImpl('rt.agent.acceptOpportunity', 'web'),
       undoOpportunity: () => notImpl('rt.agent.undoOpportunity', 'web'),
       start: () => notImpl('rt.agent.start', 'web'),
+      startScheduled: () => notImpl('rt.agent.startScheduled', 'web'),
       pause: () => notImpl('rt.agent.pause', 'web'),
       resume: () => notImpl('rt.agent.resume', 'web'),
       cancel: () => notImpl('rt.agent.cancel', 'web'),
