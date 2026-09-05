@@ -13,6 +13,7 @@
 //! 6to4 / Teredo 隧道在 `is_blocked_ip` 拦。
 
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -224,6 +225,140 @@ fn html_to_text(html: &str) -> String {
     result.join("\n").trim().to_string()
 }
 
+fn tag_end(html: &[u8], start: usize) -> Option<usize> {
+    let mut quote = None;
+    for (index, byte) in html.iter().enumerate().skip(start) {
+        match (*byte, quote) {
+            (b'\'', None) | (b'"', None) => quote = Some(*byte),
+            (current, Some(expected)) if current == expected => quote = None,
+            (b'>', None) => return Some(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn anchor_href(tag: &str) -> Option<String> {
+    let bytes = tag.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i] != b'<' {
+        i += 1;
+    }
+    i += 1;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+        i += 1;
+    }
+    while i < bytes.len() {
+        while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'/') {
+            i += 1;
+        }
+        let name_start = i;
+        while i < bytes.len()
+            && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'-' | b'_' | b':'))
+        {
+            i += 1;
+        }
+        if name_start == i {
+            i += 1;
+            continue;
+        }
+        let name = &tag[name_start..i];
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'=' {
+            continue;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let (value_start, value_end) = if i < bytes.len() && matches!(bytes[i], b'\'' | b'"') {
+            let quote = bytes[i];
+            i += 1;
+            let start = i;
+            while i < bytes.len() && bytes[i] != quote {
+                i += 1;
+            }
+            (start, i)
+        } else {
+            let start = i;
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'>' {
+                i += 1;
+            }
+            (start, i)
+        };
+        if name.eq_ignore_ascii_case("href") {
+            return Some(
+                tag[value_start..value_end]
+                    .replace("&amp;", "&")
+                    .replace("&#38;", "&")
+                    .trim()
+                    .to_string(),
+            );
+        }
+    }
+    None
+}
+
+/// 雷达专用 HTML 投影：纯文本之外保留最多 80 条安全的绝对 HTTP/HTTPS href。
+/// 链接放在正文前，避免 64 KiB 来源裁剪把岗位详情 URL 全部丢在页尾。
+pub(crate) fn radar_html_to_text(base_url: &str, html: &str) -> Result<String, String> {
+    let base = validate_fetch_url(base_url)?;
+    let lower = html.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut links = Vec::new();
+    let mut seen = HashSet::new();
+    let mut i = 0;
+    while i < bytes.len() && links.len() < 80 {
+        let Some(relative_start) = lower[i..].find('<') else {
+            break;
+        };
+        let start = i + relative_start;
+        let mut name_start = start + 1;
+        while name_start < bytes.len() && bytes[name_start].is_ascii_whitespace() {
+            name_start += 1;
+        }
+        let mut name_end = name_start;
+        while name_end < bytes.len() && bytes[name_end].is_ascii_alphanumeric() {
+            name_end += 1;
+        }
+        let Some(end) = tag_end(html.as_bytes(), name_end) else {
+            break;
+        };
+        if &lower[name_start..name_end] == "a" {
+            if let Some(href) = anchor_href(&html[start..=end]) {
+                if href.len() <= 2048 {
+                    if let Ok(joined) = base.join(&href) {
+                        if let Ok(mut target) = validate_fetch_url(joined.as_str()) {
+                            target.set_fragment(None);
+                            let target = target.to_string();
+                            if seen.insert(target.clone()) {
+                                links.push(target);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = end + 1;
+    }
+    let mut output = String::new();
+    for link in links {
+        output.push_str("Link: ");
+        output.push_str(&link);
+        output.push('\n');
+    }
+    if !output.is_empty() {
+        output.push_str("\nPage text:\n");
+    }
+    output.push_str(&html_to_text(html));
+    Ok(output)
+}
+
 // ── 抓取(逐跳 SSRF 复检 + 限额)──────────────────────────────────
 
 /// 受控抓取核心(逐跳 SSRF 复检 + **钉 IP 直连** + 限额):返回 `(是否 html, 原始文本)`。
@@ -297,6 +432,16 @@ async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String>
 pub(crate) async fn fetch_guarded(url: &str) -> Result<String, String> {
     let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
     Ok(if is_html { html_to_text(&raw) } else { raw })
+}
+
+/// 机会雷达固定页面抓取：与通用抓取共用网络护栏，但保留安全岗位 href。
+pub(crate) async fn fetch_guarded_for_radar(url: &str) -> Result<String, String> {
+    let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
+    if is_html {
+        radar_html_to_text(url, &raw)
+    } else {
+        Ok(raw)
+    }
 }
 
 /// 从 HTML 抽 `<title>`(验链展示用;Unicode 安全 char 级)。无 / 空 → None。
@@ -468,6 +613,25 @@ mod tests {
         assert!(!t.contains("color:red")); // style 去除
         assert!(!t.contains('<')); // 标签去除
         assert!(t.contains('\n')); // 块标签转换行
+    }
+
+    #[test]
+    fn radar_html_keeps_distinct_safe_absolute_and_relative_job_links() {
+        let html = r#"<main>
+          <a class="job" href="/jobs/backend?team=core&amp;level=senior#apply">Backend</a>
+          <a href='../jobs/platform'>Platform</a>
+          <a href="javascript:alert(1)">bad</a>
+          <a href="mailto:jobs@example.com">mail</a>
+        </main>"#;
+        let text = radar_html_to_text("https://careers.example.com/openings/", html).unwrap();
+        assert!(
+            text.contains("Link: https://careers.example.com/jobs/backend?team=core&level=senior")
+        );
+        assert!(text.contains("Link: https://careers.example.com/jobs/platform"));
+        assert!(!text.contains("javascript:"));
+        assert!(!text.contains("mailto:"));
+        assert!(text.contains("Backend"));
+        assert!(text.contains("Platform"));
     }
 
     #[test]

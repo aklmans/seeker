@@ -165,6 +165,26 @@ const MIGRATIONS: &[(i64, &str)] = &[
         10,
         "CREATE TABLE IF NOT EXISTS job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
+    // Opportunity Radar 可信状态与调用账本是 Rust 私有证据：不在 table_for，通用 CRUD、
+    // 便携导入和 AI 都不可伪造。恢复备份后机会必须重新验链，不携带本机信任。
+    (
+        11,
+        "CREATE TABLE IF NOT EXISTS opportunity_verifications (
+             opportunity_id TEXT PRIMARY KEY,
+             task_id TEXT NOT NULL,
+             run_id TEXT NOT NULL,
+             dedupe_key TEXT NOT NULL,
+             url TEXT NOT NULL,
+             fingerprint TEXT NOT NULL,
+             verified_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_opportunity_verifications_run ON opportunity_verifications(run_id);
+         CREATE TABLE IF NOT EXISTS platform_agent_call_ledger (
+             run_id TEXT PRIMARY KEY,
+             source_calls INTEGER NOT NULL DEFAULT 0,
+             model_calls INTEGER NOT NULL DEFAULT 0
+         );",
+    ),
 ];
 
 fn schema_version(conn: &Connection) -> i64 {
@@ -327,12 +347,37 @@ pub(crate) fn delete_record(conn: &Connection, collection: &str, id: &str) -> Re
     Ok(())
 }
 
+fn downgrade_opportunity_trust(record: &Value) -> Value {
+    let mut downgraded = record.clone();
+    if let Some(object) = downgraded.as_object_mut() {
+        object.insert("sourceVerified".into(), Value::Bool(false));
+        object.insert("sourceVerifiedAt".into(), Value::from(0));
+        object.insert(
+            "sourceTrustStatus".into(),
+            Value::String("imported_unverified".into()),
+        );
+    }
+    downgraded
+}
+
 #[tauri::command]
 pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
     let table = table_for(&collection)?;
     let conn = db.0.lock().unwrap();
-    upsert_into(&conn, table, &record)?;
-    Ok(record)
+    let stored = if collection == "job_opportunities" {
+        let downgraded = downgrade_opportunity_trust(&record);
+        let id = record_id(&downgraded)?;
+        conn.execute(
+            "DELETE FROM opportunity_verifications WHERE opportunity_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        downgraded
+    } else {
+        record
+    };
+    upsert_into(&conn, table, &stored)?;
+    Ok(stored)
 }
 
 /// 删除并**返回被删记录(快照)**——前端据此 toastUndo 撤销(经 db_upsert 还原)。
@@ -343,16 +388,25 @@ pub fn db_remove(
     id: String,
 ) -> Result<Option<Value>, String> {
     let table = table_for(&collection)?;
-    let conn = db.0.lock().unwrap();
+    let mut conn = db.0.lock().unwrap();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     let sel = format!("SELECT data_json FROM {table} WHERE id = ?1");
-    let snap: Option<Value> = conn
+    let snap: Option<Value> = tx
         .prepare(&sel)
         .map_err(|e| e.to_string())?
         .query_row(params![id.clone()], |r| r.get::<_, String>(0))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
-    conn.execute(&format!("DELETE FROM {table} WHERE id = ?1"), params![id])
+    tx.execute(&format!("DELETE FROM {table} WHERE id = ?1"), params![id])
         .map_err(|e| e.to_string())?;
+    if collection == "job_opportunities" {
+        tx.execute(
+            "DELETE FROM opportunity_verifications WHERE opportunity_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(snap)
 }
 
@@ -664,7 +718,18 @@ fn import_portable_bundle(
             .as_array()
             .ok_or_else(|| format!("集合 {collection} 必须是数组"))?;
         for record in records {
-            upsert_into(&tx, table, record)?;
+            if *collection == "job_opportunities" {
+                let downgraded = downgrade_opportunity_trust(record);
+                let id = record_id(&downgraded)?;
+                tx.execute(
+                    "DELETE FROM opportunity_verifications WHERE opportunity_id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+                upsert_into(&tx, table, &downgraded)?;
+            } else {
+                upsert_into(&tx, table, record)?;
+            }
         }
         counts.insert((*collection).to_string(), Value::from(records.len()));
     }
@@ -751,6 +816,10 @@ fn clear_collections_transactionally(
     }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut deleted = 0usize;
+    if tables.contains(&"job_opportunities") {
+        tx.execute("DELETE FROM opportunity_verifications", [])
+            .map_err(|e| e.to_string())?;
+    }
     for table in tables {
         deleted += tx
             .execute(&format!("DELETE FROM {table}"), [])
@@ -4314,6 +4383,8 @@ mod tests {
         assert!(table_for("secrets").is_err());
         assert!(table_for("settings").is_err());
         assert!(table_for("meta").is_err());
+        assert!(table_for("opportunity_verifications").is_err());
+        assert!(table_for("platform_agent_call_ledger").is_err());
         // 业务集合可访问。
         assert!(table_for("jobs").is_ok());
         assert_eq!(table_for("job_opportunities").unwrap(), "job_opportunities");
@@ -4593,11 +4664,39 @@ mod tests {
         assert_eq!(counts["memories"], 1);
         assert_eq!(counts["documents"], 1);
         let again = super::build_portable_bundle(&restored, false, None).unwrap();
-        assert_eq!(again["collections"], bundle["collections"]);
+        for (collection, _) in super::COLLECTION_TABLES {
+            if *collection != "job_opportunities" {
+                assert_eq!(
+                    again["collections"][*collection], bundle["collections"][*collection],
+                    "{collection}"
+                );
+            }
+        }
+        let imported_opportunity = &again["collections"]["job_opportunities"][0];
+        assert_eq!(imported_opportunity["sourceVerified"], false);
+        assert_eq!(imported_opportunity["sourceVerifiedAt"], 0);
+        assert_eq!(
+            imported_opportunity["sourceTrustStatus"],
+            "imported_unverified"
+        );
         assert_eq!(again["profile"], bundle["profile"]);
         assert_eq!(again["settings"], bundle["settings"]);
         assert_eq!(again["capabilities"], bundle["capabilities"]);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn imported_or_generic_opportunity_records_cannot_carry_local_trust() {
+        let forged = serde_json::json!({
+            "id": "opportunity_forged",
+            "sourceVerified": true,
+            "sourceVerifiedAt": 999,
+            "sourceTrustStatus": "verified"
+        });
+        let downgraded = super::downgrade_opportunity_trust(&forged);
+        assert_eq!(downgraded["sourceVerified"], false);
+        assert_eq!(downgraded["sourceVerifiedAt"], 0);
+        assert_eq!(downgraded["sourceTrustStatus"], "imported_unverified");
     }
 
     #[test]

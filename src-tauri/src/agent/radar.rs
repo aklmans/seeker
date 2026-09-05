@@ -3,6 +3,7 @@
 use crate::data::{get_record, list_records, upsert_record};
 use crate::mcp::{flatten_content, McpManager};
 use async_trait::async_trait;
+use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -52,7 +53,7 @@ impl RadarSourceReader<tauri::Wry> for ProductionRadarSource {
     ) -> Result<String, String> {
         tokio::select! {
             _ = token.cancelled() => Err("机会来源读取已取消".into()),
-            result = crate::web::fetch_guarded(url) => result,
+            result = crate::web::fetch_guarded_for_radar(url) => result,
         }
     }
 
@@ -72,9 +73,8 @@ impl RadarSourceReader<tauri::Wry> for ProductionRadarSource {
             .into_iter()
             .find(|candidate| candidate.server == server && candidate.tool == tool)
             .ok_or_else(|| format!("机会来源 MCP 工具未连接或不存在: {server}/{tool}"))?;
-        if !descriptor.read_only {
-            return Err(format!("机会雷达只允许只读 MCP 工具: {server}/{tool}"));
-        }
+        // readOnlyHint 是 MCP 服务端自报提示，不作授权。能到达此处的工具必须已在
+        // TaskSpec 中由用户精确选定，且调度入口会在 Rust 核拒绝所有 MCP 来源。
         if !mcp_accepts_query_only(&descriptor.input_schema) {
             return Err(format!(
                 "机会雷达 MCP 工具必须只依赖字符串 query 参数: {server}/{tool}"
@@ -159,12 +159,16 @@ pub(super) fn build_queries(snapshot: &Value) -> Vec<String> {
         .collect()
 }
 
-pub(super) async fn discover<R: Runtime, S: RadarSourceReader<R>>(
+pub(super) async fn discover<R: Runtime, S: RadarSourceReader<R>, F>(
     app: &AppHandle<R>,
     snapshot: &Value,
     source_reader: &S,
     token: &CancellationToken,
-) -> Result<Value, String> {
+    reserve_source_call: &F,
+) -> Result<Value, String>
+where
+    F: Fn() -> Result<bool, String> + Sync,
+{
     let queries = build_queries(snapshot);
     let sources = snapshot["sources"]
         .as_array()
@@ -181,6 +185,9 @@ pub(super) async fn discover<R: Runtime, S: RadarSourceReader<R>>(
         match source["kind"].as_str() {
             Some("url") => {
                 let url = source["url"].as_str().ok_or("URL 来源缺少 url")?;
+                if !reserve_source_call()? {
+                    break;
+                }
                 let content = source_reader.read_url(app, url, token.clone()).await?;
                 let content = truncate_source(content);
                 total += content.len();
@@ -194,10 +201,16 @@ pub(super) async fn discover<R: Runtime, S: RadarSourceReader<R>>(
                 }));
             }
             Some("mcp") => {
+                if source["authorization"] != "user_selected_exact_tool" {
+                    return Err("MCP 来源缺少用户对精确工具的明确授权".into());
+                }
                 let server = source["server"].as_str().ok_or("MCP 来源缺少 server")?;
                 let tool = source["tool"].as_str().ok_or("MCP 来源缺少 tool")?;
                 for query in &queries {
                     if calls >= max_calls || total >= MAX_TOTAL_SOURCE_TEXT {
+                        break;
+                    }
+                    if !reserve_source_call()? {
                         break;
                     }
                     let content = source_reader
@@ -311,6 +324,7 @@ pub(super) fn normalize_candidates(
             "title": bounded_text(candidate.get("title"), 160),
             "company": company,
             "role": role,
+            "seniority": bounded_text(candidate.get("seniority"), 80),
             "location": bounded_text(candidate.get("location"), 120),
             "remote": bounded_text(candidate.get("remote"), 40),
             "requiredSkills": skills,
@@ -325,16 +339,24 @@ pub(super) fn normalize_candidates(
     Ok(json!({ "candidates": normalized, "rejectedByProvenance": rejected }))
 }
 
-pub(super) async fn verify_candidates<R: Runtime, S: RadarSourceReader<R>>(
+pub(super) async fn verify_candidates<R: Runtime, S: RadarSourceReader<R>, F>(
     app: &AppHandle<R>,
     normalized: &Value,
     source_reader: &S,
     token: &CancellationToken,
-) -> Result<Value, String> {
+    reserve_source_call: &F,
+) -> Result<Value, String>
+where
+    F: Fn() -> Result<bool, String> + Sync,
+{
     let mut verified = Vec::new();
     let mut rejected = Vec::new();
     for candidate in normalized["candidates"].as_array().into_iter().flatten() {
         let url = candidate["url"].as_str().unwrap_or("");
+        if !reserve_source_call()? {
+            rejected.push(json!({ "url": url, "error": "运行来源调用预算已用尽" }));
+            continue;
+        }
         match source_reader.read_url(app, url, token.clone()).await {
             Ok(text) if !text.trim().is_empty() => verified.push(candidate.clone()),
             Ok(_) => rejected.push(json!({ "url": url, "error": "来源正文为空" })),
@@ -353,6 +375,28 @@ fn contains_folded(haystack: &str, needle: &str) -> bool {
 }
 
 fn score(candidate: &Value, criteria: &Value) -> Option<(f64, Vec<String>)> {
+    let role_text = format!(
+        "{} {}",
+        candidate["title"].as_str().unwrap_or(""),
+        candidate["role"].as_str().unwrap_or("")
+    );
+    let candidate_seniority = candidate["seniority"].as_str().unwrap_or("").trim();
+    let seniority_text = if candidate_seniority.is_empty() {
+        role_text.clone()
+    } else {
+        candidate_seniority.to_string()
+    };
+    let location_text = format!(
+        "{} {}",
+        candidate["location"].as_str().unwrap_or(""),
+        candidate["remote"].as_str().unwrap_or("")
+    );
+    let candidate_remote = candidate["remote"].as_str().unwrap_or("").trim();
+    let remote_text = if candidate_remote.is_empty() {
+        candidate["location"].as_str().unwrap_or("")
+    } else {
+        candidate_remote
+    };
     let searchable = format!(
         "{} {} {} {} {} {}",
         candidate["title"].as_str().unwrap_or(""),
@@ -368,16 +412,47 @@ fn score(candidate: &Value, criteria: &Value) -> Option<(f64, Vec<String>)> {
     {
         return None;
     }
-    let mut points = 0.0;
-    let mut reasons = Vec::new();
-    if let Some(role) = strings(&criteria["roles"])
+    let roles = strings(&criteria["roles"]);
+    let matched_role = roles
         .iter()
-        .find(|role| contains_folded(&searchable, role))
+        .find(|role| contains_folded(&role_text, role))?;
+    let seniority = strings(&criteria["seniority"]);
+    if !seniority.is_empty()
+        && !seniority
+            .iter()
+            .any(|level| contains_folded(&seniority_text, level))
     {
-        points += 40.0;
-        reasons.push(format!("role:{role}"));
+        return None;
     }
     let skills = strings(&criteria["requiredSkills"]);
+    if !skills
+        .iter()
+        .all(|skill| contains_folded(&searchable, skill))
+    {
+        return None;
+    }
+    let locations = strings(&criteria["locations"]);
+    if !locations.is_empty()
+        && !locations
+            .iter()
+            .any(|location| contains_folded(&location_text, location))
+    {
+        return None;
+    }
+    let remote = criteria["remotePreference"].as_str().unwrap_or("any");
+    if remote != "any" && !contains_folded(remote_text, remote) {
+        return None;
+    }
+    let mut points = 0.0;
+    let mut reasons = Vec::new();
+    points += 40.0;
+    reasons.push(format!("role:{matched_role}"));
+    if let Some(level) = seniority
+        .iter()
+        .find(|level| contains_folded(&seniority_text, level))
+    {
+        reasons.push(format!("seniority:{level}"));
+    }
     if !skills.is_empty() {
         let matched = skills
             .iter()
@@ -386,7 +461,6 @@ fn score(candidate: &Value, criteria: &Value) -> Option<(f64, Vec<String>)> {
         points += 30.0 * matched as f64 / skills.len() as f64;
         reasons.push(format!("skills:{matched}/{}", skills.len()));
     }
-    let locations = strings(&criteria["locations"]);
     if locations.is_empty()
         || locations
             .iter()
@@ -394,8 +468,7 @@ fn score(candidate: &Value, criteria: &Value) -> Option<(f64, Vec<String>)> {
     {
         points += 10.0;
     }
-    let remote = criteria["remotePreference"].as_str().unwrap_or("any");
-    if remote == "any" || contains_folded(&searchable, remote) {
+    if remote == "any" || contains_folded(remote_text, remote) {
         points += 10.0;
     }
     if let Some(company) = strings(&criteria["watchedCompanies"])
@@ -408,9 +481,113 @@ fn score(candidate: &Value, criteria: &Value) -> Option<(f64, Vec<String>)> {
     Some(((points * 10.0).round() / 10.0, reasons))
 }
 
-fn opportunity_id(url: &str) -> (String, String) {
+pub(super) fn opportunity_id(url: &str) -> (String, String) {
     let dedupe = format!("{:x}", Sha256::digest(url.as_bytes()));
     (format!("opportunity_{}", &dedupe[..20]), dedupe)
+}
+
+fn verification_fingerprint(record: &Value) -> Result<String, String> {
+    let trusted_fields = json!({
+        "id": record["id"],
+        "dedupeKey": record["dedupeKey"],
+        "title": record["title"],
+        "company": record["company"],
+        "role": record["role"],
+        "seniority": record["seniority"],
+        "location": record["location"],
+        "remote": record["remote"],
+        "requiredSkills": record["requiredSkills"],
+        "summary": record["summary"],
+        "url": record["url"],
+        "matchScore": record["matchScore"],
+        "scoreReasons": record["scoreReasons"],
+        "source": record["source"],
+        "taskId": record["taskId"],
+        "lastRunId": record["lastRunId"],
+        "firstObservedAt": record["firstObservedAt"],
+        "observedAt": record["observedAt"],
+        "sourceVerified": record["sourceVerified"],
+        "sourceVerifiedAt": record["sourceVerifiedAt"],
+    });
+    let encoded = serde_json::to_vec(&trusted_fields).map_err(|error| error.to_string())?;
+    Ok(format!("{:x}", Sha256::digest(encoded)))
+}
+
+pub(super) fn persist_verification_receipt(
+    conn: &rusqlite::Connection,
+    record: &Value,
+) -> Result<(), String> {
+    let opportunity_id = record["id"].as_str().ok_or("机会验证缺少 id")?;
+    let task_id = record["taskId"].as_str().ok_or("机会验证缺少 taskId")?;
+    let run_id = record["lastRunId"]
+        .as_str()
+        .ok_or("机会验证缺少 lastRunId")?;
+    let dedupe_key = record["dedupeKey"]
+        .as_str()
+        .ok_or("机会验证缺少 dedupeKey")?;
+    let url = record["url"].as_str().ok_or("机会验证缺少 URL")?;
+    let verified_at = record["sourceVerifiedAt"]
+        .as_i64()
+        .ok_or("机会验证缺少时间")?;
+    let fingerprint = verification_fingerprint(record)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO opportunity_verifications
+         (opportunity_id, task_id, run_id, dedupe_key, url, fingerprint, verified_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            opportunity_id,
+            task_id,
+            run_id,
+            dedupe_key,
+            url,
+            fingerprint,
+            verified_at
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub(super) fn verification_receipt_matches(
+    conn: &rusqlite::Connection,
+    record: &Value,
+) -> Result<bool, String> {
+    let Some(opportunity_record_id) = record["id"].as_str() else {
+        return Ok(false);
+    };
+    let Some(record_url) = record["url"].as_str() else {
+        return Ok(false);
+    };
+    let (_, expected_dedupe_key) = opportunity_id(record_url);
+    let receipt = conn
+        .query_row(
+            "SELECT task_id, run_id, dedupe_key, url, fingerprint, verified_at
+             FROM opportunity_verifications WHERE opportunity_id = ?1",
+            params![opportunity_record_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((task_id, run_id, dedupe_key, url, fingerprint, verified_at)) = receipt else {
+        return Ok(false);
+    };
+    Ok(record["sourceVerified"] == true
+        && record["taskId"].as_str() == Some(task_id.as_str())
+        && record["lastRunId"].as_str() == Some(run_id.as_str())
+        && record["dedupeKey"].as_str() == Some(dedupe_key.as_str())
+        && dedupe_key == expected_dedupe_key
+        && record["url"].as_str() == Some(url.as_str())
+        && record["sourceVerifiedAt"].as_i64() == Some(verified_at)
+        && verification_fingerprint(record)? == fingerprint)
 }
 
 pub(super) fn rank_and_save(
@@ -450,6 +627,7 @@ pub(super) fn rank_and_save(
             "title": candidate["title"],
             "company": candidate["company"],
             "role": candidate["role"],
+            "seniority": candidate["seniority"],
             "location": candidate["location"],
             "remote": candidate["remote"],
             "requiredSkills": candidate["requiredSkills"],
@@ -471,8 +649,12 @@ pub(super) fn rank_and_save(
             "observedAt": now,
             "updatedAt": now,
         });
-        if let Some(job_id) = existing.as_ref().and_then(|record| record.get("jobId")) {
-            record["jobId"] = job_id.clone();
+        if let Some(existing) = existing.as_ref() {
+            for field in ["jobId", "acceptedAt"] {
+                if let Some(value) = existing.get(field) {
+                    record[field] = value.clone();
+                }
+            }
         }
         records.push(record);
     }
@@ -486,6 +668,7 @@ pub(super) fn rank_and_save(
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     for record in &records {
         upsert_record(&tx, OPPORTUNITIES, record)?;
+        persist_verification_receipt(&tx, record)?;
     }
     tx.commit().map_err(|error| error.to_string())?;
     Ok(records)
@@ -642,7 +825,11 @@ mod tests {
     #[test]
     fn deterministic_score_filters_excluded_terms_and_preserves_user_status() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE job_opportunities (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);",
+        )
+        .unwrap();
         let criteria = json!({
             "roles": ["Backend Engineer"], "locations": ["Remote"],
             "remotePreference": "remote", "requiredSkills": ["Rust", "SQL"],
@@ -663,6 +850,54 @@ mod tests {
         assert_eq!(rerun[0]["status"], "dismissed");
         assert_eq!(rerun[0]["firstObservedAt"], 10);
         assert_eq!(list_records(&conn, OPPORTUNITIES).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn role_seniority_location_remote_and_skills_are_hard_filters_for_every_source_kind() {
+        let criteria = json!({
+            "roles": ["Backend Engineer"],
+            "seniority": ["Senior"],
+            "locations": ["Remote"],
+            "remotePreference": "remote",
+            "requiredSkills": ["Rust", "SQL"]
+        });
+        let base = json!({
+            "title": "Senior Backend Engineer",
+            "company": "Acme",
+            "role": "Backend Engineer",
+            "seniority": "Senior",
+            "location": "Remote",
+            "remote": "remote",
+            "requiredSkills": ["Rust", "SQL"],
+            "summary": "Build reliable systems"
+        });
+        for kind in ["url", "mcp"] {
+            let mut candidate = base.clone();
+            candidate["sourceKind"] = json!(kind);
+            assert!(score(&candidate, &criteria).is_some(), "{kind}");
+        }
+        for kind in ["url", "mcp"] {
+            for (field, value) in [
+                ("title", json!("Senior Product Designer")),
+                ("role", json!("Product Designer")),
+                ("seniority", json!("Junior")),
+                ("location", json!("Berlin")),
+                ("remote", json!("onsite")),
+                ("requiredSkills", json!(["Rust"])),
+            ] {
+                let mut candidate = base.clone();
+                candidate["sourceKind"] = json!(kind);
+                candidate[field] = value;
+                if field == "title" || field == "role" {
+                    candidate["title"] = json!("Senior Product Designer");
+                    candidate["role"] = json!("Product Designer");
+                }
+                if field == "location" {
+                    candidate["remote"] = json!("onsite");
+                }
+                assert!(score(&candidate, &criteria).is_none(), "{kind}/{field}");
+            }
+        }
     }
 
     #[test]

@@ -98,6 +98,7 @@ pub fn run() {
             agent::agent_run_list,
             agent::agent_run_get,
             agent::runner::agent_run_start,
+            agent::runner::agent_run_start_scheduled,
             agent::runner::agent_run_pause,
             agent::runner::agent_run_resume,
             agent::runner::agent_run_cancel,
