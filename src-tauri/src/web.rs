@@ -361,9 +361,15 @@ pub(crate) fn radar_html_to_text(base_url: &str, html: &str) -> Result<String, S
 
 // ── 抓取(逐跳 SSRF 复检 + 限额)──────────────────────────────────
 
-/// 受控抓取核心(逐跳 SSRF 复检 + **钉 IP 直连** + 限额):返回 `(是否 html, 原始文本)`。
+struct FetchedText {
+    is_html: bool,
+    raw: String,
+    final_url: reqwest::Url,
+}
+
+/// 受控抓取核心(逐跳 SSRF 复检 + **钉 IP 直连** + 限额):返回正文及最终响应 URL。
 /// `max_body`:响应体读取上限(web_fetch 取全文 MAX_BODY;验链取小额省流)。
-async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String> {
+async fn fetch_raw(url: &str, max_body: usize) -> Result<FetchedText, String> {
     let mut current = validate_fetch_url(url)?;
     for _ in 0..=MAX_REDIRECTS {
         // 每一跳:校验 scheme + 解析主机 IP 校验 + **钉定 IP**(关 DNS rebinding:reqwest 不再二次解析该 host)。
@@ -423,25 +429,36 @@ async fn fetch_raw(url: &str, max_body: usize) -> Result<(bool, String), String>
             let chunk = chunk.map_err(|e| format!("读取响应失败:{e}"))?;
             append_bounded(&mut buf, &chunk, max_body)?;
         }
-        return Ok((is_html, String::from_utf8_lossy(&buf).into_owned()));
+        return Ok(FetchedText {
+            is_html,
+            raw: String::from_utf8_lossy(&buf).into_owned(),
+            final_url: parsed,
+        });
     }
     Err("重定向次数过多".into())
 }
 
 /// 抓取并抽纯文本(web_fetch 用):全文 + html→text。
 pub(crate) async fn fetch_guarded(url: &str) -> Result<String, String> {
-    let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
-    Ok(if is_html { html_to_text(&raw) } else { raw })
+    let fetched = fetch_raw(url, MAX_BODY).await?;
+    Ok(if fetched.is_html {
+        html_to_text(&fetched.raw)
+    } else {
+        fetched.raw
+    })
+}
+
+fn radar_text_from_fetch(fetched: FetchedText) -> Result<String, String> {
+    if fetched.is_html {
+        radar_html_to_text(fetched.final_url.as_str(), &fetched.raw)
+    } else {
+        Ok(fetched.raw)
+    }
 }
 
 /// 机会雷达固定页面抓取：与通用抓取共用网络护栏，但保留安全岗位 href。
 pub(crate) async fn fetch_guarded_for_radar(url: &str) -> Result<String, String> {
-    let (is_html, raw) = fetch_raw(url, MAX_BODY).await?;
-    if is_html {
-        radar_html_to_text(url, &raw)
-    } else {
-        Ok(raw)
-    }
+    radar_text_from_fetch(fetch_raw(url, MAX_BODY).await?)
 }
 
 /// 从 HTML 抽 `<title>`(验链展示用;Unicode 安全 char 级)。无 / 空 → None。
@@ -487,8 +504,12 @@ pub async fn verify_sources(urls: Vec<String>) -> Result<Value, String> {
     let results: Vec<Value> = stream::iter(urls)
         .map(|url| async move {
             match fetch_raw(&url, VERIFY_BODY).await {
-                Ok((is_html, raw)) => {
-                    let title = if is_html { extract_title(&raw) } else { None };
+                Ok(fetched) => {
+                    let title = if fetched.is_html {
+                        extract_title(&fetched.raw)
+                    } else {
+                        None
+                    };
                     json!({ "url": url, "ok": true, "title": title })
                 }
                 Err(e) => json!({ "url": url, "ok": false, "error": e }),
@@ -632,6 +653,18 @@ mod tests {
         assert!(!text.contains("mailto:"));
         assert!(text.contains("Backend"));
         assert!(text.contains("Platform"));
+    }
+
+    #[test]
+    fn radar_projection_uses_final_redirect_url_as_relative_link_base() {
+        let fetched = FetchedText {
+            is_html: true,
+            raw: r#"<a href="jobs/42">Backend Engineer</a>"#.into(),
+            final_url: validate_fetch_url("https://ats.example.com/en/openings/").unwrap(),
+        };
+        let text = radar_text_from_fetch(fetched).unwrap();
+        assert!(text.contains("Link: https://ats.example.com/en/openings/jobs/42"));
+        assert!(!text.contains("https://careers.example.com/jobs/42"));
     }
 
     #[test]
