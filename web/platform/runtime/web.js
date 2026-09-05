@@ -69,6 +69,21 @@ function downgradeOpportunityTrust(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
   return { ...record, sourceVerified: false, sourceVerifiedAt: 0, sourceTrustStatus: 'imported_unverified' };
 }
+/** MCP 授权只存在于桌面 Rust 私有表；Web 不保留、更不相信 JSON 自报的派生状态。
+ * @param {any} record */
+function stripAgentTaskAuthorization(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
+  const stored = { ...record };
+  delete stored.mcpAuthorizationRequired;
+  delete stored.mcpAuthorizationValid;
+  return stored;
+}
+/** @param {string} collection @param {any} record */
+function downgradeWebTrust(collection, record) {
+  if (collection === 'job_opportunities') return downgradeOpportunityTrust(record);
+  if (collection === 'platform_agent_tasks') return stripAgentTaskAuthorization(record);
+  return record;
+}
 /** @param {string} name @returns {Promise<any[]>} */
 async function listAll(name) {
   const s = await store(name, 'readonly');
@@ -98,7 +113,10 @@ function downloadJson(obj, filename) {
 async function bundleAll(redact) {
   /** @type {any} */
   const collections = {};
-  for (const c of COLLECTIONS) collections[c] = redact && REDACTED_COLLECTIONS.has(c) ? [] : await listAll(c);
+  for (const c of COLLECTIONS) {
+    const records = redact && REDACTED_COLLECTIONS.has(c) ? [] : await listAll(c);
+    collections[c] = records.map((record) => downgradeWebTrust(c, record));
+  }
   return {
     format: 'seeker-backup',
     formatVersion: 2,
@@ -145,7 +163,7 @@ async function importBundle(bundle) {
   for (const c of COLLECTIONS) {
     const records = bundle.collections[c] || [];
     const target = tx.objectStore(c);
-    for (const rec of records) target.put(c === 'job_opportunities' ? downgradeOpportunityTrust(rec) : rec);
+    for (const rec of records) target.put(downgradeWebTrust(c, rec));
     if (records.length) counts[c] = records.length;
   }
   for (const kv of ['profile', 'settings']) {
@@ -277,17 +295,18 @@ export function createWebRuntime() {
     available: (feature) => FEATURES.has(feature),
 
     db: {
-      list: async (collection) => guard(collection) || listAll(collection),
+      list: async (collection) => guard(collection) || (await listAll(collection)).map((record) => downgradeWebTrust(collection, record)),
       get: async (collection, id) => {
         const bad = guard(collection);
         if (bad) return bad;
         const s = await store(collection, 'readonly');
-        return (await reqDone(s.get(id))) ?? null;
+        const record = (await reqDone(s.get(id))) ?? null;
+        return downgradeWebTrust(collection, record);
       },
       upsert: async (collection, record) => {
         const bad = guard(collection);
         if (bad) return bad;
-        const stored = collection === 'job_opportunities' ? downgradeOpportunityTrust(record) : record;
+        const stored = downgradeWebTrust(collection, record);
         const s = await store(collection, 'readwrite');
         await reqDone(s.put(stored));
         return /** @type {any} */ (stored);
@@ -312,8 +331,8 @@ export function createWebRuntime() {
     // Web 只保全/展示从桌面便携包带来的任务记录，不伪装能在浏览器执行本地 Agent。
     agent: {
       createTask: () => notImpl('rt.agent.createTask', 'web'),
-      listTasks: () => listAll('platform_agent_tasks'),
-      getTask: async (taskId) => { const s = await store('platform_agent_tasks', 'readonly'); return (await reqDone(s.get(taskId))) ?? null; },
+      listTasks: async () => (await listAll('platform_agent_tasks')).map(stripAgentTaskAuthorization),
+      getTask: async (taskId) => { const s = await store('platform_agent_tasks', 'readonly'); return stripAgentTaskAuthorization((await reqDone(s.get(taskId))) ?? null); },
       authorizeMcp: () => notImpl('rt.agent.authorizeMcp', 'web'),
       listRuns: async (taskId) => (await listAll('platform_agent_runs')).filter((r) => r && r.taskId === taskId),
       getRun: async (runId) => { const s = await store('platform_agent_runs', 'readonly'); return (await reqDone(s.get(runId))) ?? null; },
@@ -323,7 +342,7 @@ export function createWebRuntime() {
       openArtifact: () => notImpl('rt.agent.openArtifact', 'web'),
       listApprovals: async (runId) => (await listAll('platform_agent_approvals')).filter((r) => r && r.runId === runId),
       listEvents: async (runId) => (await listAll('platform_agent_events')).filter((r) => r && r.runId === runId),
-      listOpportunities: () => listAll('job_opportunities'),
+      listOpportunities: async () => (await listAll('job_opportunities')).map(downgradeOpportunityTrust),
       setOpportunityStatus: () => notImpl('rt.agent.setOpportunityStatus', 'web'),
       acceptOpportunity: () => notImpl('rt.agent.acceptOpportunity', 'web'),
       undoOpportunity: () => notImpl('rt.agent.undoOpportunity', 'web'),

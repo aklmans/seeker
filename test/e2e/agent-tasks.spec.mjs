@@ -252,27 +252,43 @@ test('导入的 MCP 任务先展示精确工具并重新授权，未授权时不
       capabilityScope: { collections: ['job_opportunities'], tools: [], effects: ['read_only', 'external_read'], maxSteps: 12, maxAttempts: 2 },
       createdAt: 1, updatedAt: 1,
     };
-    await window.SeekerRT.db.upsert('platform_agent_tasks', {
-      ...task, mcpAuthorizationRequired: true, mcpAuthorizationValid: false,
-    });
+    await window.SeekerRT.db.import(JSON.stringify({
+      format: 'seeker-backup', formatVersion: 2,
+      collections: {
+        platform_agent_tasks: [{
+          ...task, mcpAuthorizationRequired: false, mcpAuthorizationValid: true,
+        }],
+      },
+    }));
   });
   await page.reload();
   await page.evaluate(async () => {
+    const listImportedTasks = window.SeekerRT.agent.listTasks;
     window.SeekerRT.available = () => true;
+    window.SeekerRT.agent.listTasks = async () => (await listImportedTasks()).map((task) => ({
+      ...task,
+      mcpAuthorizationRequired: true,
+      mcpAuthorizationValid: window.__authorizedMcpTask === task.id,
+    }));
     window.SeekerRT.agent.listRuns = async () => [];
     window.SeekerRT.agent.listArtifacts = async () => [];
     window.SeekerRT.agent.authorizeMcp = async (taskId) => {
       window.__authorizedMcpTask = taskId;
       const task = await window.SeekerRT.db.get('platform_agent_tasks', taskId);
-      const authorized = { ...task, mcpAuthorizationRequired: true, mcpAuthorizationValid: true };
-      await window.SeekerRT.db.upsert('platform_agent_tasks', authorized);
-      return authorized;
+      return { ...task, mcpAuthorizationRequired: true, mcpAuthorizationValid: true };
     };
     const { renderTasks } = await import('/apps/jobseek/pages/tasks.js');
     renderTasks();
   });
 
   await expect.poll(() => page.evaluate(async () => (await window.SeekerRT.db.list('platform_agent_tasks')).length)).toBe(1);
+  expect(await page.evaluate(async () => {
+    const task = await window.SeekerRT.db.get('platform_agent_tasks', 'task_imported_mcp');
+    return {
+      hasRequired: Object.hasOwn(task, 'mcpAuthorizationRequired'),
+      hasValid: Object.hasOwn(task, 'mcpAuthorizationValid'),
+    };
+  })).toEqual({ hasRequired: false, hasValid: false });
   await page.locator('.nav-item[data-id="tasks"]').click();
   const taskPage = page.locator('#page-tasks');
   await expect(taskPage).toContainText('MCP · untrusted-search/search');
