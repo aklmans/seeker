@@ -181,7 +181,7 @@ test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受�
 test('English 界面创建雷达时提交英文报告语言', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('jh-lang', 'en'));
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     window.SeekerRT.available = () => true;
     window.SeekerRT.mcp.list = async () => [];
     window.SeekerRT.agent.createTask = async (draft) => {
@@ -203,7 +203,7 @@ test('English 界面创建雷达时提交英文报告语言', async ({ page }) =
 
 test('MCP readOnlyHint 仅作提示，必须显式授权且不能创建计划', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     window.SeekerRT.available = () => true;
     window.SeekerRT.mcp.list = async () => [{
       name: 'untrusted-search', connected: true, tools: [{
@@ -235,6 +235,52 @@ test('MCP readOnlyHint 仅作提示，必须显式授权且不能创建计划', 
   expect(await page.evaluate(() => window.__radarDrafts[0].inputs.sources[0])).toEqual({
     kind: 'mcp', server: 'untrusted-search', tool: 'search', userApproved: true,
   });
+});
+
+test('导入的 MCP 任务先展示精确工具并重新授权，未授权时不能开始', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const task = {
+      id: 'task_imported_mcp', projectId: 'default', workflowId: 'job_opportunity_radar',
+      title: 'Imported radar', goal: 'Review imported sources', status: 'draft', createdBy: 'user',
+      inputs: {
+        criteria: { roles: ['Backend Engineer'] },
+        sources: [{ kind: 'mcp', server: 'untrusted-search', tool: 'search', authorization: 'user_selected_exact_tool' }],
+        language: 'en',
+      },
+      constraints: [], deliverables: [], successCriteria: [],
+      capabilityScope: { collections: ['job_opportunities'], tools: [], effects: ['read_only', 'external_read'], maxSteps: 12, maxAttempts: 2 },
+      createdAt: 1, updatedAt: 1,
+    };
+    await window.SeekerRT.db.upsert('platform_agent_tasks', {
+      ...task, mcpAuthorizationRequired: true, mcpAuthorizationValid: false,
+    });
+  });
+  await page.reload();
+  await page.evaluate(async () => {
+    window.SeekerRT.available = () => true;
+    window.SeekerRT.agent.listRuns = async () => [];
+    window.SeekerRT.agent.listArtifacts = async () => [];
+    window.SeekerRT.agent.authorizeMcp = async (taskId) => {
+      window.__authorizedMcpTask = taskId;
+      const task = await window.SeekerRT.db.get('platform_agent_tasks', taskId);
+      const authorized = { ...task, mcpAuthorizationRequired: true, mcpAuthorizationValid: true };
+      await window.SeekerRT.db.upsert('platform_agent_tasks', authorized);
+      return authorized;
+    };
+    const { renderTasks } = await import('/apps/jobseek/pages/tasks.js');
+    renderTasks();
+  });
+
+  await expect.poll(() => page.evaluate(async () => (await window.SeekerRT.db.list('platform_agent_tasks')).length)).toBe(1);
+  await page.locator('.nav-item[data-id="tasks"]').click();
+  const taskPage = page.locator('#page-tasks');
+  await expect(taskPage).toContainText('MCP · untrusted-search/search');
+  await expect(taskPage).toContainText(/MCP 授权需要确认|MCP authorization required/);
+  await expect(taskPage.getByRole('button', { name: /开始执行|Start run/ })).toHaveCount(0);
+  await taskPage.getByRole('button', { name: /授权上述精确 MCP 工具|Authorize the exact MCP tools above/ }).click();
+  await expect.poll(() => page.evaluate(() => window.__authorizedMcpTask)).toBe('task_imported_mcp');
+  await expect(taskPage.getByRole('button', { name: /开始执行|Start run/ })).toHaveCount(1);
 });
 
 test('schedulerTick 集成：启动受控雷达、跳过活动运行并持久化失败', async ({ page }) => {

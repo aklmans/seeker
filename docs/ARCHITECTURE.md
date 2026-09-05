@@ -24,7 +24,7 @@ index.html
 | profile | 独立 profile 表 | 独立 profile store | 永不进入通用 `rt.db`，AI 无读取/写入接口 |
 | API key / MCP token | 系统钥匙串 | Web 不持有桌面密钥 | 前端只见状态，类型接口没有 `get()` |
 | memories / doc_chunks | SQLite 私有表 | IndexedDB 只保全便携包 | 仅能力实现访问，不开放通用集合查询 |
-| opportunity_verifications / agent call ledger | SQLite 私有表 | Web 无可信副本 | 不在通用集合与便携备份中；只由 Rust 验链和执行器维护 |
+| opportunity_verifications / agent call ledger / MCP grants | SQLite 私有表 | Web 无可信副本 | 不在通用集合与便携备份中；只由 Rust 验链和执行器维护 |
 | 自动备份策略 | SQLite settings | Web 明确不支持后台备份 | 只经窄命令 `backup_policy_get/set` |
 
 便携备份格式当前为 v2：通用集合、隔离 profile、设置、记忆/文档和便携偏好统一导出。导入先快照、校验后单事务合并；清空必须先得到可导入备份，再原子删除。
@@ -90,7 +90,9 @@ summary 等可用事实也会进入求职信证据。模型不负责改写这些
 [AGENT-TASKS-ACCEPTANCE.md](AGENT-TASKS-ACCEPTANCE.md)。
 
 机会雷达把外部搜索限制在固定 URL，或用户在可信 UI 为手动运行明确授权的精确 MCP
-`server/tool`；MCP 的 `readOnlyHint` 只作不可信提示，含 MCP 的雷达不能被调度。查询只含职业
+`server/tool`。授权写入设备本地 Rust 私有表，不随任务 JSON、通用 CRUD 或便携备份迁移；
+导入或通用改写同一任务会撤销旧授权，任务中心必须逐项展示并要求重新确认。
+MCP 的 `readOnlyHint` 只作不可信提示，含 MCP 的雷达不能被调度。查询只含职业
 关键词，不含 profile 或简历。整个 run 的来源调用与模型调用在 Rust 私有账本中逐次原子预占，
 硬上限覆盖检索和验链，不因暂停或崩溃重置。结果先进入独立 `job_opportunities` 待审集合，
 经硬筛选、Rust 验链和确定性评分后生成 `opportunity-report.md`。来源可信状态由不可经通用

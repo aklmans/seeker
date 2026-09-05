@@ -579,6 +579,9 @@ export interface AgentTask extends Record {
   status: AgentTaskStatus;
   createdAt: number;
   updatedAt: number;
+  /** 仅返回给可信管理面，不持久化；含 MCP 的雷达是否需要/已有本机私有授权。 */
+  mcpAuthorizationRequired?: boolean;
+  mcpAuthorizationValid?: boolean;
 }
 
 export interface AgentRun extends Record {
@@ -662,6 +665,8 @@ export interface AgentApi {
   createTask(draft: AgentTaskDraft): Promise<AgentTask>;
   listTasks(): Promise<AgentTask[]>;
   getTask(taskId: string): Promise<AgentTask | null>;
+  /** 用户在任务中心核对精确 server/tool 后，为当前任务签发不可导入的本机授权。 */
+  authorizeMcp(taskId: string): Promise<AgentTask>;
   listRuns(taskId: string): Promise<AgentRun[]>;
   getRun(runId: string): Promise<AgentRun | null>;
   listSteps(runId: string): Promise<AgentStep[]>;

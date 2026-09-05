@@ -25,6 +25,7 @@ const STEPS: &str = "platform_agent_steps";
 const ARTIFACTS: &str = "platform_agent_artifacts";
 const APPROVALS: &str = "platform_agent_approvals";
 const EVENTS: &str = "platform_agent_events";
+const MCP_GRANTS: &str = "platform_agent_mcp_grants";
 const MAX_JOB_INPUTS: usize = 5;
 const MAX_RADAR_ITEMS: usize = 8;
 #[cfg(test)]
@@ -417,6 +418,101 @@ fn normalize_radar_sources(value: Option<&Value>) -> Result<Vec<Value>, String> 
     Ok(sources)
 }
 
+fn radar_mcp_tools(task: &Value) -> Result<HashSet<(String, String)>, String> {
+    if task["workflowId"] != workflow::OPPORTUNITY_RADAR {
+        return Ok(HashSet::new());
+    }
+    let snapshot = radar::load_snapshot(task)?;
+    Ok(snapshot["sources"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|source| source["kind"] == "mcp")
+        .map(|source| {
+            let server = source["server"]
+                .as_str()
+                .ok_or_else(|| "MCP 来源缺少 server".to_string())?;
+            let tool = source["tool"]
+                .as_str()
+                .ok_or_else(|| "MCP 来源缺少 tool".to_string())?;
+            Ok((server.to_string(), tool.to_string()))
+        })
+        .collect::<Result<HashSet<_>, String>>()?)
+}
+
+fn persist_radar_mcp_authorization(
+    conn: &rusqlite::Connection,
+    task: &Value,
+    granted_at: i64,
+) -> Result<(), String> {
+    let task_id = task["id"].as_str().ok_or("任务缺少 id")?;
+    let tools = radar_mcp_tools(task)?;
+    conn.execute(
+        &format!("DELETE FROM {MCP_GRANTS} WHERE task_id = ?1"),
+        rusqlite::params![task_id],
+    )
+    .map_err(|error| error.to_string())?;
+    for (server, tool) in tools {
+        conn.execute(
+            &format!(
+                "INSERT INTO {MCP_GRANTS} (task_id, server, tool, granted_at) VALUES (?1, ?2, ?3, ?4)"
+            ),
+            rusqlite::params![task_id, server, tool, granted_at],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn radar_mcp_authorization_matches(
+    conn: &rusqlite::Connection,
+    task: &Value,
+) -> Result<bool, String> {
+    let expected = radar_mcp_tools(task)?;
+    if expected.is_empty() {
+        return Ok(true);
+    }
+    let task_id = task["id"].as_str().ok_or("任务缺少 id")?;
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT server, tool FROM {MCP_GRANTS} WHERE task_id = ?1"
+        ))
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![task_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut granted = HashSet::new();
+    for row in rows {
+        granted.insert(row.map_err(|error| error.to_string())?);
+    }
+    Ok(granted == expected)
+}
+
+pub(super) fn require_radar_mcp_authorization(
+    conn: &rusqlite::Connection,
+    task: &Value,
+) -> Result<(), String> {
+    if radar_mcp_authorization_matches(conn, task)? {
+        Ok(())
+    } else {
+        Err("MCP 来源授权缺失或已失效；请在任务中心核对并重新授权精确工具".into())
+    }
+}
+
+fn task_for_ui(conn: &rusqlite::Connection, mut task: Value) -> Value {
+    if task["workflowId"] == workflow::OPPORTUNITY_RADAR {
+        let has_mcp = task["inputs"]["sources"]
+            .as_array()
+            .is_some_and(|sources| sources.iter().any(|source| source["kind"] == "mcp"));
+        task["mcpAuthorizationRequired"] = json!(has_mcp);
+        task["mcpAuthorizationValid"] =
+            json!(!has_mcp || radar_mcp_authorization_matches(conn, &task).unwrap_or(false));
+    }
+    task
+}
+
 pub(super) fn normalize_radar_inputs(inputs: &Map<String, Value>) -> Result<Value, String> {
     let criteria = inputs
         .get("criteria")
@@ -590,22 +686,43 @@ fn related_records(
 pub fn agent_task_create(db: State<'_, Db>, draft: Value) -> Result<Value, String> {
     let now = now_ms();
     let task = normalize_task_draft(draft, now)?;
-    let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
     validate_task_inputs(&conn, &task)?;
-    upsert_record(&conn, TASKS, &task)?;
-    Ok(task)
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    upsert_record(&tx, TASKS, &task)?;
+    persist_radar_mcp_authorization(&tx, &task, now)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(task_for_ui(&conn, task))
 }
 
 #[tauri::command]
 pub fn agent_task_list(db: State<'_, Db>) -> Result<Vec<Value>, String> {
     let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
-    list_records(&conn, TASKS)
+    Ok(list_records(&conn, TASKS)?
+        .into_iter()
+        .map(|task| task_for_ui(&conn, task))
+        .collect())
 }
 
 #[tauri::command]
 pub fn agent_task_get(db: State<'_, Db>, task_id: String) -> Result<Option<Value>, String> {
     let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
-    get_record(&conn, TASKS, &task_id)
+    Ok(get_record(&conn, TASKS, &task_id)?.map(|task| task_for_ui(&conn, task)))
+}
+
+#[tauri::command]
+pub fn agent_task_authorize_mcp(db: State<'_, Db>, task_id: String) -> Result<Value, String> {
+    let now = now_ms();
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    let task =
+        get_record(&conn, TASKS, &task_id)?.ok_or_else(|| format!("任务不存在: {task_id}"))?;
+    if radar_mcp_tools(&task)?.is_empty() {
+        return Err("该任务没有需要授权的 MCP 来源".into());
+    }
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    persist_radar_mcp_authorization(&tx, &task, now)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(task_for_ui(&conn, task))
 }
 
 #[tauri::command]
@@ -1021,7 +1138,8 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE resumes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+             CREATE TABLE platform_agent_tasks (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE platform_agent_mcp_grants (task_id TEXT NOT NULL, server TEXT NOT NULL, tool TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY(task_id, server, tool));",
         )
         .unwrap();
         if let Some((job, resume)) = records {
@@ -1216,6 +1334,23 @@ mod tests {
         assert!(!task.to_string().contains("secret@example.com"));
         assert!(!task.to_string().contains("privateProfile"));
         assert!(!task.to_string().contains("external_commit"));
+
+        let mcp_task = invoke_agent_task_create_draft(
+            json!({
+                "workflowId": workflow::OPPORTUNITY_RADAR,
+                "inputs": {
+                    "criteria": { "roles": ["Backend Engineer"] },
+                    "sources": [{
+                        "kind": "mcp", "server": "search", "tool": "web_search",
+                        "userApproved": true
+                    }]
+                }
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(mcp_task["mcpAuthorizationRequired"], true);
+        assert_eq!(mcp_task["mcpAuthorizationValid"], true);
 
         let error = invoke_agent_task_create_draft(
             json!({
@@ -1476,10 +1611,42 @@ mod tests {
              CREATE TABLE platform_agent_runs (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_steps (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE platform_agent_events (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);",
+             CREATE TABLE opportunity_verifications (opportunity_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, url TEXT NOT NULL, fingerprint TEXT NOT NULL, verified_at INTEGER NOT NULL);
+             CREATE TABLE platform_agent_mcp_grants (task_id TEXT NOT NULL, server TEXT NOT NULL, tool TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY(task_id, server, tool));",
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn persisted_mcp_marker_is_not_authorization_without_a_private_grant() {
+        let conn = opportunity_db();
+        let task = normalize_task_draft(
+            json!({
+                "workflowId": workflow::OPPORTUNITY_RADAR,
+                "inputs": {
+                    "criteria": { "roles": ["Backend Engineer"] },
+                    "sources": [{
+                        "kind": "mcp", "server": "search", "tool": "web_search",
+                        "userApproved": true
+                    }]
+                }
+            }),
+            1,
+        )
+        .unwrap();
+        assert_eq!(
+            task["inputs"]["sources"][0]["authorization"],
+            "user_selected_exact_tool"
+        );
+        assert!(!radar_mcp_authorization_matches(&conn, &task).unwrap());
+        assert!(require_radar_mcp_authorization(&conn, &task)
+            .unwrap_err()
+            .contains("重新授权"));
+
+        persist_radar_mcp_authorization(&conn, &task, 2).unwrap();
+        assert!(radar_mcp_authorization_matches(&conn, &task).unwrap());
+        require_radar_mcp_authorization(&conn, &task).unwrap();
     }
 
     fn seed_opportunity(conn: &rusqlite::Connection, status: &str) -> String {

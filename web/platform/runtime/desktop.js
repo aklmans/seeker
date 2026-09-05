@@ -158,6 +158,7 @@ export function createDesktopRuntime() {
       createTask: (draft) => invoke('agent_task_create', { draft }),
       listTasks: () => invoke('agent_task_list'),
       getTask: (taskId) => invoke('agent_task_get', { taskId }),
+      authorizeMcp: (taskId) => invoke('agent_task_authorize_mcp', { taskId }),
       listRuns: (taskId) => invoke('agent_run_list', { taskId }),
       getRun: (runId) => invoke('agent_run_get', { runId }),
       listSteps: (runId) => invoke('agent_step_list', { id: runId }),

@@ -152,8 +152,11 @@ function detailHTML(task, taskState, steps, events, jobs) {
   const { run, artifacts, displayedStatus, trustBroken } = taskState;
   const inputs = /** @type {any} */ (task.inputs);
   const radar = task.workflowId === 'job_opportunity_radar';
+  const radarSources = radar && Array.isArray(inputs.sources) ? inputs.sources : [];
+  const mcpSources = radarSources.filter((/** @type {any} */ source) => source?.kind === 'mcp');
+  const mcpAuthorizationValid = mcpSources.length === 0 || task.mcpAuthorizationValid === true;
   const labels = radar ? [] : (inputs.jobIds || []).map((/** @type {string} */ id) => jobLabel(jobs.find((job) => idOf(job) === str(id)) || { id }));
-  const canRun = task.status === 'draft' || task.status === 'failed' || (radar && task.status === 'succeeded');
+  const canRun = mcpAuthorizationValid && (task.status === 'draft' || task.status === 'failed' || (radar && task.status === 'succeeded'));
   const canPause = run?.status === 'running';
   const canResume = run?.status === 'paused' || run?.status === 'interrupted';
   const canCancel = !!run && !TERMINAL.has(run.status);
@@ -161,7 +164,8 @@ function detailHTML(task, taskState, steps, events, jobs) {
     <div class="agent-task-heading"><div><p class="seclabel">— TASK SPEC</p><h2 class="sectitle">${cEsc(task.title)}<span class="dot">.</span></h2></div><span class="agent-task-status ${statusClass(displayedStatus)}">${cEsc(statusText(displayedStatus))}</span></div>
     <p class="agent-task-copy">${cEsc(task.goal)}</p>
     ${trustBroken ? `<p class="agent-task-error">${tt('当前运行的产物可信状态不完整，任务不能视为已完成。', 'The current run has incomplete artifact trust state and cannot be treated as complete.')}</p>` : ''}
-    <dl class="agent-task-spec">${radar ? `<div><dt>${tt('目标职位', 'Target roles')}</dt><dd>${(inputs.criteria?.roles || []).map(cEsc).join('<br>')}</dd></div><div><dt>${tt('机会来源', 'Sources')}</dt><dd>${cEsc(str((inputs.sources || []).length))} ${tt('项受控来源', 'controlled source(s)')}</dd></div>` : `<div><dt>${tt('岗位输入', 'Job inputs')}</dt><dd>${labels.map(cEsc).join('<br>')}</dd></div><div><dt>${tt('源简历', 'Source resume')}</dt><dd>${cEsc(str(inputs.resumeId))}</dd></div>`}<div><dt>${tt('授权效果', 'Authorized effects')}</dt><dd>${task.capabilityScope.effects.map((effect) => cEsc(effect)).join(' · ')}</dd></div><div><dt>${tt('成功条件', 'Success gate')}</dt><dd>${radar ? tt('候选已验链、去重，报告摘要一致', 'Candidates verified and deduplicated; report hash matches') : tt('4 个文件存在、格式有效且摘要一致', '4 files exist, have valid formats, and match their hashes')}</dd></div></dl>
+    <dl class="agent-task-spec">${radar ? `<div><dt>${tt('目标职位', 'Target roles')}</dt><dd>${(inputs.criteria?.roles || []).map(cEsc).join('<br>')}</dd></div><div><dt>${tt('机会来源', 'Sources')}</dt><dd>${radarSources.map((/** @type {any} */ source) => source?.kind === 'mcp' ? `MCP · ${cEsc(str(source.server))}/${cEsc(str(source.tool))}` : cEsc(str(source?.url))).join('<br>')}</dd></div>` : `<div><dt>${tt('岗位输入', 'Job inputs')}</dt><dd>${labels.map(cEsc).join('<br>')}</dd></div><div><dt>${tt('源简历', 'Source resume')}</dt><dd>${cEsc(str(inputs.resumeId))}</dd></div>`}<div><dt>${tt('授权效果', 'Authorized effects')}</dt><dd>${task.capabilityScope.effects.map((effect) => cEsc(effect)).join(' · ')}</dd></div><div><dt>${tt('成功条件', 'Success gate')}</dt><dd>${radar ? tt('候选已验链、去重，报告摘要一致', 'Candidates verified and deduplicated; report hash matches') : tt('4 个文件存在、格式有效且摘要一致', '4 files exist, have valid formats, and match their hashes')}</dd></div></dl>
+    ${mcpSources.length ? `<div class="agent-task-note"><b>${mcpAuthorizationValid ? tt('MCP 精确工具已在本机授权', 'Exact MCP tools authorized on this device') : tt('MCP 授权需要确认', 'MCP authorization required')}</b><p>${tt('readOnlyHint 只是服务端自报。导入或通用改写会使授权失效；请核对上方精确工具后再授权。', 'readOnlyHint is self-reported. Importing or generically editing the task invalidates authorization; review the exact tools above before authorizing.')}</p>${!mcpAuthorizationValid && rt.available('agentExecution') ? `<button class="btn btn-accent" data-agent-mcp-authorize>${tt('授权上述精确 MCP 工具', 'Authorize the exact MCP tools above')} →</button>` : ''}</div>` : ''}
     ${rt.available('agentExecution') ? `<div class="agent-task-actions">${canRun ? `<button class="btn btn-accent" data-agent-action="start">${radar && task.status === 'succeeded' ? tt('再次扫描', 'Scan again') : tt('开始执行', 'Start run')} →</button>` : ''}${canPause ? `<button class="btn" data-agent-action="pause">${tt('暂停', 'Pause')}</button>` : ''}${canResume ? `<button class="btn btn-accent" data-agent-action="resume">${tt('继续', 'Resume')} →</button>` : ''}${canCancel ? `<button class="btn" data-agent-action="cancel">${tt('取消任务', 'Cancel task')}</button>` : ''}</div>` : `<p class="agent-task-note">${tt('网页端仅查看从桌面备份导入的任务记录；真实执行和本地文件只在桌面版可用。', 'The web version only displays task records imported from a desktop backup. Execution and local files require the desktop app.')}</p>`}
     ${run?.error ? `<p class="agent-task-error">${cEsc(str(run.error))}</p>` : ''}
     <div class="sec"><p class="seclabel">— EXECUTION</p><h3 class="sectitle">${tt('执行计划', 'Execution plan')}<span class="dot">.</span></h3>${stepsHTML(steps)}</div>
@@ -241,9 +245,22 @@ function wire(run) {
   $$('#page-tasks [data-agent-task]').forEach((button) => { /** @type {HTMLElement} */ (button).onclick = () => { view.selectedTaskId = str(/** @type {HTMLElement} */ (button).dataset.agentTask); view.composing = false; void refresh(false); }; });
   const create = /** @type {HTMLButtonElement | null} */ ($('#page-tasks [data-agent-create]'));
   if (create) create.onclick = () => { void createTask(create); };
+  const authorize = /** @type {HTMLButtonElement | null} */ ($('#page-tasks [data-agent-mcp-authorize]'));
+  if (authorize) authorize.onclick = () => { void authorizeMcp(authorize); };
   $$('#page-tasks [data-agent-action]').forEach((button) => { /** @type {HTMLElement} */ (button).onclick = () => { void controlRun(str(/** @type {HTMLElement} */ (button).dataset.agentAction), run); }; });
   $$('#page-tasks [data-agent-preview]').forEach((button) => { /** @type {HTMLElement} */ (button).onclick = () => { void previewArtifact(str(/** @type {HTMLElement} */ (button).dataset.agentPreview)); }; });
   $$('#page-tasks [data-agent-open]').forEach((button) => { /** @type {HTMLElement} */ (button).onclick = () => { void openArtifact(str(/** @type {HTMLElement} */ (button).dataset.agentOpen)); }; });
+}
+
+/** @param {HTMLButtonElement} button */
+async function authorizeMcp(button) {
+  if (view.busy) return;
+  view.busy = true; button.disabled = true;
+  try {
+    await rt.agent.authorizeMcp(view.selectedTaskId);
+    toast(tt('已授权当前任务列出的精确 MCP 工具', 'The exact MCP tools listed for this task are now authorized'));
+  } catch (error) { toast(tt('授权失败：', 'Authorization failed: ') + errText(error)); }
+  finally { view.busy = false; void refresh(false); }
 }
 
 /** @param {HTMLButtonElement} button */

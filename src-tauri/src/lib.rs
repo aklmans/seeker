@@ -95,6 +95,7 @@ pub fn run() {
             agent::agent_task_create,
             agent::agent_task_list,
             agent::agent_task_get,
+            agent::agent_task_authorize_mcp,
             agent::agent_run_list,
             agent::agent_run_get,
             agent::runner::agent_run_start,

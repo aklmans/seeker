@@ -185,6 +185,19 @@ const MIGRATIONS: &[(i64, &str)] = &[
              model_calls INTEGER NOT NULL DEFAULT 0
          );",
     ),
+    // MCP 雷达授权是本机用户同意的私有凭据：不进入 table_for/便携备份，导入或通用 CRUD
+    // 改写任务时必须失效，避免 JSON 中的 userApproved/authorization 伪造外部工具授权。
+    (
+        12,
+        "CREATE TABLE IF NOT EXISTS platform_agent_mcp_grants (
+             task_id TEXT NOT NULL,
+             server TEXT NOT NULL,
+             tool TEXT NOT NULL,
+             granted_at INTEGER NOT NULL,
+             PRIMARY KEY(task_id, server, tool)
+         );
+         CREATE INDEX IF NOT EXISTS idx_platform_agent_mcp_grants_task ON platform_agent_mcp_grants(task_id);",
+    ),
 ];
 
 fn schema_version(conn: &Connection) -> i64 {
@@ -363,11 +376,12 @@ fn downgrade_opportunity_trust(record: &Value) -> Value {
 #[tauri::command]
 pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result<Value, String> {
     let table = table_for(&collection)?;
-    let conn = db.0.lock().unwrap();
+    let mut conn = db.0.lock().unwrap();
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
     let stored = if collection == "job_opportunities" {
         let downgraded = downgrade_opportunity_trust(&record);
         let id = record_id(&downgraded)?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM opportunity_verifications WHERE opportunity_id = ?1",
             params![id],
         )
@@ -376,7 +390,16 @@ pub fn db_upsert(db: State<'_, Db>, collection: String, record: Value) -> Result
     } else {
         record
     };
-    upsert_into(&conn, table, &stored)?;
+    if collection == "platform_agent_tasks" {
+        let id = record_id(&stored)?;
+        tx.execute(
+            "DELETE FROM platform_agent_mcp_grants WHERE task_id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    upsert_into(&tx, table, &stored)?;
+    tx.commit().map_err(|error| error.to_string())?;
     Ok(stored)
 }
 
@@ -402,6 +425,13 @@ pub fn db_remove(
     if collection == "job_opportunities" {
         tx.execute(
             "DELETE FROM opportunity_verifications WHERE opportunity_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if collection == "platform_agent_tasks" {
+        tx.execute(
+            "DELETE FROM platform_agent_mcp_grants WHERE task_id = ?1",
             params![id],
         )
         .map_err(|e| e.to_string())?;
@@ -728,6 +758,14 @@ fn import_portable_bundle(
                 .map_err(|e| e.to_string())?;
                 upsert_into(&tx, table, &downgraded)?;
             } else {
+                if *collection == "platform_agent_tasks" {
+                    let id = record_id(record)?;
+                    tx.execute(
+                        "DELETE FROM platform_agent_mcp_grants WHERE task_id = ?1",
+                        params![id],
+                    )
+                    .map_err(|error| error.to_string())?;
+                }
                 upsert_into(&tx, table, record)?;
             }
         }
@@ -818,6 +856,10 @@ fn clear_collections_transactionally(
     let mut deleted = 0usize;
     if tables.contains(&"job_opportunities") {
         tx.execute("DELETE FROM opportunity_verifications", [])
+            .map_err(|e| e.to_string())?;
+    }
+    if tables.contains(&"platform_agent_tasks") {
+        tx.execute("DELETE FROM platform_agent_mcp_grants", [])
             .map_err(|e| e.to_string())?;
     }
     for table in tables {
@@ -4385,6 +4427,7 @@ mod tests {
         assert!(table_for("meta").is_err());
         assert!(table_for("opportunity_verifications").is_err());
         assert!(table_for("platform_agent_call_ledger").is_err());
+        assert!(table_for("platform_agent_mcp_grants").is_err());
         // 业务集合可访问。
         assert!(table_for("jobs").is_ok());
         assert_eq!(table_for("job_opportunities").unwrap(), "job_opportunities");
@@ -4557,6 +4600,12 @@ mod tests {
             )
             .unwrap();
         }
+        conn
+            .execute(
+                "INSERT INTO platform_agent_mcp_grants VALUES ('platform_agent_tasks-1','search','web_search',1)",
+                [],
+            )
+            .unwrap();
         conn.execute("INSERT INTO profile (k,v) VALUES ('name','Ada')", [])
             .unwrap();
         conn.execute("INSERT INTO settings (k,v) VALUES ('autobackup','off')", [])
@@ -4575,6 +4624,10 @@ mod tests {
             })),
         )
         .unwrap();
+        assert!(
+            !bundle.to_string().contains("web_search"),
+            "本机 MCP 授权不能进入便携备份"
+        );
         assert_eq!(bundle["format"], "seeker-backup");
         assert_eq!(bundle["formatVersion"], super::PORTABLE_FORMAT_VERSION);
         let collections = bundle["collections"].as_object().unwrap();
@@ -4647,6 +4700,18 @@ mod tests {
             .unwrap();
         }
         source
+            .execute(
+                "INSERT INTO platform_agent_mcp_grants VALUES ('platform_agent_tasks-id','search','web_search',1)",
+                [],
+            )
+            .unwrap();
+        restored
+            .execute(
+                "INSERT INTO platform_agent_mcp_grants VALUES ('platform_agent_tasks-id','search','web_search',1)",
+                [],
+            )
+            .unwrap();
+        source
             .execute("INSERT INTO profile VALUES ('city','LA')", [])
             .unwrap();
         source
@@ -4657,6 +4722,14 @@ mod tests {
         let bundle = super::build_portable_bundle(&source, false, None).unwrap();
 
         let counts = super::import_portable_bundle(&mut restored, &bundle).unwrap();
+        let grants: i64 = restored
+            .query_row(
+                "SELECT COUNT(*) FROM platform_agent_mcp_grants",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(grants, 0, "便携导入必须撤销同 id 任务的本机 MCP 授权");
         for (collection, table) in super::COLLECTION_TABLES {
             assert_eq!(counts[*collection], 1);
             assert_eq!(super::read_collection(&restored, table).unwrap().len(), 1);

@@ -49,7 +49,9 @@ v0.3 只有两个编译期注册的工作流：`job_application_package` 与
 - `sources`：1–8 项，仅允许 `{kind:"url",url}` 或
   `{kind:"mcp",server,tool,userApproved:true}`；MCP 工具必须当前已连接、可仅用字符串
   `query` 调用，并由用户在可信 UI 中明确授权精确 `server/tool`；`readOnlyHint`
-  只是不可信的服务端自报，不参与授权判定；
+  只是不可信的服务端自报，不参与授权判定。授权凭据只存在于设备本地 Rust 私有表，
+  不进入任务 JSON 或便携备份；导入、通用改写、删除或清空任务都会撤销对应授权，
+  再次运行前必须在任务中心核对逐项列出的 `server/tool` 并重新授权；
 - `limits`：可缩小但不能放大平台硬上限：4 条查询、8 个来源、12 次来源调用、40 条候选、
   1 次模型调用；
 - `language`：`zh / en`。
@@ -86,7 +88,8 @@ new -> reviewed -> accepted
 
 搜索请求只含用户确认的职业关键词和地理条件；不得读取或发送 `profile`、联系方式、简历正文、
 对话历史、项目指令或密钥。MCP annotation 只作界面提示；工作流只在用户手动启动的 run
-中调用 TaskSpec 固化的确切 server/tool，不宣称它在技术上可验证为只读。模型规范化阶段结构性无工具。
+中调用 TaskSpec 固化且仍具有效本机授权的确切 server/tool；开始和恢复均重新校验授权，
+不宣称它在技术上可验证为只读。模型规范化阶段结构性无工具。
 
 ## 5. 接受与撤销
 

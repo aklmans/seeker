@@ -336,6 +336,7 @@ pub async fn agent_run_start(
         let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
         let task =
             get_record(&conn, TASKS, &task_id)?.ok_or_else(|| format!("任务不存在: {task_id}"))?;
+        super::require_radar_mcp_authorization(&conn, &task)?;
         prepare_new_run(&mut conn, &task)?
     };
     let run_id = run["id"]
@@ -412,6 +413,10 @@ fn initialize_resume<R: Runtime>(
         if !matches!(run["status"].as_str(), Some("paused" | "interrupted")) {
             return Err("只有已暂停或已中断的运行可以继续".into());
         }
+        let task_id = run["taskId"].as_str().ok_or("运行缺少 taskId")?;
+        let task =
+            get_record(&conn, TASKS, task_id)?.ok_or_else(|| format!("任务不存在: {task_id}"))?;
+        super::require_radar_mcp_authorization(&conn, &task)?;
         drop(conn);
         reconcile_unknown_steps(app, run_id)
     })();
