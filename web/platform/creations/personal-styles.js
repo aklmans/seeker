@@ -52,7 +52,7 @@ export async function renderCreationStyleSettings(host){
       const preset=STYLE_PRESETS.find(p=>'preset:'+p.id===select.value),row=rows.find(r=>r.id===select.value);
       if(!preset&&!row)throw Error(tt('请先选择样式','Choose a style first'));
       const name=preset?tt(preset.zh,preset.en):/** @type {NonNullable<typeof row>} */(row).title;
-      saveCreationStylePreference(name,preset||/** @type {NonNullable<typeof row>} */(row).style);info.textContent=tt('默认样式：','Default style: ')+name;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');
+      saveCreationStylePreference(name,preset?{preset:preset.id}:/** @type {NonNullable<typeof row>} */(row).style);info.textContent=tt('默认样式：','Default style: ')+name;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');
     }catch(e){status.textContent=errText(e);}};
     const toolbar=document.createElement('div');toolbar.className='creation-toolbar';toolbar.append(select,save);host.append(toolbar,status);
     const heading=document.createElement('h3');heading.textContent=tt('我的样式','My styles');host.append(heading);

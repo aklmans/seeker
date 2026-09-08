@@ -36,10 +36,13 @@
 
 ## 自动化与构建
 
+P1/P2 修复后重新执行前端门禁、Rust fmt 与默认配置构建；Rust clippy 和测试沿用上一轮结果，
+本次未修改 Rust 源码。CI 已配置双浏览器安装与执行，本次未推送，尚未触发远端 CI。
+
 - `npm test`：160 项通过。
 - `npm run typecheck`：通过。
-- `npm run test:e2e`：本地 HTTP、Chromium 全量 56 项通过；最终预览调整后分享 5 项再次通过。
-- 分享相关 WebKit：5 项通过；其他作品与导图的 WebKit 结果见各增量记录。
+- `npm run test:e2e -- --workers=4`：本地 HTTP、Chromium 57 项与 WebKit 57 项全部通过，共 114 项。
+- `npx playwright test --project=webkit --list`：从仓库配置列出 13 个文件、57 项测试。
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`：通过。
 - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`：通过。
 - `cargo test --manifest-path src-tauri/Cargo.toml`：244 项单测、1 项 parser CLI 集成测试通过，4 项忽略。
@@ -48,6 +51,35 @@
 
 用户追加的弹窗边框与表单调整已实现，并经浏览器深浅色、长预览、保存样式及 390px 英文窗口验证。
 旧版和新版桌面窗口分别截图，已确认表单留白、控件高度、边框与底部操作区的修正；曾因锁屏中断的步骤现已补齐。
+
+## 验收反馈修复与复现
+
+- **P1：内置默认样式丢失身份。** 新增回归先在旧代码上失败，保存值预期 `preset: soft`，实际为
+  `minimal`。保存内置样式时现显式传入 `preset.id` 对应的 `preset` 字段，由统一样式规范化生成完整参数。
+  同一条 E2E 在 Chromium/WebKit 通过，覆盖设置保存、刷新后新建、持久化作品、下拉框“柔和”、
+  全部样式参数与再次刷新重开；已有个人样式与写入失败测试也通过。
+  桌面独立副本实际选择“柔和”作为默认值，新建“默认柔和验收”并保存 v2，退出重启后确认名称、颜色、
+  间距 24、圆角 20 与设置默认值保留，已截图核对。验收后恢复副本原来的“纸上阅读”默认值。
+- **P2：WebKit 证据依赖临时配置。** 先前分享 5 项和各增量的 WebKit 记录来自仓库外临时配置，
+  不能通过当时的仓库配置直接复现。本次将 `webkit` project 纳入 `playwright.config.mjs`，并让 CI
+  安装两个浏览器；`npm run test:e2e` 现在默认运行两者的全量测试。
+
+从干净检出安装并复现（配置自动启动本地 HTTP 服务）：
+
+```bash
+npm ci
+npx playwright install --with-deps chromium webkit
+npm run test:e2e
+```
+
+仅检查或运行 WebKit：
+
+```bash
+npx playwright test --project=webkit --list
+npm run test:e2e -- --project=webkit
+```
+
+此前已经保存过错误身份的默认值，需要在设置中重新选择并保存一次；本次修复不会自动重写已有作品。
 
 ## 仍需用户试用的部分
 

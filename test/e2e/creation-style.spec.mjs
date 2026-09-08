@@ -1,6 +1,19 @@
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 async function open(page){await page.addInitScript(()=>{if(window!==top)return;localStorage.setItem('jh-onboarded','done');localStorage.setItem('jh-demonote','off');});await page.goto('/');await page.locator('[data-id="creations"]').click();}
+test('内置柔和默认样式在新作品和重启后保留预设身份、下拉框及参数',async({page})=>{
+  const soft={preset:'soft',background:'#f5f0f7',foreground:'#463b52',accent:'#806392',surface:'#fffcff',font:'sans',size:16,spacing:24,radius:20,edge:'curve'};
+  await open(page);
+  await page.locator('[data-id="settings"]').click();await page.locator('[data-stab="creations"]').click();
+  await page.locator('#creationDefaultStyle').selectOption('preset:soft');await page.locator('#creationDefaultSave').click();await expect(page.locator('#creationDefaultStatus')).toContainText('已保存');
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('seeker-creation-style')))).toEqual({name:'柔和',style:soft});
+  await page.reload();await page.locator('[data-id="creations"]').click();await page.getByRole('button',{name:'+ 新建知识卡片',exact:true}).click();
+  await expect(page.locator('#creationPreset')).toHaveValue('soft');await expect(page.locator('#creationPreset option:checked')).toHaveText('柔和');
+  for(const key of ['background','foreground','accent','surface','font','size','spacing','radius'])await expect(page.locator(`[data-style="${key}"]`)).toHaveValue(String(soft[key]));
+  const record=(await page.evaluate(()=>window.SeekerRT.db.list('platform_creations'))).find(r=>r.kind==='card');expect(record.style).toEqual(soft);
+  await page.reload();await page.locator('[data-id="creations"]').click();await page.locator('.creation-list-item').filter({hasText:'新知识卡片'}).click();
+  await expect(page.locator('#creationPreset')).toHaveValue('soft');await expect(page.locator('#creationPreset option:checked')).toHaveText('柔和');await expect(page.locator('[data-style="radius"]')).toHaveValue('20');
+});
 test('个人样式跨作品复用，默认值显式设置与重启保留，删除撤销及完整备份往返',async({page})=>{
   await open(page);await page.getByRole('button',{name:'+ 新建知识卡片',exact:true}).click();await page.locator('#creationPreset').selectOption('dark');await page.locator('[data-style="radius"]').fill('21');
   await page.getByRole('button',{name:'保存到我的样式',exact:true}).click();await page.locator('#personalStyleName').fill('夜间阅读');await page.locator('#personalStyleSave').click();await expect(page.locator('#creationPersonalStyle option')).toHaveCount(2);expect(await page.evaluate(()=>localStorage.getItem('seeker-creation-style'))).toBeNull();
