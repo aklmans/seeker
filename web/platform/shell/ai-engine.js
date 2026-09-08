@@ -13,6 +13,7 @@ import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
 import { saveConversationMessage } from './conversation-store.js';
 import { appendSaveAnswer } from './library-actions.js';
+import {renderAndSaveWidget,appendCreationLink} from '../creations/chat.js';
 import { currentPage } from './nav.js';
 import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
 import { currentProjectId } from './project-state.js'; // ★PJ2:多轮历史桶键缺省 = 当前项目(零 import 叶子)
@@ -72,6 +73,8 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
+  const widgetSaves=[];
+  const widgetScope={conversationId:messageScope?.conversationId,turnId:messageScope?.turnId,projectId:messageScope?.projectId??currentProjectId()};
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   __aiStreamBusy=true; // ★SC1:开流即忙(清点在 onDone/onError 首行)
@@ -90,7 +93,8 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
          (appMode 恒 agent、流式期 appReady 必真 → 直设 dataset,免 import agentShowCanvas 造 ai-engine⇄copilot-chrome 环)。兜底:无画布容器则仍内联(#2 · W1 沙箱不变)。 */
       if(!streaming) startStream();
       try{
-        const card=window.SeekerWidgets.renderWidget(w);
+        const {card,saved}=renderAndSaveWidget(w,widgetScope);
+        widgetSaves.push(saved);
         const canvasBody=document.getElementById('agentCanvasBody');
         if(canvasBody){ canvasBody.appendChild(card); document.body.dataset.canvas='widget'; document.body.dataset.agent='split'; }
         else { const host=thinkBubble.parentElement; if(host) host.appendChild(card); }
@@ -117,6 +121,8 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
       if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
       appendSaveAnswer(thinkBubble, prose);
       const persistCards = pending.filter(([k])=>CARDS[k].persist).map(([kind,data])=>({kind,data}));
+      const creationIds=(await Promise.all(widgetSaves)).filter(Boolean);
+      for(const id of creationIds){persistCards.push({kind:'platform_creation',data:{id}});appendCreationLink(thinkBubble,id);}
       try {
         if(messageScope) await saveConversationMessage(messageScope, 'ai', prose, persistCards);
         else persistMsg(who==='Agent'?'agent':'cop','ai', prose, persistCards);

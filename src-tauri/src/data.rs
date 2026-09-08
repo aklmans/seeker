@@ -19,7 +19,7 @@ use tauri::{AppHandle, Manager, State};
 /// 进程内单连接(本地单机足够);Mutex 串行化访问。
 pub struct Db(pub Mutex<Connection>);
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -47,6 +47,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
     ("platform_schedules", "platform_schedules"),
     ("platform_projects", "platform_projects"),
     ("platform_conversations", "platform_conversations"),
+    ("platform_creations", "platform_creations"),
     // Task Agent 运行域:管理面可读写、便携备份覆盖,但永久排除在 capability::QUERYABLE 之外。
     ("platform_agent_tasks", "platform_agent_tasks"),
     ("platform_agent_runs", "platform_agent_runs"),
@@ -59,6 +60,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
 /// 分享型导出不携带任务运行细节。任务目标/事件可能含用户文本,artifact 路径还会泄露本机用户名。
 /// 完整 backup 仍覆盖这些集合；这里只影响显式 `redact=true` 的分享/诊断包。
 const REDACTED_COLLECTIONS: &[&str] = &[
+    "platform_creations",
     "assets_documents",
     "job_opportunities",
     "platform_agent_tasks",
@@ -215,6 +217,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (
         15,
         "CREATE TABLE IF NOT EXISTS assets_documents (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    (
+        16,
+        "CREATE TABLE IF NOT EXISTS platform_creations (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 

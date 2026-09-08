@@ -661,6 +661,7 @@ mod tests {
         //   (自我改写行为基线,比自排任务更直接);写半由 registry caps.len 断言承重(同 schedules)。
         assert!(!is_queryable("platform_projects"));
         assert!(!is_queryable("platform_conversations"));
+        assert!(!is_queryable("platform_creations"));
         assert!(!is_queryable("assets_documents"));
         // 机会雷达候选含外部来源正文与用户审阅状态，只能由受控任务/UI 访问。
         assert!(!is_queryable("job_opportunities"));

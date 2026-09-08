@@ -52,6 +52,7 @@ export type Collection =
   | 'platform_schedules'
   | 'platform_projects'
   | 'platform_conversations'
+  | 'platform_creations'
   /** Task Agent 管理集合:可持久化/备份,但不进入 AI QUERYABLE。 */
   | 'platform_agent_tasks'
   | 'platform_agent_runs'
@@ -499,7 +500,35 @@ export type ExportDocBlock =
   | { kind: 'entry'; head: string; date?: string; bullets?: string[] };
 
 /** 导出 / 渲染(平台层 · 业务无关「文档模型 → 文件」)。 */
+export type CreationKind = 'widget' | 'mindmap' | 'card' | 'comparison' | 'timeline' | 'style';
+export interface CreationDraft {
+  id: string;
+  kind: CreationKind;
+  title: string;
+  content: { [key: string]: unknown };
+  style: { [key: string]: unknown };
+  source: { [key: string]: unknown };
+  projectId: string;
+  deleted: boolean;
+}
+export interface CreationSnapshot extends CreationDraft {
+  revision: number;
+  updatedAt: number;
+}
+export interface CreationRecord extends CreationSnapshot {
+  createdAt: number;
+  history: CreationSnapshot[];
+}
+export interface CreationsApi {
+  /** Atomic compare-and-save. 0 requires an absent ID. Retains the last 20 versions.
+   * Deletion is a reversible flag; stale writers cannot overwrite newer edits. */
+  save(draft: CreationDraft, expectedRevision: number): Promise<CreationRecord>;
+}
+
 export interface RenderApi {
+  /** PNG input is decoded and bounded. PDF is a single long raster page of the preview. */
+  creationImage(title:string, pngDataUrl:string, format:'png'|'pdf'):Promise<string>;
+  copyCreationImage(pngDataUrl:string):Promise<void>;
   /** Local Markdown export. Desktop writes a new file in Downloads/Seeker and verifies it;
    * Web starts a browser download and returns its filename. No model call. */
   markdown(title: string, text: string): Promise<string>;
@@ -726,6 +755,7 @@ export interface RuntimeApi {
   readonly memory: MemoryApi;
   readonly docs: DocsApi;
   readonly library: LibraryApi;
+  readonly creations: CreationsApi;
   readonly mcp: McpApi;
   readonly render: RenderApi;
   readonly web: WebApi;

@@ -32,7 +32,13 @@ fn write_document(
     extension: &str,
     bytes: &[u8],
 ) -> Result<PathBuf, String> {
-    if !["md", "docx"].contains(&extension) || bytes.is_empty() || bytes.len() > 2_000_000 {
+    let limit = if ["png", "pdf"].contains(&extension) {
+        100_000_000
+    } else {
+        2_000_000
+    };
+    if !["md", "docx", "png", "pdf"].contains(&extension) || bytes.is_empty() || bytes.len() > limit
+    {
         return Err("不支持的格式或文件大小 / Unsupported format or file size".into());
     }
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;

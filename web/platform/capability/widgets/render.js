@@ -12,6 +12,9 @@
  * 自适应高度、主题热跟随、交互回流与**加载/错误兜底**。
  */
 
+import {styleCSS} from '../../creations/style.js';
+import {tt} from '../../shell/i18n.js';
+import {snapshotWidget} from './snapshot.js';
 /** srcDoc 内 CSP:掐断网络;允许内联样式/脚本(widget 必需);图片仅 data:。 */
 const SRCDOC_CSP =
   "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:";
@@ -84,12 +87,23 @@ function themeSnapshot() {
 // ── 活跃端口注册表 + 主题广播(切深浅色时热推给所有 widget)──────
 /** @type {Set<MessagePort>} */
 const PORTS = new Set();
+/** @type {Map<MessagePort,HTMLIFrameElement>} */
+const FRAMES = new Map();
+/** @type {WeakMap<HTMLElement,( )=>Promise<{html:string,width:number}>>} */
+const SNAPSHOTS = new WeakMap();
+/** @param {HTMLElement} card */
+export function requestWidgetSnapshot(card){
+  const request=SNAPSHOTS.get(card);
+  if(!request)return Promise.reject(new Error(tt('组件尚未就绪，请稍后重试','Widget is not ready; retry shortly')));
+  return request();
+}
 /** @type {MutationObserver | null} */
 let themeObserver = null;
 
 function broadcastTheme() {
   const vars = themeVarsObject();
   for (const port of PORTS) {
+    if(!FRAMES.get(port)?.isConnected){port.close();PORTS.delete(port);FRAMES.delete(port);continue;}
     try { port.postMessage({ type: 'theme', vars }); }
     catch (_e) { PORTS.delete(port); }
   }
@@ -103,7 +117,7 @@ function ensureThemeObserver() {
 }
 
 /** srcDoc 内的可信 bridge(运行在沙箱里):端口握手 + 高度上报 + 主题热更新 + 交互上抛 + 错误兜底。 */
-const BRIDGE = "(function(){var port=null,t=0,last=0,pendingErr=null;" +
+const BRIDGE = "(function(){var port=null,t=0,last=0,pendingErr=null;" + snapshotWidget.toString() + ';' +
   "function send(m){if(port){try{port.postMessage(m);}catch(e){}}}" +
   // widget 交互上抛:LLM 在按钮等处调 seeker.action('id', data) → 经端口当「用户意图」回流父侧(过护栏)。
   "window.seeker={action:function(n,p){send({type:'widget-action',action:String(n),payload:p});}};" +
@@ -117,6 +131,7 @@ const BRIDGE = "(function(){var port=null,t=0,last=0,pendingErr=null;" +
   "if(e.source!==window.parent)return;" + // 拒绝自投递,只认父窗口握手
   "if(e.data==='__seeker_widget_port'&&e.ports&&e.ports[0]){port=e.ports[0];" +
   "port.onmessage=function(ev){var d=ev.data;if(!d||typeof d!=='object')return;" +
+  "if(d.type==='widget-snapshot'){try{send({type:'widget-snapshot',requestId:d.requestId,result:snapshotWidget()});}catch(e){send({type:'widget-snapshot',requestId:d.requestId,error:String(e)});}return;}" +
   "if(d.type==='theme'&&d.vars){var r=document.documentElement;for(var k in d.vars){if(Object.prototype.hasOwnProperty.call(d.vars,k))r.style.setProperty(k,String(d.vars[k]));}}};" +
   "report();if(pendingErr){send({type:'widget-error',message:pendingErr});}}});" +
   "if(window.ResizeObserver){try{new ResizeObserver(schedule).observe(document.documentElement);}catch(e){}}" +
@@ -126,14 +141,15 @@ const BRIDGE = "(function(){var port=null,t=0,last=0,pendingErr=null;" +
 /**
  * 构造 srcDoc:可信外壳(CSP + reset + 主题 + bridge)包裹不可信 body。
  * @param {string} html 不可信(已 sanitize)HTML 片段
+ * @param {{[key:string]:unknown}=} style Independent saved output style; omitted for legacy widgets.
  * @returns {string}
  */
-export function buildSrcDoc(html) {
-  const theme = themeSnapshot();
+export function buildSrcDoc(html, style) {
+  const theme = style ? '' : themeSnapshot();
   return (
     '<!doctype html><html><head><meta charset="utf-8">' +
     `<meta http-equiv="Content-Security-Policy" content="${SRCDOC_CSP}">` +
-    `<style>:root{${theme};${FONT_VARS}}${BASE_CSS}</style></head><body>` +
+    `<style>:root{${theme};${FONT_VARS}}${BASE_CSS}${style ? styleCSS(style) : ''}</style></head><body>` +
     '<script>' + BRIDGE + '<\/script>' + // bridge 先于不可信内容,确保 window.seeker 就绪
     (html || '') +
     '</body></html>'
@@ -144,9 +160,10 @@ export function buildSrcDoc(html) {
  * 渲染一张 widget 卡:可信外壳(标题栏 + SANDBOXED 标记)+ 隔离 iframe + 端口桥接 + 加载/错误兜底。
  * 返回卡片元素,由调用方(domain)插入对话流。
  * @param {import('../../runtime/types').WidgetPayload} payload
+ * @param {{style?:{[key:string]:unknown}}} [options]
  * @returns {HTMLElement}
  */
-export function renderWidget(payload) {
+export function renderWidget(payload, options = {}) {
   const id = (payload && payload.id) || '';
   const title = (payload && payload.title) || 'Widget';
   const minHeight = Math.max(40, Math.min(800, (payload && payload.minHeight) || 80));
@@ -180,10 +197,11 @@ export function renderWidget(payload) {
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.setAttribute('title', title);
-  frame.setAttribute('loading', 'lazy');
+  // The selected editor may begin below the fold; export must not depend on scrolling first.
+  frame.setAttribute('loading', 'eager');
   frame.style.cssText = `display:block;width:100%;border:0;height:${minHeight}px;background:transparent;`;
   // 墙2:srcDoc 内含 CSP default-src 'none'(+ bridge)。
-  frame.setAttribute('srcdoc', buildSrcDoc(html));
+  frame.setAttribute('srcdoc', buildSrcDoc(html,options.style));
 
   // ── 加载态(仅当 >120ms 未就绪才显示,避免快速加载闪烁)──
   let readyDone = false;
@@ -195,7 +213,7 @@ export function renderWidget(payload) {
     loadingEl.style.cssText =
       'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-elevated,#fff);' +
       'color:var(--ink-3,#6b6b6b);font-family:var(--font-mono,monospace);font-size:10px;letter-spacing:.14em;text-transform:uppercase;';
-    loadingEl.textContent = '加载中…';
+    loadingEl.textContent = tt('加载中…','Loading…');
     bodyWrap.appendChild(loadingEl);
   }, 120);
   function markReady() {
@@ -216,7 +234,7 @@ export function renderWidget(payload) {
     e.style.cssText =
       'padding:8px 12px;border-top:0.5px solid var(--border,#e5e3de);background:var(--bg-subtle,#f5f2ec);' +
       'color:var(--ink-3,#6b6b6b);font-size:12px;font-family:var(--font-sans,sans-serif);';
-    e.textContent = '组件运行出错(已隔离,不影响应用)。';
+    e.textContent = tt('组件运行出错(已隔离,不影响应用)。','Widget error (isolated from the app).');
     card.appendChild(e);
   }
 
@@ -225,9 +243,24 @@ export function renderWidget(payload) {
     markReady(); // 内容已出,撤加载态
     try {
       const ch = new MessageChannel();
+      /** @type {Map<string,{resolve:(v:{html:string,width:number})=>void,reject:(e:Error)=>void,timer:ReturnType<typeof setTimeout>}>} */
+      const requests=new Map();
+      SNAPSHOTS.set(card,()=>new Promise((resolve,reject)=>{
+        const requestId=crypto.randomUUID();
+        const timer=setTimeout(()=>{requests.delete(requestId);reject(new Error(tt('组件未响应，请重新打开后重试','Widget did not respond; reopen and retry')));},8000);
+        requests.set(requestId,{resolve,reject,timer});ch.port1.postMessage({type:'widget-snapshot',requestId});
+      }));
       ch.port1.onmessage = (e) => {
         const msg = e.data;
         if (!msg || typeof msg !== 'object') return;
+        if(msg.type==='widget-snapshot'&&typeof msg.requestId==='string'){
+          const request=requests.get(msg.requestId);if(!request)return;
+          requests.delete(msg.requestId);clearTimeout(request.timer);
+          const r=msg.result;
+          if(r&&typeof r.html==='string'&&new TextEncoder().encode(r.html).length<=2_000_000&&Number.isFinite(r.width)&&r.width>0&&r.width<=2400)request.resolve({html:r.html,width:r.width});
+          else request.reject(new Error(tt('无法导出此组件的当前状态','Could not export this widget state')));
+          return;
+        }
         if (msg.type === 'widget-resize' && typeof msg.height === 'number' && isFinite(msg.height)) {
           markReady();
           const max = Math.round(window.innerHeight * MAX_HEIGHT_RATIO);
@@ -247,8 +280,7 @@ export function renderWidget(payload) {
           }
         }
       };
-      PORTS.add(ch.port1);
-      ensureThemeObserver();
+      if(!options.style){PORTS.add(ch.port1);FRAMES.set(ch.port1,frame);ensureThemeObserver();}
       if (frame.contentWindow) {
         frame.contentWindow.postMessage('__seeker_widget_port', '*', [ch.port2]);
       }

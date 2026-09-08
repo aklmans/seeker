@@ -47,6 +47,8 @@ sha2 = "0.10"
 zip = { version = "2.4", default-features = false, features = ["deflate-flate2", "flate2"] }
 quick-xml = "0.39"
 lopdf = { version = "0.34", default-features = false, features = ["nom_parser"] }
+png = "0.17"
+arboard = "=3.3.2"
 
 [dev-dependencies]
 tauri = { version = "2.11.2", features = ["test"] }

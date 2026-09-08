@@ -3,6 +3,7 @@
  *  依赖 $/el;cSuggs onclick 调 copSend(序3-b)、cBtn onclick 字符串(运行时);jobseek 专属响应(aiSuggs/copMatch/copReply)留 index.html/apps。
  *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。
  *  ★批10c(第42轮[应改]订正):streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag 实测 @874 晚于 ai-engine@869 → 此 import 边无提升;载序判据见 ai-engine.js 头注释(查提前区间,非比 tag 先后)。 */
+import {appendCreationLink} from '../creations/chat.js';
 import { streamReply, aiStreamBusy, cancelActiveReply } from './ai-engine.js';
 import { aiHTML } from './ai-render.js';
 import { collPersistOn, persistMsg } from './data-store.js';
@@ -336,7 +337,7 @@ export async function hydrateMessages(){
         r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
       if(r.role!=='user')appendSaveAnswer(bubble,r.text);
       if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
-        for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
+        for(const c of r.cards){ if(c?.kind==='platform_creation'){appendCreationLink(bubble,c.data?.id);continue;} const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
       }
     }); };
     // ★Cut 1b:收敛后只恢复 agent 历史(Copilot 浮窗删、旧 'cop' 历史弃用=数据保留不删、不再读写)。有历史则清掉招呼语再渲染(#agentMsgs 有子节点即已由本函数或 agentGreet 处理)。

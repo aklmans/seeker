@@ -5,6 +5,8 @@
  * 导出/导入用 Blob 下载 / 文件读入。AI 与 secret 仍降级(需自有后端代理 / 服务端代管,未实现)。
  * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用。
  */
+import { nextCreation } from './creation-model.js';
+import {exportCreationImage,copyCreationImage} from './creation-export.js';
 import { NotImplementedError, notImpl } from './errors.js';
 import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
 import { conversationHistory } from '../shell/conversation-model.js';
@@ -16,11 +18,11 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 10; // v10: backed-up local documents (Web only previews saved text)
+const DB_VERSION = 11; // v11: saved creations and personal styles
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'assets_documents', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_conversations', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'assets_documents', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_conversations', 'platform_creations', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
 // 分享型导出排除任务文本、审批/事件与本机 artifact 路径；完整 backup 仍保全。
-const REDACTED_COLLECTIONS = new Set(['assets_documents', 'job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
+const REDACTED_COLLECTIONS = new Set(['platform_creations', 'assets_documents', 'job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
 const KV_STORES = ['profile', 'settings', 'meta'];
 // Web 暂无记忆/RAG 执行能力,但仍保全桌面便携包中的私有数据,以便再次导出回桌面时不丢失。
 const PRIVATE_STORES = ['memories', 'doc_chunks'];
@@ -305,6 +307,23 @@ export function createWebRuntime() {
     platform: 'web',
     available: (feature) => FEATURES.has(feature),
 
+    creations: {
+      save: async (draft, expectedRevision) => {
+        const s = await store('platform_creations', 'readwrite');
+        const committed = txDone(s.transaction);
+        try {
+          const prior = await reqDone(s.get(draft.id));
+          const next = nextCreation(draft, expectedRevision, prior ?? null);
+          await Promise.all([committed, reqDone(s.put(next))]);
+          return next;
+        } catch (error) {
+          try { s.transaction.abort(); } catch (_) { /* Already finished. */ }
+          await committed.catch(() => {});
+          throw error;
+        }
+      },
+    },
+
     library: {
       importFile:()=>notImpl('rt.library.importFile','web'),
       list:async()=>(await listAll('assets_documents')).map(projectLibraryInfo),
@@ -468,6 +487,8 @@ export function createWebRuntime() {
     },
     // .docx 渲染在 Rust 核;web 端无 → 降级(domain 仍可走 Markdown 导出/复制)。
     render: {
+      creationImage:exportCreationImage,
+      copyCreationImage,
       docx: () => notImpl('rt.render.docx', 'web'),
       markdown: async (title, text) => {
         if (!text.trim() || text.length > 2000000) throw new Error('内容为空或过长 / Empty or oversized content');

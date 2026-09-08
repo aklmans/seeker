@@ -305,7 +305,10 @@ export function createDesktopRuntime() {
       confirmResolve: (confirmId, approved) => invoke('mcp_confirm_resolve', { confirmId, approved }),
     },
     // 导出/渲染(平台层 · 业务无关「文档模型 → 文件」)。.docx 零依赖手写,返回 base64。纯本地不出网。
+    creations: { save: (draft, expectedRevision) => invoke('creation_save', { draft, expectedRevision }) },
     render: {
+      creationImage:(title,pngDataUrl,format)=>invoke('export_creation_image',{title,pngDataUrl,format}),
+      copyCreationImage:pngDataUrl=>invoke('copy_creation_image',{pngDataUrl}),
       docx: (doc) => invoke('export_docx', { doc }),
       markdown: (title, text) => invoke('export_markdown', { title, text }),
     },

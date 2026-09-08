@@ -3,6 +3,8 @@ mod ai;
 mod capability;
 mod config;
 mod conversation;
+mod creation_export;
+mod creations;
 mod data;
 mod docs;
 mod docx;
@@ -89,6 +91,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            creations::creation_save,
+            creation_export::export_creation_image,
+            creation_export::copy_creation_image,
             secret::secret_set,
             secret::secret_status,
             secret::secret_clear,

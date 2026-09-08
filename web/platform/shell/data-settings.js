@@ -11,6 +11,7 @@ export async function renderDataSummary(host){
   host.textContent=tt('读取本机数据概览…','Loading device data overview…');
   const rt=window.SeekerRT;if(!rt){host.textContent=tt('数据尚未就绪，请重新打开设置。','Data is not ready. Reopen Settings.');return;}
   const groups=[{label:tt('工作空间会话','Workspace conversations'),collections:['platform_conversations','messages'],page:'workspaces'},
+    {label:tt('作品与样式（含已移除作品）','Creations and styles (including removed items)'),collections:['platform_creations'],page:'creations'},
     ...window.SeekerShell.list().map(a=>({label:tt(a.name.zh,a.name.en)+(window.SeekerShell.enabled(a.id)?'':tt('（已关闭，数据保留）',' (disabled, data kept)')),collections:a.collections||[],page:'workspaces'})),
     {label:tt('任务记录（所有空间共享）','Tasks (shared across workspaces)'),collections:['platform_agent_tasks'],page:'tasks'}];
   const results=await Promise.all(groups.map(async g=>{
