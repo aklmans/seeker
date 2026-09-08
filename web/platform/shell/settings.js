@@ -19,6 +19,7 @@ import { IC } from './icons.js';
 import { renderModelSettings } from './model-settings.js';
 import { themeMode, setThemeMode, saveAppearance, applyAppearance } from './appearance.js';
 import { renderDataSummary } from './data-settings.js';
+import { renderCreationStyleSettings } from '../creations/personal-styles.js';
 import { openHistoryManager } from './history-settings.js';
 import { cEsc, renderProjectSwitch, switchProject } from './copilot-chrome.js';
 import { setCurrentProjectId } from './project-state.js';
@@ -61,6 +62,7 @@ export function renderSettings(){
     <div class="lock-note" style="margin-top:14px;max-width:640px;"><span class="li">🔒</span><span>${tt('个人信息通过独立通道保存，不参与 AI 处理；完整备份会包含这些字段，请自行保管。','Personal info is saved through a separate channel and excluded from AI processing. Full backups contain these fields; keep your backup private.')}</span></div>
     ${extendHTML('profile')}`;
   sections.model='<div id="modelSettings"></div>';
+  sections.creations=`<h2 class="sectitle">${tt('作品样式','Creation styles')}<span class="dot">.</span></h2><div id="creationStyleSettings"></div>`;
   sections.workspace=`<h2 class="sectitle">${tt('工作空间与应用','Workspaces & apps')}<span class="dot">.</span></h2><p>${tt('设置空间名称、助手指令、启动页面、首页内容，以及需要开启的应用。','Set workspace names, assistant instructions, launch page, Home content and enabled apps.')}</p><button class="btn btn-accent" data-go="workspaces">${tt('管理工作空间','Manage workspaces')}</button>`;
   const appTabs=appSpecs.flatMap(s=>s.tabs||[]);
   appTabs.forEach(t=>{ sections[t.id]=t.render(); });
@@ -91,7 +93,7 @@ export function renderSettings(){
       <div style="color:var(--ink-3);max-width:600px;">${tt('本地优先的个人 AI Agent 工作台，由可开关的业务应用与统一能力中心组成。所有数据存于本地,密钥只进系统钥匙串,隐私信息永不参与 AI 处理。','A local-first personal AI agent workspace built from toggleable workflow apps and a unified capability center. All data stays on your machine, keys live only in the system keychain, and private info never goes through AI.')}</div>
       <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-extlink="https://github.com/aklmans/seeker/releases">${tt('检查更新','Check updates')}</button><button class="btn" data-extlink="https://github.com/aklmans/seeker/issues">${tt('反馈问题','Send feedback')}</button></div>
     </div>`;
-  const tabDefs=[SET_TABS_SHELL[0],['workspace',['工作空间','Workspaces']],SET_TABS_SHELL[2],SET_TABS_SHELL[1]]
+  const tabDefs=[SET_TABS_SHELL[0],['workspace',['工作空间','Workspaces']],['creations',['作品样式','Creation styles']],SET_TABS_SHELL[2],SET_TABS_SHELL[1]]
     .concat(appTabs.map(t=>[t.id,[t.label.zh,t.label.en]]))
     .concat([SET_TABS_SHELL[3],SET_TABS_SHELL[4]]);
   if(!sections[settingsState.tab])settingsState.tab='basic';
@@ -109,6 +111,7 @@ export function renderSettings(){
   void renderModelSettings($('#modelSettings'));
   wireDataIO();
   void renderDataSummary($('#dataSummary'));
+  void renderCreationStyleSettings($('#creationStyleSettings'));
   // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)。
   // ★批11B 末件:演示空状态行(showEmptyState=jobseek 符号)已迁入 jobseek data extend 自绑 → 平台不再裸读 apps 符号、§1 债清零。
   $$('#page-settings [data-mocktoast]').forEach(b=>{ b.onclick=()=>toast(b.dataset.mocktoast); });

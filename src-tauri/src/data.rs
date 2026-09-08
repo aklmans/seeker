@@ -624,6 +624,7 @@ fn portable_preference_key(key: &str) -> bool {
         "jh-project",
         "seeker-apps",
         "seeker-workspace",
+        "seeker-creation-style",
     ];
     if EXACT.contains(&key) {
         return true;
@@ -4677,6 +4678,7 @@ mod tests {
             false,
             Some(serde_json::json!({
                 "jh-theme": "dark",
+                "seeker-creation-style": "{\"name\":\"阅读\",\"style\":{\"preset\":\"soft\"}}",
                 "jh-seeded-assets_notes": "1",
                 "jh-democode": "must-not-export",
                 "api-key": "must-not-export",
@@ -4696,6 +4698,10 @@ mod tests {
         }
         assert_eq!(bundle["profile"]["name"], "Ada");
         assert_eq!(bundle["settings"]["autobackup"], "off");
+        assert_eq!(
+            bundle["preferences"]["seeker-creation-style"],
+            "{\"name\":\"阅读\",\"style\":{\"preset\":\"soft\"}}"
+        );
         assert_eq!(
             bundle["capabilities"]["memories"].as_array().unwrap().len(),
             1

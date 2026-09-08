@@ -5,14 +5,18 @@ import {toast,toastUndo,errText} from '../shell/toast.js';
 import {currentProjectId} from '../shell/project-state.js';
 import {renderWidget,buildSrcDoc} from '../capability/widgets/render.js';
 import {mountMindMapEditor} from './mindmap-editor.js';
+import {mountStructuredEditor} from './structured-editor.js';
 import {mindMap,outlineToMindMap,mindMapMarkdown} from './mindmap-model.js';
 import {mindMapSVG,layoutMindMap} from './mindmap-render.js';
 import {openModal,closeModal} from '../shell/modal.js';
 import {mindRequest,completedCreationText,parseMindNode} from './ai.js';
 import {openMindAI} from './mindmap-ai.js';
+import {openCreationEditAI} from './edit-ai-modal.js';
 import {creationDraft} from '../runtime/creation-model.js';
 import {newCreationId,getCreation,saveCreation} from './store.js';
 import {STYLE_PRESETS,normalizeStyle} from './style.js';
+import {defaultCreationStyle} from './style-preferences.js';
+import {mountPersonalStylePicker,openSaveStyle} from './personal-styles.js';
 import {creationHTML,escapeHTML as esc} from './content.js';
 import {openExport} from './export.js';
 
@@ -34,6 +38,7 @@ export function renderCreations(){
     <div class="creation-layout"><aside><div class="creation-list-tools"><input class="input" id="creationSearch" placeholder="${tt('搜索作品','Search creations')}" aria-label="${tt('搜索作品','Search creations')}"><label><input type="checkbox" id="creationTrash"> ${tt('已移除','Removed')}</label></div><div id="creationList"></div></aside><main id="creationEditor"><p>${tt('选择一件作品，或新建知识卡片。聊天中的 Widget 会自动保存在这里。','Choose a creation or start a knowledge card. Chat widgets are saved here automatically.')}</p><div id="creationNew"></div></main></div>`;
   host.querySelector('#creationNew')?.appendChild(button('+ 新建知识卡片','+ New knowledge card',newCard,'btn btn-accent'));
   host.querySelector('#creationNew')?.appendChild(button('+ 新建思维导图','+ New mind map',()=>openCreationComposer(),'btn'));
+  host.querySelector('#creationNew')?.append(button('+ 新建对比表','+ New comparison',()=>newStructured('comparison')),button('+ 新建时间线','+ New timeline',()=>newStructured('timeline')));
   /** @type {HTMLInputElement} */(host.querySelector('#creationSearch')).oninput=()=>{void refreshList();};
   /** @type {HTMLInputElement} */(host.querySelector('#creationTrash')).onchange=()=>{void refreshList();};
   loaded=true;void refreshList();if(current)drawEditor(current);
@@ -67,9 +72,21 @@ export async function openCreation(/** @type {string} */id){
 export async function newCard(){
   if(!canLeave())return;
   try{
-    const saved=await saveCreation({id:newCreationId(),kind:'card',title:tt('新知识卡片','New knowledge card'),content:{text:''},style:normalizeStyle(),source:{type:'manual'},projectId:currentProjectId(),deleted:false},0);
+    const saved=await saveCreation({id:newCreationId(),kind:'card',title:tt('新知识卡片','New knowledge card'),content:{text:''},style:defaultCreationStyle(),source:{type:'manual'},projectId:currentProjectId(),deleted:false},0);
     await openCreation(saved.id);
   }catch(e){report(e);}
+}
+/** @param {'comparison'|'timeline'} kind */
+async function newStructured(kind){
+  if(!canLeave())return;
+  const content=kind==='comparison'?{columns:[tt('比较项目','Criterion'),tt('方案 A','Option A'),tt('方案 B','Option B')],rows:[[tt('适合场景','Best for'),'',''],[tt('需要考虑','Considerations'),'','']]}:{events:[{when:tt('第一步','Step 1'),title:tt('开始','Start'),detail:''}]};
+  try{const saved=await saveCreation({id:newCreationId(),kind,title:kind==='comparison'?tt('新对比表','New comparison'):tt('新时间线','New timeline'),content,style:defaultCreationStyle(),source:{type:'manual'},projectId:currentProjectId(),deleted:false},0);await openCreation(saved.id);}catch(e){report(e);}
+}
+function openNewCreation(){
+  if(!canLeave())return;
+  const modal=openModal(`<div class="modal-head"><h2>${tt('新建作品','New creation')}</h2><button class="x">×</button></div><div class="creation-toolbar" id="creationKindChoices"></div>`,true);
+  const choose=(/** @type {()=>unknown} */fn)=>()=>{closeModal();void fn();};
+  modal?.querySelector('#creationKindChoices')?.append(button('知识卡片','Knowledge card',choose(newCard)),button('思维导图','Mind map',choose(()=>openCreationComposer())),button('对比表','Comparison',choose(()=>newStructured('comparison'))),button('时间线','Timeline',choose(()=>newStructured('timeline'))));
 }
 /** Trusted UI entry shared by selected answers, notes and files. No implicit library reads.
  * @param {{text?:string,title?:string,source?:{[k:string]:unknown}}} [input] */
@@ -82,7 +99,7 @@ export function openCreationComposer(input={}){
     const title=/** @type {HTMLInputElement} */(modal.querySelector('#mindCreateTitle')).value;
     const text=/** @type {HTMLTextAreaElement} */(modal.querySelector('#mindCreateText')).value;
     const content=outlineToMindMap(title,text);
-    const created=await saveCreation({id:newCreationId(),kind:'mindmap',title,content,style:normalizeStyle(),source:input.source||{type:'manual'},projectId:currentProjectId(),deleted:false},0);
+    const created=await saveCreation({id:newCreationId(),kind:'mindmap',title,content,style:defaultCreationStyle(),source:input.source||{type:'manual'},projectId:currentProjectId(),deleted:false},0);
     closeModal();await openCreation(created.id);
   }catch(e){const status=modal.querySelector('#mindCreateStatus');if(status)status.textContent=String(e);}finally{save.disabled=false;}};
   const aiButton=button('用 AI 整理成导图','Organize with AI',async()=>{
@@ -97,7 +114,7 @@ export function openCreationComposer(input={}){
       const req=mindRequest('create',text,title);controls.forEach(c=>c.disabled=true);status.textContent=tt('只发送上方文字，正在生成…','Sending only the text above; generating…');
       stream=window.SeekerRT.ai.generate(req);const result=await stream.done;if(!modal.isConnected)return;
       const content=mindMap({root:parseMindNode(completedCreationText(result)),layout:'bilateral'});
-      const created=await saveCreation({id:newCreationId(),kind:'mindmap',title,content,style:normalizeStyle(),source:input.source||{type:'selected-text'},projectId:currentProjectId(),deleted:false},0);
+      const created=await saveCreation({id:newCreationId(),kind:'mindmap',title,content,style:defaultCreationStyle(),source:input.source||{type:'selected-text'},projectId:currentProjectId(),deleted:false},0);
       if(modal.isConnected){closeModal();await openCreation(created.id);}
     }catch(e){if(modal.isConnected)status.textContent=String(e);}finally{observer.disconnect();controls.forEach(c=>c.disabled=false);}
   });
@@ -113,6 +130,7 @@ function drawEditor(record){
   host.innerHTML=`<div class="creation-toolbar"><span class="eyebrow">v${record.revision}</span><div id="creationActions"></div></div>
     <label class="creation-label">${tt('作品名称','Creation title')}<input class="input" id="creationTitle" maxlength="200" value="${esc(record.title)}"></label>
     <p id="creationSaveStatus" role="status">${tt('已保存到本机','Saved on this device')}</p>
+    <div class="creation-toolbar"><label>${tt('我的样式','My styles')} <select class="select" id="creationPersonalStyle"><option>${tt('读取中…','Loading…')}</option></select></label><div id="creationStyleActions"></div></div>
     <div class="creation-style-controls"><label>${tt('风格','Style')}<select class="select" id="creationPreset">${STYLE_PRESETS.map(p=>`<option value="${p.id}">${tt(p.zh,p.en)}</option>`).join('')}</select></label>
     ${[['background','背景','Background'],['foreground','文字','Text'],['accent','强调色','Accent'],['surface','卡片底色','Card background']].map(([k,zh,en])=>`<label>${tt(zh,en)}<input type="color" data-style="${k}" value="${esc(/** @type {any} */(s)[k])}"></label>`).join('')}
     <label>${tt('字体','Font')}<select class="select" data-style="font"><option value="sans">${tt('无衬线','Sans')}</option><option value="serif">${tt('衬线','Serif')}</option><option value="mono">${tt('等宽','Mono')}</option></select></label>
@@ -120,7 +138,7 @@ function drawEditor(record){
     ${[['size','字号','Font size',12,28],['spacing','间距','Spacing',8,48],['radius','圆角','Corners',0,32]].map(([k,zh,en,min,max])=>`<label>${tt(String(zh),String(en))}<input class="input" type="number" data-style="${k}" min="${min}" max="${max}" value="${/** @type {any} */(s)[k]}"></label>`).join('')}</div>
     <label class="creation-label" ${record.kind!=='card'?'hidden':''}>${tt('内容','Content')}<textarea class="input" id="creationText" rows="8">${esc(record.content.text||'')}</textarea></label>
     <details ${record.kind==='widget'?'':'hidden'}><summary>${tt('高级：编辑 Widget HTML','Advanced: edit widget HTML')}</summary><p>${tt('自由 Widget 在隔离环境运行。修改 HTML 会重新加载组件；使用版本记录恢复原稿。','Freeform widgets run in isolation. Editing HTML reloads the widget; versions retain earlier drafts.')}</p><textarea class="input" id="creationHTML" rows="12" spellcheck="false">${esc(record.content.html||'')}</textarea></details>
-    <div class="creation-toolbar" id="creationSaveActions"></div><div id="creationMindEditor"></div><div id="creationPreview"></div>
+    <div class="creation-toolbar" id="creationSaveActions"></div><div id="creationMindEditor"></div><div id="creationStructuredEditor"></div><div id="creationPreview"></div>
     <details><summary>${tt('修改记录（最近 20 个版本）','Version history (last 20 versions)')}</summary><div id="creationVersions"></div></details>`;
   const title=/** @type {HTMLInputElement} */(host.querySelector('#creationTitle'));
   const text=/** @type {HTMLTextAreaElement} */(host.querySelector('#creationText'));
@@ -130,8 +148,9 @@ function drawEditor(record){
   /** @type {HTMLSelectElement} */(host.querySelector('[data-style="edge"]')).value=s.edge;
   let style={...s};
   /** @type {ReturnType<typeof mountMindMapEditor>|null} */let mindEditor=null;
-  const draft=()=>({...creationDraft(record),title:title.value,content:mindEditor?mindEditor.value():record.kind==='widget'?{...record.content,html:html.value}:{...record.content,text:text.value},style});
-  const preview=()=>{if(mindEditor){mindEditor.refresh();return;}const target=host.querySelector('#creationPreview');if(target)target.replaceChildren(renderWidget({id:record.id,title:title.value,html:creationHTML(draft()),minHeight:120},{style}));};
+  /** @type {ReturnType<typeof mountStructuredEditor>|null} */let structuredEditor=null;
+  const draft=()=>({...creationDraft(record),title:title.value,content:mindEditor?mindEditor.value():structuredEditor?structuredEditor.value():record.kind==='widget'?{...record.content,html:html.value}:{...record.content,text:text.value},style});
+  const preview=()=>{if(mindEditor){mindEditor.refresh();return;}const target=host.querySelector('#creationPreview');if(target)try{target.replaceChildren(renderWidget({id:record.id,title:title.value,html:creationHTML(draft()),minHeight:120},{style}));}catch(e){target.textContent=tt('请完成内容后预览：','Complete the content to preview: ')+String(e);}};
   const mark=()=>{dirty=true;const status=host.querySelector('#creationSaveStatus');if(status)status.textContent=tt('有未保存的修改','Unsaved changes');};
   let previewTimer=0;
   const changed=()=>{mark();clearTimeout(previewTimer);previewTimer=window.setTimeout(()=>{if(host.isConnected&&epoch===editorEpoch)preview();},250);};
@@ -139,10 +158,21 @@ function drawEditor(record){
   for(const input of host.querySelectorAll('[data-style]')){
     const el=/** @type {HTMLInputElement} */(input);el.oninput=()=>{const key=el.dataset.style||'';style=normalizeStyle({...style,[key]:el.type==='number'?Number(el.value):el.value});changed();};
   }
-  preset.onchange=()=>{
-    style=normalizeStyle({preset:preset.value});
+  const applyStyle=(/** @type {import('./style').CreationStyle} */next)=>{
+    style=normalizeStyle(next);preset.value=style.preset;
     for(const input of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(input);el.value=String(/** @type {any} */(style)[el.dataset.style||'']);}changed();
   };
+  preset.onchange=()=>applyStyle(normalizeStyle({preset:preset.value}));
+  const personalPicker=/** @type {HTMLSelectElement} */(host.querySelector('#creationPersonalStyle'));
+  void mountPersonalStylePicker(personalPicker,applyStyle);
+  const refreshStyles=()=>{if(epoch===editorEpoch&&host.isConnected)void mountPersonalStylePicker(personalPicker,applyStyle);else window.removeEventListener('seeker-creations-changed',refreshStyles);};
+  window.addEventListener('seeker-creations-changed',refreshStyles);
+  host.querySelector('#creationStyleActions')?.append(button('保存到我的样式','Save to My styles',()=>openSaveStyle(style)));
+  const editWithAI=(/** @type {'style'|'widget'} */action)=>{try{const original=draft(),stamp=JSON.stringify(original);openCreationEditAI(action,original,()=>epoch===editorEpoch&&JSON.stringify(draft())===stamp,next=>{if(action==='widget'){html.value=String(next.content.html);changed();}else applyStyle(normalizeStyle(next.style));});}catch(e){report(e);}};
+  if(window.SeekerRT.available('textGeneration')){
+    host.querySelector('#creationStyleActions')?.append(button('用文字调风格','Describe style change',()=>editWithAI('style')));
+    if(record.kind==='widget')host.querySelector('#creationSaveActions')?.append(button('AI 修改 Widget','Edit widget with AI',()=>editWithAI('widget')));
+  }
   /** Run only against this editor's version, never the mutable global selection. */
   /** @type {Map<HTMLInputElement,boolean>} */const disabledBefore=new Map();
   function lock(/** @type {boolean} */ value){
@@ -171,7 +201,7 @@ function drawEditor(record){
       const saved=await saveCreation({...creationDraft(record),deleted:!record.deleted},record.revision);current=saved;drawEditor(saved);
       toastUndo(tt('作品状态已更新','Creation updated'),async()=>{const restored=await saveCreation(creationDraft(record),saved.revision);if(current?.id===record.id&&!dirty){current=restored;drawEditor(restored);}return true;});
     }catch(e){report(e);}finally{lock(false);}
-  }),button('+ 新建','+ New',newCard));
+  }),button('+ 新建','+ New',openNewCreation));
   actions?.append(button('+ 导图','+ Mind map',()=>openCreationComposer()));
   const versions=host.querySelector('#creationVersions');
   for(const old of [...record.history].reverse()){
@@ -184,7 +214,10 @@ function drawEditor(record){
     }:undefined);
     actions?.append(button('导出 Markdown 大纲','Export Markdown outline',async()=>{try{await window.SeekerRT.render.markdown(title.value,mindMapMarkdown(/** @type {NonNullable<typeof mindEditor>} */(mindEditor).value()));toast(tt('大纲已导出','Outline exported'));}catch(e){report(e);}}));
     actions?.append(button('导出 SVG','Export SVG',async()=>{try{await window.SeekerRT.render.creationSVG(title.value,mindMapSVG(/** @type {NonNullable<typeof mindEditor>} */(mindEditor).value(),style));toast(tt('SVG 已导出','SVG exported'));}catch(e){report(e);}}));
-  }else preview();
+  }else{
+    if(record.kind==='comparison'||record.kind==='timeline')structuredEditor=mountStructuredEditor(/** @type {HTMLElement} */(host.querySelector('#creationStructuredEditor')),record.kind,record.content,changed);
+    preview();
+  }
 }
 window.addEventListener('seeker-creations-changed',()=>{void refreshList();});
 window.addEventListener('seeker-rt-ready',()=>{void refreshList();});

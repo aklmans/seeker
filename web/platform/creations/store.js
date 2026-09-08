@@ -1,6 +1,6 @@
 // @ts-check
 import {creationDraft} from '../runtime/creation-model.js';
-import {normalizeStyle} from './style.js';
+import {defaultCreationStyle} from './style-preferences.js';
 /** @typedef {import('../runtime/types').CreationRecord} Creation */
 export const newCreationId=()=> 'cr_'+crypto.randomUUID();
 export function creationsChanged(){window.dispatchEvent(new CustomEvent('seeker-creations-changed'));}
@@ -18,7 +18,7 @@ export async function getCreation(id){
   return /** @type {Creation} */(/** @type {unknown} */(raw));
 }
 /** @param {import('../runtime/types').WidgetPayload} widget @param {{conversationId?:string,projectId?:string,turnId?:string}} scope */
-export async function saveGeneratedWidget(widget,scope){
-  return saveCreation({id:newCreationId(),kind:'widget',title:(widget.title||'Widget').slice(0,200),content:{html:widget.html},style:normalizeStyle(),
+export async function saveGeneratedWidget(widget,scope,style=defaultCreationStyle()){
+  return saveCreation({id:newCreationId(),kind:'widget',title:(widget.title||'Widget').slice(0,200),content:{html:widget.html},style,
     source:{type:'chat',conversationId:scope.conversationId||'',turnId:scope.turnId||''},projectId:scope.projectId||'',deleted:false},0);
 }
