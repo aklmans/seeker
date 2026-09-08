@@ -6,11 +6,14 @@ import { startNewConversation, openConversation } from './copilot-chrome.js';
 import { listConversations, conversationTitle } from './conversation-store.js';
 import { toast, errText } from './toast.js';
 import { openTask } from './tasks.js';
+import { openModelSettings } from './settings.js';
+
+let draft='',starting=false;
 
 export function renderHome() {
   const host = $('#page-home'); if (!host) return;
   host.innerHTML = frontis('EVERYDAY', tt('今天，想完成什么', 'What would you like to do today'))
-    + '<div class="sec"><p style="font-size:15px;line-height:1.9;color:var(--ink-2);">'+tt('提问、处理文字，或把有用的信息留在自己的资料库。','Ask a question, work on text, or keep useful information in your own library.')+'</p><div id="homeShortcuts" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;"></div></div>'
+    + '<div class="sec"><p style="font-size:15px;line-height:1.9;color:var(--ink-2);">'+tt('提问、处理文字，或把有用的信息留在自己的资料库。','Ask a question, work on text, or keep useful information in your own library.')+'</p><label for="homeInput" style="display:block;margin:16px 0 8px;">'+tt('从一个问题开始','Start with a question')+'</label><textarea class="input" id="homeInput" rows="3" style="width:100%;resize:vertical;" placeholder="'+tt('例如：帮我把这段话写得更清楚。','For example: help me make this paragraph clearer.')+'"></textarea><button class="btn btn-accent" id="homeSend" style="margin-top:10px;" '+(starting?'disabled':'')+'>'+tt('新建对话并发送','Start a chat and send')+' →</button><div id="homeShortcuts" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;"></div></div>'
     + '<div class="sec"><h3>'+tt('最近对话','Recent conversations')+'</h3><div id="homeConversations"></div></div>'
     + '<div class="sec"><h3>'+tt('最近资料','Recent materials')+'</h3><div id="homeMaterials"></div></div>'
     + '<div class="sec"><h3>'+tt('最近任务','Recent tasks')+'</h3><div id="homeTasks"></div></div>'
@@ -28,7 +31,13 @@ export function renderHome() {
     button.onclick=()=>{openConversation(c.id).catch(e=>toast(errText(e)));}; list?.appendChild(button);
   }
   if(list && !list.childElementCount) list.textContent=tt('还没有对话。从一个问题开始吧。','No conversations yet. Start with a question.');
-  const models=/** @type {HTMLButtonElement} */ (host.querySelector('#homeModels')); models.onclick=()=>go('settings');
+  const input=/** @type {HTMLTextAreaElement} */(host.querySelector('#homeInput'));input.value=draft;input.oninput=()=>{draft=input.value;};
+  const send=async()=>{const text=draft.trim();if(!text||starting)return;starting=true;const button=/** @type {HTMLButtonElement} */(host.querySelector('#homeSend'));button.disabled=true;
+    try{if(await startNewConversation()){draft='';renderHome();const chat=/** @type {HTMLTextAreaElement} */($('#agentInput'));chat.value=text;/** @type {HTMLButtonElement} */($('#agentSend')).click();}}
+    finally{starting=false;const current=/** @type {HTMLButtonElement|null} */(host.querySelector('#homeSend'));if(current)current.disabled=false;}
+  };
+  /** @type {HTMLButtonElement} */(host.querySelector('#homeSend')).onclick=()=>{void send();};input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();void send();}};
+  const models=/** @type {HTMLButtonElement} */ (host.querySelector('#homeModels')); models.onclick=openModelSettings;
   const tasks=host.querySelector('#homeTasks');
   window.SeekerRT.agent.listTasks().then(items=>{
     if(!tasks?.isConnected)return;

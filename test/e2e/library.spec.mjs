@@ -127,6 +127,7 @@ test('显式 AI 整理只发送所选正文，期间编辑的笔记不会被旧�
     const available=window.SeekerRT.available;
     window.SeekerRT.available=f=>f==='textGeneration'||available(f);
     window.SeekerRT.ai.generate=req=>{window.organizeRequest=req;return {cancel(){},done:new Promise(resolve=>{window.completeOrganize=()=>resolve({text:'{"title":"Stale title","tags":["old"],"summary":"Stale summary"}',stopReason:'stop'});})};};
+    window.dispatchEvent(new Event('seeker-library-changed'));
   });
   await page.locator('[data-anai]').click();
   await expect(page.locator('#anOrganize')).toBeVisible();

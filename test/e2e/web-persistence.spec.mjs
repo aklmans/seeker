@@ -35,10 +35,8 @@ test('Web 设置页展示真实数据能力与四种协议预设', async ({ page
 
   await page.locator('[data-stab="model"]').click();
   await expect(page.locator('#mdProto option')).toHaveCount(4);
-  await expect(page.locator('#mdEmbed')).toBeDisabled();
-
-  await page.locator('#mdProto').selectOption('gemini');
-  await expect(page.locator('#mdBase')).toHaveValue('https://generativelanguage.googleapis.com/v1beta');
-  await expect(page.locator('#mdEmbed')).toBeEnabled();
-  await expect(page.locator('#mdEmbed')).toHaveValue('gemini-embedding-001');
+  await expect(page.locator('#mdProto')).toBeDisabled();
+  await expect(page.locator('#mdStatus')).toContainText('网页版不保存桌面模型 Key');
+  await expect(page.locator('#mdKey')).toHaveCount(0);
+  await expect(page.locator('#mdTest')).toHaveCount(0);
 });

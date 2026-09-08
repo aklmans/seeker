@@ -15,16 +15,19 @@ import { tt } from '../../../platform/shell/i18n.js';
 import { renderSettings } from '../../../platform/shell/settings.js';
 import { WEIGHTS, saveSettings, setState } from '../../../platform/shell/shell-state.js';
 import { toast } from '../../../platform/shell/toast.js';
+import { rerenderPages } from '../../../platform/shell/nav.js';
 export function goalsSectionHTML(){
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
   return `<p class="seclabel">— GOALS</p><h2 class="sectitle">${tt('求职目标','Job-hunt goals')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:560px;">
     ${row(tt('目标岗位数','Target job count'),`<div style="display:flex;align-items:center;gap:16px;max-width:380px;"><input type="range" class="range" min="10" max="30" value="${setState.goal}" id="goalRange"><span class="mono" id="goalVal" style="color:var(--accent);font-size:14px;">${setState.goal}</span></div>`)}
     ${row(tt('目标投递期','Target window'),`<input class="input" id="setPeriod" value="${setState.period}" style="max-width:240px;">`)}
+    ${row(tt('训练计入能力成长','Training counts toward growth'),'<div class="seg">'+[['on',tt('开','On')],['off',tt('关','Off')]].map(([id,label])=>'<button data-tc="'+id+'" class="'+((setState.trainCounts?'on':'off')===id?'on':'')+'">'+label+'</button>').join('')+'</div>')}
     ${row(tt('期望薪资范围','Expected salary'),`<input class="input" id="setSalary" value="${setState.salary}" style="max-width:240px;">`)}
     ${row(tt('期望城市','Preferred cities'),`<div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="chip" style="border-color:var(--accent);color:var(--accent);">北京 ★</span><span class="chip">上海</span><span class="chip">深圳</span><span class="chip">杭州</span><span class="chip" style="border-style:dashed;color:var(--ink-mute);">${tt('+ 添加','+ Add')}</span></div>`)}
   </div>`;
 }
 export function wireGoalsSection(){
+  $$('#page-settings [data-tc]').forEach(b=>{b.onclick=()=>{setState.trainCounts=b.dataset.tc==='on';saveSettings();rerenderPages();toast(tt('已更新训练成长设置','Training growth setting updated'));};});
   const gr=$('#goalRange'); if(gr) gr.oninput=()=>{setState.goal=+gr.value;$('#goalVal').textContent=gr.value;saveSettings();};
   const sp=$('#setPeriod'); if(sp) sp.oninput=()=>{setState.period=sp.value;saveSettings();};
   const sl=$('#setSalary'); if(sl) sl.oninput=()=>{setState.salary=sl.value;saveSettings();};

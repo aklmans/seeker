@@ -113,12 +113,8 @@ pub struct ConfigView {
 #[tauri::command]
 pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
     let c = load(&app);
-    // 仅取存在性,立即丢弃明文。
-    let key_status = match crate::secret::get_secret(KEY_ACCOUNT) {
-        Ok(_) => "configured",
-        Err(_) => "empty",
-    }
-    .to_string();
+    let key_status =
+        config_key_status(c.protocol, || crate::secret::get_secret(KEY_ACCOUNT)).to_string();
     // 兜底:当前 active 模型必在列表里(兼容旧单模型 provider.json)。
     let mut models = c.models.clone();
     if !c.model.is_empty() && !models.contains(&c.model) {
@@ -135,6 +131,19 @@ pub fn ai_config_get(app: AppHandle) -> Result<ConfigView, String> {
         key_status,
         user_agent: c.user_agent,
     })
+}
+
+fn config_key_status(
+    protocol: ProviderProtocol,
+    read: impl FnOnce() -> Result<String, String>,
+) -> &'static str {
+    if !protocol.requires_api_key() {
+        return "empty";
+    }
+    match read() {
+        Ok(key) if !key.trim().is_empty() => "configured",
+        _ => "empty",
+    }
 }
 
 #[tauri::command]
@@ -175,6 +184,31 @@ pub fn ai_config_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_config_view_never_reads_cloud_key_but_cloud_status_is_checked() {
+        assert_eq!(
+            config_key_status(ProviderProtocol::Ollama, || panic!(
+                "local settings must not read a cloud key"
+            )),
+            "empty"
+        );
+        for protocol in [
+            ProviderProtocol::Openai,
+            ProviderProtocol::Anthropic,
+            ProviderProtocol::Gemini,
+        ] {
+            assert_eq!(
+                config_key_status(protocol, || Ok("test-secret".into())),
+                "configured"
+            );
+            assert_eq!(config_key_status(protocol, || Ok(" ".into())), "empty");
+            assert_eq!(
+                config_key_status(protocol, || Err("unavailable".into())),
+                "empty"
+            );
+        }
+    }
 
     #[test]
     fn legacy_provider_config_defaults_to_openai_compatible() {

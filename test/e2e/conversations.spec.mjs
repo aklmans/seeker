@@ -25,12 +25,13 @@ test('真实 Web 请求从持久化会话恢复完整上下文，新对话隔离
     await route.fulfill({ contentType: 'text/event-stream', body: `data: ${JSON.stringify({ t: text })}\n\ndata: {"done":true}\n\n` });
   });
   await page.goto('/');
-  await page.locator('#agentInput').fill('Remember my word: orange');
-  await page.locator('#agentSend').click();
+  await page.locator('#homeInput').fill('Remember my word: orange');
+  await page.locator('#homeSend').click();
   await expect(page.locator('#agentMsgs')).toContainText('answer-1');
   await expect(page.locator('#agentSend')).toBeEnabled();
   await page.reload();
   await expect(page.locator('#agentMsgs')).toContainText('answer-1');
+  await page.locator('#topActions').getByRole('button',{name:'打开对话',exact:true}).click();
   await page.locator('#agentInput').fill('What word did I say?');
   await page.locator('#agentSend').click();
   await expect(page.locator('#agentMsgs')).toContainText('answer-2');
@@ -86,6 +87,7 @@ test('旧项目历史升级后可找回，未完成提问不混进模型上下�
   await expect(page.locator('#agentMsgs')).toContainText('legacy answer');
   await expect(page.locator('#agentMsgs')).toContainText('unfinished question');
   await expect(page.locator('#agentConversation option:checked')).toHaveText('历史对话');
+  await page.locator('#topActions').getByRole('button',{name:'打开对话',exact:true}).click();
   await page.locator('#agentNew').click();
   await expect(page.locator('#agentMsgs')).not.toContainText('legacy answer');
   await page.locator('#agentConversation').selectOption('legacy_');
@@ -100,8 +102,8 @@ test('流中断不保存假成功，重试只发送本次提问', async ({ page 
     await route.fulfill({contentType:'text/event-stream',body:requests.length===1 ? 'data: {"t":"partial"}\n\n' : 'data: {"t":"complete answer"}\n\ndata: {"done":true}\n\n'});
   });
   await page.goto('/');
-  await page.locator('#agentInput').fill('Retry me');
-  await page.locator('#agentSend').click();
+  await page.locator('#homeInput').fill('Retry me');
+  await page.locator('#homeSend').click();
   await page.getByRole('button',{name:'重试这条消息',exact:true}).click();
   await expect(page.locator('#agentMsgs')).toContainText('complete answer');
   await expect(page.locator('#agentSend')).toBeEnabled();

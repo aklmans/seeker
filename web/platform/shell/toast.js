@@ -6,6 +6,9 @@
 import { $, el } from './dom.js';
 import { succeeded } from '../outcome.js'; /* 零依赖叶子:与 guardrail 共用同一条判据(第64轮 [建议]) */
 let lastUndo=null; /* 最近一次可撤销操作(供 Mod+Z);★模块内私有,不外露 mutable 值(防影子绑定/状态分裂) */
+let toastLabels=()=>({undo:'撤销',done:'已撤销'});
+/** 文案由持有 i18n 的上层注入，基础层不向上依赖。 */
+export function setToastLabels(readLabels){ toastLabels=readLabels; }
 export function toast(msg){
   const t=el(`<div class="toast">${msg}</div>`);
   $('#toasts').appendChild(t);
@@ -33,10 +36,7 @@ export function toast(msg){
  *   SCC 不变式禁的是**环内顶层急读非函数声明绑定**,而 `tt` 是 hoisted `export function`、只在函数体内调。
  *   ⇒ 此路**结构上通**,只是分层与职责上不该走。**勿以假前提锁死 [建议]2 的 #6 修法。**
  *
- *  ★存量 #6 债(先存,非本刀引入 · 评审第59轮 [建议]2 记债):本模块的 `撤销`(按钮 label)与 `已撤销`
- *  两串是 **CN-only、无 i18n**,是平台基元里的红线 #6 违例。本刀以「不新增 CN-only 串」避开、未扩大。
- *  **出口(保分层、零环、不需 `tt`)**:把两个 label 参数化 —— `toastUndo(msg, restoreFn, {undoLabel, doneLabel})`
- *  带默认值,或由**持有 i18n 的上层**一次性注入 `setToastLabels(...)`。按第52轮 `jobseek.rs` 先例:显式记债 + 留出口。
+ *  撤销文案由 i18n 上层通过 setToastLabels 注入，保持基础层依赖方向。
  *
  *  ⚠ `lastUndo=null` **必须在 await 之前同步执行**,否则 restoreFn 挂起期间 Mod+Z 可二次触发同一撤销。
  *  ⚠ `done` 闸(评审第59轮 [建议]1):`close()` 只置 `opacity:0` 并在 **300ms 后**才 `remove()` ——
@@ -44,7 +44,8 @@ export function toast(msg){
  *    重复插入;memory 侧则出现「已撤销」与「没有可撤销的内容」并存)。姊妹原语 `guardrail.showUndo:34-36`
  *    早有此闸,此处补齐。 */
 export function toastUndo(msg, restoreFn){
-  const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo">撤销</button></div>`);
+  const t=el(`<div class="toast" style="display:flex;align-items:center;gap:14px;">${msg}<button class="toast-undo"></button></div>`);
+  $('.toast-undo',t).textContent=toastLabels().undo;
   $('#toasts').appendChild(t);
   let gone=false; const close=()=>{if(gone)return;gone=true;t.style.transition='opacity 300ms';t.style.opacity='0';setTimeout(()=>t.remove(),300);};
   let done=false;                         /* ★重入闸(同 guardrail.showUndo:34-36):opacity:0 的 toast 仍可点,300ms 内双击会跑两次 restoreFn */
@@ -54,7 +55,7 @@ export function toastUndo(msg, restoreFn){
     if(lastUndo===doUndo)lastUndo=null;   /* ★同步清除,先于任何 await:防 restoreFn 挂起期间 Mod+Z 二次触发 */
     let r; try{ r=restoreFn(); }catch(e){ toast(errText(e)); return; }   /* 同步抛错 → 报错、不报成功 */
     Promise.resolve(r).then(
-      (v)=>{ if(succeeded(v)) toast('已撤销'); },                         /* 失败时静默:因由由 restoreFn 自报 */
+      (v)=>{ if(succeeded(v)) toast(errText(toastLabels().done)); },       /* 失败时静默:因由由 restoreFn 自报 */
       (e)=>{ toast(errText(e)); }                                        /* 异步 reject → 报错、不报成功 */
     );
   };

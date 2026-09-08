@@ -1,6 +1,6 @@
-# Seeker 第一轮开发计划 · 执行中
+# Seeker 第一轮开发计划 · 功能内测交付
 
-状态：用户已批准执行。以下保留完整首轮范围；逐批完成情况记录在 ROUND-1-PROGRESS.md，现有事实与约束仍以 CLAUDE.md、ARCHITECTURE.md 为准。
+状态：五批功能和本机工程验收已完成；真实模型质量、Windows 真机与目标用户试用仍待对应环境验证。以下保留首轮范围，完成证据见 ROUND-1-PROGRESS.md，未覆盖项见 ROUND-1-ACCEPTANCE.md。尚未打包、推送或发布。
 
 **交付目标**
 

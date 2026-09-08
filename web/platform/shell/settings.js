@@ -16,15 +16,15 @@ import { $, $$, el } from './dom.js';
 import { normalizeBackupPolicy, persistBackupPolicy } from '../runtime/backup-policy.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
+import { renderModelSettings } from './model-settings.js';
 import { openModal } from './modal.js';
-import { currentPage, frontis, go, renderTopActions, rerenderPages, signFoot } from './nav.js';
+import { currentPage, frontis, go, renderTopActions, setLang, signFoot } from './nav.js';
 import { isDesktop } from './shell-keys.js';
 import { clearAllDataFlow, hydrateSettings, saveSettings, setState, settingsPersistOn } from './shell-state.js';
 import { errText, toast } from './toast.js'; // ★P1-c:toastUndo 随记忆管理搬迁至 memory-docs.js,此处已无消费者
 let settingsState={tab:'basic'};
+export function openModelSettings(){settingsState.tab='model';renderSettings();go('settings');}
 let backupPolicyHydrated=false, backupPolicyLoading=false, backupLastAt=null;
-const MODEL={mode:'byo', protocol:'anthropic', baseUrl:'https://api.anthropic.com', apiKey:'', model:'claude-3-5-haiku', models:[], temp:0.5,
-  stt:'browser', sttUrl:'', sttKey:'', sttModel:'', tts:'browser', ttsUrl:'', ttsKey:'', ttsVoice:''};
 const SET_TABS_SHELL=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['data',['数据管理','Data']],['about',['关于','About']]];
 
 /* ===== 隐私 · 历史与记忆掌控(#4 用户掌控)—— 设置页入口,不经对话改;清除走 guardrail。 ===== */
@@ -85,7 +85,6 @@ export function renderSettings(){
     ${row(tt('界面语言','Language'),seg([['zh','中文'],['en','English']],setState.lang,'lang'))}
     ${row(tt('界面密度','Density'),seg([['compact',tt('紧凑','Compact')],['standard',tt('标准','Standard')],['cozy',tt('宽松','Cozy')]],setState.density,'density'))}
     ${row(tt('减少动效','Reduce motion'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.motion,'motion'))}
-    ${row(tt('训练计入能力成长','Training counts toward growth'),'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.trainCounts?'on':'off','tc')+'<span style="font-size:12px;color:var(--ink-3);">'+tt('刻意练习与面试陪练作为「职业资产」成长参考','Deliberate practice & interview prep count toward career-asset growth')+'</span></div>')}
   </div>`;
   sections.profile=`<p class="seclabel">— PROFILE · PRIVATE</p><h2 class="sectitle">${tt('个人信息','Personal info')}<span class="dot">.</span></h2>
     <p style="font-size:12px;color:var(--ink-3);margin:6px 0 14px;max-width:640px;line-height:1.7;">${tt('这些信息仅保存在本地,<b>AI 不会读取或修改</b>。简历的「基本信息」模块自动从这里加载 —— 改这里,简历同步更新。','Stored locally only — <b>AI never reads or edits it</b>. The resume\'s Basic Info block auto-loads from here; edit here and the resume syncs.')}</p>
@@ -94,43 +93,7 @@ export function renderSettings(){
     </div>
     <div class="lock-note" style="margin-top:14px;max-width:640px;"><span class="li">🔒</span><span>${tt('隐私优先:以上联系方式字段不参与任何 AI 处理。AI 生成简历时只重写专业内容(概要 / 技能 / 经历),绝不触碰你的联系方式与身份信息。','Privacy first: the contact fields above never go through AI. When generating resumes, AI only rewrites professional content (summary / skills / experience) — never your contact or identity info.')}</span></div>
     ${extendHTML('profile')}`;
-  const proto=[['openai','OpenAI 兼容'],['anthropic','Anthropic'],['gemini','Gemini'],['ollama','Ollama 本地']];
-  const sttEng=[['browser','浏览器(免费)'],['whisper','Whisper 自托管'],['deepgram','Deepgram'],['groq','Groq'],['other','其他']];
-  const ttsEng=[['browser','浏览器(免费)'],['kokoro','Kokoro/Piper 自托管'],['deepgram','Deepgram Aura'],['eleven','ElevenLabs'],['other','其他']];
-  const sttSelf=MODEL.stt!=='browser', ttsSelf=MODEL.tts!=='browser', embeddingSupported=MODEL.protocol!=='anthropic';
-  const byo=`<div style="max-width:580px;">
-    <p class="seclabel" style="margin-bottom:10px;">— LLM</p>
-    ${row(tt('接口协议','Protocol'),`<select class="select" id="mdProto">${proto.map(p=>`<option value="${p[0]}" ${p[0]===MODEL.protocol?'selected':''}>${p[1]}</option>`).join('')}</select>`)}
-    ${row('Base URL',`<input class="input" id="mdBase" placeholder="https://api.anthropic.com" value="${(MODEL.baseUrl||'').replace(/"/g,'&quot;')}">`)}
-    ${row('API Key',`<div style="display:flex;gap:8px;"><input class="input" id="mdKey" type="password" placeholder="${MODEL.protocol==='ollama'?tt('可选 · 本地 Ollama 不需要','Optional · not needed locally'):'sk-…'}" value="${(MODEL.apiKey||'').replace(/"/g,'&quot;')}"><button class="btn" id="mdKeyShow">${tt('显示','Show')}</button></div>`)}
-    ${row(tt('模型(可存多个,点选当前)','Models (save many, click to use)'),`<div style="display:flex;flex-direction:column;gap:8px;">
-      <div id="mdModelList" class="md-models"></div>
-      <div style="display:flex;gap:8px;"><input class="input" id="mdModelAdd" placeholder="${tt('添加模型名,如 gpt-4o','Add a model, e.g. gpt-4o')}"><button class="btn" id="mdModelAddBtn">${tt('添加','Add')}</button></div></div>`)}
-    ${row(tt('嵌入模型','Embed model'),`<input class="input" id="mdEmbed" placeholder="${MODEL.protocol==='gemini'?'gemini-embedding-001':MODEL.protocol==='ollama'?'nomic-embed-text':'text-embedding-3-small'}" value="${(MODEL.embedModel||'').replace(/"/g,'&quot;')}" ${embeddingSupported?'':'disabled'}>${embeddingSupported?'':`<span style="display:block;font-size:11.5px;color:var(--ink-3);margin-top:5px;">${tt('Anthropic 没有原生嵌入 API；长期记忆与知识库会安全停用。','Anthropic has no native embedding API; memory and knowledge retrieval are safely disabled.')}</span>`}`)}
-    ${row(tt('User-Agent · 高级','User-Agent · advanced'),`<input class="input" id="mdUA" placeholder="claude-cli/1.0.0 (external, cli)" value="${(MODEL.userAgent||'').replace(/"/g,'&quot;')}">`)}
-    <p style="font-size:11.5px;color:var(--ink-3);margin:2px 0 8px;line-height:1.6;">${tt('某些供应商(如 Kimi For Coding)按 User-Agent 限定「编程 agent」;留空用默认。改后下次调用即生效,无需重启。','Some providers (e.g. Kimi For Coding) gate by User-Agent to coding agents; leave blank for the default. Takes effect on the next call — no restart.')}</p>
-    ${row(tt('连接','Connection'),`<button class="btn btn-accent" id="mdTest">${tt('测试连接','Test connection')}</button>`)}
-    <p class="seclabel" style="margin:24px 0 10px;">— SPEECH · STT</p>
-    ${row(tt('STT 引擎','STT engine'),`<select class="select" id="mdStt">${sttEng.map(e=>`<option value="${e[0]}" ${e[0]===MODEL.stt?'selected':''}>${e[1]}</option>`).join('')}</select>`)}
-    ${sttSelf?row(tt('STT 地址 / Key','STT URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdSttUrl" placeholder="base_url" value="${(MODEL.sttUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdSttKey" type="password" placeholder="api_key" value="${(MODEL.sttKey||'').replace(/"/g,'&quot;')}" style="max-width:150px;"></div>`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音识别 · 免费 · 本地','Built-in browser STT · free · local')}</p>`}
-    <p class="seclabel" style="margin:20px 0 10px;">— SPEECH · TTS</p>
-    ${row(tt('TTS 引擎','TTS engine'),`<select class="select" id="mdTts">${ttsEng.map(e=>`<option value="${e[0]}" ${e[0]===MODEL.tts?'selected':''}>${e[1]}</option>`).join('')}</select>`)}
-    ${ttsSelf?row(tt('TTS 地址 / Key','TTS URL / Key'),`<div style="display:flex;gap:8px;"><input class="input" id="mdTtsUrl" placeholder="base_url" value="${(MODEL.ttsUrl||'').replace(/"/g,'&quot;')}"><input class="input" id="mdTtsKey" type="password" placeholder="api_key" value="${(MODEL.ttsKey||'').replace(/"/g,'&quot;')}" style="max-width:150px;"></div>`)+row(tt('音色','Voice'),`<input class="input" id="mdTtsVoice" placeholder="voice id" value="${(MODEL.ttsVoice||'').replace(/"/g,'&quot;')}">`):`<p style="font-size:12px;color:var(--ink-mute);padding:2px 0 6px;">${tt('浏览器内置语音合成 · 免费 · 本地','Built-in browser TTS · free · local')}</p>`}
-    <div class="lock-note" style="margin-top:18px;"><span class="li">🔒</span><span>${tt('你填的 Base URL / API Key 仅保存在本地浏览器,不上传我们的服务器。音频按所选引擎处理:选「浏览器/自托管」则<b>音频不离开本机</b>,只把文字发给大模型;「个人信息」隐私字段始终不参与 AI。','Your Base URL / API Key stay in this browser, never uploaded to our servers. Audio is handled by the chosen engine: with browser/self-hosted, <b>audio never leaves your machine</b> — only text goes to the LLM; private profile fields never touch AI.')}</span></div>
-  </div>`;
-  const managed=`<div class="next-hero" style="max-width:580px;"><div class="nh-in">
-    <p style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;color:var(--accent);margin:0 0 9px;">— MANAGED</p>
-    <h3 style="font-size:18px;color:var(--ink);margin:0;font-weight:600;">${tt('免配置,开箱即用','Zero config, ready to use')}</h3>
-    <p style="font-size:13px;color:var(--ink-2);margin:9px 0 0;line-height:1.7;">${tt('订阅后由我们托管整条链路(STT + Claude + TTS),无需自备 Key、不用管 base_url 与协议。含语音面试通话、智能匹配、简历生成的全部 AI 能力。','We host the whole pipeline (STT + Claude + TTS) — no API keys, no base_url or protocol fuss. Includes voice interview calls, smart matching, and resume generation.')}</p>
-    <div style="display:flex;gap:22px;margin:16px 0 0;flex-wrap:wrap;">
-      ${[['¥39',tt('/ 月 · 基础','/ mo · Basic')],['¥99',tt('/ 月 · 专业 · 含语音通话','/ mo · Pro · voice calls')]].map(x=>`<div><span style="font-family:var(--font-serif);font-size:24px;color:var(--ink);font-weight:500;">${x[0]}</span><span style="font-size:12px;color:var(--ink-3);margin-left:6px;">${x[1]}</span></div>`).join('')}
-    </div>
-    <button class="btn btn-accent" style="margin-top:16px;" data-mocktoast="订阅页面 (mock)">${tt('了解订阅','Learn more')} →</button>
-  </div></div>`;
-  sections.model=`<p class="seclabel">— MODEL</p><h2 class="sectitle">${tt('AI 接入方式','AI access')}<span class="dot">.</span></h2>
-    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 14px;max-width:640px;line-height:1.7;">${tt('两种方式任选:<b>自带模型</b>(填你自己的 base_url / api_key / model / 协议,最省钱、最可控)或 <b>订阅托管</b>(我们包办整条链路,免配置)。','Two ways: <b>bring your own model</b> (your base_url / api_key / model / protocol — cheapest, most control) or <b>managed subscription</b> (we handle the whole pipeline, zero config).')}</p>
-    <div style="margin-bottom:18px;">${seg([['byo',tt('自带模型 BYO','Bring your own')],['managed',tt('订阅托管','Managed')]],MODEL.mode,'mmode')}</div>
-    ${MODEL.mode==='byo'?byo:managed}`;
+  sections.model='<div id="modelSettings"></div>';
   const appTabs=appSpecs.flatMap(s=>s.tabs||[]);
   appTabs.forEach(t=>{ sections[t.id]=t.render(); });
   sections.data=`<p class="seclabel">— DATA</p><h2 class="sectitle">${tt('数据与备份','Data & backup')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:600px;">
@@ -138,7 +101,6 @@ export function renderSettings(){
     ${row(tt('导出数据','Export data'),`<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="dataExport">${tt('导出 JSON','Export JSON')}</button><button class="btn" id="dataExportRedacted">${tt('脱敏导出','Export (redacted)')}</button></div>`)}
     ${row(tt('导入数据','Import data'),`<button class="btn" id="dataImport">${tt('导入文件','Import file')}</button><input type="file" id="dataImportFile" accept=".json,application/json" style="display:none">`)}
     ${row(tt('自动备份','Auto backup'),backupControl)}
-    ${row(tt('本地存储用量','Local storage'),`<div style="display:flex;align-items:center;gap:14px;max-width:380px;"><div class="btrack" style="flex:1;height:8px;background:var(--border);position:relative;"><i style="position:absolute;left:0;top:0;bottom:0;width:12%;background:var(--ink-mute);"></i></div><span class="mono" style="font-size:12px;color:var(--ink-3);white-space:nowrap;">1.2 / 10 MB</span></div>`)}
     ${row(tt('上次自动备份','Last automatic backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">${backupLast}</span>`)}
     <!-- 「演示空状态 · 查看引导态」行(showEmptyState=jobseek 符号)已随批11B 末件迁入 jobseek 的 data extend(dataResumeRowHTML,extendHTML('data') 位),平台不再裸读 apps 符号。 -->
     <div style="margin:14px 0 2px;"><p class="seclabel">— ${tt('隐私 · 历史与记忆','Privacy · history & memory')}</p></div>
@@ -167,40 +129,11 @@ export function renderSettings(){
   $$('#page-settings [data-pf]').forEach(inp=>{ inp.oninput=()=>{PROFILE[inp.dataset.pf]=inp.value;}; inp.onchange=()=>persistProfileField(inp.dataset.pf, inp.value); }); // 改完(失焦)落盘到隔离的 profile 仓库
   $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{const v=b.dataset.theme;if(v==='system'){toast('已设为跟随系统 (mock)');}else{document.documentElement.dataset.theme=v;try{localStorage.setItem('jh-theme',v);}catch(e){}renderTopActions(currentPage());$('#themeBtn2').innerHTML=v==='dark'?IC.sun:IC.moon;}renderSettings();});
   $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>{setState.fontsize=b.dataset.fs;saveSettings();renderSettings();toast('正文字号 '+b.dataset.fs+'px');});
-  $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setState.lang=b.dataset.lang;try{localStorage.setItem('jh-lang',b.dataset.lang);}catch(e){}renderSettings();toast(b.dataset.lang==='en'?'English (demo)':'已切换为中文');});
+  $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setLang(b.dataset.lang);toast(tt('已切换为中文','Switched to English'));});
   $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;saveSettings();renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});
   $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>{setState.motion=b.dataset.motion;saveSettings();renderSettings();});
   wireBackupPolicy();
-  $$('#page-settings [data-tc]').forEach(b=>b.onclick=()=>{setState.trainCounts=(b.dataset.tc==='on');saveSettings();rerenderPages();renderSettings();toast(setState.trainCounts?'已开启:训练计入能力成长':'已关闭训练计入');}); // ③renderSkills()→rerenderPages()(通用重渲,平台不具名调 jobseek 渲染器)
-  $$('#page-settings [data-mmode]').forEach(b=>b.onclick=()=>{MODEL.mode=b.dataset.mmode;renderSettings();});
-  const mp=$('#mdProto'); if(mp) mp.onchange=()=>{
-    MODEL.protocol=mp.value;
-    MODEL.baseUrl=({openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com',gemini:'https://generativelanguage.googleapis.com/v1beta',ollama:'http://localhost:11434/v1'})[mp.value]||'';
-    MODEL.model=({openai:'gpt-4o-mini',anthropic:'claude-3-5-haiku-latest',gemini:'gemini-2.5-flash',ollama:'qwen2.5'})[mp.value]||'';
-    MODEL.embedModel=({openai:'text-embedding-3-small',anthropic:'',gemini:'gemini-embedding-001',ollama:'nomic-embed-text'})[mp.value]||'';
-    if(settingsPersistOn()){
-      window.SeekerRT.ai.setConfig({protocol:MODEL.protocol,baseUrl:MODEL.baseUrl,model:MODEL.model,embedModel:MODEL.embedModel})
-        .then(()=>{ toast(tt('已切换模型协议','Model protocol switched')); renderSettings(); })
-        .catch(e=>toast(errText(e)));
-    }else renderSettings();
-  };
-  const mb=$('#mdBase'); if(mb) mb.oninput=()=>{MODEL.baseUrl=mb.value;};
-  const mk=$('#mdKey'); if(mk) mk.oninput=()=>{MODEL.apiKey=mk.value;};
-  const mks=$('#mdKeyShow'); if(mks) mks.onclick=()=>{const f=$('#mdKey');if(!f)return;f.type=f.type==='password'?'text':'password';mks.textContent=f.type==='password'?'显示':'隐藏';};
-  const mAdd=$('#mdModelAdd'), mAddB=$('#mdModelAddBtn');
-  if(mAddB) mAddB.onclick=()=>{ addModelUI(mAdd?mAdd.value:''); if(mAdd) mAdd.value=''; };
-  if(mAdd) mAdd.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addModelUI(mAdd.value); mAdd.value=''; } });
-  renderModelList(); // web/桌面通用渲染;桌面 wireModelConfigDesktop 再用后端真实列表覆盖重渲
-  const me=$('#mdEmbed'); if(me) me.oninput=()=>{MODEL.embedModel=me.value;};
-  const mtest=$('#mdTest'); if(mtest) mtest.onclick=()=>{toast(MODEL.apiKey?'连接成功 ✓ (mock)':'请先填写 API Key');};
-  const ms=$('#mdStt'); if(ms) ms.onchange=()=>{MODEL.stt=ms.value;renderSettings();};
-  const msu=$('#mdSttUrl'); if(msu) msu.oninput=()=>{MODEL.sttUrl=msu.value;};
-  const msk=$('#mdSttKey'); if(msk) msk.oninput=()=>{MODEL.sttKey=msk.value;};
-  const mtt=$('#mdTts'); if(mtt) mtt.onchange=()=>{MODEL.tts=mtt.value;renderSettings();};
-  const mtu=$('#mdTtsUrl'); if(mtu) mtu.oninput=()=>{MODEL.ttsUrl=mtu.value;};
-  const mtk=$('#mdTtsKey'); if(mtk) mtk.oninput=()=>{MODEL.ttsKey=mtk.value;};
-  const mtv=$('#mdTtsVoice'); if(mtv) mtv.oninput=()=>{MODEL.ttsVoice=mtv.value;};
-  wireModelConfigDesktop();
+  void renderModelSettings($('#modelSettings'));
   wireDataIO();
   // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)。
   // ★批11B 末件:演示空状态行(showEmptyState=jobseek 符号)已迁入 jobseek data extend 自绑 → 平台不再裸读 apps 符号、§1 债清零。
@@ -286,59 +219,3 @@ function wireDataIO(){
     };
   }
 }
-
-/* 一协议多模型:渲染已存模型 chips(当前高亮 ✓、点选切换、× 删除)+ 添加。
-   桌面经 rt.ai.{setConfig/selectModel/removeModel} 落 provider.json;web 改 MODEL 内存(mock)。 */
-function renderModelList(){
-  const wrap=$('#mdModelList'); if(!wrap) return;
-  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-  const models=(MODEL.models&&MODEL.models.length)?MODEL.models:(MODEL.model?[MODEL.model]:[]);
-  wrap.innerHTML = models.length
-    ? models.map(m=>`<span class="md-model ${m===MODEL.model?'on':''}" data-mdl="${esc(m)}">${esc(m)}${m===MODEL.model?' ✓':''}<button class="md-x" data-mdlx="${esc(m)}" title="${tt('删除','Delete')}">×</button></span>`).join('')
-    : `<span style="font-size:12px;color:var(--ink-mute);">${tt('还没有保存的模型 —— 在下方添加','No saved models — add one below')}</span>`;
-  [...wrap.querySelectorAll('[data-mdl]')].forEach(ch=>ch.onclick=(e)=>{ if(e.target.closest('[data-mdlx]')) return; selectModelUI(ch.dataset.mdl); });
-  [...wrap.querySelectorAll('[data-mdlx]')].forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); removeModelUI(b.dataset.mdlx); });
-}
-function selectModelUI(m){ if(!m) return; const was=MODEL.model; MODEL.model=m; if(settingsPersistOn()) window.SeekerRT.ai.selectModel(m).catch(e=>toast(errText(e))); renderModelList(); if(m!==was) toast(tt('已切换到 ','Now using ')+m); }
-function removeModelUI(m){ MODEL.models=(MODEL.models||[]).filter(x=>x!==m); if(MODEL.model===m) MODEL.model=MODEL.models[0]||''; if(settingsPersistOn()) window.SeekerRT.ai.removeModel(m).catch(()=>{}); renderModelList(); toast(tt('已删除模型 ','Removed ')+m); }
-function addModelUI(m){ m=(m||'').trim(); if(!m) return; if(!(MODEL.models||[]).includes(m)) MODEL.models=(MODEL.models||[]).concat(m); MODEL.model=m;
-  if(settingsPersistOn()) window.SeekerRT.ai.setConfig({model:m}).then(()=>toast(tt('已添加并启用 ','Added & using ')+m)).catch(e=>toast(errText(e)));
-  else toast(tt('已添加并启用 ','Added & using ')+m);
-  renderModelList(); }
-/* S1:桌面端把设置页 LLM 配置接真实平台核 —— key→系统钥匙串,baseUrl/model(多)→provider.json。
-   网页/未就绪时不接管,沿用 mock(MODEL 对象)。 */
-async function wireModelConfigDesktop(){
-  if(typeof isDesktop!=='function' || !isDesktop() || !window.SeekerRT) return;
-  const base=$('#mdBase'); if(!base) return;            // 仅 BYO · LLM 页有这些输入
-  const key=$('#mdKey'), embed=$('#mdEmbed'), test=$('#mdTest'), ua=$('#mdUA');
-  const rt=window.SeekerRT, KEYACC='provider.openai.key';
-  const cfgPh=()=>tt('已配置 · 留空则保持不变','Configured · leave blank to keep');
-  try{
-    const c=await rt.ai.getConfig();
-    MODEL.protocol=c.protocol||'openai'; const proto=$('#mdProto'); if(proto) proto.value=MODEL.protocol;
-    base.value=c.baseUrl||''; if(embed){ embed.value=c.embedModel||''; embed.disabled=c.embeddingSupported===false; } if(ua) ua.value=c.userAgent||'';
-    MODEL.models=Array.isArray(c.models)?c.models:[]; MODEL.model=c.model||''; renderModelList(); // 用后端真实已存模型列表覆盖重渲
-    if(key){ key.value=''; key.placeholder = c.keyStatus==='configured' ? cfgPh() : (c.keyRequired===false?tt('可选 · 本地 Ollama 不需要','Optional · not needed locally'):'sk-…'); }
-  }catch(_e){ /* 未就绪 */ }
-  base.onblur=()=>{ rt.ai.setConfig({baseUrl:base.value.trim()})
-    .then(()=>toast(tt('已保存 Base URL','Base URL saved')))
-    .catch(e=>toast(errText(e))); };
-  if(embed) embed.onblur=()=>{ rt.ai.setConfig({embedModel:embed.value.trim()})
-    .then(()=>toast(tt('已保存嵌入模型(长期记忆 / 检索用)','Embed model saved'))).catch(()=>{}); };
-  if(ua) ua.onblur=()=>{ rt.ai.setConfig({userAgent:ua.value.trim()})
-    .then(()=>toast(tt('已保存 User-Agent','User-Agent saved'))).catch(e=>toast(errText(e))); };
-  if(key) key.onblur=()=>{ const v=key.value.trim(); if(!v) return;
-    rt.secret.set(KEYACC, v).then(()=>{
-      key.value=''; try{ if(typeof MODEL!=='undefined') MODEL.apiKey=''; }catch(_e){}
-      key.placeholder=cfgPh();
-      toast(tt('API Key 已存入系统钥匙串','API Key saved to system keychain'));
-    }).catch(e=>toast(errText(e))); };
-  if(test) test.onclick=()=>{ const old=test.textContent; test.disabled=true; test.textContent=tt('测试中…','Testing…');
-    rt.ai.complete({userText:'ping'})
-      .then(()=>toast(tt('连接成功 ✓','Connected ✓')))
-      .catch(e=>toast(tt('连接失败:','Failed: ')+errText(e)))
-      .finally(()=>{ test.disabled=false; test.textContent=old; }); };
-}
-/* 过渡 window 桥:renderSettings 经 SeekerShell.setShell 的 render 箭头 + profile/persistence/settings-jobseek/index.html 消费(全 runtime);改 import 后摘。
-   其余(MODEL/settingsState/SET_TABS_SHELL 状态 + 各 manager/model-UI/wireDataIO 函数)零外部消费 → module-private。
-   ★批8 已落:profile 转 module,本文件读 PROFILE + persistProfileField 经顶部 import(profile.js 不上 window 桥、隐私最小暴露)。 */

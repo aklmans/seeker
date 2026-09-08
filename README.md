@@ -1,12 +1,14 @@
 # 探索者 · Seeker
 
-> **本地优先的个人 AI Agent 工作台。** Seeker 不只回答问题，也能在明确授权下执行可恢复、可验证的任务；数据默认保存在本机，模型和能力由你选择。
+> **本地优先的日常 AI 助手。** 提问、写作翻译、阅读文件、保存资料，也能把选中的几份资料整理成报告；数据默认保存在本机，模型和能力由你选择。
 >
-> *A local-first personal AI agent workspace that goes beyond chat to run resumable, verifiable tasks under your control. Data stays local by default; you choose the models and capabilities.*
+> *A local-first everyday AI assistant for chat, writing, file reading, notes and reports from selected materials. You choose the models and capabilities.*
 
 **v0.2.0 已发布：** 首个完整任务闭环是“岗位投递包”。选择 1–5 个岗位与一份专业简历后，Seeker 会按受控步骤选择最匹配岗位，生成匹配报告、针对性简历、求职信和面试清单，并在全部文件通过完整性验证后才宣告完成。
 
 **v0.3.0 开发版新增：机会雷达。** 你可以选择固定招聘页，或在手动运行时明确授权一个兼容的 MCP 查询工具，设置职位、职级、地点、远程偏好、技能和排除词；Seeker 会受控检索、硬筛选、逐条验链、确定性去重评分，将结果放进独立待审队列并生成真实报告。只有你明确接受后，候选才会进入目标岗位；无人值守计划只允许固定招聘页。
+
+**第一轮日常助手开发版：** 通用首页、可恢复独立会话、翻译/润色/总结/回复草稿、本地资料库、TXT/MD/PDF/DOCX 文字阅读，以及生成 Markdown 和 DOCX 的资料整理助手。新安装按日常场景进入，求职应用可按需开启，旧数据保留。代码验收与真实模型质量分别记录在 [内测验收](docs/ROUND-1-ACCEPTANCE.md)；这些开发功能尚未因此自动发布到公开下载渠道。
 
 [下载桌面版](https://github.com/aklmans/seeker/releases/latest) · [在线体验](https://aklmans.github.io/seeker/) · [快速开始](docs/QUICKSTART.md)
 
@@ -30,7 +32,7 @@
 - **BYO 多协议 AI** —— 支持 OpenAI-compatible、Anthropic、Gemini 与 Ollama，自带 Key、自选模型
 - **中英双语 · 深浅主题**
 
-> **当前边界：** v0.3 只开放“岗位投递包”和“机会雷达”两条编译期固定任务流，不提供任意 Shell、任意文件写入、多 Agent、自由 DAG、自动投递或外部承诺动作。
+> **当前边界：** 开发版开放“资料整理助手”“岗位投递包”和“机会雷达”三条编译期固定任务流。首轮桌面内测仍需自带模型，没有托管订阅、图片 OCR、任意 Shell、任意文件写入、多 Agent、自由 DAG、自动投递或外部承诺动作。
 
 ## 安全模型(不是口号,是结构)
 
@@ -49,9 +51,9 @@
 
 **🌐 在线体验（免安装）：** [aklmans.github.io/seeker](https://aklmans.github.io/seeker/) —— Web 演示数据保存在浏览器中；任务执行、本地文件、系统钥匙串和完整连接器能力在桌面版提供。
 
-**桌面版：** 从 [Releases](https://github.com/aklmans/seeker/releases/latest) 下载 macOS Apple Silicon `.dmg` 或 Windows x64 `-setup.exe`。首次打开的系统提示（macOS 右键打开 / Windows SmartScreen“仍要运行”）见 [QUICKSTART](docs/QUICKSTART.md)。
+**桌面版：** 从 [Releases](https://github.com/aklmans/seeker/releases/latest) 下载已公开版本；第一轮开发功能以内测构建为准，尚未打包发布。
 
-**首跑三步：** 数据设置 → 模型配置 → 填入你的 API Key（或使用本地 Ollama）。详细路径与免费方案见 [快速开始](docs/QUICKSTART.md)。
+**首次连接：** 首页 → 连接模型 → 填写并保存测试（本地 Ollama 无需 Key）。完整操作见 [快速开始](docs/QUICKSTART.md)。
 
 ## 从源码构建
 
@@ -73,7 +75,8 @@ web/
 ├── platform/        # 平台运行时层：契约 / AI 网关 / 能力层 / 护栏 / 安全渲染
 └── apps/            # 业务应用层：互不 import，只通过 SeekerShell.* 契约通信
     ├── jobseek/     #   求职工作台
-    └── assets/      #   数据资产(Prompt 库 / 笔记)
+    ├── assets/      #   资料库、文件阅读和资料整理任务
+    └── daily/       #   日常文字工具
 src-tauri/           # Rust 核：SQLite · 钥匙串 · AI 工具循环 · MCP · 能力 registry
 ```
 

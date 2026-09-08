@@ -7,6 +7,8 @@
  *  仅作 `SeekerShell.greeting(mode)` 未命中时的回退;jobseek 味开场白(求职 Agent/Copilot · 匹配岗位 · 改简历…)已随 manifest.greeting 归 jobseek。
  *  余 agentSub/agentPh/cmdLabel = 通用助手 UI 串(不名应用功能),留平台 i18n。 */
 import { setState } from './shell-state.js';
+import { setToastLabels } from './toast.js';
+setToastLabels(()=>({undo:tt('撤销','Undo'),done:tt('已撤销','Undone')}));
 
 /** @type {Record<string,{zh:string,en:string}>} */
 const I18N={editor:{zh:'编辑器',en:'Editor'},agentSub:{zh:'说出需求,我判断并执行 · 需要展示时右侧画布才出现',en:'Tell me what you need — I decide & act; the canvas appears on the right when needed'},collapseCanvas:{zh:'⤜ 收起画布',en:'⤜ Collapse'},cmdLabel:{zh:'技能 / 命令 · 也可输入 /',en:'Skills / commands · or type /'},agentPh:{zh:'说出需求,或输入 / 唤起命令',en:'Tell me what you need, or type / for commands'},agentGreet:{zh:'嗨,我是你的助手。直接说需求,我来判断该做什么并执行,结果会显示在右侧画布。也可以点下面的技能快捷开始。',en:"Hi, I'm your assistant. Just tell me what you need and I'll decide what to do and act — results show on the right canvas. Or tap a skill below."},copGreet:{zh:'嗨,我是你的助手。用一句话就能指挥整个工作台。试试:',en:"Hi, I'm your assistant. Command the whole workbench in one line. Try:"}};
@@ -17,4 +19,3 @@ export function T(k){const e=I18N[k];return e?(setState.lang==='en'?e.en:e.zh):k
 /** @param {string} zh @param {string} en */
 export function tt(zh,en){return setState.lang==='en'?en:zh;}
 /* 过渡 window 兼容桥(约束⑤):classic 消费者(几乎全部 + INIT-module 的 tt)按全局名 tt/L/T 调不变;逐个改 import 后摘。I18N 内部私有不上桥。 */
-const _w = /** @type {any} */ (window); 
