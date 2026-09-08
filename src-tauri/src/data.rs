@@ -41,6 +41,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
     // 阶段4 第二应用「数据资产管理」(assets):D1 <appId>_ 前缀。
     ("assets_prompts", "assets_prompts"),
     ("assets_notes", "assets_notes"),
+    ("assets_documents", "assets_documents"),
     // 以下平台集合可由管理面 CRUD,但故意不进 QUERYABLE、Agent 永不可写。
     ("platform_skills", "platform_skills"),
     ("platform_schedules", "platform_schedules"),
@@ -58,6 +59,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
 /// 分享型导出不携带任务运行细节。任务目标/事件可能含用户文本,artifact 路径还会泄露本机用户名。
 /// 完整 backup 仍覆盖这些集合；这里只影响显式 `redact=true` 的分享/诊断包。
 const REDACTED_COLLECTIONS: &[&str] = &[
+    "assets_documents",
     "job_opportunities",
     "platform_agent_tasks",
     "platform_agent_runs",
@@ -209,6 +211,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (
         14,
         "CREATE TABLE IF NOT EXISTS platform_conversations (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
+    ),
+    (
+        15,
+        "CREATE TABLE IF NOT EXISTS assets_documents (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 

@@ -20,6 +20,8 @@ export interface ShellPage {
   primaryOrder?: number;
   /** Page uses the full content width; chat remains accessible from its header. */
   workspace?: boolean;
+  /** Internal detail page, reachable through trusted application controls. */
+  hidden?: boolean;
   /** 页面 id(DOM 容器 #page-<id>;Mod+1..9 按注册序绑定)。 */
   id: string;
   /** 中文名(L() 的主字段,沿用单体命名)。 */

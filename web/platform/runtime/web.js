@@ -8,6 +8,7 @@
 import { NotImplementedError, notImpl } from './errors.js';
 import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
 import { conversationHistory } from '../shell/conversation-model.js';
+import { projectLibraryDocument, projectLibraryInfo } from './library-model.js';
 
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ (['db', 'ai', 'secret', 'capability']),
@@ -15,11 +16,11 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 9; // v9: persisted conversations
+const DB_VERSION = 10; // v10: backed-up local documents (Web only previews saved text)
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_conversations', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'assets_documents', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_conversations', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
 // 分享型导出排除任务文本、审批/事件与本机 artifact 路径；完整 backup 仍保全。
-const REDACTED_COLLECTIONS = new Set(['job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
+const REDACTED_COLLECTIONS = new Set(['assets_documents', 'job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
 const KV_STORES = ['profile', 'settings', 'meta'];
 // Web 暂无记忆/RAG 执行能力,但仍保全桌面便携包中的私有数据,以便再次导出回桌面时不丢失。
 const PRIVATE_STORES = ['memories', 'doc_chunks'];
@@ -303,6 +304,13 @@ export function createWebRuntime() {
   return {
     platform: 'web',
     available: (feature) => FEATURES.has(feature),
+
+    library: {
+      importFile:()=>notImpl('rt.library.importFile','web'),
+      list:async()=>(await listAll('assets_documents')).map(projectLibraryInfo),
+      get:async id=>{const s=await store('assets_documents','readonly');return projectLibraryDocument(await reqDone(s.get(id)));},
+      answer:()=>{throw new NotImplementedError('rt.library.answer','web');},
+    },
 
     db: {
       list: async (collection) => guard(collection) || (await listAll(collection)).map((record) => downgradeWebTrust(collection, record)),

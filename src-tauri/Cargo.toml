@@ -43,6 +43,10 @@ async-trait = "0.1"
 base64 = "0.22"
 pdf-extract = "0.7"
 sha2 = "0.10"
+# Local document parsing; zip 2.x keeps the project's Rust 1.77 baseline.
+zip = { version = "2.4", default-features = false, features = ["deflate-flate2", "flate2"] }
+quick-xml = "0.39"
+lopdf = { version = "0.34", default-features = false, features = ["nom_parser"] }
 
 [dev-dependencies]
 tauri = { version = "2.11.2", features = ["test"] }

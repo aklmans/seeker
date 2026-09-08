@@ -10,6 +10,7 @@ import { renderPrompts } from './pages/prompts.js';
 import { renderNotes, openNoteModal, reloadNotes } from './pages/notes.js';
 import { loadNotes, listNotes, saveNote, noteTitle } from './note-store.js';
 import { go } from '../../platform/shell/nav.js';
+import { renderDocumentReader, loadDocuments, recentDocuments } from './documents.js';
 
 (function () {
   'use strict';
@@ -34,7 +35,7 @@ import { go } from '../../platform/shell/nav.js';
       zh: '本地笔记、摘录、收藏与来源，保存不自动调用 AI',
       en: 'Local notes, excerpts, favorites and sources. Saving does not call AI.',
     },
-    collections: ['assets_prompts', 'assets_notes'],
+    collections: ['assets_prompts', 'assets_notes', 'assets_documents'],
     // 第23轮[建议]采纳:notes 是自由文本兜底容器、可能承载敏感个人信息,而 D3 授权是 per-app 单档(分集合授权=第5轮开放问题⑤)
     // → 整应用 default-off(隐私·反焦虑取向;blurb 本就写"授权后"),用户在应用管理页一键授权即开;prompts 的 AI 语料用例经显式 opt-in。
     aiReadable: 'default-off',
@@ -47,10 +48,11 @@ import { go } from '../../platform/shell/nav.js';
     pages: [
       { id: 'prompts', label: 'Prompt 库', en: 'Prompts', abbr: 'P', eyebrow: 'PROMPTS', group: 'assets', icon: ICONS.prompts, render: () => renderPrompts() },
       { id: 'notes', label: '资料库', en: 'Library', abbr: '记', eyebrow: 'LIBRARY', group: 'everyday', primary:true, primaryOrder:30, workspace:true, icon: ICONS.notes, render: () => renderNotes() },
+      { id:'libraryfile',label:'阅读文件',en:'Read file',abbr:'文',group:'assets',workspace:true,hidden:true,icon:ICONS.notes,render:renderDocumentReader },
     ],
     saveNote,
     pageNew: id=>id==='notes'?()=>openNoteModal(''):undefined,
-    onDataImported: ()=>{reloadNotes();},
-    recentItems: async()=>{await loadNotes();return listNotes().slice(0,6).map(n=>({id:n.id,title:noteTitle(n),updated:n.updated,open:()=>{go('notes');openNoteModal(n.id);}}));},
+    onDataImported: ()=>{reloadNotes();loadDocuments();},
+    recentItems: async()=>{await loadNotes();return [...listNotes().slice(0,6).map(n=>({id:n.id,title:noteTitle(n),updated:n.updated,open:()=>{go('notes');openNoteModal(n.id);}})),...recentDocuments()];},
   });
 })();

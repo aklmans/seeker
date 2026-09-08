@@ -412,11 +412,20 @@ pub(crate) async fn generate_agent_text(
     untrusted: Option<&str>,
     token: CancellationToken,
 ) -> Result<AgentGenerateOutcome, String> {
-    match run_generate(app, session_id, task, instruction, untrusted, token).await {
-        Ok((stop, _)) if stop == "cancelled" => Ok(AgentGenerateOutcome::Cancelled),
-        Ok((_stop, content)) => Ok(AgentGenerateOutcome::Done(content)),
-        Err(error) => Err(error.message),
+    let (stop, content) = run_generate(app, session_id, task, instruction, untrusted, token)
+        .await
+        .map_err(|error| error.message)?;
+    agent_generation_outcome(&stop, content)
+}
+
+fn agent_generation_outcome(stop: &str, content: String) -> Result<AgentGenerateOutcome, String> {
+    if stop == "cancelled" {
+        return Ok(AgentGenerateOutcome::Cancelled);
     }
+    if stop != "stop" || content.trim().is_empty() {
+        return Err("模型未完整生成回答，请缩小资料范围或重试 / The model did not finish its answer. Use less material or retry.".into());
+    }
+    Ok(AgentGenerateOutcome::Done(content))
 }
 
 /// 无工具流式生成(块(i))。事件同 `ai_chat`(`ai_chunk` / `ai_done` / `ai_error`),但**无 `ai_tool` / `ai_widget`**
@@ -1225,6 +1234,32 @@ fn http_err_msg(code: u16, body: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn agent_generation_requires_complete_nonempty_output() {
+        use super::{agent_generation_outcome, AgentGenerateOutcome};
+        assert!(matches!(
+            agent_generation_outcome("stop", "complete".into()),
+            Ok(AgentGenerateOutcome::Done(_))
+        ));
+        assert!(matches!(
+            agent_generation_outcome("cancelled", "partial".into()),
+            Ok(AgentGenerateOutcome::Cancelled)
+        ));
+        for reason in [
+            "length",
+            "max_tokens",
+            "content_filter",
+            "tool_calls",
+            "unknown",
+            "",
+        ] {
+            assert!(
+                agent_generation_outcome(reason, "{\"validJson\":true}".into()).is_err(),
+                "accepted {reason}"
+            );
+        }
+        assert!(agent_generation_outcome("stop", " \n".into()).is_err());
+    }
     use super::*;
 
     // ═══ app-tool 协议(块 T0)· 四条失败面各带阳性对照 ═══════════════════

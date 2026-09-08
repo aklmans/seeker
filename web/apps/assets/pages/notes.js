@@ -9,19 +9,26 @@ import { frontis, signFoot } from '../../../platform/shell/nav.js';
 import { mdField, wireMdField, mdRender } from '../../../platform/shell/md-edit.js';
 import { enrichNoteText } from '../enrich.js';
 import { loadNotes, listNotes, saveNote, updateNote, removeNote, restoreNote, noteTitle, noteMarkdown } from '../note-store.js';
+import { renderDocumentList } from '../documents.js';
 
 const filter = {q:'', tag:'', favorite:false};
 let loadError = '';
+let libraryTab='notes';
 /** @type {Set<string>} */ const organizing = new Set();
 /** @param {unknown} value */
 const esc = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 export function renderNotes() {
   const host = $('#page-notes'); if (!host) return;
+  const tabs=`<div class="sec" style="display:flex;gap:8px;"><button class="btn ${libraryTab==='notes'?'btn-accent':''}" data-library-tab="notes">${tt('笔记','Notes')}</button><button class="btn ${libraryTab==='files'?'btn-accent':''}" data-library-tab="files">${tt('文件','Files')}</button></div>`;
+  if(libraryTab==='files'){
+    host.innerHTML=frontis('LIBRARY',tt('资料库','Library'))+tabs;renderDocumentList(host);wireTabs(host);return;
+  }
   const all = listNotes(), q = filter.q.trim().toLowerCase();
   const rows = all.filter(n=>(!filter.favorite || n.favorite) && (!filter.tag || n.tags?.includes(filter.tag)) && (!q || (noteTitle(n)+' '+n.text+' '+(n.tags||[]).join(' ')+' '+(n.sourceUrl||'')).toLowerCase().includes(q)));
   const tags = [...new Set(all.flatMap(n=>n.tags||[]))].slice(0,20);
   host.innerHTML = frontis('LIBRARY',tt('资料库','Library'))
+    +tabs
     + `<div class="sec"><p style="color:var(--ink-3);line-height:1.8;">${tt('记录想法、保存回答和摘录。不连接模型也能编辑、搜索和导出。普通保存只在本地完成。','Keep ideas, answers and excerpts. Edit, search and export without a model. Saving stays on this device.')}</p><button class="btn btn-accent" id="anAdd">${tt('+ 新建笔记','+ New note')}</button></div>`
     + (loadError?`<div class="sec" role="alert">${esc(loadError)} <button class="btn" id="anReload">${tt('重新加载','Reload')}</button></div>`:'')
     + `<div class="sec" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;"><input class="input" id="anQ" style="max-width:280px;" value="${esc(filter.q)}" placeholder="${tt('搜索标题、内容、标签和来源','Search title, text, tags and source')}"><button class="btn ${filter.favorite?'btn-accent':''}" id="anFavorites" aria-pressed="${filter.favorite}">${tt('收藏','Favorites')}</button><select class="input" id="anTag" style="width:auto;max-width:180px;" aria-label="${tt('标签筛选','Filter by tag')}"><option value="">${tt('全部标签','All tags')}</option>${tags.map(t=>`<option ${t===filter.tag?'selected':''} value="${esc(t)}">${esc(t)}</option>`).join('')}</select></div>`
@@ -52,7 +59,12 @@ export function renderNotes() {
   wire('anai',n=>openOrganizeModal(n));
   wire('knowledge',n=>openKnowledgeModal(n));
   wire('andel',async n=>{const snap=await removeNote(n.id);toastUndo(tt('已删除笔记','Note deleted'),()=>restoreNote(snap));});
+  wireTabs(host);
 }
+
+/** @param {Element} host */
+function wireTabs(host){host.querySelectorAll('[data-library-tab]').forEach(el=>{const b=/** @type {HTMLButtonElement} */(el);b.onclick=()=>{libraryTab=b.dataset.libraryTab||'notes';renderNotes();};});}
+window.addEventListener('seeker-show-library-files',()=>{libraryTab='files';renderNotes();});
 
 /** @param {string} id */
 export function openNoteModal(id) {

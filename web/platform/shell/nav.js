@@ -17,6 +17,7 @@ export function currentPage(){ return current; }     // 唯一读取通道:每�
 export function buildNav(){
   const nav=$('#nav'); nav.innerHTML=''; let lastGroup=null;
   PAGES.forEach(p=>{
+    if(p.hidden)return;
     if(p.group&&p.group!==lastGroup){ lastGroup=p.group; const g=GROUPS[p.group]; nav.appendChild(el(`<div class="nav-group">${setState.lang==='en'?g.en:g.zh}</div>`)); }
     // 导航徽标:页面条目自带 liveCount 回调(app 贡献真实数据),回退静态 count。
     const liveCount = p.liveCount ? p.liveCount() : p.count;

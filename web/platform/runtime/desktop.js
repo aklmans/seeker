@@ -12,7 +12,7 @@ import { runAppTool } from '../capability/app-tools/run.js';
 /** 桌面端「全功能」:所有能力都在。 */
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ ([
-    'db', 'ai', 'textGeneration', 'secret', 'capability', 'agentExecution',
+    'db', 'ai', 'textGeneration', 'fileReading', 'secret', 'capability', 'agentExecution',
     'voice', 'tray', 'globalShortcut', 'deepLink', 'autoUpdate',
   ]),
 );
@@ -154,6 +154,20 @@ export function createDesktopRuntime() {
       clear: (collections) => invoke('db_clear', { collections, preferences: collectPortablePreferences() }),
       getBackupPolicy: async () => ({ supported: true, ...(await invoke('backup_policy_get')) }),
       setBackupPolicy: async (enabled) => ({ supported: true, ...(await invoke('backup_policy_set', { enabled: !!enabled })) }),
+    },
+
+    library: {
+      importFile:(name,dataBase64)=>invoke('library_file_import',{name,dataBase64}),
+      list:()=>invoke('library_file_list'),
+      get:id=>invoke('library_file_get',{id}),
+      answer:(id,mode,question)=>{
+        const sessionId=genSessionId();let cancelled=false;
+        const done=invoke('library_file_answer',{id,mode,question,sessionId}).then(result=>{
+          if(cancelled)throw new Error('已取消，原文与问题已保留 / Cancelled; your source and question are kept');
+          return result;
+        });
+        return {done,cancel:()=>{cancelled=true;invoke('ai_cancel',{sessionId}).catch(()=>{});}};
+      },
     },
 
     agent: {

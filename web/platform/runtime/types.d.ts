@@ -22,6 +22,7 @@ export type Feature =
   | 'db'
   | 'ai'
   | 'textGeneration'
+  | 'fileReading'
   | 'secret'
   | 'capability'
   | 'agentExecution'
@@ -46,6 +47,7 @@ export type Collection =
   | 'messages'
   | 'assets_prompts'
   | 'assets_notes'
+  | 'assets_documents'
   | 'platform_skills'
   | 'platform_schedules'
   | 'platform_projects'
@@ -713,10 +715,28 @@ export interface RuntimeApi {
   readonly capability: CapabilityApi;
   readonly memory: MemoryApi;
   readonly docs: DocsApi;
+  readonly library: LibraryApi;
   readonly mcp: McpApi;
   readonly render: RenderApi;
   readonly web: WebApi;
   readonly agent: AgentApi;
+}
+
+export interface SourceFragment { id:string; text:string; page:number|null; }
+export interface LibraryDocumentInfo {
+  id:string; name:string; format:string; size:number; invalid?:boolean;
+  sourceHash:string; characters:number; fragmentCount:number; updated:number; originalIncluded:boolean;
+}
+export interface LibraryDocument extends LibraryDocumentInfo { fragments:SourceFragment[]; warnings:string[]; }
+export interface MaterialReference { fragmentId:string; quote:string; }
+export interface LibraryAnswer { answer:string; insufficient:boolean; references:MaterialReference[]; }
+export interface LibraryApi {
+  /** Local parsing and persistence; original bytes and extracted text are included in full backups. */
+  importFile(name:string,dataBase64:string):Promise<LibraryDocument>;
+  list():Promise<LibraryDocumentInfo[]>;
+  get(id:string):Promise<LibraryDocument>;
+  /** Only this selected document is read into a no-tools model request. */
+  answer(id:string,mode:'summary'|'question',question:string):{cancel():void;done:Promise<LibraryAnswer>};
 }
 
 // 运行时**值**(createRuntime / rt / NotImplementedError)由 ./index.js 与

@@ -8,6 +8,8 @@ mod docs;
 mod docx;
 mod embed;
 mod exports;
+mod library;
+mod library_parse;
 mod mcp;
 mod memory;
 mod prompts;
@@ -21,6 +23,11 @@ use tauri::Manager;
 /// build.rs 把前端指纹经 `SEEKER_WEB_FP` 注入,这里 `env!` 依赖它 ⇒ 前端一变、指纹变、本 crate 重编译、
 /// `generate_context!`(run() 内)重读 `../web` 重嵌。**勿删**:删了改前端 `cargo run` 又会嵌旧资产。
 const _WEB_FP: &str = env!("SEEKER_WEB_FP");
+
+/// Fixed internal parser entry point. The normal app runtime is never initialized in this child.
+pub fn run_library_parser() {
+    library_parse::cli();
+}
 
 /// 前端指纹较上次启动变化 → 清 WKWebView 的 HTTP 缓存(app_cache_dir),防更新后供旧资产。
 /// 仅清缓存目录(可再生);localStorage(WebKit 数据存储)与 seeker.db(app_data_dir)**不动**。
@@ -136,6 +143,10 @@ pub fn run() {
             docs::pdf_extract_text,
             docx::export_docx,
             exports::export_markdown,
+            library::library_file_import,
+            library::library_file_list,
+            library::library_file_get,
+            library::library_file_answer,
             web::web_fetch,
             web::open_external,
             web::verify_sources,
