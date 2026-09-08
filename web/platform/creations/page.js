@@ -55,7 +55,8 @@ export async function refreshList(){
     for(const row of visible){
       const b=button(String(row.title||tt('无标题','Untitled')),String(row.title||'Untitled'),()=>openCreation(row.id),'creation-list-item');
       if(current?.id===row.id)b.setAttribute('aria-current','true');
-      const meta=document.createElement('small');meta.textContent=String(row.kind||'')+' · v'+String(row.revision||'?');b.appendChild(meta);host.appendChild(b);
+      const kinds={widget:'Widget',mindmap:tt('思维导图','Mind map'),card:tt('知识卡片','Knowledge card'),comparison:tt('对比表','Comparison'),timeline:tt('时间线','Timeline')};
+      const meta=document.createElement('small');meta.textContent=(/** @type {any} */(kinds)[String(row.kind)]||tt('作品','Creation'))+' · v'+String(row.revision||'?');b.appendChild(meta);host.appendChild(b);
     }
     if(!visible.length)host.textContent=tt('这里还没有作品。','No creations here yet.');
   }catch(e){if(epoch===listEpoch)host.textContent=tt('读取失败，请重试：','Could not load: ')+String(e);}
@@ -150,10 +151,10 @@ function drawEditor(record){
   /** @type {ReturnType<typeof mountMindMapEditor>|null} */let mindEditor=null;
   /** @type {ReturnType<typeof mountStructuredEditor>|null} */let structuredEditor=null;
   const draft=()=>({...creationDraft(record),title:title.value,content:mindEditor?mindEditor.value():structuredEditor?structuredEditor.value():record.kind==='widget'?{...record.content,html:html.value}:{...record.content,text:text.value},style});
-  const preview=()=>{if(mindEditor){mindEditor.refresh();return;}const target=host.querySelector('#creationPreview');if(target)try{target.replaceChildren(renderWidget({id:record.id,title:title.value,html:creationHTML(draft()),minHeight:120},{style}));}catch(e){target.textContent=tt('请完成内容后预览：','Complete the content to preview: ')+String(e);}};
+  const preview=()=>{previewPending=false;if(mindEditor){mindEditor.refresh();return;}const target=host.querySelector('#creationPreview');if(target)try{target.replaceChildren(renderWidget({id:record.id,title:title.value,html:creationHTML(draft()),minHeight:120},{style}));}catch(e){target.textContent=tt('请完成内容后预览：','Complete the content to preview: ')+String(e);}};
   const mark=()=>{dirty=true;const status=host.querySelector('#creationSaveStatus');if(status)status.textContent=tt('有未保存的修改','Unsaved changes');};
-  let previewTimer=0;
-  const changed=()=>{mark();clearTimeout(previewTimer);previewTimer=window.setTimeout(()=>{if(host.isConnected&&epoch===editorEpoch)preview();},250);};
+  let previewTimer=0,previewPending=false;
+  const changed=()=>{mark();previewPending=true;clearTimeout(previewTimer);previewTimer=window.setTimeout(()=>{if(host.isConnected&&epoch===editorEpoch)preview();},250);};
   for(const input of [title,text,html])input.oninput=changed;
   for(const input of host.querySelectorAll('[data-style]')){
     const el=/** @type {HTMLInputElement} */(input);el.oninput=()=>{const key=el.dataset.style||'';style=normalizeStyle({...style,[key]:el.type==='number'?Number(el.value):el.value});changed();};
@@ -189,9 +190,12 @@ function drawEditor(record){
   host.querySelector('#creationSaveActions')?.append(saveButton,button('放弃修改','Discard changes',()=>{if(!busy){dirty=false;drawEditor(record);}}));
   const actions=host.querySelector('#creationActions');
   actions?.append(button('导出 / 分享','Export / Share',async()=>{
-    if(mindEditor){try{const map=mindEditor.value(),size=layoutMindMap(map,style);await openExport(null,title.value,{html:buildSrcDoc(mindMapSVG(map,style),style),width:Math.min(1600,size.width+style.spacing*2)});}catch(e){report(e);}return;}
+    if(previewPending){clearTimeout(previewTimer);preview();}
+    const source=String(record.source.title||({note:tt('笔记','Note'),file:tt('本地文件','Local file'),answer:tt('对话回答','Chat answer'),chat:tt('AI 对话','AI chat')}[String(record.source.type)]||''));
+    if(mindEditor){try{const map=mindEditor.value(),size=layoutMindMap(map,style);await openExport(null,title.value,{html:buildSrcDoc(mindMapSVG(map,style),style),width:Math.min(1600,size.width+style.spacing*2)},{style,source});}catch(e){report(e);}return;}
     const card=/** @type {HTMLElement|null} */(host.querySelector('#creationPreview .widget-card'));
-    if(card)await openExport(card,title.value);
+    if(card)await openExport(card,title.value,undefined,{style,source,...(record.kind==='widget'?{offlineHTML:buildSrcDoc(html.value,style)}:{})});
+    else toast(tt('请先完成作品内容，再导出。','Complete the creation content before exporting.'));
   }));
   actions?.append(button('复制作品','Duplicate',async()=>{
     if(!canLeave())return;try{const copy=await saveCreation({...creationDraft(record),id:newCreationId(),title:record.title.slice(0,180)+tt(' · 副本',' · Copy'),deleted:false},0);await openCreation(copy.id);}catch(e){report(e);}

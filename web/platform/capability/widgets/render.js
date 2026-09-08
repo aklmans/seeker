@@ -92,9 +92,19 @@ const FRAMES = new Map();
 /** @type {WeakMap<HTMLElement,( )=>Promise<{html:string,width:number}>>} */
 const SNAPSHOTS = new WeakMap();
 /** @param {HTMLElement} card */
-export function requestWidgetSnapshot(card){
-  const request=SNAPSHOTS.get(card);
-  if(!request)return Promise.reject(new Error(tt('组件尚未就绪，请稍后重试','Widget is not ready; retry shortly')));
+export async function requestWidgetSnapshot(card){
+  let request=SNAPSHOTS.get(card);
+  if(!request){
+    const frame=card.querySelector('iframe');
+    if(!frame)throw Error(tt('组件尚未就绪，请稍后重试','Widget is not ready; retry shortly'));
+    await new Promise((resolve,reject)=>{
+      const loaded=()=>{clearTimeout(timer);resolve(undefined);};
+      const timer=setTimeout(()=>{frame.removeEventListener('load',loaded);reject(Error(tt('组件加载超时，请重试','Widget loading timed out; retry')));},8000);
+      frame.addEventListener('load',loaded,{once:true});
+    });
+    request=SNAPSHOTS.get(card);
+  }
+  if(!request||!card.isConnected)throw Error(tt('组件已关闭或尚未就绪，请重新打开','Widget closed or not ready; reopen it'));
   return request();
 }
 /** @type {MutationObserver | null} */

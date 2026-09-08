@@ -309,6 +309,7 @@ export function createDesktopRuntime() {
     render: {
       creationImage:(title,pngDataUrl,format)=>invoke('export_creation_image',{title,pngDataUrl,format}),
       creationSVG:(title,svg)=>invoke('export_creation_svg',{title,svg}),
+      creationOffline:(title,html)=>invoke('export_creation_offline',{title,html}),
       copyCreationImage:pngDataUrl=>invoke('copy_creation_image',{pngDataUrl}),
       docx: (doc) => invoke('export_docx', { doc }),
       markdown: (title, text) => invoke('export_markdown', { title, text }),

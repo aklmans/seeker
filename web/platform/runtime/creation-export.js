@@ -1,4 +1,5 @@
 // @ts-check
+import {offlineDocument} from './offline-document.js';
 /** PNG-only input from an isolated renderer. Never accept arbitrary HTML in the parent DOM. */
 export async function decodeCreationPNG(/** @type {string} */ dataUrl){
   if(typeof dataUrl!=='string'||!/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(dataUrl)||dataUrl.length>32_000_000)throw Error('Invalid or oversized PNG');
@@ -67,3 +68,5 @@ export function validateCreationSVG(svg){
 }
 /** @param {string} title @param {string} svg */
 export async function exportCreationSVG(title,svg){return download(title,new Blob([validateCreationSVG(svg)],{type:'image/svg+xml'}),'svg');}
+/** @param {string} title @param {string} html */
+export async function exportCreationOffline(title,html){return download(title,new Blob([offlineDocument(title,html)],{type:'text/html'}),'html');}

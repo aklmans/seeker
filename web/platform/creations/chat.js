@@ -1,6 +1,6 @@
 // @ts-check
 import {tt} from '../shell/i18n.js';
-import {renderWidget} from '../capability/widgets/render.js';
+import {renderWidget,buildSrcDoc} from '../capability/widgets/render.js';
 import {defaultCreationStyle} from './style-preferences.js';
 import {saveGeneratedWidget} from './store.js';
 import {openCreation} from './page.js';
@@ -17,7 +17,7 @@ export function renderAndSaveWidget(widget,scope){
   const style=defaultCreationStyle(),card=renderWidget(widget,{style});
   const bar=document.createElement('div');bar.className='creation-toolbar';card.appendChild(bar);
   const status=document.createElement('span');status.setAttribute('role','status');bar.appendChild(status);
-  const exportButton=document.createElement('button');exportButton.className='btn';exportButton.textContent=tt('导出 / 分享','Export / Share');exportButton.onclick=()=>{void openExport(card,widget.title);};bar.appendChild(exportButton);
+  const exportButton=document.createElement('button');exportButton.className='btn';exportButton.textContent=tt('导出 / 分享','Export / Share');exportButton.onclick=()=>{void openExport(card,widget.title,undefined,{style,source:tt('AI 对话','AI chat'),offlineHTML:buildSrcDoc(widget.html,style)});};bar.appendChild(exportButton);
   /** @type {Promise<string|null>|null} */let inFlight=null;
   const retry=document.createElement('button');retry.className='btn';retry.textContent=tt('重试保存','Retry saving');retry.hidden=true;bar.appendChild(retry);
   function save(){

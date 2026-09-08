@@ -37,7 +37,7 @@ fn write_document(
     } else {
         2_000_000
     };
-    if !["md", "docx", "png", "pdf", "svg"].contains(&extension)
+    if !["md", "docx", "png", "pdf", "svg", "html"].contains(&extension)
         || bytes.is_empty()
         || bytes.len() > limit
     {

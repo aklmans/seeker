@@ -4,6 +4,7 @@ mod capability;
 mod config;
 mod conversation;
 mod creation_export;
+mod creation_offline;
 mod creations;
 mod data;
 mod docs;
@@ -95,6 +96,7 @@ pub fn run() {
             creation_export::export_creation_image,
             creation_export::copy_creation_image,
             creation_export::export_creation_svg,
+            creation_offline::export_creation_offline,
             secret::secret_set,
             secret::secret_status,
             secret::secret_clear,
