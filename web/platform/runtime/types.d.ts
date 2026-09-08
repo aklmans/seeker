@@ -21,6 +21,7 @@ export type Platform = 'desktop' | 'web';
 export type Feature =
   | 'db'
   | 'ai'
+  | 'textGeneration'
   | 'secret'
   | 'capability'
   | 'agentExecution'
@@ -497,6 +498,9 @@ export type ExportDocBlock =
 
 /** 导出 / 渲染(平台层 · 业务无关「文档模型 → 文件」)。 */
 export interface RenderApi {
+  /** Local Markdown export. Desktop writes a new file in Downloads/Seeker and verifies it;
+   * Web starts a browser download and returns its filename. No model call. */
+  markdown(title: string, text: string): Promise<string>;
   /** 文档模型 → .docx 的 base64(前端 `atob` → Blob 下载)。**纯本地、不出网**;桌面端,web 降级。 */
   docx(doc: ExportDoc): Promise<string>;
 }

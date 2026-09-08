@@ -19,10 +19,46 @@ pub(crate) struct RequestSpec {
 
 /// 线上协议必须从钥匙串得到 key；Ollama 官方兼容接口忽略 key,用固定非密钥占位值。
 pub(crate) fn load_api_key(protocol: ProviderProtocol) -> Result<String, String> {
-    match crate::secret::get_secret(KEY_ACCOUNT) {
+    load_api_key_with(protocol, || crate::secret::get_secret(KEY_ACCOUNT))
+}
+
+fn load_api_key_with(
+    protocol: ProviderProtocol,
+    read_key: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    if !protocol.requires_api_key() {
+        return Ok("ollama".into());
+    }
+    match read_key() {
         Ok(key) if !key.trim().is_empty() => Ok(key.trim().to_string()),
-        _ if !protocol.requires_api_key() => Ok("ollama".to_string()),
         _ => Err("尚未配置 API Key,请在「数据设置」填写".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod key_scope_tests {
+    use super::*;
+    #[test]
+    fn local_ollama_does_not_read_or_forward_a_cloud_credential() {
+        let key = load_api_key_with(ProviderProtocol::Ollama, || {
+            panic!("local protocol must not access cloud keychain entry")
+        });
+        assert_eq!(key.unwrap(), "ollama");
+    }
+    #[test]
+    fn cloud_key_remains_required_and_trimmed() {
+        for protocol in [
+            ProviderProtocol::Openai,
+            ProviderProtocol::Anthropic,
+            ProviderProtocol::Gemini,
+        ] {
+            assert_eq!(
+                load_api_key_with(protocol, || Ok(" fixture-key ".into())).unwrap(),
+                "fixture-key"
+            );
+            assert!(load_api_key_with(protocol, || Ok(" ".into())).is_err());
+            assert!(load_api_key_with(protocol, || Err("unavailable".into())).is_err());
+        }
     }
 }
 

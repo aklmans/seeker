@@ -7,6 +7,7 @@ mod data;
 mod docs;
 mod docx;
 mod embed;
+mod exports;
 mod mcp;
 mod memory;
 mod prompts;
@@ -134,6 +135,7 @@ pub fn run() {
             docs::doc_add,
             docs::pdf_extract_text,
             docx::export_docx,
+            exports::export_markdown,
             web::web_fetch,
             web::open_external,
             web::verify_sources,

@@ -326,11 +326,15 @@ export function createWebRuntime() {
       remove: async (collection, id) => {
         const bad = guard(collection);
         if (bad) return bad;
-        const s1 = await store(collection, 'readonly');
-        const snap = (await reqDone(s1.get(id))) ?? null;
-        const s2 = await store(collection, 'readwrite');
-        await reqDone(s2.delete(id));
-        return snap;
+        const s = await store(collection, 'readwrite');
+        const committed = txDone(s.transaction);
+        // Read + delete in one transaction; snapshot and success reflect the committed deletion.
+        let snap;
+        try {
+          snap = await reqDone(s.get(id));
+          await Promise.all([committed, reqDone(s.delete(id))]);
+        } catch (error) { committed.catch(()=>{}); throw error; }
+        return snap ?? null;
       },
       export: async (redact) => downloadJson(await bundleAll(redact), 'seeker-export' + (redact ? '-redacted' : '') + '-' + Date.now() + '.json'),
       import: async (json) => importBundle(JSON.parse(json)),
@@ -456,6 +460,14 @@ export function createWebRuntime() {
     // .docx 渲染在 Rust 核;web 端无 → 降级(domain 仍可走 Markdown 导出/复制)。
     render: {
       docx: () => notImpl('rt.render.docx', 'web'),
+      markdown: async (title, text) => {
+        if (!text.trim() || text.length > 2000000) throw new Error('内容为空或过长 / Empty or oversized content');
+        const filename = (title.replace(/[^\p{L}\p{N}_-]/gu,'').slice(0,60) || 'Seeker-note')+'.md';
+        const url = URL.createObjectURL(new Blob([text], {type:'text/markdown;charset=utf-8'}));
+        const a = document.createElement('a'); a.href=url; a.download=filename;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+        return filename;
+      },
     },
     // 网页抓取需平台核出网;web 端无 → 降级(出口红线:前端绝不直接出网)。
     web: {

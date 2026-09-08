@@ -49,6 +49,27 @@ Web 通用 upsert 等待事务完成后才报告成功。Web SSE 必须收到结
 默认提示提供日常助手定位；启用应用可声明 `chatTask`，只在其页面使用相应域提示。
 Web 演示代理的服务端提示也采用通用定位，其能力仍限于聊天。
 
+## 文字工具与本地资料库
+
+`daily` 应用提供翻译、润色、总结和回复草稿，使用 `rt.ai.generate` 的独立生成链。
+`textGeneration` 是明确的运行时能力：桌面提供，Web 不提供。请求只有可信的固定处理指令、
+枚举选项和独立 `untrusted` 正文，不读取历史、项目、记忆、知识库或工具。生成系统基线优先遵守
+明确的目标语言，避免聊天语言提示覆盖翻译。输入超过 12,000 Unicode 字符时执行前拒绝，
+取消、截断、空结果和调用失败均不能作为可保存的完成结果。
+
+`assets_notes` 继续由 `assets` 拥有，弹性 JSON 中增加用户可编辑的 title/tags/sourceUrl/favorite；
+通过 `SeekerShell.saveNote` 明确保存回答、文字工具结果和摘录，应用间不互相 import。
+普通保存不调用模型。独立 AI 整理只处理所选笔记正文，更新元数据时校验笔记版本，
+不会用异步结果覆盖后续修改。加入知识库是单独的知情授权，说明未来自动召回和嵌入模型出网；
+关联保存失败时撤回本次创建的副本。
+
+资料库的创建、更新、删除和撤销均等待运行时实际成功才更新列表。Web upsert/remove 等待
+IndexedDB 事务提交；remove 在同一事务读取快照并删除。资料库支持无模型编辑、全文搜索、
+标签筛选、收藏、来源和 Markdown 导出。桌面 `rt.render.markdown` 只在 Downloads/Seeker 新建
+平台决定的 `.md` 文件，拒绝空内容/超限，写后重读验证，不接受任意文件路径、不覆盖原文件；
+Web 使用浏览器下载，返回文件名，不声称已验证用户磁盘。工具和资料库使用完整内容区域，
+通过 `ShellPage.workspace` 声明，顶栏提供对话入口。
+
 ## AI 协议边界
 
 Rust 内部使用一份 canonical message/tool 形状，`src-tauri/src/provider.rs` 只在出网边界翻译：
@@ -58,7 +79,10 @@ Rust 内部使用一份 canonical message/tool 形状，`src-tauri/src/provider.
 | OpenAI-compatible | `/chat/completions` + SSE | `image_url` | `/embeddings` |
 | Anthropic | `/v1/messages` + 原生 tool blocks | base64 image source | 不支持，记忆/RAG 诚实停用 |
 | Gemini | `streamGenerateContent` + function calls | `inlineData` | `batchEmbedContents` |
-| Ollama | 官方 OpenAI-compatible `/v1` | 兼容 vision | 兼容 `/v1/embeddings`，key 可选 |
+| Ollama | 官方 OpenAI-compatible `/v1` | 兼容 vision | 兼容 `/v1/embeddings`，不读取云端 key |
+
+Ollama 使用固定非密钥占位值，不访问或转发共享的云端钥匙串条目。需要鉴权的远端兼容代理
+使用 OpenAI-compatible 协议配置。云端协议继续要求有效 Key，空值与读取失败均拒绝出网。
 
 系统提示、项目指令、历史和不可信资料在 canonical 层组装；适配器不得自行读取 profile。工具结果返回模型前仍须经过既有的 Untrusted 框定与破坏性护栏。
 

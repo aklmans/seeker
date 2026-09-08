@@ -14,6 +14,7 @@ import { isDesktop } from './shell-keys.js';
 import { normSkill, skillRunnable, skillNeedsReview } from './skill-model.js'; // ★Skills S2:运行 Skill = 归一后 prompt 走 agentSend(标准用户消息路径);I1:导入未审阅双点拒
 import { listSkills } from './skill-store.js'; // ★Skills S2b:命令面板读同步缓存(skill-store 不 import 本文件 ⇒ 无环)
 import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★PJ2:hydrateMessages 按当前项目过滤 + 切换器写态(零 import 叶子)
+import { appendSaveAnswer } from './library-actions.js';
 import { listProjects, hydrateProjects } from './project-store.js'; // ★PJ2 切换器:列非归档项目(store 不 import 本文件 ⇒ 无环)
 import { hydrateConversations, listConversations, currentConversation, conversationTitle, createConversation, ensureConversation, renameConversation, currentMessages, saveConversationMessage } from './conversation-store.js';
 import { setCurrentConversationId } from './conversation-state.js';
@@ -330,6 +331,7 @@ export async function hydrateMessages(){
     const draw = (rows, append, who) => { rows.forEach(r => {
       const bubble = append(r.role==='user'?'user':'ai',
         r.role==='user' ? esc(r.text) : ('<span class="who">'+who+'</span>'+aiHTML(r.text))); // AI 历史也渲染 Markdown
+      if(r.role!=='user')appendSaveAnswer(bubble,r.text);
       if(r.role!=='user' && Array.isArray(r.cards)){ // 重渲持久化卡(用实时数据,卡保持新鲜;数据缺失则优雅跳过)
         for(const c of r.cards){ const def=c&&CARDS[c.kind]; if(def && def.persist && def.show){ try{ def.show(bubble, c.data||{}, who); }catch(_e){} } }
       }

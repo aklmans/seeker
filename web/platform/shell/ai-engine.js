@@ -12,6 +12,7 @@ import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
 import { saveConversationMessage } from './conversation-store.js';
+import { appendSaveAnswer } from './library-actions.js';
 import { currentPage } from './nav.js';
 import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
 import { currentProjectId } from './project-state.js'; // ★PJ2:多轮历史桶键缺省 = 当前项目(零 import 叶子)
@@ -114,6 +115,7 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
         if(b.data && CARDS[kind].valid(b.data)){ pending.push([kind, b.data]); prose = b.prose; }
       }
       if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
+      appendSaveAnswer(thinkBubble, prose);
       const persistCards = pending.filter(([k])=>CARDS[k].persist).map(([kind,data])=>({kind,data}));
       try {
         if(messageScope) await saveConversationMessage(messageScope, 'ai', prose, persistCards);
@@ -122,7 +124,7 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
       } catch(error) {
         const note=document.createElement('p'); note.textContent=tt('回答未能保存，请复制保留后重试。','Could not save this answer. Copy it before retrying.'); thinkBubble.appendChild(note);
         if(onSettled) onSettled(false, String(error));
-      } finally { replyFinished(); }
+      }
       for(const [kind, data] of pending){ try{ CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
       if(scrollFn) scrollFn();
       } catch(error) {

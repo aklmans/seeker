@@ -22,7 +22,8 @@ web/
 ├── platform/        # 平台运行时层(稳定 · 业务无关):契约/AI 网关/能力层/护栏/安全渲染/运行时适配
 └── apps/            # 业务应用层:每应用一目录,互不 import,只经 SeekerShell.* 契约通信
     ├── jobseek/     #   求职工作台
-    └── assets/      #   数据资产(Prompt 库 / 笔记)
+    ├── assets/      #   资料库(Prompt 库 / 笔记)
+    └── daily/       #   日常文字工具
 src-tauri/           # Rust 核:SQLite · 钥匙串 · AI 工具循环 · MCP · 能力 registry(能力强制点在这里)
 server/              # Web 演示自托管代理(零依赖单文件;key 只在服务端)
 docs/                # 面向用户的文档(QUICKSTART / FEEDBACK / DEPLOY-DEMO / 截图)
@@ -66,4 +67,4 @@ npm run build:all        # 打包 .app/.dmg(src-tauri/target/release/bundle/)
 
 ## 7 · 当前阶段
 
-产品已公开发布 v0.2.0；v0.3.0 开发版包含“岗位投递包”和“机会雷达”两条固定任务流。用户已批准按 `docs/ROUND-1-PLAN.md` 转型为面向普通办公用户的日常 AI 助手，进度见 `docs/ROUND-1-PROGRESS.md`。当前增量已加入通用首页和可跨重启续聊的独立会话。继续按已批准范围小步实现与验收；新增范围先讨论，不自行扩大。
+产品已公开发布 v0.2.0；v0.3.0 开发版包含“岗位投递包”和“机会雷达”两条固定任务流。用户已批准按 `docs/ROUND-1-PLAN.md` 转型为面向普通办公用户的日常 AI 助手，进度见 `docs/ROUND-1-PROGRESS.md`。当前已加入通用首页、可跨重启续聊的独立会话、四种文字工具和本地资料库；普通笔记保存不调用 AI。继续按已批准范围小步实现与验收；新增范围先讨论，不自行扩大。

@@ -353,7 +353,7 @@ async fn run_generate(
     let key = crate::provider::load_api_key(cfg.protocol).map_err(ChatError::config)?;
     let ua = effective_user_agent(&cfg.user_agent).to_string();
 
-    let system = crate::prompts::system_prompt(app, task);
+    let system = crate::prompts::generation_prompt(app, task);
     let user = build_generate_user(instruction, untrusted);
     let messages = build_messages(&system, &user); // [system, user] —— 无历史、无 context、无 tool 结果
 

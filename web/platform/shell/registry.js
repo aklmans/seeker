@@ -227,9 +227,20 @@
 
   /** @returns {ShellPage[]} 启用应用页(按序) + 壳页 */
   function pages() {
-    return shellOwn.pages.filter(p=>p.primary)
-      .concat(enabledApps().flatMap((a) => a.pages))
-      .concat(shellOwn.pages.filter(p=>!p.primary));
+    const all = shellOwn.pages.concat(enabledApps().flatMap((a) => a.pages));
+    return all.filter(p=>p.primary).sort((a,b)=>(a.primaryOrder??100)-(b.primaryOrder??100)).concat(enabledApps().flatMap(a=>a.pages.filter(p=>!p.primary)), shellOwn.pages.filter(p=>!p.primary));
+  }
+
+  function canSaveNote() { return enabledApps().some(a=>typeof a.saveNote === 'function'); }
+  /** @param {import('./types').NoteDraft} draft */
+  async function saveNote(draft) {
+    const owner = enabledApps().find(a=>typeof a.saveNote === 'function');
+    if (!owner?.saveNote) throw new Error('请在应用管理启用资料库 / Enable Library in Apps');
+    return owner.saveNote(draft);
+  }
+  function homeActions() { return enabledApps().flatMap(a=>a.homeActions?.() || []); }
+  async function recentItems() {
+    return (await Promise.all(enabledApps().map(a=>a.recentItems?.() || []))).flat().sort((a,b)=>b.updated-a.updated).slice(0,6);
   }
 
   /** @returns {Record<string, LString>} */
@@ -457,6 +468,10 @@
 
   /** @type {import('./types').SeekerShellApi} */
   const api = {
+    canSaveNote,
+    saveNote,
+    homeActions,
+    recentItems,
     register,
     list,
     enabled,

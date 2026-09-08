@@ -7,7 +7,9 @@
  * 批7:页 render 由 import 直取(不再依赖 window 全局)——同 app 内 pages↔manifest 走 import,跨层仅 window.SeekerShell 契约保持全局。
  */
 import { renderPrompts } from './pages/prompts.js';
-import { renderNotes } from './pages/notes.js';
+import { renderNotes, openNoteModal, reloadNotes } from './pages/notes.js';
+import { loadNotes, listNotes, saveNote, noteTitle } from './note-store.js';
+import { go } from '../../platform/shell/nav.js';
 
 (function () {
   'use strict';
@@ -26,11 +28,11 @@ import { renderNotes } from './pages/notes.js';
 
   shell.register({
     id: 'assets',
-    name: { zh: '数据资产', en: 'Data Assets' },
+    name: { zh: '资料库', en: 'Library' },
     icon: ICONS.app,
     blurb: {
-      zh: '沉淀 Prompt 与笔记 —— 可复用的个人数据资产,授权后供 AI 检索引用',
-      en: 'Curate prompts & notes — reusable personal data assets the AI can reference with your grant',
+      zh: '本地笔记、摘录、收藏与来源，保存不自动调用 AI',
+      en: 'Local notes, excerpts, favorites and sources. Saving does not call AI.',
     },
     collections: ['assets_prompts', 'assets_notes'],
     // 第23轮[建议]采纳:notes 是自由文本兜底容器、可能承载敏感个人信息,而 D3 授权是 per-app 单档(分集合授权=第5轮开放问题⑤)
@@ -38,12 +40,17 @@ import { renderNotes } from './pages/notes.js';
     aiReadable: 'default-off',
     groups: {
       assets: { zh: '资产', en: 'ASSETS' },
+      everyday: { zh: '日常', en: 'EVERYDAY' },
     },
     // liveCount 暂不挂:导航徽标 span 由 buildNav 一次性创建,从 0 起步的集合在水合后无法就地补出徽标
     // (syncNavCounts 只更新既有 span,pre-existing 平台行为)——避免"有数据却无徽标"的不一致,留后续。
     pages: [
       { id: 'prompts', label: 'Prompt 库', en: 'Prompts', abbr: 'P', eyebrow: 'PROMPTS', group: 'assets', icon: ICONS.prompts, render: () => renderPrompts() },
-      { id: 'notes', label: '笔记', en: 'Notes', abbr: '记', eyebrow: 'NOTES', group: 'assets', icon: ICONS.notes, render: () => renderNotes() },
+      { id: 'notes', label: '资料库', en: 'Library', abbr: '记', eyebrow: 'LIBRARY', group: 'everyday', primary:true, primaryOrder:30, workspace:true, icon: ICONS.notes, render: () => renderNotes() },
     ],
+    saveNote,
+    pageNew: id=>id==='notes'?()=>openNoteModal(''):undefined,
+    onDataImported: ()=>{reloadNotes();},
+    recentItems: async()=>{await loadNotes();return listNotes().slice(0,6).map(n=>({id:n.id,title:noteTitle(n),updated:n.updated,open:()=>{go('notes');openNoteModal(n.id);}}));},
   });
 })();

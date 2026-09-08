@@ -3,7 +3,7 @@
  *  chrome(updateAgentChrome/updateCopChrome/renderModeSwitch)归序3、留 index.html;setLang/go 运行时调之(函数延迟)。
  *  ★current 有状态(go:current=id 整体重赋值)+ 8 外部消费者 → 封装访问器 currentPage()、**不上 window 桥**(litmus:重赋值+外部消费者,dual-publish 会分裂快照);消费者经 currentPage() 读(同刀原子翻转,同 lastUndo→runLastUndo 先例)。
  *  其余 11 函数 export + 过渡 window 桥(classic/module 消费者按全局名调不变);PAGES/GROUPS/setState/chrome 均函数体内运行时求值(经全局词法/window)→ 载序零回归。 */
-import { agentShowCanvas, updateAgentChrome, updateCopChrome } from './copilot-chrome.js';   /* ★Cut 1b:renderModeSwitch 删(模式切换删) */
+import { agentShowCanvas, agentCollapse, updateAgentChrome, updateCopChrome } from './copilot-chrome.js';   /* ★Cut 1b:renderModeSwitch 删(模式切换删) */
 import { $, $$, el } from './dom.js';
 import { L, tt } from './i18n.js';
 import { IC } from './icons.js';
@@ -56,9 +56,14 @@ export function go(id){
   window.scrollTo(0,0);
   document.body.dataset.canvas='page';   // ★AI-Native P0:导航 = 画布回到页面视图(让位给 #content,隐藏 show_widget 画布)
   if(typeof agentShowCanvas==='function') agentShowCanvas();
+  if(p.workspace)document.body.dataset.agent='workspace';
 }
 export function renderTopActions(id){
   const host=$('#topActions'); host.innerHTML='';
+  if(PAGES.find(p=>p.id===id)?.workspace){
+    const button=document.createElement('button');button.className='btn';button.textContent=tt('打开对话','Open chat');
+    button.onclick=()=>{agentCollapse();$('#agentInput')?.focus();};host.appendChild(button);
+  }
   // §1 契约化(批11B · pageActions):原硬编码 jobseek 顶栏动作 map(openResumeModal/resumeGenerate/openMarketValue…)逐字迁入 manifest,
   // 平台经 SeekerShell.pageActions(id) 取该页动作 —— 不再裸读 apps 符号。惰性闭包语义不变(fn 点击时解析、与 module 载序解耦);
   // interview/settings 等无动作页 → 契约返回空数组(未命中 map)。

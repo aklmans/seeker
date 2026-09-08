@@ -12,7 +12,7 @@ import { runAppTool } from '../capability/app-tools/run.js';
 /** 桌面端「全功能」:所有能力都在。 */
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ ([
-    'db', 'ai', 'secret', 'capability', 'agentExecution',
+    'db', 'ai', 'textGeneration', 'secret', 'capability', 'agentExecution',
     'voice', 'tray', 'globalShortcut', 'deepLink', 'autoUpdate',
   ]),
 );
@@ -292,6 +292,7 @@ export function createDesktopRuntime() {
     // 导出/渲染(平台层 · 业务无关「文档模型 → 文件」)。.docx 零依赖手写,返回 base64。纯本地不出网。
     render: {
       docx: (doc) => invoke('export_docx', { doc }),
+      markdown: (title, text) => invoke('export_markdown', { title, text }),
     },
     // 受控网页抓取(发现 agent · P0):出口只在 Rust 核(SSRF 护栏 + 限额),前端不出网。
     web: {

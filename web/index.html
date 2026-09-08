@@ -979,6 +979,8 @@ body[data-appmode="agent"][data-agent="centered"] .agent-chat .cop-input{max-wid
 body[data-appmode="agent"][data-agent="centered"] #content{display:none;}
 body[data-appmode="agent"][data-agent="centered"] #agentCanvasToggle{display:none;}
 body[data-appmode="agent"][data-agent="split"] .agent-chat{flex:0 0 var(--agent-w,420px);}  /* split:按 --agent-w 固定宽、不缩,右侧画布(#content min-width:0)吸收其余 → 拖分隔条即调画布宽 */
+body[data-appmode="agent"][data-agent="workspace"] .agent-chat,
+body[data-appmode="agent"][data-agent="workspace"] .agent-resize{display:none;}
 @media (max-width:900px){ .agent-chat{flex-basis:340px;} }
 /* ★AI-Native P0:show_widget 画布 —— data-canvas=widget 时右画布显示 #agentCanvas(替代 #content 页面)、page 时让位给页面。centered 态两者皆隐(全屏对话)。 */
 .agent-canvas{display:none; flex:1; min-width:0; flex-direction:column; overflow:hidden;}
@@ -1246,6 +1248,7 @@ body[data-appmode="agent"][data-agent="centered"] .agent-canvas{display:none;}
 <script type="module" src="./apps/assets/pages/prompts.js"></script>
 <script type="module" src="./apps/assets/pages/notes.js"></script>
 <script type="module" src="./apps/assets/manifest.js"></script>
+<script type="module" src="./apps/daily/manifest.js"></script>
 <script type="module">
 import { $, el } from './platform/shell/dom.js';
 import { tt } from './platform/shell/i18n.js';
@@ -1266,7 +1269,7 @@ import { errText, toast } from './platform/shell/toast.js';
 // 壳自持:设置页(全局配置框架;求职专属设置段阶段3 起由 manifest 贡献)+ 对话历史集合。
 window.SeekerShell.setShell({
   pages: [
-    { id:'home', label:'首页', en:'Home', abbr:'首', group:'everyday', primary:true,
+    { id:'home', label:'首页', en:'Home', abbr:'首', group:'everyday', primary:true, primaryOrder:10,
       icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7"/></svg>', render:renderHome },
     { id:'capability', label:'能力中心', en:'Capabilities', abbr:'能', group:'system',
       icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
