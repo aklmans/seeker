@@ -29,6 +29,26 @@ index.html
 
 便携备份格式当前为 v2：通用集合、隔离 profile、设置、记忆/文档和便携偏好统一导出。导入先快照、校验后单事务合并；清空必须先得到可导入备份，再原子删除。
 
+## 通用首页与持久化会话
+
+第一轮转型增量增加平台首页；求职应用对新安装默认关闭，已有启用偏好和业务数据优先保留。
+应用默认值与聊天提示由 manifest 声明，平台不依赖具体业务模块。
+
+`platform_conversations` 保存会话名称、项目归属与时间；`messages` 的新消息带
+`conversationId` 和 `turnId`。两者随便携备份保全，均不进入 AI `QUERYABLE`。
+旧消息保持原样，由项目归属形成兼容会话，首次续聊时才保存其会话元数据。
+
+桌面 AI 网关从 SQLite、Web 聊天从 IndexedDB 恢复所选会话的完整 user/assistant 轮次，
+仅使用最近 10 轮且不超过 16,000 字符；可见历史完整保存。失败或取消的孤立提问、
+不匹配的 turnId、其他会话及定时任务消息不会混入。历史只投影为 canonical user/assistant，
+不接受持久记录自报的 system/tool 角色。流式事件仍按每次请求独立 sessionId 路由。
+
+Web 通用 upsert 等待事务完成后才报告成功。Web SSE 必须收到结束标志且有非空回答；
+截断流不保存为成功回答。UI 在回答持久化完成前保持生成状态，失败提供明确重试入口。
+
+默认提示提供日常助手定位；启用应用可声明 `chatTask`，只在其页面使用相应域提示。
+Web 演示代理的服务端提示也采用通用定位，其能力仍限于聊天。
+
 ## AI 协议边界
 
 Rust 内部使用一份 canonical message/tool 形状，`src-tauri/src/provider.rs` 只在出网边界翻译：

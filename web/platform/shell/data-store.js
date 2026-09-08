@@ -9,6 +9,7 @@
    留平台避免平台→apps 反向依赖('jh-seeded-jobs' 是旧版迁移键、逐字保留)。demo 态(demoMode/setDemoMode/SEED/captureSeed)= jobseek,留 apps。 ---- */
 import { currentProjectId } from './project-state.js'; // ★PJ2:消息按项目分组(零 import 叶子,无环;默认工作区不写字段=既有数据零回归)
 import { dbPersistenceAvailable } from '../runtime/persistence-capability.js';
+import { currentConversationId } from './conversation-state.js';
 export function jobsPersistOn(){ return dbPersistenceAvailable(window.SeekerRT); }
 export function onboarded(){ try{ return localStorage.getItem('jh-onboarded')==='1' || localStorage.getItem('jh-seeded-jobs')==='1'; }catch(_e){ return false; } }
 export function markOnboarded(){ try{ localStorage.setItem('jh-onboarded','1'); }catch(_e){} }
@@ -55,6 +56,7 @@ export function persistMsg(surface, role, text, cards){
   /** @type {any} */
   const rec = { id:'m_'+ts+'_'+(__msgSeq++), surface:surface, role:role, text:messageText, ts:ts };
   const pj = currentProjectId(); if(pj) rec.projectId = pj;   // ★PJ2:当前项目分组;默认工作区('')不写字段(既有消息天然归它)
+  const conversationId = currentConversationId(); if (conversationId) rec.conversationId = conversationId;
   if(hasCards) rec.cards = cards;                        // 可持久化卡指令 [{kind,data}](view 卡;不含 resume-edit 提案)
   window.SeekerRT.db.upsert('messages', rec).catch(e=>console.error('[data] persist msg', e));
 }

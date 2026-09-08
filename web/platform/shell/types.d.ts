@@ -15,6 +15,8 @@ export interface LString {
  * 页面声明 —— 与单体 PAGES 条目同构(便于零回归适配);字段语义见 index.html 的 buildNav/go。
  */
 export interface ShellPage {
+  /** Primary navigation precedes optional application pages. */
+  primary?: boolean;
   /** 页面 id(DOM 容器 #page-<id>;Mod+1..9 按注册序绑定)。 */
   id: string;
   /** 中文名(L() 的主字段,沿用单体命名)。 */
@@ -157,6 +159,10 @@ export interface AppToolSpec {
 
 /** 小应用 manifest(D1–D7:集合白名单=声明并集;AI 可读三层闸;关=下架 UI+AI,数据保留)。 */
 export interface AppManifest {
+  /** New installations only; existing choices and owned data take precedence. */
+  defaultEnabled?: boolean;
+  /** Trusted prompt overlay used only while viewing this app's pages. */
+  chatTask?: string;
   /** ^[a-z][a-z0-9]*$(嵌入集合前缀 / 设置键 / 钥匙串不经它)。 */
   id: string;
   name: LString;
@@ -341,6 +347,8 @@ export interface ShellOwn {
  * classic IIFE(同 platform/keys/keys.js 先例):单体 INIT 在解析期同步消费,ES module 时序赶不上。
  */
 export interface SeekerShellApi {
+  initializeDefaults(): Promise<void>;
+  chatTask(pageId: string): string | undefined;
   register(manifest: AppManifest): void;
   /** 全部已注册应用(注册序)。 */
   list(): AppManifest[];

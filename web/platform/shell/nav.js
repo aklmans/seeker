@@ -11,7 +11,7 @@ import { closeModal } from './modal.js';
 import { syncSbToggleTitle } from './shell-keys.js';
 import { GROUPS, PAGES, setState } from './shell-state.js';
 import { toast } from './toast.js';
-let current='overview';                              // 模块私有(唯一写者 go:current=id);★不上 window 桥
+let current='home';
 export function currentPage(){ return current; }     // 唯一读取通道:每调返回最新 current → 外部消费者从裸 current 改经此、无快照分裂
 
 export function buildNav(){
@@ -43,13 +43,15 @@ export function setLang(l){
 export function rerenderPages(){PAGES.forEach(p=>{try{if(p.render)p.render();}catch(e){}});}
 
 export function go(id){
+  const p=PAGES.find(x=>x.id===id);
+  const pg=$('#page-'+id);
+  if(!p || !pg) return;
   current=id;
   $$('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.id===id));
-  const p=PAGES.find(x=>x.id===id);
   $('#crumb').innerHTML=L(p);
   renderTopActions(id);
   $$('.page').forEach(pg=>pg.classList.remove('active'));
-  const pg=$('#page-'+id); pg.classList.add('active');
+  pg.classList.add('active');
   pg.scrollIntoView?null:null;
   window.scrollTo(0,0);
   document.body.dataset.canvas='page';   // ★AI-Native P0:导航 = 画布回到页面视图(让位给 #content,隐藏 show_widget 画布)

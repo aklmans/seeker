@@ -2,6 +2,7 @@ mod agent;
 mod ai;
 mod capability;
 mod config;
+mod conversation;
 mod data;
 mod docs;
 mod docx;

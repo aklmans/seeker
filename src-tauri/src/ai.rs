@@ -235,6 +235,7 @@ pub async fn ai_chat(
     sessions: State<'_, Sessions>,
     registry: State<'_, Registry>,
     history: State<'_, History>,
+    db: State<'_, crate::data::Db>,
     mcp: State<'_, McpManager>,
     pending: State<'_, PendingConfirms>,
     app_pending: State<'_, PendingAppTools>,
@@ -245,9 +246,17 @@ pub async fn ai_chat(
     app_tools: Option<Vec<AppToolDesc>>,
     // ★PJ2 拆键:多轮历史的桶键(项目 `proj_*` / 定时 `sched:*`);缺省 = session_id(每流 fresh,prior 恒空 = 修活前行为)。
     history_key: Option<String>,
+    conversation_id: Option<String>,
     // ★PJ3 项目指令(用户在管理面自撰;信任与注入语义见 insert_project_instructions 头注)。
     project_instructions: Option<String>,
 ) -> Result<(), String> {
+    let hkey = history_key.unwrap_or_else(|| session_id.clone());
+    let prior = if let Some(id) = conversation_id.as_deref() {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::conversation::history(&conn, id)?
+    } else {
+        history.prior(&hkey)
+    };
     let token = CancellationToken::new();
     sessions
         .0
@@ -256,8 +265,6 @@ pub async fn ai_chat(
         .insert(session_id.clone(), token.clone());
 
     // 多轮历史(#1 G2 · PJ2 拆键):桶键 = history_key(项目/定时上下文),缺省 session_id(每流 fresh)。
-    let hkey = history_key.unwrap_or_else(|| session_id.clone());
-    let prior = history.prior(&hkey);
 
     let result = run_chat(
         &app,
@@ -279,7 +286,7 @@ pub async fn ai_chat(
     match result {
         Ok((stop, content)) => {
             // 仅干净完成(非取消、有内容)才入历史:追加本轮 user + assistant,封顶 HISTORY_MAX。
-            if stop != "cancelled" && !content.is_empty() {
+            if conversation_id.is_none() && stop != "cancelled" && !content.is_empty() {
                 history.append_turn(&hkey, &user_text, &content);
             }
             let _ = app.emit(

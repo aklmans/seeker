@@ -48,6 +48,8 @@
   }
   /** @type {Prefs} */
   let prefs = loadPrefs();
+  let legacyInstall = false;
+  try { legacyInstall = !!(localStorage.getItem(LS_KEY) || localStorage.getItem('jh-onboarded') || localStorage.getItem('jh-seeded-jobs')); } catch { /* explicit preferences still win */ }
 
   function persist() {
     try {
@@ -135,8 +137,19 @@
 
   /** 缺省启用(prefs 里无记录 = 开)。 @param {string} id */
   function enabled(id) {
-    return prefs.enabled[id] !== false;
+    if (typeof prefs.enabled[id] === 'boolean') return prefs.enabled[id];
+    return legacyInstall || apps.find(a=>a.id===id)?.defaultEnabled !== false;
   }
+  async function initializeDefaults() {
+    for (const a of apps) {
+      if(a.defaultEnabled !== false || typeof prefs.enabled[a.id] === 'boolean') continue;
+      const groups = await Promise.all((a.collections || []).map(c=>window.SeekerRT.db.list(/** @type {import('../runtime/types').Collection} */ (c))));
+      if(typeof prefs.enabled[a.id] !== 'boolean') prefs.enabled[a.id] = legacyInstall || groups.some(rows=>rows.length>0);
+    }
+    persist(); emit();
+  }
+  /** @param {string} pageId */
+  function chatTask(pageId) { return enabledApps().find(a=>a.pages.some(p=>p.id===pageId))?.chatTask; }
   /** @param {string} id @param {boolean} on */
   function setEnabled(id, on) {
     prefs.enabled[id] = !!on;
@@ -214,9 +227,9 @@
 
   /** @returns {ShellPage[]} 启用应用页(按序) + 壳页 */
   function pages() {
-    return enabledApps()
-      .flatMap((a) => a.pages)
-      .concat(shellOwn.pages);
+    return shellOwn.pages.filter(p=>p.primary)
+      .concat(enabledApps().flatMap((a) => a.pages))
+      .concat(shellOwn.pages.filter(p=>!p.primary));
   }
 
   /** @returns {Record<string, LString>} */
@@ -467,6 +480,8 @@
     renderAppChips,
     appSettings,
     initApps,
+    initializeDefaults,
+    chatTask,
     notifyDataCleared,
     notifyDataImported,
     collId,

@@ -3,7 +3,7 @@
  *  依赖 $/el;cSuggs onclick 调 copSend(序3-b)、cBtn onclick 字符串(运行时);jobseek 专属响应(aiSuggs/copMatch/copReply)留 index.html/apps。
  *  挂全局 + 载序前置(在序1/序2 后;消费者运行时调)→ 零回归(约束⑤)。
  *  ★批10c(第42轮[应改]订正):streamReply 改 import(ai-engine 转 module、其桥不设);本文件 tag 实测 @874 晚于 ai-engine@869 → 此 import 边无提升;载序判据见 ai-engine.js 头注释(查提前区间,非比 tag 先后)。 */
-import { streamReply } from './ai-engine.js';
+import { streamReply, aiStreamBusy, cancelActiveReply } from './ai-engine.js';
 import { aiHTML } from './ai-render.js';
 import { collPersistOn, persistMsg } from './data-store.js';
 import { $, $$, el } from './dom.js';
@@ -15,6 +15,10 @@ import { normSkill, skillRunnable, skillNeedsReview } from './skill-model.js'; /
 import { listSkills } from './skill-store.js'; // ★Skills S2b:命令面板读同步缓存(skill-store 不 import 本文件 ⇒ 无环)
 import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★PJ2:hydrateMessages 按当前项目过滤 + 切换器写态(零 import 叶子)
 import { listProjects, hydrateProjects } from './project-store.js'; // ★PJ2 切换器:列非归档项目(store 不 import 本文件 ⇒ 无环)
+import { hydrateConversations, listConversations, currentConversation, conversationTitle, createConversation, ensureConversation, renameConversation, currentMessages, saveConversationMessage } from './conversation-store.js';
+import { setCurrentConversationId } from './conversation-state.js';
+import { toast, errText } from './toast.js';
+import { openModal, closeModal } from './modal.js';
 
 // ★AI-Native 收敛(Cut 1b):Copilot 浮窗删。copClose/copScroll 保留为收敛后语义 —— jobseek 的 copMatch/copInterview/copPlan/copResume/copNewJob/copNewAction/copMarket/copResumeUpload 8 处仍调 copClose、copDoneAct 调 copScroll,保这两个薄导出免改业务文件:
 //   copClose = 无操作(无浮窗可关;各函数的导航/执行部分照常);copScroll = 滚动 Agent 视图(唯一活动 AI 面)。copEl/copOpen/copToggle/copAppend 已删(浮窗专属、零外部消费者)。
@@ -65,14 +69,34 @@ document.addEventListener('click', (e)=>{
 export function agentAppend(role,html){const d=el(`<div class="cop-msg ${role}">${html}</div>`);$('#agentMsgs').appendChild(d);const c=$('#agentMsgs');c.scrollTop=c.scrollHeight;return d;}
 // scopeTools(★Skills F1):Skill.tools 三态 → streamReply 收窄 app-tool 工具表(减权;undefined=全、雏形/打字零回归)。见 runSkill。
 // onSettled(★SC2):本次流真实结局回调,穿给 streamReply(调度器用;用户打字路径不传=undefined 零改)。
-export function agentSend(text, aiText, scopeTools, onSettled, historyKey){
+let sending = false;
+export async function agentSend(text, aiText, scopeTools, onSettled, historyKey){
   const inp=$('#agentInput'); text=(text||inp.value||'').trim(); if(!text)return;
-  inp.value=''; inp.style.height='auto';
-  agentAppend('user', text.replace(/</g,'&lt;')); persistMsg('agent','user',text);
-  const think=agentAppend('ai','<div class="cop-think"><span class="ai-dots"><i></i><i></i><i></i></span>思考中…</div>');
-  const toAI = aiText || window.SeekerShell.frameQuery(text); // 壳框定链(启用应用的 framer;jobseek 注入现 frameQuery):显示短文案、发给 AI 框定版
-  if(aiChatAvailable()){ streamReply(think, toAI, 'Agent', agentScroll, scopeTools, onSettled, historyKey); }
-  else setTimeout(()=>{think.remove(); agentAppend('ai','<span class="who">Agent</span>'+window.SeekerShell.appReply(text));}, 680+Math.random()*420);
+  if(sending || aiStreamBusy()){ toast(tt('请等当前回答完成，或先停止生成。','Wait for the current answer or stop it first.')); return; }
+  sending = true;
+  try {
+    const c = historyKey ? null : await ensureConversation(text);
+    const scope = { turnId: crypto.randomUUID(), ...(historyKey ? { historyKey } : { conversationId:c.id, projectId:c.projectId || '' }) };
+    await saveConversationMessage(scope, 'user', text);
+    inp.value=''; inp.style.height='auto';
+    agentAppend('user', cEsc(text));
+    const think=agentAppend('ai','<div class="cop-think">'+tt('思考中…','Thinking…')+'</div>');
+    const toAI = aiText || window.SeekerShell.frameQuery(text);
+    const settled = (ok, error) => {
+      if(onSettled) onSettled(ok, error);
+      if(!ok && !historyKey) queueMicrotask(()=>{
+        if(!think.isConnected) return;
+        const retry=document.createElement('button'); retry.className='btn'; retry.textContent=tt('重试这条消息','Retry this message');
+        retry.onclick=()=>agentSend(text, aiText, scopeTools); think.appendChild(retry);
+      });
+    };
+    if(aiChatAvailable()) streamReply(think, toAI, 'Agent', agentScroll, scopeTools, settled, historyKey, scope);
+    else {
+      think.textContent = tt('尚未连接模型。可以在设置中连接模型；笔记和资料仍可本地使用。','No model connected. Connect one in Settings; notes and materials remain available locally.');
+      if(onSettled) onSettled(false, 'model-not-connected');
+    }
+  } catch(error) { toast(tt('发送失败：','Could not send: ')+errText(error)); if(onSettled) onSettled(false, String(error)); }
+  finally { sending=false; }
 }
 
 /* ★Skills S2:运行一枚 Skill —— 归一后 prompt 走 agentSend(标准用户消息路径 → streamReply → ai_chat)。
@@ -133,7 +157,7 @@ export function agentShowCanvas(){ if(appReady && appMode==='agent') document.bo
 export function agentCollapse(){ document.body.dataset.agent='centered'; }
 export function agentGreet(){
   // §1 文案归属(3.y 尾 greeting 契约):经 SeekerShell.greeting('agent') 取应用招呼语,未命中回退中性平台串 T('agentGreet')。
-  agentAppend('ai','<span class="who">Agent</span>'+(window.SeekerShell.greeting('agent')||T('agentGreet')));
+  agentAppend('ai','<span class="who">Seeker</span>'+tt('今天想完成什么？可以提问、处理文字，或打开右侧的日常工具。','What would you like to do today? Ask a question, work on some text, or open an everyday tool.'));
 }
 
 /* ---- 抽壳序3-d-9:Agent /命令面板机制(通用) —— cmdActive/cmdFiltered 状态 + cmdIsOpen/cmdFilterList/cmdRender/cmdOpen/cmdClose/cmdRun。
@@ -174,10 +198,43 @@ export async function renderProjectSwitch(){
 }
 /* 切换项目:写壳态 → 清对话 → 按新项目重水合;空线则开场白。历史桶随 streamReply 的 hkey 自然切换。 */
 export async function switchProject(id){
+  if(sending || aiStreamBusy()){ toast(tt('请先停止当前回答再切换。','Stop the current answer before switching.')); await renderProjectSwitch(); return; }
   setCurrentProjectId(id);
+  setCurrentConversationId('');
+  await hydrateConversations();
   const c=$('#agentMsgs'); if(c) c.innerHTML='';
   await hydrateMessages();                                  // 按新 current 过滤重渲(空线时它不动 DOM)
   if(c && !c.children.length) agentGreet();                 // 新线无历史 → 开场白
+}
+
+export async function openConversation(id){
+  if(sending || aiStreamBusy()){ toast(tt('请先停止当前回答再切换。','Stop the current answer before switching.')); renderConversationSwitch(); return; }
+  const c=listConversations().find(x=>x.id===id); if(!c)return;
+  setCurrentProjectId(c.projectId || ''); setCurrentConversationId(id);
+  await renderProjectSwitch();
+  await hydrateMessages(); renderConversationSwitch(); agentCollapse();
+}
+export async function startNewConversation(){
+  if(sending || aiStreamBusy()){ toast(tt('请先停止当前回答。','Stop the current answer first.')); return false; }
+  try { await createConversation(); await hydrateMessages(); renderConversationSwitch(); agentCollapse(); $('#agentInput').focus(); return true; }
+  catch(error){ toast(errText(error)); return false; }
+}
+export function renderConversationSwitch(){
+  const sel=$('#agentConversation'); if(!sel)return;
+  const list=listConversations().filter(c=>(c.projectId || '')===currentProjectId());
+  sel.innerHTML='<option value="">'+tt('选择对话','Choose conversation')+'</option>'+list.map(c=>'<option value="'+cEsc(c.id)+'">'+cEsc(conversationTitle(c))+'</option>').join('');
+  sel.value=currentConversation()?.id || ''; sel.title=tt('最近 10 轮完整对话用于上下文，最多 16,000 字符。','Context uses up to 10 complete turns, within 16,000 characters.');
+  sel.onchange=()=>openConversation(sel.value).catch(e=>toast(errText(e)));
+  const add=$('#agentNew'); if(add){add.textContent=tt('新对话','New chat');add.onclick=startNewConversation;}
+  const rename=$('#agentRename');
+  if(rename){
+    rename.textContent=tt('重命名','Rename'); rename.disabled=!currentConversation();
+    rename.onclick=()=>{
+      const c=currentConversation(); if(!c)return;
+      const m=openModal('<div class="modal-head"><h2>'+tt('重命名对话','Rename conversation')+'</h2><button class="x">×</button></div><div class="modal-body"><label for="conversationName">'+tt('名称','Name')+'</label><input class="input" id="conversationName" maxlength="80" value="'+cEsc(conversationTitle(c))+'"></div><div class="modal-foot"><button class="btn btn-accent" id="conversationSave">'+tt('保存','Save')+'</button></div>');
+      m.querySelector('#conversationSave').onclick=async()=>{try{await renameConversation(c.id,m.querySelector('#conversationName').value);closeModal();}catch(e){toast(errText(e));}};
+    };
+  }
 }
 
 /* ---- Agent 快捷 chips 容器(#agentCmds)归平台所有 ----
@@ -210,6 +267,12 @@ export function renderAgentChips(){
    Agent 技能 chips 经 renderAgentChips()(平台拥有容器)触发,数据经 SeekerShell.renderAppChips() 契约(平台不硬编码 app 渲染器符号名)。INIT@agentInit() 运行时调。 ---- */
 export function agentInit(){
   $('#agentSend').innerHTML=IC.arrow; $('#agentSend').onclick=()=>agentSend();
+  const stop=$('#agentStop'); if(stop) stop.onclick=cancelActiveReply;
+  const syncBusy=()=>{ if(stop){stop.hidden=!aiStreamBusy();stop.textContent=tt('停止','Stop');} $('#agentSend').disabled=aiStreamBusy(); };
+  window.addEventListener('seeker-reply-state',syncBusy);
+  window.addEventListener('seeker-conversations-changed',renderConversationSwitch);
+  window.addEventListener('seeker-rt-ready',async()=>{try{await hydrateConversations();await hydrateMessages();renderConversationSwitch();}catch(e){toast(tt('历史加载失败，请重试：','Could not load history: ')+errText(e));}});
+  syncBusy(); renderConversationSwitch();
   const inp=$('#agentInput');
   inp.addEventListener('keydown',e=>{
     if(cmdIsOpen()){
@@ -242,6 +305,7 @@ export function updateAgentChrome(){
   const ct=$('#agentCanvasToggle'); if(ct)ct.textContent=T('collapseCanvas');
   const ip=$('#agentInput'); if(ip)ip.placeholder=T('agentPh');
   renderAgentChips();   // 命令 chips + 标签双语,随语言重渲(平台拥有容器;数据经 renderAppChips 契约)
+  renderConversationSwitch();
 }
 // Copilot chrome 随语言切换(评审 P0-5:浮钮/头/placeholder 此前静态 HTML、切 EN 仍中文)。
 export function updateCopChrome(){
@@ -257,8 +321,9 @@ export function updateCopChrome(){
 export async function hydrateMessages(){
   if(!collPersistOn()) return;
   try{
-    const rows = await window.SeekerRT.db.list('messages');
-    if(!rows.length) return; // 无历史:保留 copInit 招呼语 / 让 agentGreet 照常
+    const rows = await currentMessages();
+    const host=$('#agentMsgs'); if(host) host.innerHTML='';
+    if(!rows.length){agentGreet();return;}
     rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
     const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const CARDS = window.SeekerShell.cards(); // 壳组合:启用应用贡献的卡注册表
@@ -271,8 +336,7 @@ export async function hydrateMessages(){
     }); };
     // ★Cut 1b:收敛后只恢复 agent 历史(Copilot 浮窗删、旧 'cop' 历史弃用=数据保留不删、不再读写)。有历史则清掉招呼语再渲染(#agentMsgs 有子节点即已由本函数或 agentGreet 处理)。
     // ★PJ2:再按当前项目过滤(''=默认工作区=无 projectId 字段的既有消息,零回归;切换器换线时重调本函数)。
-    const pj = currentProjectId();
-    const agent = rows.filter(r=>r.surface==='agent' && ((r.projectId||'') === pj));
+    const agent = rows;
     if(agent.length){ const c=$('#agentMsgs'); if(c){ c.innerHTML=''; draw(agent, agentAppend, 'Agent'); } }
   }catch(e){ console.error('[data] hydrate messages', e); }
 }

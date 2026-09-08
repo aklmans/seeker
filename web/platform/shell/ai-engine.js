@@ -11,6 +11,8 @@ import { tt } from './i18n.js';
 import { setState } from './shell-state.js';
 import { aiHTML, displayText, toolStatusText, aiErrHTML } from './ai-render.js';
 import { persistMsg } from './data-store.js';
+import { saveConversationMessage } from './conversation-store.js';
+import { currentPage } from './nav.js';
 import { filterReadableTools, scopeAppTools } from '../capability/app-tools/readable.js';
 import { currentProjectId } from './project-state.js'; // ★PJ2:多轮历史桶键缺省 = 当前项目(零 import 叶子)
 import { listProjects } from './project-store.js'; // ★PJ3:当前项目指令注入(store 只 import project-model,无环)
@@ -48,7 +50,10 @@ function readableAppTools(){
    置于流发起前、清于 onDone/onError 首行(处理体异常也不留死忙)。仅辅助调度节流,非并发锁:
    若 ai.stream 同步抛(自研 rt 实践中不抛)会遗留 true 至下次流清零 —— 失败方向 = 调度跳过(不误跑),可接受。 */
 let __aiStreamBusy=false;
+let activeReply = null;
 export function aiStreamBusy(){ return __aiStreamBusy; }
+export function cancelActiveReply(){ if(activeReply) activeReply.cancel(); }
+function replyFinished(){ __aiStreamBusy=false; activeReply=null; window.dispatchEvent(new CustomEvent('seeker-reply-state')); }
 
 /**
  * @param {any} thinkBubble @param {string} text @param {string} who @param {(()=>void)|undefined} scrollFn
@@ -62,19 +67,21 @@ export function aiStreamBusy(){ return __aiStreamBusy; }
  *   ★PJ3 连带语义:**显式 historyKey = 调用方自管上下文语境 ⇒ 不注入当前项目指令**(定时任务与项目无关、
  *   skill 自带 prompt);缺省(交互路径)才带当前项目的 instructions(用户自撰,Rust 侧 system 邻位注入、不入 History)。
  */
-export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled, historyKey){
+export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSettled, historyKey, messageScope){
   const dots='<span class="ai-dots"><i></i><i></i><i></i></span>';
   thinkBubble.innerHTML='<span class="who">'+who+'</span><div class="cop-think">'+dots+'<span class="ai-status">'+tt('思考中…','Thinking…')+'</span></div>';
   let acc='', span=null, streaming=false;
   const startStream=()=>{ if(streaming)return; streaming=true; thinkBubble.innerHTML='<span class="who">'+who+'</span><span class="ai-stream"></span>'; span=thinkBubble.querySelector('.ai-stream'); };
   const setStatus=(msg)=>{ const s=thinkBubble.querySelector('.ai-status'); if(s) s.textContent=msg; };
   __aiStreamBusy=true; // ★SC1:开流即忙(清点在 onDone/onError 首行)
+  window.dispatchEvent(new CustomEvent('seeker-reply-state'));
   const hkey = historyKey || ('proj_' + (currentProjectId() || 'default')); // 项目上下文桶(修活多轮历史 · 行为变化已告知)
   // ★PJ3 项目指令:仅交互路径(historyKey 缺省)+ 当前非默认工作区;来源 = project-store 用户自撰 instructions
   //   (三条件①源头:此处为前端唯一赋值点,读的是管理面存的项目配置 —— 永不含模型/RAG/外部派生)。
   let pInstr;
   if(!historyKey){ const pid=currentProjectId(); if(pid){ const p=listProjects().find(x=>x.id===pid); if(p && p.instructions && p.instructions.trim()) pInstr=p.instructions; } }
-  window.SeekerRT.ai.stream({ userText:text+aiLangHint(), appTools:scopeAppTools(readableAppTools(), scopeTools), historyKey:hkey, projectInstructions:pInstr }, {
+  try {
+  activeReply = window.SeekerRT.ai.stream({ userText:text+aiLangHint(), task:historyKey ? undefined : window.SeekerShell.chatTask(currentPage()), appTools:scopeAppTools(readableAppTools(), scopeTools), historyKey:hkey, conversationId:messageScope?.conversationId, projectInstructions:pInstr }, {
     onToken(t){ if(!streaming) startStream(); acc+=t; if(span) span.innerHTML=aiHTML(displayText(acc)); if(scrollFn) scrollFn(); }, // Markdown 安全渲染
     onTool(info){ if(!streaming) setStatus(toolStatusText(info)); if(scrollFn) scrollFn(); }, // 工具循环进度(此前未接,致空气泡)
     onWidget(w){
@@ -90,10 +97,15 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
       catch(e){ console.error('[widget] 渲染失败', e); }
       if(scrollFn) scrollFn();
     },
-    onError(err){ __aiStreamBusy=false; if(onSettled){ try{ onSettled(false, String((err&&(err.message||err))||'')); }catch(_e){} } thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
-    onDone(){
-      __aiStreamBusy=false;                                           // ★SC1:收流即闲(首行,处理体异常不留死忙)
-      if(onSettled){ try{ onSettled(true); }catch(_e){} }             // ★SC2:结局=流正常收(卡渲染异常不翻结局,那是展示层)
+    onError(err){ replyFinished(); if(onSettled){ try{ onSettled(false, String((err&&(err.message||err))||'')); }catch(_e){} } thinkBubble.innerHTML='<span class="who">'+who+'</span>'+aiErrHTML(err); if(scrollFn) scrollFn(); },
+    async onDone(result){
+      try {
+      if(result?.stopReason === 'cancelled') {
+        replyFinished();
+        thinkBubble.innerHTML = '<span class="who">'+who+'</span>'+aiHTML(acc)+'<p>'+tt('已停止，本次未完成的回答不进入后续上下文。','Stopped. This incomplete answer will not be used as context.')+'</p>';
+        if(onSettled) onSettled(false, 'cancelled');
+        return;
+      }
       if(!streaming) startStream();                                   // 兜底:无 token 也有流式容器(不留空气泡)
       let prose = acc; const pending = [];                            // 逐卡型剥离 ```seeker 指令块(注册表驱动,加卡零改)
       const CARDS = window.SeekerShell.cards();                       // 壳组合:启用应用贡献的卡注册表
@@ -103,9 +115,22 @@ export function streamReply(thinkBubble, text, who, scrollFn, scopeTools, onSett
       }
       if(span) span.innerHTML = aiHTML(prose);                        // 最终 Markdown 渲染(已去所有 JSON 块)
       const persistCards = pending.filter(([k])=>CARDS[k].persist).map(([kind,data])=>({kind,data}));
-      persistMsg(who==='Agent'?'agent':'cop','ai', prose, persistCards); // 文字 + 可持久化卡指令(重启后重渲)
+      try {
+        if(messageScope) await saveConversationMessage(messageScope, 'ai', prose, persistCards);
+        else persistMsg(who==='Agent'?'agent':'cop','ai', prose, persistCards);
+        if(onSettled) onSettled(true);
+      } catch(error) {
+        const note=document.createElement('p'); note.textContent=tt('回答未能保存，请复制保留后重试。','Could not save this answer. Copy it before retrying.'); thinkBubble.appendChild(note);
+        if(onSettled) onSettled(false, String(error));
+      } finally { replyFinished(); }
       for(const [kind, data] of pending){ try{ CARDS[kind].show(thinkBubble, data, who); }catch(e){ console.error('[card] '+kind, e); } }
       if(scrollFn) scrollFn();
+      } catch(error) {
+        const note=document.createElement('p'); note.textContent=tt('回答处理失败，请重试。','Could not finish processing the answer. Please retry.');thinkBubble.appendChild(note);
+        if(onSettled) onSettled(false, String(error));
+      } finally { replyFinished(); }
     }
   });
+  activeReply.done.catch(() => {});
+  } catch(error) { replyFinished(); throw error; }
 }

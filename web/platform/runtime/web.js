@@ -7,6 +7,7 @@
  */
 import { NotImplementedError, notImpl } from './errors.js';
 import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
+import { conversationHistory } from '../shell/conversation-model.js';
 
 const FEATURES = new Set(
   /** @type {import('./types').Feature[]} */ (['db', 'ai', 'secret', 'capability']),
@@ -14,9 +15,9 @@ const FEATURES = new Set(
 
 // ── IndexedDB 数据层(同一 Repository 契约的网页实现)─────────────
 const DB_NAME = 'seeker';
-const DB_VERSION = 8; // v8:机会雷达候选;v7:Task Agent 六集合;v6:便携保全 memories/doc_chunks;v5:platform_projects;v4:platform_schedules;v3:platform_skills;v2:assets_*
+const DB_VERSION = 9; // v9: persisted conversations
 /** 业务集合(keyPath 'id');与桌面 table_for 白名单一致 —— profile 不在其中。 */
-const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
+const COLLECTIONS = ['jobs', 'skills', 'actions', 'resumes', 'iv_records', 'job_opportunities', 'messages', 'assets_prompts', 'assets_notes', 'platform_skills', 'platform_schedules', 'platform_projects', 'platform_conversations', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events'];
 // 分享型导出排除任务文本、审批/事件与本机 artifact 路径；完整 backup 仍保全。
 const REDACTED_COLLECTIONS = new Set(['job_opportunities', 'platform_agent_tasks', 'platform_agent_runs', 'platform_agent_steps', 'platform_agent_artifacts', 'platform_agent_approvals', 'platform_agent_events']);
 const KV_STORES = ['profile', 'settings', 'meta'];
@@ -236,10 +237,17 @@ const demoHist = new Map();
  */
 async function demoChat(req, handlers, signal) {
   const hkey = String(req.historyKey || 'default');
-  const hist = demoHist.get(hkey) || [];
-  const messages = [...hist, { role: 'user', content: String(req.userText || '') }].slice(-20);
   let acc = '';
+  let finished = false;
   try {
+    let hist = demoHist.get(hkey) || [];
+    if (req.conversationId) {
+      const conversations = await listAll('platform_conversations');
+      const c = conversations.find((/** @type {any} */ c) => c.id === req.conversationId);
+      if (!c) throw new Error('Conversation not found / 找不到对话');
+      hist = conversationHistory(await listAll('messages'), c);
+    }
+    const messages = [...hist, { role: 'user', content: String(req.userText || '') }];
     const res = await fetch('api/chat', {
       method: 'POST',
       signal,
@@ -274,15 +282,17 @@ async function demoChat(req, handlers, signal) {
         try {
           const m = JSON.parse(line.slice(5).trim());
           if (typeof m.t === 'string') { acc += m.t; if (handlers.onToken) handlers.onToken(m.t); }
+          else if (m.done === true) finished = true;
           else if (m.error) { if (handlers.onError) handlers.onError(new Error('演示代理流中断(' + m.error + ')')); return { text: acc }; }
         } catch { /* 跳过坏行 */ }
       }
     }
-    // 成功收流:写回短历史(仅内存),再通知 onDone(与桌面事件顺序一致)。
-    demoHist.set(hkey, [...messages, { role: 'assistant', content: acc }].slice(-20));
-    if (handlers.onDone) handlers.onDone();
+    if(!finished || !acc.trim()) throw new Error('回答未完整接收，请重试。 / Incomplete response. Please retry.');
+    if (!req.conversationId) demoHist.set(hkey, [...messages, { role: 'assistant', content: acc }].slice(-20));
+    if (handlers.onDone) handlers.onDone({ text: acc, stopReason: 'stop' });
     return { text: acc };
   } catch (e) {
+    if(signal?.aborted){ if(handlers.onDone) handlers.onDone({text:acc,stopReason:'cancelled'}); return {text:acc}; }
     if (handlers.onError) handlers.onError(e instanceof Error ? e : new Error(String(e)));
     return { text: acc };
   }
@@ -308,7 +318,9 @@ export function createWebRuntime() {
         if (bad) return bad;
         const stored = downgradeWebTrust(collection, record);
         const s = await store(collection, 'readwrite');
-        await reqDone(s.put(stored));
+        const committed = txDone(s.transaction);
+        try { await Promise.all([committed, reqDone(s.put(stored))]); }
+        catch(error) { committed.catch(()=>{}); throw error; }
         return /** @type {any} */ (stored);
       },
       remove: async (collection, id) => {
@@ -362,8 +374,8 @@ export function createWebRuntime() {
     ai: {
       // ★演示代理(#1 的「浏览器→自有后端代理”落地,纯聊天面):同源 /api/chat(SSE)。
       //   密钥红线原样成立:**上游 key 只在服务端**,浏览器只持低价值访问码(限朋友的门票,非 API key)。
-      //   纯聊天 = 无工具/无 widget/无记忆(那些是桌面 Rust 核);历史仅存本页内存(刷新即清、不落盘)。
-      //   无代理(GitHub Pages / preview)或未填访问码 → 照旧抛 NotImplementedError ⇒ 壳层降级 canned 回复零回归。
+      //   纯聊天 = 无工具/无 widget/无长期记忆；选中会话的完整历史从 IndexedDB 恢复。
+      //   无代理或未填访问码时明确提示尚未连接，不伪装已经执行。
       stream: (req, handlers = {}) => {
         if (!demoProxyOk || !demoCode()) throw new NotImplementedError('rt.ai.stream', 'web');
         const ac = new AbortController();

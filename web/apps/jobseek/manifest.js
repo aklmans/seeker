@@ -71,6 +71,8 @@ import { setState } from '../../platform/shell/shell-state.js';
 
   shell.register({
     id: 'jobseek',
+    defaultEnabled: false,
+    chatTask: 'jobseek',
     name: { zh: '求职工作台', en: 'Job Search' },
     icon: ICONS.jobs,
     blurb: {

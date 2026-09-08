@@ -48,6 +48,7 @@ export type Collection =
   | 'platform_skills'
   | 'platform_schedules'
   | 'platform_projects'
+  | 'platform_conversations'
   /** Task Agent 管理集合:可持久化/备份,但不进入 AI QUERYABLE。 */
   | 'platform_agent_tasks'
   | 'platform_agent_runs'
@@ -115,6 +116,8 @@ export interface AiRequest {
   sessionId?: string;
   /** ★PJ2 多轮历史桶键(第三职责拆出):项目上下文 'proj_*' / 定时 'sched:*';缺省=session_id(每流 fresh ⇒ prior 恒空=修活前行为)。 */
   historyKey?: string;
+  /** Selected conversation; the runtime restores only its completed persisted turns. */
+  conversationId?: string;
   /** ★PJ3 当前项目指令(system 邻位注入、每轮一次、不入 History)。**只能来自管理面用户自撰的项目配置**
    * (前端唯一赋值点 = ai-engine 读 project-store;**永不含模型/RAG/外部派生内容** —— 高权位,同 greeting 第50轮纪律)。 */
   projectInstructions?: string;

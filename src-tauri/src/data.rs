@@ -45,6 +45,7 @@ const COLLECTION_TABLES: &[(&str, &str)] = &[
     ("platform_skills", "platform_skills"),
     ("platform_schedules", "platform_schedules"),
     ("platform_projects", "platform_projects"),
+    ("platform_conversations", "platform_conversations"),
     // Task Agent 运行域:管理面可读写、便携备份覆盖,但永久排除在 capability::QUERYABLE 之外。
     ("platform_agent_tasks", "platform_agent_tasks"),
     ("platform_agent_runs", "platform_agent_runs"),
@@ -204,6 +205,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
         13,
         "ALTER TABLE opportunity_verifications
          ADD COLUMN run_succeeded_at INTEGER NOT NULL DEFAULT 0;",
+    ),
+    (
+        14,
+        "CREATE TABLE IF NOT EXISTS platform_conversations (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
     ),
 ];
 
@@ -4455,7 +4460,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(run_succeeded_at, 0);
-        assert_eq!(schema_version(&conn), 13);
+        assert_eq!(schema_version(&conn), MIGRATIONS.last().unwrap().0);
         let _ = std::fs::remove_dir_all(tmp);
     }
 
