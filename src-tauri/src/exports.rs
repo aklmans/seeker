@@ -37,7 +37,9 @@ fn write_document(
     } else {
         2_000_000
     };
-    if !["md", "docx", "png", "pdf"].contains(&extension) || bytes.is_empty() || bytes.len() > limit
+    if !["md", "docx", "png", "pdf", "svg"].contains(&extension)
+        || bytes.is_empty()
+        || bytes.len() > limit
     {
         return Err("不支持的格式或文件大小 / Unsupported format or file size".into());
     }

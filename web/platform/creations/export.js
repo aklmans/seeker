@@ -41,14 +41,15 @@ export async function captureSnapshot(snapshot,width=snapshot.width){
     document.body.appendChild(frame);
   });
 }
-/** @param {HTMLElement} card @param {string} title */
-export async function openExport(card,title){
+/** @param {HTMLElement|null} card @param {string} title @param {{html:string,width:number}} [providedSnapshot] */
+export async function openExport(card,title,providedSnapshot){
   const modal=openModal(`<div class="modal-head"><h2>${tt('导出作品','Export creation')}</h2><button class="x">×</button></div><p>${tt('导出当前画面，保留交互结果。复杂特效可能与原稿不同，请检查预览。','Export the current state. Complex effects may differ; review the preview.')}</p><p id="creationExportStatus" role="status"></p><img id="creationExportImage" alt="${tt('导出预览','Export preview')}" style="display:none;width:100%;border:.5px solid var(--border)"><div class="creation-toolbar" id="creationExportActions"></div>`,true);
   if(!modal)return;
   const status=/** @type {HTMLElement} */(modal.querySelector('#creationExportStatus'));
   status.textContent=tt('正在读取当前状态并生成高清预览…','Capturing the current state and rendering a high-resolution preview…');
   try{
-    const snapshot=await requestWidgetSnapshot(card);
+    const snapshot=providedSnapshot||(card?await requestWidgetSnapshot(card):null);
+    if(!snapshot)throw Error('No export content');
     const result=await captureSnapshot(snapshot);if(!modal.isConnected)return;
     const image=/** @type {HTMLImageElement} */(modal.querySelector('#creationExportImage'));image.src=result.png;image.style.display='block';
     status.textContent=`${result.width} × ${result.height} px`;

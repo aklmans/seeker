@@ -1,4 +1,4 @@
-//! Raster-only export; file type and destination are fixed by the platform.
+//! Validated image exports; file type and destination are fixed by the platform.
 use base64::{engine::general_purpose::STANDARD, Engine};
 use lopdf::{dictionary, Document, Object, Stream};
 use std::{borrow::Cow, io::Cursor};
@@ -138,6 +138,120 @@ pub fn copy_creation_image(png_data_url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+fn validate_svg(svg: &str) -> Result<(), String> {
+    use quick_xml::{events::Event, Reader};
+    let error = "不支持的 SVG 内容 / Unsupported SVG content";
+    if svg.is_empty() || svg.len() > 2_000_000 || svg.contains("<!") || svg.contains("<?") {
+        return Err(error.into());
+    }
+    let mut reader = Reader::from_str(svg);
+    let mut depth = 0;
+    let mut seen = false;
+    loop {
+        match reader.read_event().map_err(|_| error)? {
+            event @ (Event::Start(_) | Event::Empty(_)) => {
+                let empty = matches!(event, Event::Empty(_));
+                let e = match event {
+                    Event::Start(e) | Event::Empty(e) => e,
+                    _ => unreachable!(),
+                };
+                let name = e.name();
+                let name = std::str::from_utf8(name.as_ref()).map_err(|_| error)?;
+                if depth == 0 {
+                    if seen || name != "svg" {
+                        return Err(error.into());
+                    }
+                    seen = true;
+                }
+                if !["svg", "g", "rect", "path", "text", "tspan"].contains(&name) {
+                    return Err(error.into());
+                }
+                for attr in e.attributes() {
+                    let attr = attr.map_err(|_| error)?;
+                    let key = std::str::from_utf8(attr.key.as_ref()).map_err(|_| error)?;
+                    if ![
+                        "xmlns",
+                        "width",
+                        "height",
+                        "viewBox",
+                        "x",
+                        "y",
+                        "rx",
+                        "fill",
+                        "stroke",
+                        "stroke-width",
+                        "stroke-dasharray",
+                        "font-family",
+                        "font-size",
+                        "text-anchor",
+                        "d",
+                        "data-mind-node",
+                        "tabindex",
+                        "role",
+                        "aria-label",
+                    ]
+                    .contains(&key)
+                    {
+                        return Err(error.into());
+                    }
+                    let value = attr
+                        .decode_and_unescape_value(reader.decoder())
+                        .map_err(|_| error)?;
+                    if (key == "xmlns" && value != "http://www.w3.org/2000/svg")
+                        || (["fill", "stroke"].contains(&key)
+                            && value != "none"
+                            && !(value.len() == 7
+                                && value.starts_with('#')
+                                && value[1..].bytes().all(|b| b.is_ascii_hexdigit())))
+                    {
+                        return Err(error.into());
+                    }
+                }
+                if !empty {
+                    depth += 1;
+                    if depth > 32 {
+                        return Err(error.into());
+                    }
+                }
+            }
+            Event::End(_) => {
+                if depth == 0 {
+                    return Err(error.into());
+                }
+                depth -= 1;
+            }
+            Event::Text(t) => {
+                if depth == 0 && !t.iter().all(u8::is_ascii_whitespace) {
+                    return Err(error.into());
+                }
+            }
+            Event::GeneralRef(reference) => {
+                let name: &[u8] = reference.as_ref();
+                if depth == 0
+                    || (!matches!(name, b"lt" | b"gt" | b"amp" | b"quot" | b"apos")
+                        && reference.resolve_char_ref().map_err(|_| error)?.is_none())
+                {
+                    return Err(error.into());
+                }
+            }
+            Event::Eof => {
+                return if seen && depth == 0 {
+                    Ok(())
+                } else {
+                    Err(error.into())
+                }
+            }
+            _ => return Err(error.into()),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn export_creation_svg(app: AppHandle, title: String, svg: String) -> Result<String, String> {
+    validate_svg(&svg)?;
+    crate::exports::export_verified_document(&app, &title, "svg", svg.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +286,22 @@ mod tests {
         assert!(decode("data:image/png;base64,bm90LXB uZw==").is_err());
         let truncated = png_url();
         assert!(decode(&truncated[..truncated.len() - 20]).is_err());
+    }
+    #[test]
+    fn svg_keeps_plain_labels_but_never_active_content() {
+        assert!(validate_svg("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"400\"><rect fill=\"#ffffff\"/><g data-mind-node=\"n_a\"><text>&lt;script&gt;中文</text></g></svg>").is_ok());
+        for bad in [
+            "<svg><text>&unknown;</text></svg>",
+            "<svg><text>&#xZZ;</text></svg>",
+            "<svg><script>alert(1)</script></svg>",
+            "<svg onload=\"alert(1)\"/>",
+            "<svg><image href=\"https://example.com\"/></svg>",
+            "<svg><rect fill=\"url(https://example.com)\"/></svg>",
+            "<!DOCTYPE svg><svg/>",
+            "<svg><g></svg>",
+            "<svg/><svg/>",
+        ] {
+            assert!(validate_svg(bad).is_err(), "{bad}");
+        }
     }
 }

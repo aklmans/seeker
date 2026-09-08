@@ -224,7 +224,7 @@
         throw new Error('壳页面分组未声明:' + (p && p.id) + ' → group "' + (p && p.group) + '"');
       }
     });
-    shellOwn = { pages, groups, collections: (own.collections || []).slice(),pageActions:own.pageActions,pageNew:own.pageNew };
+    shellOwn = { pages, groups, collections: (own.collections || []).slice(),pageActions:own.pageActions,pageNew:own.pageNew,createFromText:own.createFromText };
   }
 
   /** @returns {ShellPage[]} 启用应用页(按序) + 壳页 */
@@ -476,6 +476,7 @@
 
   /** @type {import('./types').SeekerShellApi} */
   const api = {
+    createFromText:input=>{if(!shellOwn.createFromText)throw Error('作品入口未就绪 / Creations are not ready');shellOwn.createFromText(input);},
     canSaveNote,
     saveNote,
     homeActions,

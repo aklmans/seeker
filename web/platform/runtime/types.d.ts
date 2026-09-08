@@ -529,6 +529,7 @@ export interface RenderApi {
   /** PNG input is decoded and bounded. PDF is a single long raster page of the preview. */
   creationImage(title:string, pngDataUrl:string, format:'png'|'pdf'):Promise<string>;
   copyCreationImage(pngDataUrl:string):Promise<void>;
+  creationSVG(title:string,svg:string):Promise<string>;
   /** Local Markdown export. Desktop writes a new file in Downloads/Seeker and verifies it;
    * Web starts a browser download and returns its filename. No model call. */
   markdown(title: string, text: string): Promise<string>;

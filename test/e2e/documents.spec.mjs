@@ -35,6 +35,7 @@ test('Web shows restored source text, disables desktop actions, and exports comp
   await expect(page.locator('#fileSummary')).toBeDisabled();
   const event=page.waitForEvent('download');await page.locator('#fileExportText').click();
   expect(await readFile(await (await event).path(),'utf8')).toContain('方案价格为 120 元，五月开始试用。');
+  await page.locator('#fileCreateMind').click();await expect(page.locator('#mindCreateText')).toHaveValue('方案价格为 120 元，五月开始试用。');await page.locator('#mindCreateSave').click();await expect(page.locator('[data-mind-canvas]')).toBeVisible();const creation=(await page.evaluate(()=>window.SeekerRT.db.list('platform_creations')))[0];expect(creation.source).toMatchObject({type:'file',id:'ld_source'});expect(creation.content.root.children[0].text).toBe('方案价格为 120 元，五月开始试用。');
   await page.reload();await page.locator('.nav-item[data-id="notes"]').click();await page.locator('[data-library-tab="files"]').click();
   await expect(page.locator('[data-document]')).toContainText('产品资料.txt');
 });

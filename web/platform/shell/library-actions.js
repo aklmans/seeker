@@ -13,4 +13,6 @@ export function appendSaveAnswer(host,text) {
     catch(e){toast(errText(e));button.disabled=false;}
   };
   host.appendChild(button);
+  const create=document.createElement('button');create.className='btn-text';create.style.cssText='display:block;margin-top:8px;font-size:12px;';create.textContent=tt('整理成思维导图','Create a mind map');
+  create.onclick=()=>window.SeekerShell.createFromText({text,title:tt('对话导图','Conversation mind map'),source:{type:'answer'}});host.appendChild(create);
 }

@@ -94,6 +94,7 @@ pub fn run() {
             creations::creation_save,
             creation_export::export_creation_image,
             creation_export::copy_creation_image,
+            creation_export::export_creation_svg,
             secret::secret_set,
             secret::secret_status,
             secret::secret_clear,

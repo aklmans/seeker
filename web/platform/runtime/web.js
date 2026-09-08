@@ -6,7 +6,7 @@
  * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用。
  */
 import { nextCreation } from './creation-model.js';
-import {exportCreationImage,copyCreationImage} from './creation-export.js';
+import {exportCreationImage,copyCreationImage,exportCreationSVG} from './creation-export.js';
 import { NotImplementedError, notImpl } from './errors.js';
 import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
 import { conversationHistory } from '../shell/conversation-model.js';
@@ -488,6 +488,7 @@ export function createWebRuntime() {
     // .docx 渲染在 Rust 核;web 端无 → 降级(domain 仍可走 Markdown 导出/复制)。
     render: {
       creationImage:exportCreationImage,
+      creationSVG:exportCreationSVG,
       copyCreationImage,
       docx: () => notImpl('rt.render.docx', 'web'),
       markdown: async (title, text) => {

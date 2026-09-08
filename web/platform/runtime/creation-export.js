@@ -49,3 +49,21 @@ export async function copyCreationImage(pngDataUrl){
   const blob=decodeCreationPNG(pngDataUrl).then(r=>new Blob([r.bytes],{type:'image/png'}));
   await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
 }
+/** SVG exports accept only the platform's inert drawing vocabulary.
+ * @param {string} svg */
+export function validateCreationSVG(svg){
+  if(typeof svg!=='string'||new TextEncoder().encode(svg).length>2_000_000||/<!|<\?/.test(svg))throw Error('Invalid SVG');
+  const doc=new DOMParser().parseFromString(svg,'image/svg+xml');
+  if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw Error('Invalid SVG');
+  const tags=new Set(['svg','g','rect','path','text','tspan']);
+  const attrs=new Set(['xmlns','width','height','viewBox','x','y','rx','fill','stroke','stroke-width','stroke-dasharray','font-family','font-size','text-anchor','d','data-mind-node','tabindex','role','aria-label']);
+  for(const el of doc.querySelectorAll('*')){
+    if(!tags.has(el.tagName))throw Error('Unsupported SVG element');
+    for(const a of [...el.attributes]){
+      if(!attrs.has(a.name)||(a.name==='xmlns'&&a.value!=='http://www.w3.org/2000/svg')||(['fill','stroke'].includes(a.name)&&a.value!=='none'&&!/^#[0-9a-f]{6}$/i.test(a.value)))throw Error('Unsupported SVG attribute');
+    }
+  }
+  return svg;
+}
+/** @param {string} title @param {string} svg */
+export async function exportCreationSVG(title,svg){return download(title,new Blob([validateCreationSVG(svg)],{type:'image/svg+xml'}),'svg');}

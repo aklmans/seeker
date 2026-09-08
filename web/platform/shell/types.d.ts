@@ -370,6 +370,7 @@ export interface Project {
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
 export interface ShellOwn {
+  createFromText?:(input:CreationTextInput)=>void;
   pageActions?:(pageId:string)=>PageAction[];
   pageNew?:(pageId:string)=>(()=>void)|undefined;
   pages: ShellPage[];
@@ -383,6 +384,7 @@ export interface ShellOwn {
  * classic IIFE(同 platform/keys/keys.js 先例):单体 INIT 在解析期同步消费,ES module 时序赶不上。
  */
 export interface SeekerShellApi {
+  createFromText(input:CreationTextInput):void;
   canSaveNote(): boolean;
   saveNote(draft: NoteDraft): Promise<{id: string}>;
   homeActions(): HomeAction[];
@@ -455,3 +457,5 @@ export interface SeekerShellApi {
    *  **非 AI 可读、勿接进 D3**:AI 可读集是独立的 aiReadableCollections()(启用 ∩ 授权,三层闸)。(阶段4-0 语义修 + 第23轮[建议]注释校正) */
   collections(): string[];
 }
+
+export interface CreationTextInput {text:string;title?:string;source?:{[key:string]:unknown};}

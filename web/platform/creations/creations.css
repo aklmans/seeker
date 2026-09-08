@@ -17,4 +17,14 @@
 #creationSaveStatus{font-size:12px;color:var(--ink-3)}
 .creation-layout details{margin:20px 0;font-size:12px}
 .creation-layout summary{cursor:pointer}
+.mind-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0;font-size:12px}
+.mind-help{font-size:12px;color:var(--ink-3)}
+.mind-viewport{height:500px;overflow:auto;border:.5px solid var(--border);background:var(--bg-subtle);padding:12px;box-sizing:border-box}
+.mind-viewport svg{display:block;max-width:none}
+.mind-viewport [data-mind-node]{cursor:grab}
+.mind-viewport [data-mind-node]:focus{outline:2px solid var(--accent);outline-offset:3px}
+.mind-dragging,.mind-dragging [data-mind-node]{cursor:grabbing}
+.mind-node-editor{padding:16px 0}.mind-node-editor>label{display:grid;gap:8px;font-size:12px}.mind-node-editor textarea{width:100%;box-sizing:border-box}
+.mind-node-editor select{max-width:200px}.mind-outline{font-size:14px;line-height:2}.mind-outline button{text-align:left;overflow-wrap:anywhere}
+.mind-outline [aria-current=true]{color:var(--accent);text-decoration:underline}
 @media(max-width:800px){.creation-layout{grid-template-columns:1fr}.creation-layout>aside{border-right:0;border-bottom:.5px solid var(--border);padding:0 0 16px}.creation-list-tools{grid-template-columns:1fr auto}#creationList{max-height:180px;overflow:auto}}
