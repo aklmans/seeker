@@ -26,12 +26,12 @@ export function renderAbout() {
   host.innerHTML = frontis('ABOUT', tt('关于', 'About'))
     + `<div class="sec" style="padding-top:4px;">
       <p style="font-size:14.5px;color:var(--ink);line-height:2;max-width:640px;"><b>探索者 · Seeker</b> —— ${tt(
-        '本地优先的个人 AI Agent 平台:一个壳,装着可自由开关的小应用。对话即入口,数据存在你自己的设备里,AI 只是你请来的帮手。',
-        'A local-first personal AI agent platform: one shell, many toggleable mini-apps. Conversation is the entry point; your data stays on your device — the AI is just a helper you invited.'
+        '本地优先的个人 AI 工作空间。用独立对话思考和写作,把文件与笔记沉淀为资料,再整理成可继续编辑和导出的作品;需要持续执行的工作交给任务 Agent。',
+        'A local-first personal AI workspace for conversations, writing, files, notes, editable creations, and resumable task agents.'
       )}</p>
       <p style="font-size:13px;color:var(--ink-3);line-height:1.9;max-width:640px;margin-top:8px;">${tt(
-        '首个内置应用是求职工作台(智能匹配 / 简历 / 面试陪练 / 市场价值);用完可以整个关掉,数据保留。Web 版是演示体验 —— 真实 AI 工具循环、记忆与连接器在桌面版。',
-        'The first built-in app is a job-hunt workbench (smart match / resume / interview practice / market value); switch it off when done — data stays. The web version is a demo; the real AI tool loop, memory and connectors live in the desktop app.'
+        '数据默认保存在你的设备里,模型和能力由你选择。求职等垂直应用按需开启,关闭后数据仍然保留。Web 版用于体验界面与浏览器能力;完整文件、任务和连接器能力在桌面版。',
+        'Your data stays on your device, and you choose the models and capabilities. Optional apps such as Job Search can be enabled when needed without deleting data when switched off. The web version demonstrates the interface and browser capabilities; full file, task, and connector support lives in the desktop app.'
       )}</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
         ${lk('下载桌面版', 'Download desktop', REPO + '/releases', true)}
@@ -42,7 +42,10 @@ export function renderAbout() {
     <div class="sec">
       <p class="seclabel">— ${tt('能做什么', 'WHAT IT DOES')}</p>
       <ul style="list-style:none;padding:0;margin:10px 0 0;font-size:13px;color:var(--ink-2);max-width:640px;">
-        ${li('<b>Agent 对话入口</b> —— 说出需求即执行;斜杠命令、快捷技能一点即跑', '<b>Agent-first</b> — say what you need; slash commands & one-tap skills')}
+        ${li('<b>对话与写作</b> —— 独立会话、翻译、润色、总结,也能围绕选中的文件问答', '<b>Conversations & writing</b> — independent chats, translation, rewriting, summaries, and questions about selected files')}
+        ${li('<b>本地资料</b> —— 统一管理笔记和文件,只有明确选择的正文才会交给模型', '<b>Local materials</b> — manage notes and files together; only explicitly selected text is sent to a model')}
+        ${li('<b>可编辑作品</b> —— 知识卡片、思维导图、对比表和时间线可继续编辑、留版本并导出', '<b>Editable creations</b> — keep editing, versioning, and exporting knowledge cards, mind maps, comparisons, and timelines')}
+        ${li('<b>任务 Agent</b> —— 多步骤工作可暂停、继续、取消和退出恢复,结果经过机器验证', '<b>Task agents</b> — pause, resume, cancel, and recover multi-step work, with machine-verified results')}
         ${li('<b>能力中心</b> —— 连接器(MCP)、记忆、知识库、Skills、定时任务、项目,统一管理', '<b>Capability center</b> — MCP connectors, memory, knowledge, skills, schedules, projects in one place')}
         ${li('<b>多应用可开关</b> —— 关应用即下架其界面与 AI 权限,数据保留可回', '<b>Toggleable apps</b> — switching an app off retires its UI & AI access; data stays')}
         ${li('<b>自带模型钥匙(BYO)</b> —— OpenAI 兼容 / Anthropic / Gemini / 本地 Ollama 任选', '<b>Bring your own model</b> — OpenAI-compatible / Anthropic / Gemini / local Ollama')}
@@ -61,8 +64,8 @@ export function renderAbout() {
     <div class="sec">
       <p class="seclabel">— ${tt('项目', 'PROJECT')}</p>
       <p style="font-size:12.5px;color:var(--ink-3);line-height:1.9;max-width:640px;margin-top:10px;">${tt(
-        'Tauri 2(Rust 内核 + 系统 WebView),前端原生 HTML/CSS/JS、零框架,安装包约 7MB。开源(MIT),由一名开发者与 AI 结对完成 —— 全程一百余轮独立评审,每条安全红线都有测试钉着。当前 v0.1,正在收集第一批真实反馈,用得顺手或别扭都欢迎告诉我。',
-        'Tauri 2 (Rust core + system WebView), vanilla HTML/CSS/JS with zero frameworks, ~7MB installer. Open source (MIT), built by one developer pairing with AI — 100+ independent review rounds, every security red line pinned by tests. Now at v0.1, collecting its first real feedback — rough edges welcome.'
+        'Tauri 2(Rust 内核 + 系统 WebView),前端原生 HTML/CSS/JS、零框架。开源(MIT),由一名开发者与 AI 结对完成 —— 每条安全红线都用测试守住。当前 v0.4.0,正在收集真实使用反馈;用得顺手或别扭都欢迎告诉我。',
+        'Tauri 2 (Rust core + system WebView), with a framework-free HTML/CSS/JavaScript frontend. Open source (MIT), built by one developer pairing with AI, with tests guarding every security boundary. Now at v0.4.0 and collecting real-world feedback — rough edges are welcome.'
       )}</p>
       <button class="btn-text" id="aboutReplay" style="margin-top:10px;">${tt('重看新手引导 →', 'Replay the welcome tour →')}</button>
     </div>

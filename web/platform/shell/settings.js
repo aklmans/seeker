@@ -90,7 +90,7 @@ export function renderSettings(){
     <div style="margin-top:14px;font-size:14px;color:var(--ink-2);line-height:1.9;">
       <div style="font-weight:600;color:var(--ink);">${tt('探索者 · Seeker','Seeker')}</div>
       <div class="mono" style="font-size:12px;color:var(--ink-3);margin:4px 0;">v 0.4.0 · 2026 · ${tt('本地优先','Local-first')}</div>
-      <div style="color:var(--ink-3);max-width:600px;">${tt('本地优先的个人 AI Agent 工作台，由可开关的业务应用与统一能力中心组成。所有数据存于本地,密钥只进系统钥匙串,隐私信息永不参与 AI 处理。','A local-first personal AI agent workspace built from toggleable workflow apps and a unified capability center. All data stays on your machine, keys live only in the system keychain, and private info never goes through AI.')}</div>
+      <div style="color:var(--ink-3);max-width:600px;">${tt('本地优先的个人 AI 工作空间,整合对话、写作、本地资料、可编辑作品与任务 Agent。数据默认存于本地,密钥只进系统钥匙串,隐私信息永不参与 AI 处理。','A local-first personal AI workspace for conversations, writing, local materials, editable creations, and task agents. Data stays on your machine by default, keys live only in the system keychain, and private info never goes through AI.')}</div>
       <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-extlink="https://github.com/aklmans/seeker/releases">${tt('检查更新','Check updates')}</button><button class="btn" data-extlink="https://github.com/aklmans/seeker/issues">${tt('反馈问题','Send feedback')}</button></div>
     </div>`;
   const tabDefs=[SET_TABS_SHELL[0],['workspace',['工作空间','Workspaces']],['creations',['作品样式','Creation styles']],SET_TABS_SHELL[2],SET_TABS_SHELL[1]]
