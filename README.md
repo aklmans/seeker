@@ -4,11 +4,11 @@
 >
 > *A local-first everyday AI assistant for chat, writing, file reading, notes and reports from selected materials. You choose the models and capabilities.*
 
-**v0.2.0 已发布：** 首个完整任务闭环是“岗位投递包”。选择 1–5 个岗位与一份专业简历后，Seeker 会按受控步骤选择最匹配岗位，生成匹配报告、针对性简历、求职信和面试清单，并在全部文件通过完整性验证后才宣告完成。
+**v0.2.0：** 首个完整任务闭环是“岗位投递包”。选择 1–5 个岗位与一份专业简历后，Seeker 会按受控步骤选择最匹配岗位，生成匹配报告、针对性简历、求职信和面试清单，并在全部文件通过完整性验证后才宣告完成。
 
-**v0.3.0 开发版新增：机会雷达。** 你可以选择固定招聘页，或在手动运行时明确授权一个兼容的 MCP 查询工具，设置职位、职级、地点、远程偏好、技能和排除词；Seeker 会受控检索、硬筛选、逐条验链、确定性去重评分，将结果放进独立待审队列并生成真实报告。只有你明确接受后，候选才会进入目标岗位；无人值守计划只允许固定招聘页。
+**v0.3.0：机会雷达。** 你可以选择固定招聘页，或在手动运行时明确授权一个兼容的 MCP 查询工具，设置职位、职级、地点、远程偏好、技能和排除词；Seeker 会受控检索、硬筛选、逐条验链、确定性去重评分，将结果放进独立待审队列并生成真实报告。只有你明确接受后，候选才会进入目标岗位；无人值守计划只允许固定招聘页。
 
-**第一轮日常助手开发版：** 通用首页、可恢复独立会话、翻译/润色/总结/回复草稿、本地资料库、TXT/MD/PDF/DOCX 文字阅读，以及生成 Markdown 和 DOCX 的资料整理助手。新安装按日常场景进入，求职应用可按需开启，旧数据保留。代码验收与真实模型质量分别记录在 [内测验收](docs/ROUND-1-ACCEPTANCE.md)；这些开发功能尚未因此自动发布到公开下载渠道。
+**v0.4.0：日常助手与可编辑作品。** 新增通用首页、可恢复独立会话、写作工具、本地资料库、TXT/MD/PDF/DOCX 阅读和资料整理助手；加入工作空间、可开关求职应用，以及可编辑的知识卡片、思维导图、对比表和时间线。作品支持个人样式、历史版本、图片/PDF/离线 HTML 导出与受限 AI 编辑。完整工程验收见 [第一轮验收](docs/ROUND-1-ACCEPTANCE.md) 与 [第二轮验收](docs/ROUND-2-ACCEPTANCE.md)。
 
 [下载桌面版](https://github.com/aklmans/seeker/releases/latest) · [在线体验](https://aklmans.github.io/seeker/) · [快速开始](docs/QUICKSTART.md)
 
@@ -51,7 +51,7 @@
 
 **🌐 在线体验（免安装）：** [aklmans.github.io/seeker](https://aklmans.github.io/seeker/) —— Web 演示数据保存在浏览器中；任务执行、本地文件、系统钥匙串和完整连接器能力在桌面版提供。
 
-**桌面版：** 从 [Releases](https://github.com/aklmans/seeker/releases/latest) 下载已公开版本；第一轮开发功能以内测构建为准，尚未打包发布。
+**桌面版：** 从 [Releases](https://github.com/aklmans/seeker/releases/latest) 下载最新公开版本。
 
 **首次连接：** 首页 → 连接模型 → 填写并保存测试（本地 Ollama 无需 Key）。完整操作见 [快速开始](docs/QUICKSTART.md)。
 
@@ -65,7 +65,7 @@ npm run build:all        # 构建当前平台的桌面安装包
 # 开发：cd src-tauri && cargo run
 npm test                 # 单元测试
 npm run typecheck        # tsc
-npm run test:e2e         # Playwright Chromium（首次先 npx playwright install chromium）
+npm run test:e2e         # Playwright Chromium + WebKit（首次先安装这两个浏览器）
 ```
 
 ## 架构

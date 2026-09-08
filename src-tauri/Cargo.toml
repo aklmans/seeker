@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.3.0"
+version = "0.4.0"
 description = "Seeker(探索者)— 本地优先、可恢复且可验证的个人 AI Agent 工作台"
 authors = ["Aklman <zhapar.dev@gmail.com>"]
 license = ""
