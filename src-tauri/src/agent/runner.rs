@@ -1,6 +1,8 @@
 //! Task Agent 可恢复顺序协调器。
 
-use super::{artifact, fresh_id, now_ms, radar, workflow, ARTIFACTS, EVENTS, RUNS, STEPS, TASKS};
+use super::{
+    artifact, fresh_id, material, now_ms, radar, workflow, ARTIFACTS, EVENTS, RUNS, STEPS, TASKS,
+};
 use crate::ai::{generate_agent_text, AgentGenerateOutcome};
 use crate::data::{delete_record, get_record, list_records, upsert_record, Db};
 use async_trait::async_trait;
@@ -206,7 +208,7 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
     }
     let now = now_ms();
     let run_id = fresh_id("run", now);
-    let steps = workflow::build_steps(workflow_id, task_id, &run_id, now)?;
+    let steps = workflow::build_task_steps(task, task_id, &run_id, now)?;
     let mut run = json!({
         "id": run_id,
         "taskId": task_id,
@@ -226,12 +228,20 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
         run["budget"]["maxSourceCalls"] = task["inputs"]["limits"]["maxSourceCalls"].clone();
         run["budget"]["maxModelCalls"] = task["inputs"]["limits"]["maxModelCalls"].clone();
     }
+    if workflow_id == workflow::MATERIAL_REPORT {
+        let snapshot = material::validate_task(task)?;
+        run["inputHash"] = json!(snapshot.hash);
+        run["budget"]["maxModelCalls"] = json!((snapshot.sources.len() + 1) * 2);
+    }
     let mut queued_task = task.clone();
     set_fields(&mut queued_task, &[("status", json!("queued"))])?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     upsert_record(&tx, TASKS, &queued_task)?;
     upsert_record(&tx, RUNS, &run)?;
-    if workflow_id == workflow::OPPORTUNITY_RADAR {
+    if matches!(
+        workflow_id,
+        workflow::OPPORTUNITY_RADAR | workflow::MATERIAL_REPORT
+    ) {
         tx.execute(
             "INSERT INTO platform_agent_call_ledger (run_id, source_calls, model_calls)
              VALUES (?1, 0, 0)",
@@ -258,6 +268,7 @@ fn prepare_new_run(conn: &mut rusqlite::Connection, task: &Value) -> Result<Valu
 enum CallBudgetKind {
     Source,
     Model,
+    MaterialModel,
 }
 
 fn reserve_call_budget<R: Runtime>(
@@ -271,6 +282,7 @@ fn reserve_call_budget<R: Runtime>(
     let (column, label, hard_limit) = match kind {
         CallBudgetKind::Source => ("source_calls", "来源", 12usize),
         CallBudgetKind::Model => ("model_calls", "模型", 1usize),
+        CallBudgetKind::MaterialModel => ("model_calls", "模型", 12usize),
     };
     let limit = limit.min(hard_limit);
     let db = app.state::<Db>();
@@ -417,6 +429,9 @@ fn initialize_resume<R: Runtime>(
         let task =
             get_record(&conn, TASKS, task_id)?.ok_or_else(|| format!("任务不存在: {task_id}"))?;
         super::require_radar_mcp_authorization(&conn, &task)?;
+        if task["workflowId"] == workflow::MATERIAL_REPORT {
+            check_material_plan(&conn, &task, run_id)?;
+        }
         drop(conn);
         reconcile_unknown_steps(app, run_id)
     })();
@@ -534,13 +549,19 @@ fn reconcile_unknown_steps<R: Runtime>(app: &AppHandle<R>, run_id: &str) -> Resu
             emit_event(app, &event);
             continue;
         }
-        if !matches!(step["key"].as_str(), Some("write" | "write_radar_report")) {
+        if !matches!(
+            step["key"].as_str(),
+            Some("write" | "write_radar_report" | "write_material_report")
+        ) {
             return Err("存在无法自动协调的未知副作用，请检查运行记录".into());
         }
         let artifacts = related(&conn, ARTIFACTS, "runId", run_id)?;
-        if let Ok(verified) =
+        let verification = if task["workflowId"] == workflow::MATERIAL_REPORT {
+            verify_material_run(&conn, &root, &task, run_id, &artifacts)
+        } else {
             artifact::verify_artifacts_for(&root, &artifacts, workflow_spec.required_artifacts)
-        {
+        };
+        if let Ok(verified) = verification {
             let tx = conn.transaction().map_err(|e| e.to_string())?;
             for record in &verified {
                 upsert_record(&tx, ARTIFACTS, record)?;
@@ -781,6 +802,245 @@ enum StepOutcome {
     Cancelled,
 }
 
+fn material_snapshot_for_run(
+    conn: &rusqlite::Connection,
+    task: &Value,
+    run_id: &str,
+) -> Result<material::Snapshot, String> {
+    let snapshot = material::validate_task(task)?;
+    let run = get_record(conn, RUNS, run_id)?.ok_or("运行不存在 / Run not found")?;
+    if run["inputHash"] != snapshot.hash {
+        return Err("本次运行的资料或目标已改变，请新建任务 / The run's sources or goal changed. Create a new task.".into());
+    }
+    Ok(snapshot)
+}
+
+fn check_material_plan(
+    conn: &rusqlite::Connection,
+    task: &Value,
+    run_id: &str,
+) -> Result<(), String> {
+    material_snapshot_for_run(conn, task, run_id)?;
+    let expected = workflow::build_task_steps(task, task["id"].as_str().unwrap_or(""), run_id, 0)?;
+    let actual = ordered_steps(conn, run_id)?;
+    if actual.len() != expected.len()
+        || actual.iter().zip(&expected).any(|(a, b)| {
+            [
+                "id", "taskId", "runId", "key", "order", "tool", "effect", "kind",
+            ]
+            .iter()
+            .any(|field| a[*field] != b[*field])
+        })
+    {
+        return Err("运行计划与固定工作流不一致，请重新创建 / The run plan differs from the fixed workflow. Create a new task.".into());
+    }
+    Ok(())
+}
+
+fn material_extractions(
+    conn: &rusqlite::Connection,
+    run_id: &str,
+    snapshot: &material::Snapshot,
+) -> Result<Vec<crate::library::Answer>, String> {
+    snapshot
+        .sources
+        .iter()
+        .enumerate()
+        .map(|(i, source)| {
+            let step = step_by_key(conn, run_id, &format!("extract_material_{}", i + 1))?;
+            if step["status"] != "succeeded" {
+                return Err("资料要点尚未完成 / Source extraction is not complete".into());
+            }
+            material::validate_extraction(&step["output"].to_string(), source)
+        })
+        .collect()
+}
+
+fn material_report_inputs(
+    conn: &rusqlite::Connection,
+    task: &Value,
+    run_id: &str,
+) -> Result<
+    (
+        material::Snapshot,
+        Vec<crate::library::Answer>,
+        material::Synthesis,
+    ),
+    String,
+> {
+    let snapshot = material_snapshot_for_run(conn, task, run_id)?;
+    let extracts = material_extractions(conn, run_id, &snapshot)?;
+    let step = step_by_key(conn, run_id, "synthesize_materials")?;
+    if step["status"] != "succeeded" {
+        return Err("综合整理尚未完成 / Synthesis is not complete".into());
+    }
+    let synthesis = material::validate_synthesis(&step["output"].to_string(), &snapshot)?;
+    Ok((snapshot, extracts, synthesis))
+}
+
+fn verify_material_run(
+    conn: &rusqlite::Connection,
+    root: &std::path::Path,
+    task: &Value,
+    run_id: &str,
+    records: &[Value],
+) -> Result<Vec<Value>, String> {
+    let (snapshot, extractions, synthesis) = material_report_inputs(conn, task, run_id)?;
+    artifact::verify_material_report(
+        root,
+        records,
+        &artifact::MaterialInput {
+            task_id: task["id"]
+                .as_str()
+                .ok_or("任务标识缺失 / Missing task ID")?,
+            run_id,
+            snapshot: &snapshot,
+            extractions: &extractions,
+            synthesis: &synthesis,
+            now: now_ms(),
+        },
+    )
+}
+
+async fn execute_material_step<R: Runtime, G: AgentTextGenerator<R>>(
+    app: &AppHandle<R>,
+    task: &Value,
+    run_id: &str,
+    step: &Value,
+    token: &CancellationToken,
+    generator: &G,
+) -> Result<StepOutcome, String> {
+    let snapshot = {
+        let db = app.state::<Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        material_snapshot_for_run(&conn, task, run_id)?
+    };
+    let key = step["key"].as_str().unwrap_or("");
+    if key == "load_materials" {
+        return Ok(StepOutcome::Done(
+            serde_json::to_value(snapshot).map_err(|e| e.to_string())?,
+        ));
+    }
+    if let Some(index) = key.strip_prefix("extract_material_") {
+        let index = index
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| i.checked_sub(1))
+            .ok_or("无效资料步骤 / Invalid source step")?;
+        let source = snapshot
+            .sources
+            .get(index)
+            .ok_or("资料超出所选范围 / Source outside the selection")?;
+        if !reserve_call_budget(
+            app,
+            run_id,
+            CallBudgetKind::MaterialModel,
+            (snapshot.sources.len() + 1) * 2,
+        )? {
+            return Err(
+                "运行模型预算已用尽，请新建任务 / Run model budget exhausted. Create a new task."
+                    .into(),
+            );
+        }
+        return match generator
+            .generate(
+                app,
+                &format!("agent_{run_id}_{key}"),
+                Some("text_processing"),
+                &material::extraction_instruction(&snapshot),
+                Some(&serde_json::to_string(source).map_err(|e| e.to_string())?),
+                token.clone(),
+            )
+            .await?
+        {
+            AgentGenerateOutcome::Done(raw) => Ok(StepOutcome::Done(
+                serde_json::to_value(material::validate_extraction(&raw, source)?)
+                    .map_err(|e| e.to_string())?,
+            )),
+            AgentGenerateOutcome::Cancelled => Ok(StepOutcome::Cancelled),
+        };
+    }
+    if key == "synthesize_materials" {
+        let extracts = {
+            let db = app.state::<Db>();
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            material_extractions(&conn, run_id, &snapshot)?
+        };
+        if !reserve_call_budget(
+            app,
+            run_id,
+            CallBudgetKind::MaterialModel,
+            (snapshot.sources.len() + 1) * 2,
+        )? {
+            return Err(
+                "运行模型预算已用尽，请新建任务 / Run model budget exhausted. Create a new task."
+                    .into(),
+            );
+        }
+        return match generator
+            .generate(
+                app,
+                &format!("agent_{run_id}_{key}"),
+                Some("text_processing"),
+                &material::synthesis_instruction(&snapshot),
+                Some(&json!({"sources":snapshot.sources,"extracts":extracts}).to_string()),
+                token.clone(),
+            )
+            .await?
+        {
+            AgentGenerateOutcome::Done(raw) => Ok(StepOutcome::Done(
+                serde_json::to_value(material::validate_synthesis(&raw, &snapshot)?)
+                    .map_err(|e| e.to_string())?,
+            )),
+            AgentGenerateOutcome::Cancelled => Ok(StepOutcome::Cancelled),
+        };
+    }
+    let (snapshot, extractions, synthesis) = {
+        let db = app.state::<Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        material_report_inputs(&conn, task, run_id)?
+    };
+    let input = artifact::MaterialInput {
+        task_id: task["id"]
+            .as_str()
+            .ok_or("任务标识缺失 / Missing task ID")?,
+        run_id,
+        snapshot: &snapshot,
+        extractions: &extractions,
+        synthesis: &synthesis,
+        now: now_ms(),
+    };
+    match key {
+        "check_materials" => {
+            let (md, _) = material::document(&snapshot, &extractions, &synthesis)?;
+            Ok(StepOutcome::Done(
+                json!({"checked":true,"sourceHash":snapshot.hash,"reportCharacters":md.chars().count()}),
+            ))
+        }
+        "write_material_report" => {
+            let records = artifact::write_material_report(app, &input)?;
+            let db = app.state::<Db>();
+            let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+            persist_artifact_records(&mut conn, &records)?;
+            Ok(StepOutcome::Done(
+                json!({"artifactIds":records.iter().map(|r|r["id"].clone()).collect::<Vec<_>>()}),
+            ))
+        }
+        "verify_material_report" => {
+            let db = app.state::<Db>();
+            let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+            let records = related(&conn, ARTIFACTS, "runId", run_id)?;
+            let verified =
+                artifact::verify_material_report(&artifact::artifact_root(app)?, &records, &input)?;
+            persist_artifact_records(&mut conn, &verified)?;
+            Ok(StepOutcome::Done(
+                json!({"verified":true,"count":verified.len()}),
+            ))
+        }
+        _ => Err("未知资料整理步骤 / Unknown material report step".into()),
+    }
+}
+
 async fn execute_step_with_sources<
     R: Runtime,
     G: AgentTextGenerator<R>,
@@ -794,6 +1054,9 @@ async fn execute_step_with_sources<
     generator: &G,
     source_reader: &S,
 ) -> Result<StepOutcome, String> {
+    if task["workflowId"] == workflow::MATERIAL_REPORT {
+        return execute_material_step(app, task, run_id, step, token, generator).await;
+    }
     let key = step["key"].as_str().unwrap_or("");
     match key {
         "load" => {
@@ -1385,6 +1648,9 @@ async fn execute_run_with_sources<
     let steps = {
         let db = app.state::<Db>();
         let conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+        if task["workflowId"] == workflow::MATERIAL_REPORT {
+            check_material_plan(&conn, &task, run_id)?;
+        }
         ordered_steps(&conn, run_id)?
     };
     for original in steps {
@@ -1518,10 +1784,10 @@ async fn execute_run_with_sources<
     }
     let workflow_id = task["workflowId"].as_str().unwrap_or("");
     let workflow_spec = workflow::get(workflow_id)?;
-    let verify_key = if workflow_id == workflow::OPPORTUNITY_RADAR {
-        "verify_radar_report"
-    } else {
-        "verify"
+    let verify_key = match workflow_id {
+        workflow::OPPORTUNITY_RADAR => "verify_radar_report",
+        workflow::MATERIAL_REPORT => "verify_material_report",
+        _ => "verify",
     };
     let verify = step_by_key(&conn, run_id, verify_key)?;
     if verify["status"] != "succeeded" || verify["output"]["verified"] != true {
@@ -1549,11 +1815,22 @@ async fn execute_run_with_sources<
         )?;
         return Ok(());
     }
-    if let Err(error) = artifact::verify_artifacts_for(
-        &artifact::artifact_root(app)?,
-        &artifacts,
-        workflow_spec.required_artifacts,
-    ) {
+    let final_verification = if workflow_id == workflow::MATERIAL_REPORT {
+        verify_material_run(
+            &conn,
+            &artifact::artifact_root(app)?,
+            &task,
+            run_id,
+            &artifacts,
+        )
+    } else {
+        artifact::verify_artifacts_for(
+            &artifact::artifact_root(app)?,
+            &artifacts,
+            workflow_spec.required_artifacts,
+        )
+    };
+    if let Err(error) = final_verification {
         drop(conn);
         fail_run(
             app,
@@ -1633,6 +1910,7 @@ pub fn recover_open_runs(conn: &mut rusqlite::Connection) -> Result<usize, Strin
 
 #[cfg(test)]
 mod tests {
+    include!("material_tests.rs");
     use super::*;
     use std::sync::atomic::AtomicUsize;
     use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
@@ -1896,7 +2174,9 @@ mod tests {
              CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, match_score REAL, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE skills (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
              CREATE TABLE resumes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
-             CREATE TABLE profile (k TEXT PRIMARY KEY, v TEXT NOT NULL);",
+             CREATE TABLE profile (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+             CREATE TABLE assets_notes (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);
+             CREATE TABLE assets_documents (id TEXT PRIMARY KEY, updated_at INTEGER DEFAULT 0, data_json TEXT NOT NULL);",
         )
         .unwrap();
         conn

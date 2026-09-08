@@ -89,7 +89,7 @@ fn read_document(row: &Value) -> Result<Document, String> {
     Ok(doc)
 }
 
-fn public_doc(row: &Value) -> Result<Value, String> {
+pub(crate) fn public_doc(row: &Value) -> Result<Value, String> {
     serde_json::to_value(read_document(row)?).map_err(|e| e.to_string())
 }
 

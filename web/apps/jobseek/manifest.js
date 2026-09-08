@@ -11,7 +11,7 @@ import { renderJobs } from './pages/jobs.js';
 import { renderAnalysis } from './pages/analysis.js';
 import { renderSkills } from './pages/skills.js';
 import { renderActions } from './pages/actions.js';
-import { openTaskComposer, renderTasks } from './pages/tasks.js';
+import { jobTaskWorkflows } from './pages/tasks.js';
 import { openOpportunityComposer, renderOpportunities } from './pages/opportunities.js';
 import { renderMatch } from './logic/match.js';
 import { renderResumes, resumeGenerate, resumeState } from './logic/resumes.js';
@@ -90,7 +90,6 @@ import { setState } from '../../platform/shell/shell-state.js';
     // 条目字段与原单体 PAGES 逐字一致(仅加 icon/render/liveCount);顺序即导航序。
     pages: [
       { id: 'overview', label: '总览', en: 'Overview', abbr: '总', eyebrow: 'OVERVIEW', group: 'core', icon: ICONS.overview, render: () => renderOverview() },
-      { id: 'tasks', label: '任务中心', en: 'Tasks', abbr: '任', eyebrow: 'TASK AGENT', group: 'core', icon: ICONS.tasks, render: () => renderTasks() },
       { id: 'match', label: '智能匹配', en: 'Smart Match', abbr: '匹', eyebrow: 'SMART MATCH', group: 'core', ai: true, icon: ICONS.match, render: () => renderMatch() },
       { id: 'resumes', label: '我的简历', en: 'Resume', abbr: '历', eyebrow: 'RESUMES', group: 'core', ai: true, icon: ICONS.resumes, render: () => renderResumes() },
       { id: 'opportunities', label: '机会雷达', en: 'Radar', abbr: '雷', eyebrow: 'OPPORTUNITY RADAR', group: 'research', icon: ICONS.opportunities, render: () => renderOpportunities() },
@@ -123,12 +122,12 @@ import { setState } from '../../platform/shell/shell-state.js';
     // §1 契约化(批11B · pageNew):平台快捷键 Mod+N / 新建入口按 pageId 取本应用「创建」动作。
     // 无参箭头包装(契约返回 () => void;openNewJob(editId) 的 editId=undefined 即「新建」,与原 contextNew 的 openNewJob() 逐字等价)。
     // 惰性(体在调用时求值)→ manifest eval 不 eager 读 openNewJob/openNewAction、无载序前移。
-    pageNew: (pageId) => ({ tasks: () => openTaskComposer(), opportunities: () => openOpportunityComposer(), jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
+    taskWorkflows:jobTaskWorkflows,
+    pageNew: (pageId) => ({ opportunities: () => openOpportunityComposer(), jobs: () => openNewJob(), actions: () => openNewAction() }[pageId]),
     // §1 契约化(批11B · pageActions):平台 nav.renderTopActions 原硬编码本应用顶栏动作 map,逐字迁入。
     // 惰性:fn 闭包点击时求值;tt 每次 pageActions() 调用重求值(语言切换即时,与原 nav 每次 renderTopActions 重建 map 同);manifest eval 顶层零 eager 读。
     pageActions: (pageId) => ({
       overview: [{ t: tt('智能匹配', 'Smart match'), a: 'btn-accent', fn: () => go('match') }],
-      tasks: [{ t: tt('+ 新建任务', '+ New task'), a: 'btn-accent', fn: () => openTaskComposer() }],
       opportunities: [{ t: tt('+ 新建雷达', '+ New radar'), a: 'btn-accent', fn: () => openOpportunityComposer() }],
       match: [{ t: tt('我的简历', 'My resume'), fn: () => openResumeModal() }],
       resumes: [{ t: tt('+ 生成针对性简历', '+ Tailored resume'), a: 'btn-accent', fn: () => resumeGenerate(resumeState.jobId, renderResumes) }],

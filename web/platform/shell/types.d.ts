@@ -173,11 +173,26 @@ export interface NoteDraft {
 export interface HomeAction { label: string; run: () => void; }
 export interface RecentItem { id: string; title: string; updated: number; open: () => void; }
 
+/** Trusted application contributions to the platform task center. */
+export interface TaskWorkflowUi {
+  id:string;
+  name:LString;
+  order?:number;
+  repeatable?:boolean;
+  requiredArtifacts:string[];
+  artifactNames:Record<string,LString>;
+  permission:LString;
+  success:LString;
+  compose?:(host:HTMLElement,onCreated:(taskId:string)=>void)=>void|Promise<void>;
+  describe:(task:import('../runtime/types').AgentTask)=>string|Promise<string>;
+}
+
 export interface AppManifest {
   /** Explicit user save. Implemented by the owning library app; never an AI tool. */
   saveNote?: (draft: NoteDraft) => Promise<{id: string}>;
   homeActions?: () => HomeAction[];
   recentItems?: () => Promise<RecentItem[]>;
+  taskWorkflows?:TaskWorkflowUi[];
   /** New installations only; existing choices and owned data take precedence. */
   defaultEnabled?: boolean;
   /** Trusted prompt overlay used only while viewing this app's pages. */
@@ -355,6 +370,8 @@ export interface Project {
 
 /** 壳自持内容(设置页等全局框架;排所有应用页之后)。 */
 export interface ShellOwn {
+  pageActions?:(pageId:string)=>PageAction[];
+  pageNew?:(pageId:string)=>(()=>void)|undefined;
   pages: ShellPage[];
   groups?: Record<string, LString>;
   /** 壳自持集合(如对话历史 messages)。 */
@@ -370,6 +387,7 @@ export interface SeekerShellApi {
   saveNote(draft: NoteDraft): Promise<{id: string}>;
   homeActions(): HomeAction[];
   recentItems(): Promise<RecentItem[]>;
+  taskWorkflows():Array<TaskWorkflowUi & {enabled:boolean;appId:string}>;
   initializeDefaults(): Promise<void>;
   chatTask(pageId: string): string | undefined;
   register(manifest: AppManifest): void;

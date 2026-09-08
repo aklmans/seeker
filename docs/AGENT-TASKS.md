@@ -20,6 +20,11 @@ v0.3 新增「机会雷达」，把受控来源中的岗位机会整理为独立
 机会雷达的固定契约、数据边界和验收矩阵见
 [OPPORTUNITY-RADAR.md](OPPORTUNITY-RADAR.md)。
 
+第一轮转型新增 `material_report`（[资料整理助手](MATERIAL-ORGANIZER.md)），在公共任务中心
+接收 1–5 份明确选择的资料快照，逐份提取、汇总、检查引用并生成 MD/DOCX。
+本文下方岗位字段和四产物细节仍指岗位投递包；资料整理的专门数据边界见
+[ARCHITECTURE.md](ARCHITECTURE.md#task-agent-运行域)。三条工作流共用状态、事件和副作用恢复机制。
+
 ## 2. 明确不做
 
 - 不向模型提供任意 Shell、任意文件系统或通用数据库写入能力。

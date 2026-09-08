@@ -566,14 +566,22 @@ export interface OpportunityRadarTaskDraft {
   inputs: OpportunityRadarInputs;
 }
 
-export type AgentTaskDraft = JobPackageTaskDraft | OpportunityRadarTaskDraft;
+export interface MaterialTaskDraft {
+  workflowId:'material_report';
+  title?:string;
+  goal:string;
+  inputs:{materials:Array<{kind:'note'|'document';id:string;updated:number}>;language:'zh'|'en'};
+}
+export interface MaterialSnapshotSource {id:string;kind:'note'|'document';recordId:string;title:string;sourceUrl:string;updated:number;characters:number;fragments:SourceFragment[];}
+export interface MaterialTaskInputs {language:'zh'|'en';snapshot:{goal:string;language:'zh'|'en';sources:MaterialSnapshotSource[];hash:string};}
+export type AgentTaskDraft = JobPackageTaskDraft | OpportunityRadarTaskDraft | MaterialTaskDraft;
 
 export interface AgentTask extends Record {
   projectId: string;
   workflowId: string;
   title: string;
   goal: string;
-  inputs: JobPackageTaskDraft['inputs'] | OpportunityRadarInputs;
+  inputs: JobPackageTaskDraft['inputs'] | OpportunityRadarInputs | MaterialTaskInputs;
   constraints: string[];
   deliverables: Array<{ kind: string; format?: string; required?: boolean }>;
   successCriteria: Array<{ kind: string }>;
@@ -682,6 +690,8 @@ export interface AgentApi {
   listArtifacts(taskId: string): Promise<AgentArtifact[]>;
   readArtifact(artifactId: string): Promise<string>;
   openArtifact(artifactId: string): Promise<void>;
+  /** Copy a verified artifact into Downloads/Seeker, then reread and verify the copy. */
+  exportArtifact(artifactId:string):Promise<string>;
   listApprovals(runId: string): Promise<AgentApproval[]>;
   listEvents(runId: string): Promise<AgentEvent[]>;
   listOpportunities(): Promise<JobOpportunity[]>;

@@ -116,6 +116,7 @@ pub fn run() {
             agent::agent_artifact_list,
             agent::agent_artifact_read_text,
             agent::agent_artifact_open,
+            agent::agent_artifact_export,
             agent::agent_approval_list,
             agent::agent_event_list,
             agent::agent_opportunity_list,

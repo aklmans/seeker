@@ -1260,6 +1260,7 @@ import { renderCapabilityCenter } from './platform/shell/capability-center.js';
 import { renderAbout } from './platform/shell/about.js';
 import { renderSkillPlaza } from './platform/shell/skill-plaza.js';
 import { renderHome } from './platform/shell/home.js';
+import { renderTasks,openTaskComposer } from './platform/shell/tasks.js';
 import { clearCollectionsSafely } from './platform/runtime/data-clear.js';
 import { GROUPS, PAGES } from './platform/shell/shell-state.js';
 import { errText, toast } from './platform/shell/toast.js';
@@ -1268,9 +1269,13 @@ import { errText, toast } from './platform/shell/toast.js';
    本 module setShell/PAGES.push(pages())/GROUPS 在此 deferred 执行(不再 parse-time),下方 INIT-module 再消费填好的 PAGES。 */
 // 壳自持:设置页(全局配置框架;求职专属设置段阶段3 起由 manifest 贡献)+ 对话历史集合。
 window.SeekerShell.setShell({
+  pageNew:id=>id==='tasks'?()=>openTaskComposer():undefined,
+  pageActions:id=>id==='tasks'?[{t:tt('+ 新建任务','+ New task'),a:'btn-accent',fn:()=>openTaskComposer()}]:[],
   pages: [
     { id:'home', label:'首页', en:'Home', abbr:'首', group:'everyday', primary:true, primaryOrder:10,
       icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7"/></svg>', render:renderHome },
+    { id:'tasks',label:'任务',en:'Tasks',abbr:'任',group:'everyday',primary:true,primaryOrder:40,workspace:true,
+      icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="m7 9 2 2 4-4M7 16h10"/></svg>',render:renderTasks },
     { id:'capability', label:'能力中心', en:'Capabilities', abbr:'能', group:'system',
       icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
       render: () => renderCapabilityCenter() },

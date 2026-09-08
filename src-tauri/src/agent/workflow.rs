@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 pub(super) const JOB_PACKAGE: &str = "job_application_package";
 pub(super) const OPPORTUNITY_RADAR: &str = "job_opportunity_radar";
+pub(super) const MATERIAL_REPORT: &str = "material_report";
 
 pub(super) struct StepSpec {
     pub key: &'static str,
@@ -154,6 +155,12 @@ const RADAR_STEPS: &[StepSpec] = &[
 
 const WORKFLOWS: &[WorkflowSpec] = &[
     WorkflowSpec {
+        id: MATERIAL_REPORT,
+        summary: "读取所选资料快照、逐份提取、综合整理、核对来源、写入并验证报告",
+        steps: MATERIAL_STEPS,
+        required_artifacts: &["material_report_md", "material_report_docx"],
+    },
+    WorkflowSpec {
         id: JOB_PACKAGE,
         summary: "读取输入、确定性评分、生成面试问题、写入并验证投递包",
         steps: JOB_PACKAGE_STEPS,
@@ -171,6 +178,105 @@ const WORKFLOWS: &[WorkflowSpec] = &[
         required_artifacts: &["opportunity_report"],
     },
 ];
+
+const MATERIAL_STEPS: &[StepSpec] = &[
+    StepSpec {
+        key: "load_materials",
+        zh: "读取本次资料快照",
+        en: "Load selected snapshots",
+        kind: "read",
+        tool: "load_material_snapshot",
+        effect: "read_only",
+        expected: "冻结的所选资料与整理目标",
+        verification: "schema",
+    },
+    StepSpec {
+        key: "extract_material",
+        zh: "提取资料要点",
+        en: "Extract source points",
+        kind: "generate",
+        tool: "extract_material",
+        effect: "read_only",
+        expected: "单份资料的要点和逐字引用",
+        verification: "schema",
+    },
+    StepSpec {
+        key: "synthesize_materials",
+        zh: "综合整理与比较",
+        en: "Synthesize and compare",
+        kind: "generate",
+        tool: "synthesize_materials",
+        effect: "read_only",
+        expected: "区分资料事实、模型归纳和建议的报告",
+        verification: "schema",
+    },
+    StepSpec {
+        key: "check_materials",
+        zh: "检查报告结构和引用",
+        en: "Check structure and quotations",
+        kind: "verify",
+        tool: "check_material_report",
+        effect: "read_only",
+        expected: "结构齐全、每条引用属于本次资料",
+        verification: "schema",
+    },
+    StepSpec {
+        key: "write_material_report",
+        zh: "生成 Markdown 与 DOCX",
+        en: "Write Markdown and DOCX",
+        kind: "write",
+        tool: "write_artifact",
+        effect: "local_create",
+        expected: "两个真实报告文件",
+        verification: "file",
+    },
+    StepSpec {
+        key: "verify_material_report",
+        zh: "重读并验证报告文件",
+        en: "Reread and verify report files",
+        kind: "verify",
+        tool: "verify_artifact",
+        effect: "read_only",
+        expected: "路径、内容、结构、大小与摘要均通过",
+        verification: "file",
+    },
+];
+
+/// Material sources repeat a compiled extraction step, once per validated source.
+/// No free-form step definitions, tool names or effects are accepted from inputs.
+pub(super) fn build_task_steps(
+    task: &Value,
+    task_id: &str,
+    run_id: &str,
+    now: i64,
+) -> Result<Vec<Value>, String> {
+    let id = task["workflowId"].as_str().unwrap_or("");
+    let base = build_steps(id, task_id, run_id, now)?;
+    if id != MATERIAL_REPORT {
+        return Ok(base);
+    }
+    let snapshot = super::material::validate_task(task)?;
+    let mut steps = Vec::new();
+    for step in base {
+        if step["key"] == "extract_material" {
+            for (i, source) in snapshot.sources.iter().enumerate() {
+                let mut copy = step.clone();
+                let key = format!("extract_material_{}", i + 1);
+                copy["id"] = json!(format!("step_{run_id}_{key}"));
+                copy["key"] = json!(key);
+                copy["title"] = json!(format!("提取要点 · {}", source.title));
+                copy["titleEn"] = json!(format!("Extract points · {}", source.title));
+                steps.push(copy);
+            }
+        } else {
+            steps.push(step);
+        }
+    }
+    for (i, step) in steps.iter_mut().enumerate() {
+        step["order"] = json!(i);
+    }
+    Ok(steps)
+}
 
 pub(super) fn get(id: &str) -> Result<&'static WorkflowSpec, String> {
     WORKFLOWS
@@ -219,8 +325,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_contains_only_two_bounded_workflows() {
-        assert_eq!(WORKFLOWS.len(), 2);
+    fn registry_contains_only_three_bounded_workflows() {
+        assert_eq!(WORKFLOWS.len(), 3);
         assert_eq!(get(JOB_PACKAGE).unwrap().steps.len(), 5);
         let radar = get(OPPORTUNITY_RADAR).unwrap();
         assert_eq!(radar.steps.len(), 7);

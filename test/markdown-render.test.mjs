@@ -9,6 +9,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderMarkdown } from '../web/platform/markdown/render.js';
 
+test('报告的转义标点按字面显示，不能重新生成链接或 HTML', () => {
+  assert.equal(renderMarkdown('## 产品\\.txt\n\n\\[s1/f1\\]'), '<h2>产品.txt</h2><p>[s1/f1]</p>');
+  assert.equal(renderMarkdown('\\*literal\\* \\[x\\]\\(https://example.com\\)'), '<p>*literal* [x](https://example.com)</p>');
+  assert.equal(renderMarkdown('\\<img onerror=x\\>'), '<p>&lt;img onerror=x&gt;</p>');
+  assert.equal(renderMarkdown('`\\*code\\*` \\`literal\\`'), '<p><code>\\*code\\*</code> `literal`</p>');
+  assert.equal(renderMarkdown('\\\\ \\# title\n\n**real**'), '<p>\\ # title</p><p><strong>real</strong></p>');
+});
+
 test('★XSS:原始 <img onerror> 被转义成实体,不产生真标签', () => {
   const out = renderMarkdown('<img src=x onerror=alert(1)>');
   // 关键不变式:没有真标签形成(<img 不出现);onerror=… 只作为 &lt;img…&gt; 里的转义文本存在 = 无害

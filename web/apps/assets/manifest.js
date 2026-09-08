@@ -11,6 +11,7 @@ import { renderNotes, openNoteModal, reloadNotes } from './pages/notes.js';
 import { loadNotes, listNotes, saveNote, noteTitle } from './note-store.js';
 import { go } from '../../platform/shell/nav.js';
 import { renderDocumentReader, loadDocuments, recentDocuments } from './documents.js';
+import { materialTaskWorkflow } from './material-task.js';
 
 (function () {
   'use strict';
@@ -51,6 +52,7 @@ import { renderDocumentReader, loadDocuments, recentDocuments } from './document
       { id:'libraryfile',label:'阅读文件',en:'Read file',abbr:'文',group:'assets',workspace:true,hidden:true,icon:ICONS.notes,render:renderDocumentReader },
     ],
     saveNote,
+    taskWorkflows:[materialTaskWorkflow],
     pageNew: id=>id==='notes'?()=>openNoteModal(''):undefined,
     onDataImported: ()=>{reloadNotes();loadDocuments();},
     recentItems: async()=>{await loadNotes();return [...listNotes().slice(0,6).map(n=>({id:n.id,title:noteTitle(n),updated:n.updated,open:()=>{go('notes');openNoteModal(n.id);}})),...recentDocuments()];},

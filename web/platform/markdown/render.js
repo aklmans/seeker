@@ -23,11 +23,12 @@ function esc(t) {
 function inline(raw) {
   // 先转义;再剥除输入里的 NUL(U+0000)—— 下面拿它当行内码的私有占位符,剥掉即杜绝用户伪造占位。
   let t = esc(raw).replace(/\u0000/g, '');
-  // 行内码 `code`:先抽出、留占位(内容已 esc 转义),使其内部的 * _ [ ] ( ) 不被后续行内规则再解析。
+  // 行内码与反斜杠转义一起抽出，避免转义的反引号被误认作代码。
+  // 每个占位内容已转义；恢复发生在链接/强调解析之后，不能重新引入标记。
   /** @type {string[]} */
   const codes = [];
-  t = t.replace(/`([^`\n]+)`/g, (_m, c) => {
-    codes.push(c);
+  t = t.replace(/\\(&lt;|&gt;|&quot;|&#39;|&amp;|[!-/:-@\[-`{-~])|`([^`\n]+)`/g, (_m, literal, code) => {
+    codes.push(literal == null ? '<code>' + code + '</code>' : literal);
     return '\u0000' + (codes.length - 1) + '\u0000'; // NUL 包裹的索引:用户输入已剥 NUL ⇒ 不可伪造
   });
   // 粗体 **x** / __x__
@@ -40,7 +41,7 @@ function inline(raw) {
   t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, txt, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>');
   // 还原行内码:占位符 → <code>已转义内容</code>。内容全经 esc(无裸 " < > &),包进任何上下文都无法逃逸。
-  t = t.replace(/\u0000(\d+)\u0000/g, (_m, i) => '<code>' + (codes[+i] || '') + '</code>');
+  t = t.replace(/\u0000(\d+)\u0000/g, (_m, i) => codes[+i] || '');
   return t;
 }
 

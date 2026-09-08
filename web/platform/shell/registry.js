@@ -222,7 +222,7 @@
         throw new Error('壳页面分组未声明:' + (p && p.id) + ' → group "' + (p && p.group) + '"');
       }
     });
-    shellOwn = { pages, groups, collections: (own.collections || []).slice() };
+    shellOwn = { pages, groups, collections: (own.collections || []).slice(),pageActions:own.pageActions,pageNew:own.pageNew };
   }
 
   /** @returns {ShellPage[]} 启用应用页(按序) + 壳页 */
@@ -239,6 +239,9 @@
     return owner.saveNote(draft);
   }
   function homeActions() { return enabledApps().flatMap(a=>a.homeActions?.() || []); }
+  function taskWorkflows() {
+    return apps.flatMap(a=>(a.taskWorkflows||[]).map(w=>({...w,appId:a.id,enabled:enabled(a.id)}))).sort((a,b)=>(a.order??50)-(b.order??50));
+  }
   async function recentItems() {
     return (await Promise.all(enabledApps().map(a=>a.recentItems?.() || []))).flat().sort((a,b)=>b.updated-a.updated).slice(0,6);
   }
@@ -393,6 +396,7 @@
   /** 页级「新建」动作:依注册序问启用应用的 pageNew,首个返回函数者生效,否则 undefined(调用方兜底 toast)。选择型(同 collId)。
    *  §1 契约化(批11B):平台快捷键 contextNew 原硬编码 jobseek openNewJob/openNewAction,改经此契约声明 per-page「新建」。 @param {string} pageId @returns {(() => void) | undefined} */
   function pageNew(pageId) {
+    const own=shellOwn.pageNew?.(pageId);if(typeof own==='function')return own;
     for (const a of enabledApps()) {
       if (typeof a.pageNew === 'function') {
         const fn = a.pageNew(pageId);
@@ -446,7 +450,7 @@
    *  §1 契约化(批11B):平台 nav.renderTopActions 原硬编码 jobseek 顶栏动作 map(openResumeModal/resumeGenerate/openMarketValue…),改经此契约取。 @param {string} pageId @returns {import('./types').PageAction[]} */
   function pageActions(pageId) {
     /** @type {import('./types').PageAction[]} */
-    const out = [];
+    const out = [...(shellOwn.pageActions?.(pageId)||[])];
     enabledApps().forEach((a) => {
       if (typeof a.pageActions === 'function') {
         const list = a.pageActions(pageId);
@@ -472,6 +476,7 @@
     saveNote,
     homeActions,
     recentItems,
+    taskWorkflows,
     register,
     list,
     enabled,

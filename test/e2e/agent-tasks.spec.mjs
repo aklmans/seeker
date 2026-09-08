@@ -78,6 +78,7 @@ test('导入的任务记录可查看步骤、校验摘要与审计事件', async
 });
 
 test('只展示当前运行产物，未验证产物失去绿色可信状态且窄分栏为单列', async ({ page }) => {
+  await page.setViewportSize({width:920,height:900});
   await page.goto('/');
   await page.evaluate(async () => {
     const now = Date.now();

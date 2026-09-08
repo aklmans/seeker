@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 
 mod artifact;
+mod material;
 mod radar;
 pub(crate) mod runner;
 mod workflow;
@@ -323,6 +324,9 @@ pub(super) fn job_has_professional_content(job: &Value) -> bool {
 }
 
 fn validate_task_inputs(conn: &rusqlite::Connection, task: &Value) -> Result<(), String> {
+    if task["workflowId"] == workflow::MATERIAL_REPORT {
+        return material::validate_task(task).map(|_| ());
+    }
     if task["workflowId"] == workflow::OPPORTUNITY_RADAR {
         if task["inputs"]["criteria"]["roles"]
             .as_array()
@@ -610,6 +614,9 @@ fn normalize_task_draft(draft: Value, now: i64) -> Result<Value, String> {
         .ok_or_else(|| "任务草稿必须是对象".to_string())?;
     let workflow_id = required_string(source, "workflowId")?;
     workflow::get(workflow_id)?;
+    if workflow_id == workflow::MATERIAL_REPORT {
+        return material::normalize_task(source, now);
+    }
     if workflow_id == workflow::OPPORTUNITY_RADAR {
         return normalize_radar_task(source, now);
     }
@@ -685,8 +692,11 @@ fn related_records(
 #[tauri::command]
 pub fn agent_task_create(db: State<'_, Db>, draft: Value) -> Result<Value, String> {
     let now = now_ms();
-    let task = normalize_task_draft(draft, now)?;
+    let mut task = normalize_task_draft(draft, now)?;
     let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    if task["workflowId"] == workflow::MATERIAL_REPORT {
+        material::freeze(&conn, &mut task)?;
+    }
     validate_task_inputs(&conn, &task)?;
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     upsert_record(&tx, TASKS, &task)?;
@@ -1117,6 +1127,27 @@ pub fn agent_artifact_read_text(
         return Err("Markdown 产物超过 512 KiB 预览上限".into());
     }
     String::from_utf8(bytes).map_err(|_| "Markdown 不是 UTF-8".to_string())
+}
+
+/// 用户明确点击后，把已验证的受控产物另存到下载目录，不改写原报告。
+#[tauri::command]
+pub fn agent_artifact_export(
+    app: AppHandle,
+    db: State<'_, Db>,
+    artifact_id: String,
+) -> Result<String, String> {
+    let (record, _, bytes) = trusted_artifact_file(&app, &db, &artifact_id)?;
+    let extension = match record["mime"].as_str() {
+        Some("text/markdown") => "md",
+        Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document") => "docx",
+        _ => return Err("该产物格式暂不支持导出 / Export is not supported for this format".into()),
+    };
+    crate::exports::export_verified_document(
+        &app,
+        record["name"].as_str().unwrap_or("Seeker-report"),
+        extension,
+        &bytes,
+    )
 }
 
 /// 用户明确点击后，用系统默认应用打开已验证的受控产物。路径来自平台生成记录，不接收任意路径。

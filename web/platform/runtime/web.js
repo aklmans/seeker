@@ -364,6 +364,7 @@ export function createWebRuntime() {
       listArtifacts: async (taskId) => (await listAll('platform_agent_artifacts')).filter((r) => r && r.taskId === taskId),
       readArtifact: () => notImpl('rt.agent.readArtifact', 'web'),
       openArtifact: () => notImpl('rt.agent.openArtifact', 'web'),
+      exportArtifact: () => notImpl('rt.agent.exportArtifact', 'web'),
       listApprovals: async (runId) => (await listAll('platform_agent_approvals')).filter((r) => r && r.runId === runId),
       listEvents: async (runId) => (await listAll('platform_agent_events')).filter((r) => r && r.runId === runId),
       listOpportunities: async () => (await listAll('job_opportunities')).map(downgradeOpportunityTrust),

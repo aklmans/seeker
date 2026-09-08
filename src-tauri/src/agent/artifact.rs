@@ -773,6 +773,130 @@ fn validate_record(root: &Path, record: &Value) -> Result<(Value, PathBuf, Vec<u
     Ok((copy, path, bytes))
 }
 
+pub(super) struct MaterialInput<'a> {
+    pub task_id: &'a str,
+    pub run_id: &'a str,
+    pub snapshot: &'a super::material::Snapshot,
+    pub extractions: &'a [crate::library::Answer],
+    pub synthesis: &'a super::material::Synthesis,
+    pub now: i64,
+}
+
+fn material_payloads(input: &MaterialInput<'_>) -> Result<Vec<ArtifactPayload>, String> {
+    super::material::validate_synthesis(
+        &serde_json::to_string(input.synthesis).map_err(|e| e.to_string())?,
+        input.snapshot,
+    )?;
+    let (md, doc) = super::material::document(input.snapshot, input.extractions, input.synthesis)?;
+    Ok(vec![
+        ArtifactPayload {
+            kind: "material_report_md",
+            name: "material-report.md",
+            mime: "text/markdown",
+            bytes: md.into_bytes(),
+        },
+        ArtifactPayload {
+            kind: "material_report_docx",
+            name: "material-report.docx",
+            mime: DOCX_MIME,
+            bytes: render_docx(&doc),
+        },
+    ])
+}
+
+fn write_material_to_root(
+    root: &Path,
+    input: &MaterialInput<'_>,
+    fail_file_at: Option<usize>,
+) -> Result<Vec<Value>, String> {
+    if !safe_id(input.task_id) || !safe_id(input.run_id) {
+        return Err("非法 task/run id".into());
+    }
+    let payloads = material_payloads(input)?;
+    let task_dir = root.join(input.task_id);
+    let dir = task_dir.join(input.run_id);
+    let staging = task_dir.join(format!(".{}.staging", input.run_id));
+    let records=payloads.iter().map(|p|json!({"id":format!("artifact_{}_{}",input.run_id,p.kind),"taskId":input.task_id,"runId":input.run_id,"stepId":format!("step_{}_write_material_report",input.run_id),"kind":p.kind,"name":p.name,"mime":p.mime,"size":p.bytes.len(),"sha256":sha256(&p.bytes),"verified":false,"validationStatus":"pending","validationError":Value::Null,"path":dir.join(p.name).to_string_lossy(),"createdAt":input.now,"updatedAt":input.now})).collect::<Vec<_>>();
+    if dir.exists() {
+        for p in &payloads {
+            if std::fs::read(dir.join(p.name)).map_err(|e| {
+                format!("已有报告不完整，需先协调 / Existing report needs recovery: {e}")
+            })? != p.bytes
+            {
+                return Err("已有报告与快照不一致，需先协调 / Existing report does not match the snapshot; recovery required".into());
+            }
+        }
+        return Ok(records);
+    }
+    std::fs::create_dir_all(&task_dir).map_err(|e| e.to_string())?;
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
+    let result = (|| {
+        for (i, p) in payloads.iter().enumerate() {
+            if fail_file_at == Some(i + 1) {
+                return Err("故障注入：报告写入失败 / Injected report write failure".to_string());
+            }
+            atomic_write(&staging.join(p.name), &p.bytes)?;
+        }
+        std::fs::rename(&staging, &dir).map_err(|e| e.to_string())
+    })();
+    if let Err(e) = result {
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(e);
+    }
+    Ok(records)
+}
+
+pub(super) fn write_material_report<R: Runtime>(
+    app: &AppHandle<R>,
+    input: &MaterialInput<'_>,
+) -> Result<Vec<Value>, String> {
+    let root = artifact_root(app)?;
+    #[cfg(test)]
+    if let Some(fault) = app.try_state::<TestArtifactFault>() {
+        let n = fault.0.load(std::sync::atomic::Ordering::SeqCst);
+        return write_material_to_root(&root, input, (n > 0).then_some(n));
+    }
+    write_material_to_root(&root, input, None)
+}
+
+pub(super) fn verify_material_report(
+    root: &Path,
+    records: &[Value],
+    input: &MaterialInput<'_>,
+) -> Result<Vec<Value>, String> {
+    let payloads = material_payloads(input)?;
+    if records.len() != payloads.len() {
+        return Err("资料报告缺少文件 / Material report files are missing".into());
+    }
+    let verified = verify_artifacts_for(
+        root,
+        records,
+        &["material_report_md", "material_report_docx"],
+    )?;
+    for p in payloads {
+        let record = verified
+            .iter()
+            .find(|r| r["kind"] == p.kind)
+            .ok_or("报告文件类型缺失 / Missing report file type")?;
+        let expected = root.join(input.task_id).join(input.run_id).join(p.name);
+        if record["taskId"] != input.task_id
+            || record["runId"] != input.run_id
+            || record["name"] != p.name
+            || record["mime"] != p.mime
+            || record["sha256"] != sha256(&p.bytes)
+            || std::fs::canonicalize(record["path"].as_str().unwrap_or(""))
+                .map_err(|e| e.to_string())?
+                != std::fs::canonicalize(expected).map_err(|e| e.to_string())?
+        {
+            return Err("报告文件与已校验的快照内容不一致 / Report files do not match the checked snapshot content".into());
+        }
+    }
+    Ok(verified)
+}
+
 pub(super) fn verify_artifacts(root: &Path, records: &[Value]) -> Result<Vec<Value>, String> {
     verify_artifacts_for(root, records, REQUIRED_KINDS)
 }
