@@ -17,6 +17,7 @@ const EXACT = new Set([
   'jh-demo',
   'jh-project',
   'seeker-apps',
+  'seeker-workspace',
 ]);
 
 /** @param {string} key */

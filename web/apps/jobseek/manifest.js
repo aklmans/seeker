@@ -25,7 +25,7 @@ import {
 } from './logic/copilot-actions.js';
 import { AGENT_CMDS } from './logic/agent-commands.js';   // ★3.y 尾:AGENT_CMDS 抽出单列 @ts-check(字面量真受 CommandSpec[] 校验)
 import { SEEKER_CARDS } from './cards.js';
-import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow } from './logic/settings-jobseek.js';
+import { goalsSectionHTML, wireGoalsSection, weightsSectionHTML, wireWeightsSection, wireMasterSection, dataResumeRowHTML, wireDataResumeRow, careerProfileHTML } from './logic/settings-jobseek.js';
 import { masterSectionHTML, openNewAction } from './logic/intake-action.js';
 import { openNewJob } from './logic/intake-job.js';
 import { openResumeModal } from './logic/resume-modals.js';
@@ -114,7 +114,7 @@ import { setState } from '../../platform/shell/shell-state.js';
         { id: 'weights', label: { zh: '评分权重', en: 'Weights' }, render: weightsSectionHTML, wire: wireWeightsSection },
       ],
       extend: {
-        profile: { render: masterSectionHTML, wire: wireMasterSection },
+        profile: { render: ()=>careerProfileHTML()+masterSectionHTML(), wire: wireMasterSection },
         data: { render: dataResumeRowHTML, wire: wireDataResumeRow },
       },
     }),

@@ -11,6 +11,7 @@ import { closeModal } from './modal.js';
 import { syncSbToggleTitle } from './shell-keys.js';
 import { GROUPS, PAGES, setState } from './shell-state.js';
 import { toast } from './toast.js';
+import { applyTheme, setThemeMode } from './appearance.js';
 let current='home';
 export function currentPage(){ return current; }     // 唯一读取通道:每调返回最新 current → 外部消费者从裸 current 改经此、无快照分裂
 
@@ -78,14 +79,10 @@ export function renderTopActions(id){
 export function toggleTheme(){
   const cur=document.documentElement.dataset.theme;
   const next=cur==='dark'?'light':'dark';
-  document.documentElement.dataset.theme=next;
-  try{localStorage.setItem('jh-theme',next);}catch(e){}
+  try{setThemeMode(next);}catch(e){toast(tt('主题未能保存','Could not save theme'));return;}
   const tb2=$('#themeBtn2'); if(tb2) tb2.innerHTML=next==='dark'?IC.sun:IC.moon;
 }
-(function initTheme(){
-  let t='dark'; try{t=localStorage.getItem('jh-theme')||'dark';}catch(e){} // 缺省深色(与 index.html 早期内联一致);手动选过的优先
-  document.documentElement.dataset.theme=t;
-})();
+applyTheme();
 
 /* ============ TOAST ============ */
 /* toast/toastUndo/lastUndo 已抽壳 → platform/shell/toast.js(序1-d) */

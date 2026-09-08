@@ -11,12 +11,17 @@
  *   ② sections.goals/weights → 改经 appSettings().tabs 遍历生成(内容来自 jobseek settings-jobseek.js,逐字节未变,只是拼接方式变);
  *   ③ SET_TABS 裁剪平台 5 tab + app tabs 按契约插入同一视觉位置(basic,profile,model,[app tabs],data,about)——最终 7 tab 同序,非同一数组字面量;
  *   ④ data-tc(训练计入能力成长)wiring 的 renderSkills() → rerenderPages()(通用重渲,平台已有机制,避免平台具名调 jobseek 渲染器)。 */
-import { PROFILE, persistProfileField } from './profile.js'; // ★批8:profile 转 module,PROFILE/persistProfileField 改 import(profile.js 不上 window 桥、隐私最小暴露);本文件仍是唯一改 PROFILE 入口(data-pf 输入、Agent 不可达)。
+import { PROFILE, persistProfileField, hydrateProfile } from './profile.js';
 import { $, $$, el } from './dom.js';
 import { normalizeBackupPolicy, persistBackupPolicy } from '../runtime/backup-policy.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
 import { renderModelSettings } from './model-settings.js';
+import { themeMode, setThemeMode, saveAppearance, applyAppearance } from './appearance.js';
+import { renderDataSummary } from './data-settings.js';
+import { openHistoryManager } from './history-settings.js';
+import { cEsc, renderProjectSwitch, switchProject } from './copilot-chrome.js';
+import { setCurrentProjectId } from './project-state.js';
 import { openModal } from './modal.js';
 import { currentPage, frontis, go, renderTopActions, setLang, signFoot } from './nav.js';
 import { isDesktop } from './shell-keys.js';
@@ -27,46 +32,8 @@ export function openModelSettings(){settingsState.tab='model';renderSettings();g
 let backupPolicyHydrated=false, backupPolicyLoading=false, backupLastAt=null;
 const SET_TABS_SHELL=[['basic',['基本设置','Basics']],['profile',['个人信息','Profile']],['model',['模型配置','Model']],['data',['数据管理','Data']],['about',['关于','About']]];
 
-/* ===== 隐私 · 历史与记忆掌控(#4 用户掌控)—— 设置页入口,不经对话改;清除走 guardrail。 ===== */
-/** ★仅限**文本内容位**(转 &<>,不转 ")。当前唯一消费者 openHistoryManager 把会话文本渲染进 <div> 文本位 —— 安全。
- *  ⚠ 若将来把它挪进**属性位**(如 data-x="${_mgrEsc(v)}"),漏 `"` 即成注入缺口 → 届时必须换平台唯一 cEsc(&<>")。
- *  会话文本 r.text 可含 AI 派生的外部内容:文本位惰性,属性位不是。(评审第56轮 [建议]3) */
-function _mgrEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function _mgrTime(ts){ try{ return new Date(+ts||0).toLocaleString(); }catch(_e){ return ''; } }
-async function openHistoryManager(){
-  const rt=window.SeekerRT, G=window.SeekerGuardrail;
-  const m=openModal(`<div class="modal-head"><div><p class="eyebrow">— PRIVACY</p><h2 style="margin-top:5px;">${tt('会话历史','Chat history')}</h2></div><button class="x">${IC.x}</button></div>
-    <div class="modal-body" id="histBody" style="min-height:120px;">${tt('加载中…','Loading…')}</div>
-    <div class="modal-foot"><button class="btn" id="histClear">${tt('清除全部会话历史','Clear all history')}</button><button class="btn btn-accent" data-close>${tt('完成','Done')}</button></div>`, true);
-  const render=async()=>{
-    let rows=[]; try{ rows=await rt.db.list('messages'); }catch(_e){}
-    rows.sort((a,b)=>(a.ts||0)-(b.ts||0));
-    const body=m.querySelector('#histBody'); if(!body) return;
-    if(!rows.length) body.innerHTML=`<p style="color:var(--ink-3);padding:18px 0;text-align:center;">${tt('暂无会话历史。','No chat history yet.')}</p>`;
-    else body.innerHTML=`<p style="font-size:12px;color:var(--ink-3);margin:0 0 12px;">${tt('共 ','Total ')}${rows.length}${tt(' 条 · 仅存本地',' · local only')}</p>`+rows.map(r=>{
-      const who=r.role==='user'?tt('我','Me'):(r.surface==='agent'?'Agent':'Copilot');
-      const cls=r.role==='user'?'var(--accent)':'var(--ink-3)';
-      return `<div style="padding:8px 0;border-bottom:0.5px solid var(--border);"><div style="font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:${cls};margin-bottom:3px;">${who} · ${_mgrTime(r.ts)}</div><div style="font-size:13px;color:var(--ink-2);line-height:1.55;white-space:pre-wrap;">${_mgrEsc(r.text)}</div></div>`;
-    }).join('');
-    const cb=m.querySelector('#histClear'); if(cb) cb.style.display=rows.length?'':'none';
-  };
-  await render();
-  const cb=m.querySelector('#histClear');
-  if(cb) cb.onclick=async()=>{
-    if(!G||!G.confirmDestructive) return;
-    let snaps=[];
-    await G.confirmDestructive({
-      title:tt('清除全部会话历史?','Clear all chat history?'),
-      detail:tt('将删除本地所有会话消息(Copilot 与 Agent)。可在几秒内撤销。','Deletes all local chat messages (Copilot & Agent). Undoable for a few seconds.'),
-      confirmLabel:tt('清除','Clear'), undoText:tt('已清除会话历史','Chat history cleared'),
-      onConfirm:async()=>{ snaps=[]; let rows=[]; try{rows=await rt.db.list('messages');}catch(_e){} for(const r of rows){ try{ const s=await rt.db.remove('messages', r.id); if(s) snaps.push(s); }catch(_e){} } await render(); },
-      onUndo:async()=>{ for(const s of snaps){ try{ await rt.db.upsert('messages', s); }catch(_e){} } await render(); },
-    });
-  };
-}
-
 export function renderSettings(){
-  setState.theme=document.documentElement.dataset.theme;
+  setState.theme=themeMode();
   const seg=(opts,sel,attr)=>`<div class="seg">${opts.map(o=>`<button class="${o[0]===sel?'on':''}" data-${attr}="${o[0]}">${o[1]}</button>`).join('')}</div>`;
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
   const sections={};
@@ -87,18 +54,22 @@ export function renderSettings(){
     ${row(tt('减少动效','Reduce motion'),seg([['on',tt('开','On')],['off',tt('关','Off')]],setState.motion,'motion'))}
   </div>`;
   sections.profile=`<p class="seclabel">— PROFILE · PRIVATE</p><h2 class="sectitle">${tt('个人信息','Personal info')}<span class="dot">.</span></h2>
-    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 14px;max-width:640px;line-height:1.7;">${tt('这些信息仅保存在本地,<b>AI 不会读取或修改</b>。简历的「基本信息」模块自动从这里加载 —— 改这里,简历同步更新。','Stored locally only — <b>AI never reads or edits it</b>. The resume\'s Basic Info block auto-loads from here; edit here and the resume syncs.')}</p>
+    <p style="font-size:12px;color:var(--ink-3);margin:6px 0 14px;max-width:640px;line-height:1.7;">${tt('这些信息仅保存在本地，<b>AI 不会读取或修改</b>。填写是可选的，日常提问与工具无需提供联系方式。','Stored locally only — <b>AI never reads or edits it</b>. These fields are optional; everyday chat and tools do not require contact details.')}</p>
     <div style="max-width:520px;">
-      ${[['name',tt('姓名','Name')],['intent',tt('求职意向','Target role')],['city',tt('城市','City')],['phone',tt('电话','Phone')],['email',tt('邮箱','Email')],['exp',tt('工作经验','Experience')],['site',tt('个人主页(可选)','Website (optional)')],['github',tt('GitHub(可选)','GitHub (optional)')],['portfolio',tt('作品集(可选)','Portfolio (optional)')],['linkedin',tt('LinkedIn(可选)','LinkedIn (optional)')]].map(f=>`<div class="set-row"><span class="sk">${f[1]}</span><input class="input" data-pf="${f[0]}" value="${(PROFILE[f[0]]||'').replace(/"/g,'&quot;')}"></div>`).join('')}
+      ${[['name',tt('姓名','Name')],['city',tt('城市','City')],['phone',tt('电话','Phone')],['email',tt('邮箱','Email')],['site',tt('个人主页（可选）','Website (optional)')]].map(f=>`<div class="set-row"><span class="sk">${f[1]}</span><input class="input" data-pf="${f[0]}" value="${cEsc(PROFILE[f[0]]||'')}"></div>`).join('')}
     </div>
-    <div class="lock-note" style="margin-top:14px;max-width:640px;"><span class="li">🔒</span><span>${tt('隐私优先:以上联系方式字段不参与任何 AI 处理。AI 生成简历时只重写专业内容(概要 / 技能 / 经历),绝不触碰你的联系方式与身份信息。','Privacy first: the contact fields above never go through AI. When generating resumes, AI only rewrites professional content (summary / skills / experience) — never your contact or identity info.')}</span></div>
+    <div class="lock-note" style="margin-top:14px;max-width:640px;"><span class="li">🔒</span><span>${tt('个人信息通过独立通道保存，不参与 AI 处理；完整备份会包含这些字段，请自行保管。','Personal info is saved through a separate channel and excluded from AI processing. Full backups contain these fields; keep your backup private.')}</span></div>
     ${extendHTML('profile')}`;
   sections.model='<div id="modelSettings"></div>';
+  sections.workspace=`<h2 class="sectitle">${tt('工作空间与应用','Workspaces & apps')}<span class="dot">.</span></h2><p>${tt('设置空间名称、助手指令、启动页面、首页内容，以及需要开启的应用。','Set workspace names, assistant instructions, launch page, Home content and enabled apps.')}</p><button class="btn btn-accent" data-go="workspaces">${tt('管理工作空间','Manage workspaces')}</button>`;
   const appTabs=appSpecs.flatMap(s=>s.tabs||[]);
   appTabs.forEach(t=>{ sections[t.id]=t.render(); });
   sections.data=`<p class="seclabel">— DATA</p><h2 class="sectitle">${tt('数据与备份','Data & backup')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:600px;">
+    <div id="dataSummary"></div>
+    <p style="color:var(--ink-3);line-height:1.8;">${tt('完整备份覆盖全部工作空间、对话、应用数据（含已关闭应用）、本地资料原文件、任务记录、个人信息与便携偏好，不含系统钥匙串密钥。任务生成的外部报告文件需另外保存。','Full backups cover all workspaces, conversations, app data (including disabled apps), imported source files, task records, personal info and portable preferences. System keychain secrets are excluded. Save generated report files separately.')}</p>
     ${extendHTML('data')}
-    ${row(tt('导出数据','Export data'),`<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="dataExport">${tt('导出 JSON','Export JSON')}</button><button class="btn" id="dataExportRedacted">${tt('脱敏导出','Export (redacted)')}</button></div>`)}
+    ${row(tt('备份全部空间','Back up all workspaces'),`<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="dataExport">${tt('完整备份 JSON','Full JSON backup')}</button><button class="btn" id="dataExportRedacted">${tt('精简导出','Reduced export')}</button></div>`)}
+    <p style="color:var(--ink-3);">${tt('精简导出排除个人信息、记忆、知识库、原文件与任务明细，但仍可能含对话和笔记正文。分享前请检查内容。','Reduced exports exclude personal info, memories, knowledge documents, imported files and task details, but may still contain conversation and note text. Review the contents before sharing.')}</p>
     ${row(tt('导入数据','Import data'),`<button class="btn" id="dataImport">${tt('导入文件','Import file')}</button><input type="file" id="dataImportFile" accept=".json,application/json" style="display:none">`)}
     ${row(tt('自动备份','Auto backup'),backupControl)}
     ${row(tt('上次自动备份','Last automatic backup'),`<span class="mono" style="font-size:13px;color:var(--ink-2);">${backupLast}</span>`)}
@@ -120,21 +91,24 @@ export function renderSettings(){
       <div style="color:var(--ink-3);max-width:600px;">${tt('本地优先的个人 AI Agent 工作台，由可开关的业务应用与统一能力中心组成。所有数据存于本地,密钥只进系统钥匙串,隐私信息永不参与 AI 处理。','A local-first personal AI agent workspace built from toggleable workflow apps and a unified capability center. All data stays on your machine, keys live only in the system keychain, and private info never goes through AI.')}</div>
       <div style="display:flex;gap:14px;margin-top:14px;"><button class="btn" data-extlink="https://github.com/aklmans/seeker/releases">${tt('检查更新','Check updates')}</button><button class="btn" data-extlink="https://github.com/aklmans/seeker/issues">${tt('反馈问题','Send feedback')}</button></div>
     </div>`;
-  const tabDefs=[SET_TABS_SHELL[0],SET_TABS_SHELL[1],SET_TABS_SHELL[2]]
+  const tabDefs=[SET_TABS_SHELL[0],['workspace',['工作空间','Workspaces']],SET_TABS_SHELL[2],SET_TABS_SHELL[1]]
     .concat(appTabs.map(t=>[t.id,[t.label.zh,t.label.en]]))
     .concat([SET_TABS_SHELL[3],SET_TABS_SHELL[4]]);
+  if(!sections[settingsState.tab])settingsState.tab='basic';
   const tabbar=`<div class="tabs" style="overflow-x:auto;flex-wrap:nowrap;margin-bottom:8px;">${tabDefs.map(t=>`<button class="tab ${settingsState.tab===t[0]?'on':''}" data-stab="${t[0]}" style="white-space:nowrap;">${setState.lang==='en'?t[1][1]:t[1][0]}</button>`).join('')}</div>`;
-  $('#page-settings').innerHTML=frontis('SETTINGS',tt('数据设置','Settings'))+tabbar+`<div class="sec" style="border-bottom:none;padding-top:18px;">${sections[settingsState.tab]}</div>`+signFoot();
+  $('#page-settings').innerHTML=frontis('SETTINGS',tt('设置','Settings'))+tabbar+`<div class="sec" style="border-bottom:none;padding-top:18px;">${sections[settingsState.tab]}</div>`+signFoot();
   $$('#page-settings [data-stab]').forEach(b=>b.onclick=()=>{settingsState.tab=b.dataset.stab;renderSettings();});
-  $$('#page-settings [data-pf]').forEach(inp=>{ inp.oninput=()=>{PROFILE[inp.dataset.pf]=inp.value;}; inp.onchange=()=>persistProfileField(inp.dataset.pf, inp.value); }); // 改完(失焦)落盘到隔离的 profile 仓库
-  $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{const v=b.dataset.theme;if(v==='system'){toast('已设为跟随系统 (mock)');}else{document.documentElement.dataset.theme=v;try{localStorage.setItem('jh-theme',v);}catch(e){}renderTopActions(currentPage());$('#themeBtn2').innerHTML=v==='dark'?IC.sun:IC.moon;}renderSettings();});
-  $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>{setState.fontsize=b.dataset.fs;saveSettings();renderSettings();toast('正文字号 '+b.dataset.fs+'px');});
+  $$('#page-settings [data-pf]').forEach(inp=>{inp.onchange=async()=>{inp.disabled=true;try{await persistProfileField(inp.dataset.pf,inp.value);}catch(e){toast(tt('个人信息未能保存：','Could not save personal info: ')+errText(e));}finally{inp.disabled=false;}};});
+  $$('#page-settings [data-theme]').forEach(b=>b.onclick=()=>{try{setThemeMode(b.dataset.theme);$('#themeBtn2').innerHTML=document.documentElement.dataset.theme==='dark'?IC.sun:IC.moon;renderSettings();}catch(e){toast(errText(e));}});
+  const saveLook=patch=>{try{saveAppearance(patch);hydrateSettings();renderSettings();}catch(e){toast(tt('外观未能保存：','Could not save appearance: ')+errText(e));}};
+  $$('#page-settings [data-fs]').forEach(b=>b.onclick=()=>saveLook({fontsize:b.dataset.fs}));
   $$('#page-settings [data-lang]').forEach(b=>b.onclick=()=>{setLang(b.dataset.lang);toast(tt('已切换为中文','Switched to English'));});
-  $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>{setState.density=b.dataset.density;saveSettings();renderSettings();toast('界面密度:'+({compact:'紧凑',standard:'标准',cozy:'宽松'}[b.dataset.density]));});
-  $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>{setState.motion=b.dataset.motion;saveSettings();renderSettings();});
+  $$('#page-settings [data-density]').forEach(b=>b.onclick=()=>saveLook({density:b.dataset.density}));
+  $$('#page-settings [data-motion]').forEach(b=>b.onclick=()=>saveLook({motion:b.dataset.motion}));
   wireBackupPolicy();
   void renderModelSettings($('#modelSettings'));
   wireDataIO();
+  void renderDataSummary($('#dataSummary'));
   // ★批11A:原内联 onclick 改程序绑定 —— mock toast ×3(about/订阅)。
   // ★批11B 末件:演示空状态行(showEmptyState=jobseek 符号)已迁入 jobseek data extend 自绑 → 平台不再裸读 apps 符号、§1 债清零。
   $$('#page-settings [data-mocktoast]').forEach(b=>{ b.onclick=()=>toast(b.dataset.mocktoast); });
@@ -199,18 +173,25 @@ function wireDataIO(){
     return;
   }
   exp.onclick=()=>rt.db.export(false).then(p=>toast(tt('已导出到 ','Exported to ')+p)).catch(e=>toast(errText(e)));
-  if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已脱敏导出(不含隐私)到 ','Redacted export to ')+p)).catch(e=>toast(errText(e)));
+  if(expR) expR.onclick=()=>rt.db.export(true).then(p=>toast(tt('已精简导出，请检查内容后分享：','Reduced export saved. Review before sharing: ')+p)).catch(e=>toast(errText(e)));
   if(imp&&impFile){
     imp.onclick=()=>impFile.click();
     impFile.onchange=()=>{
       const f=impFile.files&&impFile.files[0]; if(!f){return;}
       const reader=new FileReader();
       reader.onload=()=>{
-        rt.db.import(String(reader.result||'')).then(counts=>{
+        rt.db.import(String(reader.result||'')).then(async counts=>{
           const total=Object.values(counts||{}).reduce((a,b)=>a+(+b||0),0);
           toast(tt('已导入 ','Imported ')+total+tt(' 条(导入前已自动快照)',' records (snapshot taken first)'));
-          hydrateSettings(); backupPolicyHydrated=false; backupPolicyLoading=false;
-          window.SeekerShell.notifyDataImported();   // §1 契约化(批11B 末件):原硬编码 hydrateJobs()(jobseek 符号)→ 广播,各应用按新库重水合
+          try{
+            hydrateSettings(); backupPolicyHydrated=false; backupPolicyLoading=false;
+            applyAppearance();await hydrateProfile();
+            window.SeekerShell.notifyDataImported();
+            setCurrentProjectId(localStorage.getItem('jh-project')||'');
+            await renderProjectSwitch();await switchProject(localStorage.getItem('jh-project')||'');
+            window.dispatchEvent(new CustomEvent('seeker-workspaces-changed'));
+            window.dispatchEvent(new CustomEvent('seeker-workspace-preferences-changed'));
+          }catch(e){toast(tt('数据已导入，界面未能刷新，请重新打开：','Data imported, but the view could not refresh. Reopen the app: ')+errText(e));}
           renderSettings(); // 重新读取导入包里的 SQLite 备份策略,不让 localStorage 镜像覆盖真相。
         }).catch(e=>toast(tt('导入失败:','Import failed: ')+errText(e)));
         impFile.value='';

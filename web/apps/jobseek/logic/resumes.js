@@ -17,7 +17,7 @@ import { closeModal, openModal } from '../../../platform/shell/modal.js';
 import { frontis, signFoot } from '../../../platform/shell/nav.js';
 import { errText, toast, toastUndo } from '../../../platform/shell/toast.js';
 /* ---------- RESUMES (独立模块) ---------- */
-export let resumeState={jobId:JOBS[0].id, mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 经 import 绑定跨文件写)→ import 即同一对象、免访问器;JOBS[0] 于 module-eval 急读 **import 绑定**(★第43轮:载序由 import 图自定序,data.js 在 SCC 之外 → 先求值、JOBS 就绪;批11B 后已无 window.JOBS 桥)
+export let resumeState={jobId:JOBS[0]?.id||'', mode:'edit'};  // mutated-property(仅 .jobId=/.mode=、含 interview.js 经 import 绑定跨文件写)→ import 即同一对象、免访问器;JOBS[0] 于 module-eval 急读 **import 绑定**(★第43轮:载序由 import 图自定序,data.js 在 SCC 之外 → 先求值、JOBS 就绪;批11B 后已无 window.JOBS 桥)
 let ivRec=null;  // ★从 interview.js 移入:语音识别句柄(reassigned:=new SR()/=null/='demo'),生命周期全在本文件(ivToggleVoice/ivStopVoice/ivVoiceDemo)→ 模块私有、不上桥不访问器(消除跨文件 reassigned 纠缠)
 function modLabel(m){const map={basic:['基本信息','Basic info'],summary:['个人简介','Summary'],skills:['专业能力','Skills'],work:['工作经历','Experience'],projects:['项目经历','Projects'],edu:['教育经历','Education'],honors:['荣誉奖项','Honors'],portfolio:['个人作品','Portfolio'],research:['研究经历','Research'],other:['其他经历','Other']};return map[m.key]?tt(map[m.key][0],map[m.key][1]):m.label;}
 function blockHTML(m){
@@ -25,7 +25,7 @@ function blockHTML(m){
   if(m.type==='locked'){
     const fields=[[tt('姓名','Name'),PROFILE.name],[tt('求职意向','Target role'),PROFILE.intent],[tt('城市','City'),PROFILE.city],[tt('电话','Phone'),PROFILE.phone],[tt('邮箱','Email'),PROFILE.email],[tt('经验','Experience'),PROFILE.exp]].concat(
       [['site',tt('主页','Website')],['github','GitHub'],['portfolio',tt('作品集','Portfolio')],['linkedin','LinkedIn']].filter(l=>PROFILE[l[0]]&&String(PROFILE[l[0]]).trim()).map(l=>[l[1],PROFILE[l[0]]]));  // 链接填了才显示
-    body=`${fields.map(f=>`<div class="lockfield"><span class="lk">${f[0]}</span><span class="lv">${f[1]}</span></div>`).join('')}<div class="lock-note"><span class="li">🔒</span><span>${tt('这些隐私信息从「数据设置 · 个人信息」自动加载,AI 不读取、不修改。要改请去数据设置。','Loaded from Settings · Personal info; AI never reads or edits it. Change it in Settings.')}</span></div>`;
+    body=`${fields.map(f=>`<div class="lockfield"><span class="lk">${f[0]}</span><span class="lv">${cEsc(f[1]||'')}</span></div>`).join('')}<div class="lock-note"><span class="li">🔒</span><span>${tt('这些隐私信息从「数据设置 · 个人信息」自动加载,AI 不读取、不修改。要改请去数据设置。','Loaded from Settings · Personal info; AI never reads or edits it. Change it in Settings.')}</span></div>`;
   }else if(m.type==='skills'){
     body=`<input class="rb-skill-in" data-mskills="${m.key}" value="${cEsc((m.content||[]).join(', '))}"><p style="font-size:11px;color:var(--ink-mute);margin:8px 0 0;">${tt('逗号分隔 · 已对齐目标 JD','Comma-separated · aligned to target JD')}</p>`;
   }else if(m.type==='entries'){
@@ -103,13 +103,17 @@ function resumePrint(){
   setTimeout(()=>document.body.classList.remove('printing'),700);
 }
 export function renderResumes(){
-  if(!JOBS.find(x=>x.id===resumeState.jobId)) resumeState.jobId=JOBS[0].id;
+  if(!JOBS.find(x=>x.id===resumeState.jobId)) resumeState.jobId=JOBS[0]?.id||'';
   const tailored=JOBS.filter(j=>RESUME_TAILORED[j.id]);
   const base=`<div class="sec"><p class="seclabel">— SOURCE</p><h2 class="sectitle">${tt('主简历','Master resume')}<span class="dot">.</span></h2>
     <div class="rb-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
       <div style="flex:1;min-width:240px;"><div style="font-size:15px;font-weight:600;color:var(--ink);">${cEsc(RESUME.filename)}</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:5px;">${tt('上传于 '+cEsc(RESUME.uploaded)+' · 已解析为职业资产','Uploaded '+cEsc(RESUME.uploaded)+' · parsed into career assets')}</div><p style="font-size:13px;color:var(--ink-2);margin:12px 0 0;line-height:1.7;">${cEsc(RESUME.summary)}</p></div>
       <button class="btn" data-orm>${tt('管理主简历','Manage master')}</button></div>
     <p style="font-size:12px;color:var(--ink-3);margin:12px 0 0;line-height:1.7;">${tt('主简历是「源」。针对每个目标岗位,可从它派生一份「针对性简历」—— 对齐该 JD 的高频词、突出最契合的经历。','The master resume is the source. For each target job you can derive a tailored version — aligned to that JD\'s keywords, surfacing your most relevant experience.')}</p></div>`;
+  if(!JOBS.length){
+    $('#page-resumes').innerHTML=frontis('RESUMES',tt('我的简历','Resume'))+base+'<div class="sec"><p>'+tt('还没有目标岗位。可以先管理主简历，添加岗位后再生成针对性简历。','No target jobs yet. Manage your master resume now, then add a job to create a tailored resume.')+'</p><button class="btn" data-go="jobs">'+tt('管理岗位','Manage jobs')+'</button></div>'+signFoot();
+    $$('#page-resumes [data-orm]').forEach(b=>{b.onclick=openResumeModal;});return;
+  }
   const pills=JOBS.map(j=>`<button class="pill ${j.id===resumeState.jobId?'on':''}" data-rj="${j.id}">${RESUME_TAILORED[j.id]?'● ':''}${cEsc(j.co)} · ${cEsc(j.role.split('·')[0].trim())}</button>`).join('');
   const j=JOBS.find(x=>x.id===resumeState.jobId);
   const body=RESUME_TAILORED[j.id]?resumeWorkspaceHTML(j):`<div class="rb-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;"><div><div style="font-size:14px;color:var(--ink);font-weight:500;">${tt('还没有针对 '+cEsc(j.co)+' 的简历','No resume for '+cEsc(j.co)+' yet')}</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;line-height:1.6;">${tt('基于 JD + 你的职业资产,几秒生成一份对口简历 —— 可编辑、标擅长、导出。','From the JD + your assets, generate a matching resume in seconds — editable, mark strengths, export.')}</div></div><button class="btn btn-accent" id="rbGen">${tt('AI 生成针对性简历','AI-generate tailored resume')} →</button></div></div>`;

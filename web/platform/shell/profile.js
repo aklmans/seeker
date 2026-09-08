@@ -11,14 +11,20 @@
 import { currentPage } from './nav.js';
 import { profilePersistenceAvailable } from '../runtime/persistence-capability.js';
 import { renderSettings } from './settings.js';
+import { tt } from './i18n.js';
 /** @type {Record<string, string>} */
-export const PROFILE={name:'(在数据设置填写)', phone:'138****8888', email:'y***@example.com', city:'北京', intent:'后端工程师', exp:'8 年'};
+export const PROFILE={};
 /** @param {string} k @param {unknown} v */
-export function persistProfileField(k, v){ if(profilePersistenceAvailable(window.SeekerRT)) window.SeekerRT.profile.set(k, String(v==null?'':v)).catch(e=>console.error('[data] profile set', e)); }
-async function hydrateProfile(){
+export async function persistProfileField(k, v){
+  if(!profilePersistenceAvailable(window.SeekerRT))throw new Error(tt('个人信息存储尚未就绪','Personal info storage is not ready'));
+  const value=String(v==null?'':v);
+  await window.SeekerRT.profile.set(k,value);
+  PROFILE[k]=value;
+}
+export async function hydrateProfile(){
   if(!profilePersistenceAvailable(window.SeekerRT)) return;
   try{ const p=await window.SeekerRT.profile.getAll();
-    if(p && typeof p==='object'){ Object.keys(p).forEach(k=>{ PROFILE[k]=p[k]; }); try{ if(currentPage()==='settings') renderSettings(); }catch(_e){} }
+    if(p && typeof p==='object'){ Object.keys(PROFILE).forEach(k=>{delete PROFILE[k];});Object.keys(p).forEach(k=>{ PROFILE[k]=p[k]; }); try{ if(currentPage()==='settings') renderSettings(); }catch(_e){} }
   }catch(e){ console.error('[data] hydrate profile', e); }
 }
 window.addEventListener('seeker-rt-ready', hydrateProfile);

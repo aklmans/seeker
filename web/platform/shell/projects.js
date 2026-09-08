@@ -8,7 +8,7 @@
  *     真删涉项目消息批量销毁 = guardrail 批量档,后续单出。
  *   - 转义(§4-4):name/instructions 进 DOM 一律 cEsc。
  *   - PJ1 无切换器、不显消息数(messages 的 projectId 属 PJ2;不显示还不存在的数据,诚实)。 */
-import { cEsc, renderProjectSwitch } from './copilot-chrome.js'; // renderProjectSwitch:CRUD/归档后重渲切换器(含归档当前回落自愈)
+import { cEsc, renderProjectSwitch, switchProject } from './copilot-chrome.js';
 import { $, $$ } from './dom.js';
 import { tt } from './i18n.js';
 import { IC } from './icons.js';
@@ -16,7 +16,7 @@ import { toast, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
 import { normProject } from './project-model.js';
 import { hydrateProjects, listProjects, saveProject } from './project-store.js';
-import { currentProjectId, setCurrentProjectId } from './project-state.js'; // ★盯点④:归档当前项目回落默认工作区
+import { currentProjectId } from './project-state.js';
 import { mdField, wireMdField, mdRender } from './md-edit.js'; // Markdown 编辑/展示(共享)
 
 /** 生成稳定 id。 */
@@ -27,7 +27,7 @@ function newId() {
 /** Project 视图(能力中心传入 box)。 @param {HTMLElement} box */
 export async function renderProjects(box) {
   if (!box) return;
-  await hydrateProjects();
+  if(!await hydrateProjects()){box.textContent=tt('无法读取工作空间，请重试。','Could not load workspaces. Please retry.');return;}
   const rows = listProjects();
   const list = rows.length
     ? rows
@@ -44,11 +44,11 @@ export async function renderProjects(box) {
       </div>`
         )
         .join('')
-    : `<p style="color:var(--ink-3);font-size:12px;padding:8px 0;line-height:1.7;max-width:560px;">${tt('还没有项目。一个项目 = 一个目标的工作区:自己的对话线、自己的定制指令。找完一个目标,归档它 —— 数据始终保留。', 'No projects yet. A project is a goal workspace: its own conversation thread and its own instructions. Done with a goal? Archive it — data is always kept.')}</p>`;
+    : `<p style="color:var(--ink-3);line-height:1.7;">${tt('可以新建学习、工作或生活空间，分别保存对话和助手指令。', 'Create a workspace for learning, work or life, with separate conversations and assistant instructions.')}</p>`;
   box.innerHTML =
-    `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="pjAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建项目', '+ New project')}</button></div>` +
+    `<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button class="btn btn-accent" id="pjAdd" style="padding:4px 12px;font-size:11.5px;">${tt('+ 新建工作空间', '+ New workspace')}</button></div>` +
     list +
-    `<p style="font-size:11px;color:var(--ink-3);margin:10px 0 0;line-height:1.7;">${tt('项目只在这里管理(不经对话);归档不删除 —— 对话数据始终保留、可随时还原。在 Agent 顶栏切换项目;项目内 Agent 记得最近对话(至多约 10 轮,会略增模型用量)、并自动带上你的项目指令。', 'Projects are managed here only (never via chat); archiving deletes nothing — data is kept and restorable. Switch projects in the Agent header; within a project the Agent remembers recent turns (up to ~10, slightly higher model usage) and your project instructions apply automatically.')}</p>`;
+    `<p style="font-size:12px;color:var(--ink-3);margin:10px 0;line-height:1.7;">${tt('归档后保留全部对话，可随时还原。助手指令仅用于该空间的对话；写作、文件问答和固定任务使用各自的明确输入。', 'Archiving keeps conversations and can be undone. Workspace instructions apply to its chats; writing, file Q&A and fixed tasks use their own explicit inputs.')}</p>`;
   const add = $('#pjAdd', box);
   if (add) /** @type {HTMLElement} */ (add).onclick = () => openProjectModal(box, '');
   $$('[data-pjedit]', box).forEach((b) => {
@@ -59,15 +59,16 @@ export async function renderProjects(box) {
       const p = rows.find((x) => x.id === /** @type {HTMLElement} */ (b).dataset.pjarch);
       if (!p) return;
       try {
+        if(!p.archived && currentProjectId()===p.id && !await switchProject('')) return;
         await saveProject({ ...p, archived: !p.archived, updated_at: Date.now() }); // 归档/还原(非破坏、可逆 ⇒ 不弹模态)
       } catch (e) {
         toast(errText(e));
         return;
       }
       // ★盯点④(第99轮):归档的是当前项目 → 回落默认工作区(否则用户停在不在切换器里的「幽灵」当前项目)。
-      if (!p.archived && currentProjectId() === p.id) setCurrentProjectId('');
       await renderProjects(box);
       renderProjectSwitch(); // 切换器同步(含自愈;Agent 面不在 DOM 时 no-op)
+      window.dispatchEvent(new CustomEvent('seeker-workspaces-changed'));
       toast(p.archived ? tt('已还原', 'Restored') : tt('已归档(数据保留)', 'Archived — data kept'));
     };
   });
@@ -79,11 +80,11 @@ function openProjectModal(box, id) {
   const p = normProject(id ? listProjects().find((x) => x.id === id) : null);
   const m = openModal(
     `<div class="modal-head"><div><p class="eyebrow">— PROJECT</p><h2 style="margin-top:5px;">${
-      id ? tt('编辑项目', 'Edit project') : tt('新建项目', 'New project')
+      id ? tt('编辑工作空间', 'Edit workspace') : tt('新建工作空间', 'New workspace')
     }<span class="dot">.</span></h2></div><button class="x">${IC.x}</button></div>
     <div class="modal-body">
-      <div class="set-row"><span class="sk">${tt('名称', 'Name')}</span><input class="input" id="pjName" value="${cEsc(p.name)}" placeholder="${tt('如:2026 后端求职', 'e.g. Backend job hunt 2026')}"></div>
-      <div style="margin-top:12px;">${mdField({ id: 'pjInstr', value: p.instructions, rows: 7, mono: true, placeholder: tt('项目指令(可选)—— 这个项目里 Agent 该知道的背景与偏好,每次对话自动生效(支持 Markdown)。', 'Project instructions (optional) — background & preferences the Agent should know here; applied to every conversation (Markdown supported).') })}</div>
+      <div class="set-row"><label class="sk" for="pjName">${tt('名称', 'Name')}</label><input class="input" maxlength="80" id="pjName" value="${cEsc(p.name)}" placeholder="${tt('如：秋季学习计划', 'e.g. Autumn learning plan')}"></div>
+      <div style="margin-top:12px;"><label for="pjInstr">${tt('助手指令（可选）','Assistant instructions (optional)')}</label>${mdField({ id: 'pjInstr', value: p.instructions, rows: 7, mono: true, placeholder: tt('例如：我正在学习英语，请用简单例子解释，每次给一道练习。', 'For example: I am learning English. Explain with simple examples and give me one exercise each time.') })}</div>
     </div>
     <div class="modal-foot"><button class="btn" data-close>${tt('取消', 'Cancel')}</button><button class="btn btn-accent" id="pjSave">${tt('保存', 'Save')}</button></div>`,
     true
@@ -95,7 +96,7 @@ function openProjectModal(box, id) {
       const name = (/** @type {HTMLInputElement|null} */ ($('#pjName')) || { value: '' }).value.trim();
       const instructions = (/** @type {HTMLTextAreaElement|null} */ ($('#pjInstr')) || { value: '' }).value;
       if (!name) {
-        toast(tt('给项目起个名字', 'Give the project a name'));
+        toast(tt('给工作空间起个名字', 'Give the workspace a name'));
         return;
       }
       const rec = { id: id || newId(), name, instructions, archived: p.archived, created_at: id ? p.created_at : Date.now(), updated_at: Date.now() };
@@ -108,6 +109,7 @@ function openProjectModal(box, id) {
       closeModal();
       await renderProjects(box);
       renderProjectSwitch(); // 新建/改名即时进切换器
+      window.dispatchEvent(new CustomEvent('seeker-workspaces-changed'));
       toast(tt('已保存', 'Saved'));
     };
 }

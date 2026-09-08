@@ -6,7 +6,7 @@
 <title>探索者 · Seeker</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <script>/* 主题极早应用(首帧前,防闪):缺省深色;用户手动选过的(jh-theme)优先。 */
-try{var __t=localStorage.getItem('jh-theme');if(__t)document.documentElement.dataset.theme=__t;}catch(e){}</script>
+try{var __t=localStorage.getItem('jh-theme');if(__t)document.documentElement.dataset.theme=__t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):__t;}catch(e){}</script>
 
 <style>
 :root{
@@ -30,11 +30,18 @@ html[data-theme="dark"]{
 html,body{margin:0;padding:0;}
 body{
   background:var(--bg); color:var(--ink);
-  font-family:var(--font-sans); font-size:14px; line-height:1.5;
+  font-family:var(--font-sans); font-size:var(--body-font-size,14px); line-height:1.5;
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   transition:background 200ms ease, color 200ms ease;
 }
 button{font-family:inherit;}
+html[data-reduce-motion="on"] *,html[data-reduce-motion="on"] *::before,html[data-reduce-motion="on"] *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}
+html[data-density="compact"] .nav-item{padding-top:6px;padding-bottom:6px;}
+html[data-density="cozy"] .nav-item{padding-top:13px;padding-bottom:13px;}
+html[data-density="compact"] .set-row{padding-top:7px;padding-bottom:7px;}
+html[data-density="cozy"] .set-row{padding-top:17px;padding-bottom:17px;}
+body .input,body .textarea,body .cop-msg,body .md-body{font-size:var(--body-font-size,14px);}
+[hidden]{display:none!important;}
 ::selection{background:var(--accent-soft); color:var(--accent);}
 
 /* ===== Layout ===== */
@@ -1260,6 +1267,7 @@ import { renderCapabilityCenter } from './platform/shell/capability-center.js';
 import { renderAbout } from './platform/shell/about.js';
 import { renderSkillPlaza } from './platform/shell/skill-plaza.js';
 import { renderHome } from './platform/shell/home.js';
+import { renderWorkspaces } from './platform/shell/workspaces.js';
 import { renderTasks,openTaskComposer } from './platform/shell/tasks.js';
 import { clearCollectionsSafely } from './platform/runtime/data-clear.js';
 import { GROUPS, PAGES } from './platform/shell/shell-state.js';
@@ -1279,7 +1287,9 @@ window.SeekerShell.setShell({
     { id:'capability', label:'能力中心', en:'Capabilities', abbr:'能', group:'system',
       icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
       render: () => renderCapabilityCenter() },
-    { id:'settings', label:'数据设置', en:'Settings', abbr:'设', group:'system',workspace:true,
+    { id:'workspaces', label:'工作空间', en:'Workspaces', abbr:'空', group:'system',workspace:true,
+      icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 9v12"/></svg>', render:renderWorkspaces },
+    { id:'settings', label:'设置', en:'Settings', abbr:'设', group:'system',workspace:true,
     icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2.3"/><circle cx="8" cy="16.5" r="2.3"/></svg>',
     render: () => renderSettings() },
     { id:'plaza', label:'技能广场', en:'Skills Plaza', abbr:'技', group:'system',
@@ -1351,7 +1361,7 @@ function renderAppMgr(m){
   const move=(id,dir)=>{ const ids=S.ordered().map(a=>a.id); const j=ids.indexOf(id)+dir; if(j<0||j>=ids.length)return; const i=ids.indexOf(id); [ids[i],ids[j]]=[ids[j],ids[i]]; S.setOrder(ids); renderAppMgr(m); };
   [...body.querySelectorAll('[data-appup]')].forEach(b=>b.onclick=()=>move(b.dataset.appup,-1));
   [...body.querySelectorAll('[data-appdn]')].forEach(b=>b.onclick=()=>move(b.dataset.appdn,1));
-  [...body.querySelectorAll('[data-appen]')].forEach(b=>b.onclick=()=>{ S.setEnabled(b.dataset.appen, !S.enabled(b.dataset.appen)); renderAppMgr(m); });
+  [...body.querySelectorAll('[data-appen]')].forEach(b=>b.onclick=()=>{ try{S.setEnabled(b.dataset.appen, !S.enabled(b.dataset.appen));renderAppMgr(m);}catch(e){toast(errText(e));} });
   [...body.querySelectorAll('[data-appai]')].forEach(b=>b.onclick=()=>{ S.setAiGrant(b.dataset.appai, !S.isAiReadable(b.dataset.appai)); renderAppMgr(m); });
   [...body.querySelectorAll('[data-appclr]')].forEach(b=>b.onclick=()=>{
     const a=S.list().find(x=>x.id===b.dataset.appclr); if(!a) return;
@@ -1382,6 +1392,8 @@ import { IC } from './platform/shell/icons.js';
 import { buildNav, buildPages, go, toggleTheme, wireOverlay } from './platform/shell/nav.js';
 import { initShell } from './platform/shell/shell-boot.js';
 import { initKeys } from './platform/shell/shell-keys.js';
+import { workspacePreferences } from './platform/shell/workspace-preferences.js';
+import { PAGES } from './platform/shell/shell-state.js';
   /* ---------- INIT 启动执行序(3.y 注册链 module 化:从 head@原873 迁至此)----------
      ★载序命门:本 module 晚于 SHELL BOOT module(其 setShell/PAGES.push 已跑、PAGES 填好、shellReassemble/openAppManager 已上桥),
      且早于末位 dispatch('seeker-rt-ready') → 「渲空壳(INIT)→ rt-ready 水合」序不变式仍守。引用经全局词法/window runtime 解析。 */
@@ -1394,7 +1406,7 @@ import { initKeys } from './platform/shell/shell-keys.js';
   initShell();
   initKeys();
   setAppReady(true);
-  go('home');
+  go(PAGES.some(p=>p.id===workspacePreferences().startPage)?workspacePreferences().startPage:'home');
   window.SeekerShell.initApps(); // 应用启动钩子(序5-e 契约):jobseek init=captureSeed+syncDemoBanner
   setAppReady(true);   // 3.y:appReady 有状态 → setAppReady() 单一写入口(copilot-chrome,不上 appReady 桥)
   window.SeekerShell.subscribe(shellReassemble);          // 开/关/授权/排序变化 → 重装配 + 推 set_ai_readable

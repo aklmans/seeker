@@ -30,9 +30,8 @@ export function currentProjectId() {
  * @param {string} id 项目 id;'' = 默认工作区
  */
 export function setCurrentProjectId(id) {
-  _current = typeof id === 'string' ? id : '';
+  const next = typeof id === 'string' ? id : '';
+  localStorage.setItem('jh-project', next);
+  _current = next;
   _hydrated = true;
-  try {
-    localStorage.setItem('jh-project', _current);
-  } catch (_e) {}
 }

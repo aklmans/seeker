@@ -2,6 +2,13 @@ import { expect, test } from '@playwright/test';
 
 const browserErrors = new WeakMap();
 
+async function enableCareerApp(page){
+  await page.locator('#appMgrBtn').click();
+  await page.locator('[data-appen="jobseek"]').click();
+  await page.locator('.modal .x').click();
+}
+
+
 test.beforeEach(async ({ page }) => {
   const errors = [];
   browserErrors.set(page, errors);
@@ -122,6 +129,7 @@ test('只展示当前运行产物，未验证产物失去绿色可信状态且�
 
 test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受或打开文件', async ({ page }) => {
   await page.goto('/');
+  await enableCareerApp(page);
   await page.evaluate(async () => {
     const now = Date.now();
     for (const [collection, record] of [
@@ -182,6 +190,7 @@ test('Web 可查看导入的雷达候选与报告，但不伪装搜索、接受�
 test('English 界面创建雷达时提交英文报告语言', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('jh-lang', 'en'));
   await page.goto('/');
+  await enableCareerApp(page);
   await page.evaluate(async () => {
     window.SeekerRT.available = () => true;
     window.SeekerRT.mcp.list = async () => [];
@@ -204,6 +213,7 @@ test('English 界面创建雷达时提交英文报告语言', async ({ page }) =
 
 test('MCP readOnlyHint 仅作提示，必须显式授权且不能创建计划', async ({ page }) => {
   await page.goto('/');
+  await enableCareerApp(page);
   await page.evaluate(async () => {
     window.SeekerRT.available = () => true;
     window.SeekerRT.mcp.list = async () => [{
@@ -240,6 +250,7 @@ test('MCP readOnlyHint 仅作提示，必须显式授权且不能创建计划', 
 
 test('导入的 MCP 任务先展示精确工具并重新授权，未授权时不能开始', async ({ page }) => {
   await page.goto('/');
+  await enableCareerApp(page);
   await page.evaluate(async () => {
     const task = {
       id: 'task_imported_mcp', projectId: 'default', workflowId: 'job_opportunity_radar',

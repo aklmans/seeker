@@ -16,6 +16,13 @@ import { renderSettings } from '../../../platform/shell/settings.js';
 import { WEIGHTS, saveSettings, setState } from '../../../platform/shell/shell-state.js';
 import { toast } from '../../../platform/shell/toast.js';
 import { rerenderPages } from '../../../platform/shell/nav.js';
+import { PROFILE } from '../../../platform/shell/profile.js';
+import { cEsc } from '../../../platform/shell/copilot-chrome.js';
+
+export function careerProfileHTML(){
+  return `<h3 style="margin-top:24px;">${tt('求职资料（仅本地）','Career profile (local only)')}</h3><div style="max-width:520px;">`+
+    [['intent',tt('求职意向','Target role')],['exp',tt('工作经验','Experience')],['github','GitHub'],['portfolio',tt('作品集','Portfolio')],['linkedin','LinkedIn']].map(([key,label])=>`<div class="set-row"><label for="career-${key}">${label}</label><input class="input" id="career-${key}" data-pf="${key}" value="${cEsc(PROFILE[key]||'')}"></div>`).join('')+'</div>';
+}
 export function goalsSectionHTML(){
   const row=(k,v)=>`<div class="set-row"><span class="sk">${k}</span><div>${v}</div></div>`;
   return `<p class="seclabel">— GOALS</p><h2 class="sectitle">${tt('求职目标','Job-hunt goals')}<span class="dot">.</span></h2><div style="margin-top:14px;max-width:560px;">

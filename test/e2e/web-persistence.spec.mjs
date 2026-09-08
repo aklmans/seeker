@@ -7,6 +7,9 @@ test.beforeEach(async ({ page }) => {
 
 test('通过 UI 新增岗位后刷新仍由 IndexedDB 恢复', async ({ page }) => {
   await page.goto('/');
+  await page.locator('#appMgrBtn').click();
+  await page.locator('[data-appen="jobseek"]').click();
+  await page.locator('.modal .x').click();
   await page.locator('.nav-item[data-id="jobs"]').click();
   await page.getByRole('button', { name: /录入岗位|Add job/ }).click();
   await page.locator('#njManualToggle').click();

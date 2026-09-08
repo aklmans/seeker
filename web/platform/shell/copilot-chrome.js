@@ -18,6 +18,7 @@ import { appendSaveAnswer } from './library-actions.js';
 import { listProjects, hydrateProjects } from './project-store.js'; // ★PJ2 切换器:列非归档项目(store 不 import 本文件 ⇒ 无环)
 import { hydrateConversations, listConversations, currentConversation, conversationTitle, createConversation, ensureConversation, renameConversation, currentMessages, saveConversationMessage } from './conversation-store.js';
 import { setCurrentConversationId } from './conversation-state.js';
+import { workspacePreferences } from './workspace-preferences.js';
 import { toast, errText } from './toast.js';
 import { openModal, closeModal } from './modal.js';
 
@@ -182,30 +183,32 @@ export function cmdRun(i){const c=cmdFiltered[i];if(!c)return;$('#agentInput').v
    (防幽灵当前项目,第99轮盯点④)。名字进 DOM 经 cEsc(option 文本位)。 */
 export async function renderProjectSwitch(){
   const sel=$('#agentProject'); if(!sel) return;
-  await hydrateProjects();
+  if(!await hydrateProjects()) return;
   const live=listProjects().filter(p=>!p.archived);
   const cur=currentProjectId();
   if(cur && !live.some(p=>p.id===cur)) setCurrentProjectId('');   // 自愈:归档/删除的当前项目 → 回落日常
   const cur2=currentProjectId();
-  sel.innerHTML='<option value="">'+tt('日常','Everyday')+'</option>'
+  sel.innerHTML='<option value="">'+cEsc(workspacePreferences().name||tt('日常','Everyday'))+'</option>'
     + live.map(p=>'<option value="'+cEsc(p.id)+'"'+(p.id===cur2?' selected':'')+'>'+cEsc(p.name||tt('(未命名)','(untitled)'))+'</option>').join('')
-    + '<option value="__manage">'+tt('管理项目…','Manage projects…')+'</option>';
+    + '<option value="__manage">'+tt('管理工作空间…','Manage workspaces…')+'</option>';
   sel.value=cur2;
-  sel.title=tt('项目 = 独立对话线;项目内 Agent 记得最近对话(至多约 10 轮)','Projects are separate threads; within one, the Agent remembers recent turns (up to ~10)');
+  sel.title=tt('切换工作空间；每个空间有独立对话和助手指令。','Switch workspace; each has separate conversations and assistant instructions.');
   sel.onchange=async()=>{
-    if(sel.value==='__manage'){ sel.value=currentProjectId(); go('capability'); return; }
+    if(sel.value==='__manage'){ sel.value=currentProjectId(); go('workspaces'); return; }
     await switchProject(sel.value);
   };
 }
 /* 切换项目:写壳态 → 清对话 → 按新项目重水合;空线则开场白。历史桶随 streamReply 的 hkey 自然切换。 */
 export async function switchProject(id){
-  if(sending || aiStreamBusy()){ toast(tt('请先停止当前回答再切换。','Stop the current answer before switching.')); await renderProjectSwitch(); return; }
-  setCurrentProjectId(id);
+  if(sending || aiStreamBusy()){ toast(tt('请先停止当前回答再切换。','Stop the current answer before switching.')); await renderProjectSwitch(); return false; }
+  try{setCurrentProjectId(id);}catch(e){toast(tt('工作空间未能切换：','Could not switch workspace: ')+errText(e));return false;}
   setCurrentConversationId('');
   await hydrateConversations();
   const c=$('#agentMsgs'); if(c) c.innerHTML='';
   await hydrateMessages();                                  // 按新 current 过滤重渲(空线时它不动 DOM)
   if(c && !c.children.length) agentGreet();                 // 新线无历史 → 开场白
+  window.dispatchEvent(new CustomEvent('seeker-workspace-switched'));
+  return true;
 }
 
 export async function openConversation(id){

@@ -7,11 +7,15 @@ import { listConversations, conversationTitle } from './conversation-store.js';
 import { toast, errText } from './toast.js';
 import { openTask } from './tasks.js';
 import { openModelSettings } from './settings.js';
+import { currentProjectId } from './project-state.js';
+import { listProjects } from './project-store.js';
+import { workspacePreferences } from './workspace-preferences.js';
 
 let draft='',starting=false;
 
 export function renderHome() {
   const host = $('#page-home'); if (!host) return;
+  const prefs=workspacePreferences();
   host.innerHTML = frontis('EVERYDAY', tt('今天，想完成什么', 'What would you like to do today'))
     + '<div class="sec"><p style="font-size:15px;line-height:1.9;color:var(--ink-2);">'+tt('提问、处理文字，或把有用的信息留在自己的资料库。','Ask a question, work on text, or keep useful information in your own library.')+'</p><label for="homeInput" style="display:block;margin:16px 0 8px;">'+tt('从一个问题开始','Start with a question')+'</label><textarea class="input" id="homeInput" rows="3" style="width:100%;resize:vertical;" placeholder="'+tt('例如：帮我把这段话写得更清楚。','For example: help me make this paragraph clearer.')+'"></textarea><button class="btn btn-accent" id="homeSend" style="margin-top:10px;" '+(starting?'disabled':'')+'>'+tt('新建对话并发送','Start a chat and send')+' →</button><div id="homeShortcuts" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;"></div></div>'
     + '<div class="sec"><h3>'+tt('最近对话','Recent conversations')+'</h3><div id="homeConversations"></div></div>'
@@ -19,6 +23,11 @@ export function renderHome() {
     + '<div class="sec"><h3>'+tt('最近任务','Recent tasks')+'</h3><div id="homeTasks"></div></div>'
     + '<div class="sec" style="border-bottom:none;"><p style="color:var(--ink-3);">'+tt('数据保存在本机。使用云端模型时，你提交的内容会发送给所选服务商。','Data is stored on this device. When using a cloud model, submitted content is sent to your selected provider.')+'</p><button class="btn" id="homeModels">'+tt('连接模型','Connect a model')+'</button></div>'+signFoot();
   const actions = [{label:tt('开始对话','Start a conversation'),run:()=>{startNewConversation();}},...window.SeekerShell.homeActions()];
+  const workspace=document.createElement('button');workspace.className='btn';workspace.id='homeWorkspace';
+  workspace.textContent=(listProjects().find(p=>p.id===currentProjectId())?.name||prefs.name||tt('日常','Everyday'))+' · '+tt('管理工作空间','Manage workspaces');
+  workspace.onclick=()=>go('workspaces');host.querySelector('.frontis')?.appendChild(workspace);
+  if(!prefs.showMaterials)host.querySelector('#homeMaterials')?.closest('.sec')?.setAttribute('hidden','');
+  if(!prefs.showTasks)host.querySelector('#homeTasks')?.closest('.sec')?.setAttribute('hidden','');
   const shortcuts = host.querySelector('#homeShortcuts');
   for (const {label, run} of actions) {
     const button = document.createElement('button'); button.className='btn'; button.textContent=label;
@@ -26,7 +35,7 @@ export function renderHome() {
     shortcuts?.appendChild(button);
   }
   const list = host.querySelector('#homeConversations');
-  for (const c of listConversations().slice(0, 6)) {
+  for (const c of listConversations().filter(c=>(c.projectId||'')===currentProjectId()).slice(0, 6)) {
     const button = document.createElement('button'); button.className='btn-text'; button.style.cssText='display:block;text-align:left;margin:12px 0;'; button.textContent=conversationTitle(c);
     button.onclick=()=>{openConversation(c.id).catch(e=>toast(errText(e)));}; list?.appendChild(button);
   }
@@ -54,3 +63,6 @@ export function renderHome() {
 window.addEventListener('seeker-conversations-changed', renderHome);
 window.addEventListener('seeker-library-changed', renderHome);
 window.addEventListener('seeker-rt-ready', renderHome);
+window.addEventListener('seeker-workspace-preferences-changed', renderHome);
+window.addEventListener('seeker-workspace-switched', renderHome);
+window.addEventListener('seeker-workspaces-changed', renderHome);

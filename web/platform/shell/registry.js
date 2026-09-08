@@ -28,7 +28,7 @@
   /** @type {Array<() => void>} 开关/授权/排序变化订阅者(装配 + set_ai_readable 推送) */
   const listeners = [];
 
-  /** @typedef {{enabled:Record<string,boolean>, order:string[], aiGrant:Record<string,boolean>}} Prefs */
+  /** @typedef {{enabled:Record<string,boolean>, explicitEnabled:Record<string,boolean>, order:string[], aiGrant:Record<string,boolean>}} Prefs */
   /** @returns {Prefs} */
   function loadPrefs() {
     try {
@@ -37,6 +37,7 @@
         const p = JSON.parse(raw) || {};
         return {
           enabled: p.enabled && typeof p.enabled === 'object' ? p.enabled : {},
+          explicitEnabled: p.explicitEnabled && typeof p.explicitEnabled === 'object' ? p.explicitEnabled : {},
           order: Array.isArray(p.order) ? p.order : [],
           aiGrant: p.aiGrant && typeof p.aiGrant === 'object' ? p.aiGrant : {},
         };
@@ -44,12 +45,10 @@
     } catch (_e) {
       /* 损坏 → 默认 */
     }
-    return { enabled: {}, order: [], aiGrant: {} };
+    return { enabled: {}, explicitEnabled: {}, order: [], aiGrant: {} };
   }
   /** @type {Prefs} */
   let prefs = loadPrefs();
-  let legacyInstall = false;
-  try { legacyInstall = !!(localStorage.getItem(LS_KEY) || localStorage.getItem('jh-onboarded') || localStorage.getItem('jh-seeded-jobs')); } catch { /* explicit preferences still win */ }
 
   function persist() {
     try {
@@ -135,25 +134,28 @@
 
   // ── 开关 / 排序 / AI 授权(持久化 + 通知)──────────────────────
 
-  /** 缺省启用(prefs 里无记录 = 开)。 @param {string} id */
+  /** 按需应用必须有新版可信 UI 的明确选择；旧自动开启值不再代表选择。
+   * @param {string} id */
   function enabled(id) {
+    if (apps.find(a=>a.id===id)?.defaultEnabled === false && prefs.explicitEnabled[id] !== true) return false;
     if (typeof prefs.enabled[id] === 'boolean') return prefs.enabled[id];
-    return legacyInstall || apps.find(a=>a.id===id)?.defaultEnabled !== false;
+    return apps.find(a=>a.id===id)?.defaultEnabled !== false;
   }
   async function initializeDefaults() {
+    const next = {...prefs, enabled:{...prefs.enabled}};
     for (const a of apps) {
-      if(a.defaultEnabled !== false || typeof prefs.enabled[a.id] === 'boolean') continue;
-      const groups = await Promise.all((a.collections || []).map(c=>window.SeekerRT.db.list(/** @type {import('../runtime/types').Collection} */ (c))));
-      if(typeof prefs.enabled[a.id] !== 'boolean') prefs.enabled[a.id] = legacyInstall || groups.some(rows=>rows.length>0);
+      if(a.defaultEnabled === false && prefs.explicitEnabled[a.id] !== true) next.enabled[a.id] = false;
     }
-    persist(); emit();
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
+    prefs=next; emit();
   }
   /** @param {string} pageId */
   function chatTask(pageId) { return enabledApps().find(a=>a.pages.some(p=>p.id===pageId))?.chatTask; }
   /** @param {string} id @param {boolean} on */
   function setEnabled(id, on) {
-    prefs.enabled[id] = !!on;
-    persist();
+    const next={...prefs, enabled:{...prefs.enabled,[id]:!!on}, explicitEnabled:{...prefs.explicitEnabled,[id]:true}};
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
+    prefs=next;
     emit();
   }
 
@@ -362,6 +364,8 @@
   /** 「导入数据」成功后通知**全部已注册应用**(含禁用——数据被导入是事实)重水合内存态 + 重渲。汇总型副作用(与 notifyDataCleared 对称)。
    *  §1 契约化(批11B 末件):settings.js 原导入后硬编码 `hydrateJobs()`(jobseek 符号),改经此广播。 */
   function notifyDataImported() {
+    prefs=loadPrefs();
+    emit();
     apps.forEach((a) => {
       if (typeof a.onDataImported === 'function') {
         try { a.onDataImported(); } catch (e) { console.error('[shell] onDataImported', a.id, e); }

@@ -617,6 +617,7 @@ fn portable_preference_key(key: &str) -> bool {
         "jh-demo",
         "jh-project",
         "seeker-apps",
+        "seeker-workspace",
     ];
     if EXACT.contains(&key) {
         return true;

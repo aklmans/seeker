@@ -9,6 +9,7 @@ import { setLang } from './nav.js';
 import { startScheduler } from './scheduler.js'; // ★Scheduled SC1:壳级分钟 tick(仅 app 开着时;fire 经 runSkill 红线全继承)
 import { toggleSidebar } from './shell-keys.js';
 import { hydrateSettings, setState } from './shell-state.js';
+import { applyAppearance } from './appearance.js';
 export function initShell(){
   startScheduler(); // 幂等;tick 在 store 水合(seeker-rt-ready)前空转 no-op
   // 拖放守卫:tauri.conf dragDropEnabled:false 后 webview 自己处理拖放;文件拖到拖放区之外时,默认会让 webview 导航去打开文件 → 全局拦掉(仅文件)。AI 录入区 #aiDrop 自己的 drop 仍照常摄入。
@@ -17,6 +18,7 @@ export function initShell(){
   try{const aw=localStorage.getItem('jh-agentw'); if(aw)document.documentElement.style.setProperty('--agent-w',aw+'px');}catch(e){} // Agent 右栏宽度(画布)恢复
   try{const lg=localStorage.getItem('jh-lang'); if(lg)setState.lang=lg;}catch(e){}
   hydrateSettings(); // 目标/权重/外观偏好 从 localStorage 恢复(profile 走 rt.profile,见 hydrateProfile)
+  applyAppearance();
   const col=$('#sbCollapse'); if(col)col.onclick=toggleSidebar;
   const exp=$('#sbExpand'); if(exp)exp.onclick=()=>{document.body.dataset.sidebar='';if(col)col.textContent='«';};
   const lang=$('#langBtn'); if(lang){lang.textContent=setState.lang==='en'?'EN':'中';lang.onclick=()=>setLang(setState.lang==='en'?'zh':'en');}

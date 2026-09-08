@@ -28,6 +28,7 @@ test('便携偏好只收当前产品白名单，访问码与未知键结构性�
     'jh-theme': 'dark',
     'jh-seeded-assets_notes': '1',
     'seeker-apps': '{"enabled":{}}',
+    'seeker-workspace': '{"name":"我的日常","startPage":"home"}',
     'jh-democode': 'ticket-secret',
     'api-key': 'secret',
   });
@@ -38,6 +39,7 @@ test('便携偏好只收当前产品白名单，访问码与未知键结构性�
     'jh-theme': 'dark',
     'jh-seeded-assets_notes': '1',
     'seeker-apps': '{"enabled":{}}',
+    'seeker-workspace': '{"name":"我的日常","startPage":"home"}',
   });
 });
 
