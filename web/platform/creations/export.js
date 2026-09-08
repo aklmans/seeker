@@ -1,6 +1,6 @@
 // @ts-check
 import {requestWidgetSnapshot} from '../capability/widgets/render.js';
-import {openModal} from '../shell/modal.js';
+import {openCreationModal} from './modal.js';
 import {tt} from '../shell/i18n.js';
 import {composePresentation} from './presentation.js';
 import {escapeHTML as esc} from './content.js';
@@ -46,35 +46,40 @@ export async function captureSnapshot(snapshot,width=snapshot.width){
 /** @param {HTMLElement|null} card @param {string} title @param {{html:string,width:number}} [providedSnapshot]
  * @param {{style?:{[k:string]:unknown},source?:string,offlineHTML?:string}} [context] */
 export async function openExport(card,title,providedSnapshot,context={}){
-  const modal=openModal(`<div class="modal-head"><h2>${tt('导出作品','Export creation')}</h2><button class="x">×</button></div><p>${tt('导出当前画面，保留交互结果。固定比例会缩放完整内容；长内容可选原始比例。请检查预览。','Export the current state. Fixed ratios fit all content; use original ratio for long content. Review the preview.')}</p><div class="creation-export-options"><label>${tt('图片比例','Image ratio')}<select class="select" id="creationExportRatio"><option value="auto">${tt('原始 / 长图','Original / long image')}</option><option value="square">1:1</option><option value="landscape">4:3</option><option value="wide">16:9</option><option value="portrait">3:4</option><option value="story">9:16</option></select></label>
+  const modal=openCreationModal(tt('导出作品','Export creation'),`<p>${tt('导出当前画面，保留交互结果。固定比例会缩放完整内容；长内容可选原始比例。','Export the current state. Fixed ratios fit all content; use original ratio for long content.')}</p><div class="creation-export-layout"><div class="creation-export-options"><label>${tt('图片比例','Image ratio')}<select class="select" id="creationExportRatio"><option value="auto">${tt('原始 / 长图','Original / long image')}</option><option value="square">1:1</option><option value="landscape">4:3</option><option value="wide">16:9</option><option value="portrait">3:4</option><option value="story">9:16</option></select></label>
     <div class="creation-export-field"><label><input type="checkbox" id="creationExportShowTitle"> ${tt('附加标题','Add a title')}</label><input class="input" id="creationExportTitle" aria-label="${tt('分享标题','Share title')}" maxlength="200"></div>
     <div class="creation-export-field"><label><input type="checkbox" id="creationExportShowSource"> ${tt('附加来源','Add a source')}</label><input class="input" id="creationExportSource" aria-label="${tt('来源文字','Source text')}" maxlength="300"></div>
     <div class="creation-export-field"><label><input type="checkbox" id="creationExportShowByline"> ${tt('附加署名','Add a byline')}</label><input class="input" id="creationExportByline" aria-label="${tt('署名文字','Byline text')}" maxlength="80"></div></div>
-    <p id="creationExportStatus" role="status"></p><img id="creationExportImage" alt="${tt('导出预览','Export preview')}" style="display:none;width:100%;border:.5px solid var(--border)"><div class="creation-toolbar" id="creationExportActions"></div>`,true);
+    <div class="creation-export-preview"><span class="creation-export-preview-label">${tt('导出预览','Export preview')}</span><div class="creation-export-canvas"><img id="creationExportImage" alt="${tt('导出预览','Export preview')}" style="display:none"></div><p id="creationExportStatus" role="status"></p></div></div>`,`<span id="creationExportActions" style="display:contents"></span>`,true);
   if(!modal)return;
+  modal.classList.add('creation-export-modal');
   const status=/** @type {HTMLElement} */(modal.querySelector('#creationExportStatus'));
   const input=(/** @type {string} */id)=>/** @type {HTMLInputElement} */(modal.querySelector('#'+id));
   input('creationExportTitle').value=title;input('creationExportSource').value=context.source||'';
+  const syncFields=()=>{for(const [toggle,field] of [['creationExportShowTitle','creationExportTitle'],['creationExportShowSource','creationExportSource'],['creationExportShowByline','creationExportByline']])input(field).disabled=!input(toggle).checked;};
+  syncFields();
   const options=()=>({ratio:input('creationExportRatio').value,includeTitle:input('creationExportShowTitle').checked,title:input('creationExportTitle').value,includeSource:input('creationExportShowSource').checked,source:input('creationExportSource').value,includeByline:input('creationExportShowByline').checked,byline:input('creationExportByline').value});
   const image=/** @type {HTMLImageElement} */(modal.querySelector('#creationExportImage')),actions=modal.querySelector('#creationExportActions');
   /** @type {{png:string,width:number,height:number}|null} */let result=null;
   /** @type {HTMLButtonElement[]} */const outputButtons=[];
   const saved=(/** @type {string} */path)=>{status.textContent=window.SeekerRT.platform==='web'?tt('已交给浏览器下载：','Browser download started: ')+path:tt('已保存并校验：','Saved and verified: ')+path;};
-  for(const [label,format] of [[tt('保存 PNG','Save PNG'),'png'],[tt('保存长页 PDF','Save long-page PDF'),'pdf']]){
-    const button=document.createElement('button');button.className='btn btn-accent';button.textContent=label;button.disabled=true;
+  for(const [label,format] of [[tt('保存 PDF','Save PDF'),'pdf'],[tt('保存 PNG','Save PNG'),'png']]){
+    const button=document.createElement('button');button.className=format==='png'?'btn btn-accent':'btn';button.textContent=label;button.disabled=true;
     button.onclick=async()=>{if(!result)return;button.disabled=true;try{saved(await window.SeekerRT.render.creationImage(input('creationExportTitle').value||title,result.png,/** @type {'png'|'pdf'} */(format)));}catch(e){status.textContent=String(e);}finally{button.disabled=!result;}};actions?.appendChild(button);outputButtons.push(button);
   }
-  const copy=document.createElement('button');copy.className='btn';copy.textContent=tt('复制图片','Copy image');copy.disabled=true;copy.onclick=async()=>{if(!result)return;copy.disabled=true;try{await window.SeekerRT.render.copyCreationImage(result.png);status.textContent=tt('图片已复制到剪贴板','Image copied to clipboard');}catch(e){status.textContent=tt('复制失败，可使用保存 PNG：','Could not copy; use Save PNG: ')+String(e);}finally{copy.disabled=!result;}};actions?.appendChild(copy);outputButtons.push(copy);
+  const copy=document.createElement('button');copy.className='btn';copy.textContent=tt('复制图片','Copy image');copy.disabled=true;copy.onclick=async()=>{if(!result)return;copy.disabled=true;try{await window.SeekerRT.render.copyCreationImage(result.png);status.textContent=tt('图片已复制到剪贴板','Image copied to clipboard');}catch(e){status.textContent=tt('复制失败，可使用保存 PNG：','Could not copy; use Save PNG: ')+String(e);}finally{copy.disabled=!result;}};actions?.prepend(copy);outputButtons.push(copy);
   if(context.offlineHTML){
     const offline=document.createElement('button');offline.className='btn';offline.textContent=tt('保存离线交互 HTML','Save interactive HTML');
-    offline.onclick=async()=>{offline.disabled=true;try{const p=options();const annotations=[p.includeTitle?p.title:'',p.includeSource?tt('来源：','Source: ')+p.source:'',p.includeByline?tt('署名：','By: ')+p.byline:''].filter(Boolean).map(t=>'<p>'+esc(t)+'</p>').join('');saved(await window.SeekerRT.render.creationOffline(p.title||title,annotations+(context.offlineHTML||'')));}catch(e){status.textContent=String(e);}finally{offline.disabled=false;}};actions?.appendChild(offline);
-    const hint=document.createElement('p');hint.textContent=tt('离线文件从原稿开始交互，不保存当前计算状态、不套用图片比例；不连接应用或外网。','Offline files start from the source, without the current calculation state or image ratio. No app or network access.');modal.append(hint);
+    offline.onclick=async()=>{offline.disabled=true;try{const p=options();const annotations=[p.includeTitle?p.title:'',p.includeSource?tt('来源：','Source: ')+p.source:'',p.includeByline?tt('署名：','By: ')+p.byline:''].filter(Boolean).map(t=>'<p>'+esc(t)+'</p>').join('');saved(await window.SeekerRT.render.creationOffline(p.title||title,annotations+(context.offlineHTML||'')));}catch(e){status.textContent=String(e);}finally{offline.disabled=false;}};
+    const section=document.createElement('div');section.className='creation-export-offline';
+    const hint=document.createElement('p');hint.textContent=tt('离线文件从原稿开始交互，不保存当前计算状态、不套用图片比例；不连接应用或外网。','Offline files start from the source, without the current calculation state or image ratio. No app or network access.');section.append(hint,offline);modal.querySelector('.modal-body')?.append(section);
   }
   let epoch=0;
   /** @type {Promise<{html:string,width:number}>|null} */let snapshotPromise=null;
   /** @type {Map<number,Promise<{png:string,width:number,height:number}>>} */const captures=new Map();
   const update=async()=>{
     const request=++epoch,p=options();result=null;outputButtons.forEach(b=>b.disabled=true);image.style.display='none';status.textContent=tt('正在生成高清预览…','Rendering a high-resolution preview…');
+    image.parentElement?.classList.toggle('is-fixed',p.ratio!=='auto');
     try{
       if(!snapshotPromise)snapshotPromise=Promise.resolve(providedSnapshot||(card?requestWidgetSnapshot(card):Promise.reject(Error('No export content')))).catch(e=>{snapshotPromise=null;throw e;});
       const snapshot=await snapshotPromise;const width=p.ratio==='auto'?snapshot.width:900;
@@ -83,6 +88,6 @@ export async function openExport(card,title,providedSnapshot,context={}){
       if(request!==epoch||!modal.isConnected)return;result=composed;image.src=result.png;image.style.display='block';status.textContent=`${result.width} × ${result.height} px`;outputButtons.forEach(b=>b.disabled=false);
     }catch(e){if(request===epoch&&modal.isConnected)status.textContent=String(e);}
   };
-  for(const control of modal.querySelectorAll('.creation-export-options input,.creation-export-options select'))control.addEventListener('input',()=>{void update();});
+  for(const control of modal.querySelectorAll('.creation-export-options input,.creation-export-options select'))control.addEventListener('input',()=>{syncFields();void update();});
   await update();
 }

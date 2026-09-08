@@ -8,7 +8,8 @@ import {mountMindMapEditor} from './mindmap-editor.js';
 import {mountStructuredEditor} from './structured-editor.js';
 import {mindMap,outlineToMindMap,mindMapMarkdown} from './mindmap-model.js';
 import {mindMapSVG,layoutMindMap} from './mindmap-render.js';
-import {openModal,closeModal} from '../shell/modal.js';
+import {closeModal} from '../shell/modal.js';
+import {openCreationModal} from './modal.js';
 import {mindRequest,completedCreationText,parseMindNode} from './ai.js';
 import {openMindAI} from './mindmap-ai.js';
 import {openCreationEditAI} from './edit-ai-modal.js';
@@ -85,7 +86,7 @@ async function newStructured(kind){
 }
 function openNewCreation(){
   if(!canLeave())return;
-  const modal=openModal(`<div class="modal-head"><h2>${tt('新建作品','New creation')}</h2><button class="x">×</button></div><div class="creation-toolbar" id="creationKindChoices"></div>`,true);
+  const modal=openCreationModal(tt('新建作品','New creation'),`<p>${tt('选择一种形式，开始整理你的内容。','Choose a format to start organizing your content.')}</p><div class="creation-kind-choices" id="creationKindChoices"></div>`);
   const choose=(/** @type {()=>unknown} */fn)=>()=>{closeModal();void fn();};
   modal?.querySelector('#creationKindChoices')?.append(button('知识卡片','Knowledge card',choose(newCard)),button('思维导图','Mind map',choose(()=>openCreationComposer())),button('对比表','Comparison',choose(()=>newStructured('comparison'))),button('时间线','Timeline',choose(()=>newStructured('timeline'))));
 }
@@ -93,7 +94,7 @@ function openNewCreation(){
  * @param {{text?:string,title?:string,source?:{[k:string]:unknown}}} [input] */
 export function openCreationComposer(input={}){
   if(!canLeave())return;
-  const modal=openModal(`<div class="modal-head"><h2>${tt('创建思维导图','Create a mind map')}</h2><button class="x">×</button></div><label class="creation-label">${tt('标题','Title')}<input class="input" id="mindCreateTitle" maxlength="200" value="${esc(input.title||tt('我的导图','My mind map'))}"></label><label class="creation-label">${tt('大纲或选中的文字','Outline or selected text')}<textarea class="input" id="mindCreateText" rows="12" maxlength="30000">${esc(input.text||'')}</textarea></label><p>${tt('每行一个节点；用两个空格缩进表示子节点。支持 Markdown 标题和列表。不调用模型。','One node per line; indent with two spaces for children. Markdown headings and lists are supported. No model call.')}</p><p id="mindCreateStatus" role="status"></p><button class="btn btn-accent" id="mindCreateSave">${tt('从大纲创建','Create from outline')}</button>`,true);
+  const modal=openCreationModal(tt('创建思维导图','Create a mind map'),`<label class="creation-label">${tt('标题','Title')}<input class="input" id="mindCreateTitle" maxlength="200" value="${esc(input.title||tt('我的导图','My mind map'))}"></label><label class="creation-label">${tt('大纲或选中的文字','Outline or selected text')}<textarea class="input" id="mindCreateText" rows="9" maxlength="30000">${esc(input.text||'')}</textarea></label><p>${tt('每行一个节点；用两个空格缩进表示子节点。支持 Markdown 标题和列表。不调用模型。','One node per line; indent with two spaces for children. Markdown headings and lists are supported. No model call.')}</p><p id="mindCreateStatus" role="status"></p>`,`<button class="btn btn-accent" id="mindCreateSave">${tt('从大纲创建','Create from outline')}</button>`,true);
   if(!modal)return;
   const save=/** @type {HTMLButtonElement} */(modal.querySelector('#mindCreateSave'));
   save.onclick=async()=>{save.disabled=true;try{
@@ -119,8 +120,8 @@ export function openCreationComposer(input={}){
       if(modal.isConnected){closeModal();await openCreation(created.id);}
     }catch(e){if(modal.isConnected)status.textContent=String(e);}finally{observer.disconnect();controls.forEach(c=>c.disabled=false);}
   });
-  aiButton.id='mindCreateAI';aiButton.disabled=!window.SeekerRT.available('textGeneration');modal.appendChild(aiButton);
-  const info=document.createElement('p');info.textContent=aiButton.disabled?tt('AI 整理需要桌面版与已连接的模型；手动大纲在此可用。','AI organization needs the desktop app and a connected model; manual outlines work here.'):tt('AI 整理只发送上方文字给当前模型。原笔记与文件保持原样。','AI organization sends only the text above to the current model. Original notes and files are kept.');modal.appendChild(info);
+  aiButton.id='mindCreateAI';aiButton.disabled=!window.SeekerRT.available('textGeneration');modal.querySelector('.modal-foot')?.prepend(aiButton);
+  const info=document.createElement('p');info.textContent=aiButton.disabled?tt('AI 整理需要桌面版与已连接的模型；手动大纲在此可用。','AI organization needs the desktop app and a connected model; manual outlines work here.'):tt('AI 整理只发送上方文字给当前模型。原笔记与文件保持原样。','AI organization sends only the text above to the current model. Original notes and files are kept.');modal.querySelector('.modal-body')?.appendChild(info);
 }
 /** @param {Creation} record */
 function drawEditor(record){

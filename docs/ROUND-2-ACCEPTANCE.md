@@ -34,13 +34,16 @@
 
 - `npm test`：160 项通过。
 - `npm run typecheck`：通过。
-- `npm run test:e2e`：本地 HTTP、Chromium 全量 55 项通过。
-- 分享相关 WebKit：4 项通过；其他作品与导图的 WebKit 结果见各增量记录。
+- `npm run test:e2e`：本地 HTTP、Chromium 全量 56 项通过；最终预览调整后分享 5 项再次通过。
+- 分享相关 WebKit：5 项通过；其他作品与导图的 WebKit 结果见各增量记录。
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`：通过。
 - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`：通过。
 - `cargo test --manifest-path src-tauri/Cargo.toml`：244 项单测、1 项 parser CLI 集成测试通过，4 项忽略。
 - `cargo build --manifest-path src-tauri/Cargo.toml`：最终默认配置实际输出 `Compiling app`，构建通过。
 - `git diff --check`：通过。
+
+用户追加的弹窗边框与表单调整已实现，并经浏览器深浅色、长预览、保存样式及 390px 英文窗口验证。
+恢复验收时已取得旧桌面窗口截图，确认问题来源；加载新版前 Mac 再次锁屏，新版桌面窗口和上文第 5 步仍待验证。
 
 ## 仍需用户试用的部分
 

@@ -1,6 +1,7 @@
 // @ts-check
 import {tt} from '../shell/i18n.js';
-import {openModal,closeModal} from '../shell/modal.js';
+import {closeModal} from '../shell/modal.js';
+import {openCreationModal} from './modal.js';
 import {toast,toastUndo,errText} from '../shell/toast.js';
 import {STYLE_PRESETS,normalizeStyle} from './style.js';
 import {creationStylePreference,saveCreationStylePreference} from './style-preferences.js';
@@ -14,7 +15,7 @@ export async function personalStyles(){
 /** Saving a style never changes defaults or another creation. @param {{[k:string]:unknown}} input */
 export function openSaveStyle(input){
   const style=normalizeStyle(input);
-  const modal=openModal(`<div class="modal-head"><h2>${tt('保存到我的样式','Save to My styles')}</h2><button class="x">×</button></div><label class="creation-label">${tt('样式名称','Style name')}<input class="input" id="personalStyleName" maxlength="100"></label><p>${tt('保存这一套颜色、字体和排版，之后可应用到其他作品。','Save these colors, fonts and layout controls to reuse in other creations.')}</p><p id="personalStyleStatus" role="status"></p><button class="btn btn-accent" id="personalStyleSave">${tt('保存样式','Save style')}</button>`,true);
+  const modal=openCreationModal(tt('保存到我的样式','Save to My styles'),`<p>${tt('保存这一套颜色、字体和排版，之后可应用到其他作品。','Save these colors, fonts and layout controls to reuse in other creations.')}</p><label class="creation-label">${tt('样式名称','Style name')}<input class="input" id="personalStyleName" maxlength="100"></label><p id="personalStyleStatus" role="status"></p>`,`<button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="personalStyleSave">${tt('保存样式','Save style')}</button>`);
   if(!modal)return;
   const name=/** @type {HTMLInputElement} */(modal.querySelector('#personalStyleName'));
   const save=/** @type {HTMLButtonElement} */(modal.querySelector('#personalStyleSave'));

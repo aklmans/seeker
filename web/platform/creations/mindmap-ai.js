@@ -1,6 +1,7 @@
 // @ts-check
 import {tt} from '../shell/i18n.js';
-import {openModal,closeModal} from '../shell/modal.js';
+import {closeModal} from '../shell/modal.js';
+import {openCreationModal} from './modal.js';
 import {mindRequest,completedCreationText,parseMindNode,applyMindResult} from './ai.js';
 import {findNode,mindMap} from './mindmap-model.js';
 import {mindMapSVG} from './mindmap-render.js';
@@ -10,7 +11,7 @@ import {mindMapSVG} from './mindmap-render.js';
 export async function openMindAI(original,id,action,style,isCurrent,apply){
   if(!window.SeekerRT.available('textGeneration'))return;
   const selected=findNode(original.root,id);if(!selected)return;
-  const modal=openModal(`<div class="modal-head"><h2>${action==='expand'?tt('扩展选中分支','Expand selected branch'):tt('精简选中分支','Shorten selected branch')}</h2><button class="x">×</button></div><p>${tt('只把选中分支发送给当前模型。查看结果后再应用；其他分支保持原样。','Only this branch is sent to the current model. Review before applying; other branches are kept.')}</p><p id="mindAIStatus" role="status"></p><div id="mindAIPreview" style="max-height:400px;overflow:auto"></div><div class="creation-toolbar"><button class="btn" id="mindAICancel">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="mindAIApply" disabled>${tt('应用到当前分支','Apply to this branch')}</button></div>`,true);
+  const modal=openCreationModal(action==='expand'?tt('扩展选中分支','Expand selected branch'):tt('精简选中分支','Shorten selected branch'),`<p>${tt('只把选中分支发送给当前模型。查看结果后再应用；其他分支保持原样。','Only this branch is sent to the current model. Review before applying; other branches are kept.')}</p><p id="mindAIStatus" role="status"></p><div id="mindAIPreview" style="max-height:400px;overflow:auto"></div>`,`<button class="btn" id="mindAICancel">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="mindAIApply" disabled>${tt('应用到当前分支','Apply to this branch')}</button>`,true);
   if(!modal)return;
   const status=/** @type {HTMLElement} */(modal.querySelector('#mindAIStatus'));
   const applyButton=/** @type {HTMLButtonElement} */(modal.querySelector('#mindAIApply'));

@@ -1,6 +1,7 @@
 // @ts-check
 import {tt} from '../shell/i18n.js';
-import {openModal,closeModal} from '../shell/modal.js';
+import {closeModal} from '../shell/modal.js';
+import {openCreationModal} from './modal.js';
 import {creationEditRequest,applyCreationEdit} from './edit-ai.js';
 import {creationHTML} from './content.js';
 import {buildSrcDoc} from '../capability/widgets/render.js';
@@ -9,7 +10,7 @@ import {buildSrcDoc} from '../capability/widgets/render.js';
  * @param {()=>boolean} isCurrent @param {(next:import('../runtime/types').CreationDraft)=>void} apply */
 export function openCreationEditAI(action,original,isCurrent,apply){
   if(!window.SeekerRT.available('textGeneration'))return;
-  const modal=openModal(`<div class="modal-head"><h2>${action==='style'?tt('用文字调整作品风格','Describe a style change'):tt('用 AI 修改 Widget','Edit widget with AI')}</h2><button class="x">×</button></div><p>${action==='style'?tt('只发送当前风格和修改要求，正文保持原样。默认样式与其他作品不受影响。','Only the current style and your request are sent. Content, defaults and other creations are kept.'):tt('发送这件 Widget 的源码、风格和修改要求。先检查交互结果，应用后仍需保存；可以恢复旧版本。','Sends this widget’s source, style and your request. Review interactions before applying, then save. Earlier versions remain recoverable.')}</p><label class="creation-label">${tt('希望怎样修改','Requested change')}<textarea class="input" id="creationAIRequest" maxlength="2000" rows="3"></textarea></label><button class="btn btn-accent" id="creationAIGenerate">${tt('生成预览','Generate preview')}</button><p id="creationAIStatus" role="status"></p><div id="creationAIPreview"></div><div class="creation-toolbar"><button class="btn" id="creationAICancel">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="creationAIApply" disabled>${tt('应用到当前作品','Apply to this creation')}</button></div>`,true);
+  const modal=openCreationModal(action==='style'?tt('用文字调整作品风格','Describe a style change'):tt('用 AI 修改 Widget','Edit widget with AI'),`<p>${action==='style'?tt('只发送当前风格和修改要求，正文保持原样。默认样式与其他作品不受影响。','Only the current style and your request are sent. Content, defaults and other creations are kept.'):tt('发送这件 Widget 的源码、风格和修改要求。先检查交互结果，应用后仍需保存；可以恢复旧版本。','Sends this widget’s source, style and your request. Review interactions before applying, then save. Earlier versions remain recoverable.')}</p><label class="creation-label">${tt('希望怎样修改','Requested change')}<textarea class="input" id="creationAIRequest" maxlength="2000" rows="3"></textarea></label><button class="btn btn-accent" id="creationAIGenerate">${tt('生成预览','Generate preview')}</button><p id="creationAIStatus" role="status"></p><div id="creationAIPreview"></div>`,`<button class="btn" id="creationAICancel">${tt('取消','Cancel')}</button><button class="btn btn-accent" id="creationAIApply" disabled>${tt('应用到当前作品','Apply to this creation')}</button>`,true);
   if(!modal)return;
   const request=/** @type {HTMLTextAreaElement} */(modal.querySelector('#creationAIRequest'));
   const generate=/** @type {HTMLButtonElement} */(modal.querySelector('#creationAIGenerate'));

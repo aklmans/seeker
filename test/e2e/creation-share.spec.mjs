@@ -7,6 +7,7 @@ async function open(page,html='<h1>阅读安排</h1><p>三天读完一本书。<
 test('图片横竖比例和可选附加文字生成真实 PNG，快速切换不会导出旧预览',async({page})=>{
   await open(page);await page.getByRole('button',{name:'导出 / 分享',exact:true}).click();await expect(page.locator('#creationExportImage')).toBeVisible({timeout:15000});await expect(page.locator('#creationExportByline')).toHaveValue('');await expect(page.locator('#creationExportSource')).toHaveValue('我的阅读笔记');await expect(page.locator('#creationExportShowSource')).not.toBeChecked();
   await page.locator('#creationExportRatio').selectOption('wide');await page.locator('#creationExportShowTitle').check();await page.locator('#creationExportTitle').fill('一个周末的阅读计划');await page.locator('#creationExportShowSource').check();await page.locator('#creationExportShowByline').check();await page.locator('#creationExportByline').fill('小林');await expect(page.locator('#creationExportStatus')).toHaveText('1600 × 900 px');
+  expect(await page.locator('.creation-export-canvas').evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1);
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'保存 PNG',exact:true}).click();const png=await readFile(await(await download).path());expect(png.readUInt32BE(16)).toBe(1600);expect(png.readUInt32BE(20)).toBe(900);
   await page.locator('#creationExportRatio').selectOption('story');await page.locator('#creationExportRatio').selectOption('square');await expect(page.locator('#creationExportStatus')).toHaveText('1600 × 1600 px');expect(await page.locator('#creationExportImage').evaluate(img=>img.naturalHeight)).toBe(1600);
 });
@@ -25,4 +26,14 @@ test('刚输入的新正文立即导出时必须包含最新长内容',async({pa
 });
 test('英文窄窗口保留分享选项与作品内容',async({page})=>{
   await page.setViewportSize({width:780,height:900});await open(page);await page.getByRole('button',{name:'中',exact:true}).click();await page.getByRole('button',{name:'Export / Share',exact:true}).click();await expect(page.getByRole('combobox',{name:'Image ratio',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Byline text',exact:true})).toHaveValue('');await expect(page.getByRole('button',{name:'Save interactive HTML',exact:true})).toBeVisible();await expect(page.locator('#creationExportImage')).toBeVisible({timeout:15000});expect(await page.locator('.modal').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+});
+test('作品弹窗表单保留内边距、统一控件高度，长预览不挤出导出按钮',async({page})=>{
+  await page.setViewportSize({width:1280,height:900});await open(page,Array.from({length:40},(_,i)=>'<p>第 '+i+' 行阅读笔记，保留长内容。</p>').join(''));
+  await page.getByRole('button',{name:'导出 / 分享',exact:true}).click();await expect(page.locator('#creationExportImage')).toBeVisible({timeout:15000});
+  const modal=await page.locator('.modal').boundingBox(),ratio=await page.locator('#creationExportRatio').boundingBox(),title=await page.locator('#creationExportTitle').boundingBox();
+  expect(ratio.x-modal.x).toBeGreaterThanOrEqual(20);expect(ratio.height).toBeGreaterThanOrEqual(38);expect(Math.abs(ratio.height-title.height)).toBeLessThanOrEqual(2);
+  const save=await page.getByRole('button',{name:'保存 PNG',exact:true}).boundingBox();expect(save.y+save.height).toBeLessThanOrEqual(900);
+  await expect(page.locator('#creationExportTitle')).toBeDisabled();await page.locator('#creationExportShowTitle').check();await expect(page.locator('#creationExportTitle')).toBeEnabled();
+  await page.locator('.modal .x').click();await page.getByRole('button',{name:'保存到我的样式',exact:true}).click();await page.locator('#personalStyleName').fill('纸上阅读');
+  const padding=await page.locator('#personalStyleName').evaluate(el=>{const field=el.getBoundingClientRect(),modal=el.closest('.modal').getBoundingClientRect();return {left:field.left-modal.left,right:modal.right-field.right};});expect(padding.left).toBeGreaterThanOrEqual(20);expect(padding.right).toBeGreaterThanOrEqual(20);
 });
