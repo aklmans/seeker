@@ -523,6 +523,9 @@ export interface CreationsApi {
   /** Atomic compare-and-save. 0 requires an absent ID. Retains the last 20 versions.
    * Deletion is a reversible flag; stale writers cannot overwrite newer edits. */
   save(draft: CreationDraft, expectedRevision: number): Promise<CreationRecord>;
+  /** Recovery for imported personal styles, including records without valid revision metadata.
+   * Atomically compares the full record and changes only deleted; used with toastUndo. */
+  setStyleDeleted(expected: Record, deleted: boolean): Promise<Record>;
 }
 
 export interface RenderApi {

@@ -93,6 +93,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             creations::creation_save,
+            creations::creation_style_set_deleted,
             creation_export::export_creation_image,
             creation_export::copy_creation_image,
             creation_export::export_creation_svg,

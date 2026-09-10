@@ -1,9 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nextCreation,creationDraft} from '../web/platform/runtime/creation-model.js';
+import {nextCreation,creationDraft,creationRecord,nextStyleDeleted} from '../web/platform/runtime/creation-model.js';
 import {normalizeStyle,styleCSS} from '../web/platform/creations/style.js';
 import {creationHTML} from '../web/platform/creations/content.js';
 const draft=()=>({id:'cr_test',kind:'widget',title:'作品',content:{html:'<h1>中文</h1>'},style:{},source:{},projectId:'',deleted:false});
+test('imported personal styles require complete records before reuse, without normalizing corrupt input',()=>{
+  const good=nextCreation({...draft(),kind:'style',content:{}},0,null,100);
+  assert.equal(creationRecord(good),good);
+  for(const patch of [{style:null},{style:[]},{style:'soft'},{style:undefined},{revision:undefined},{createdAt:'100'},{history:[null]},{title:{name:'bad'}},{history:[{...good,id:'cr_other'}]}]){
+    const input={...good,...patch};assert.throws(()=>creationRecord(input));assert.deepEqual(input,{...good,...patch});
+  }
+});
+test('damaged style removal compares whole snapshots and changes only the reversible deletion flag',()=>{
+  const bad={id:'cr_bad',kind:'style',title:'损坏样式',deleted:false,extra:{keep:'原始数据'}};
+  const removed=nextStyleDeleted(bad,true,{...bad,extra:{keep:'原始数据'}});
+  assert.deepEqual(removed,{...bad,deleted:true});assert.deepEqual(nextStyleDeleted(removed,false,removed),bad);
+  for(const prior of [null,{...bad,title:'新修改'},{...bad,extra:{keep:'另一份数据'}},removed])assert.throws(()=>nextStyleDeleted(bad,true,prior),/changed/);
+  for(const kind of ['widget','profile','card'])assert.throws(()=>nextStyleDeleted({...bad,kind},true,{...bad,kind}));
+  assert.throws(()=>nextStyleDeleted({...bad,id:null},true,{...bad,id:null}));
+});
 test('creation versions reject stale saves and retain reversible deletion without recursive history',()=>{
   const initial=nextCreation(draft(),0,null,100);
   const second=nextCreation({...draft(),title:'改名'},1,initial,200);

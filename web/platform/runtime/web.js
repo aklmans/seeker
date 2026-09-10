@@ -5,7 +5,7 @@
  * 导出/导入用 Blob 下载 / 文件读入。AI 与 secret 仍降级(需自有后端代理 / 服务端代管,未实现)。
  * 「可降级子集」:系统集成类能力(托盘/全局快捷键/深链/自动更新)在网页端不可用。
  */
-import { nextCreation } from './creation-model.js';
+import { nextCreation,nextStyleDeleted } from './creation-model.js';
 import {exportCreationImage,copyCreationImage,exportCreationSVG,exportCreationOffline} from './creation-export.js';
 import { NotImplementedError, notImpl } from './errors.js';
 import { collectPortablePreferences, restorePortablePreferences } from './portable-prefs.js';
@@ -308,6 +308,18 @@ export function createWebRuntime() {
     available: (feature) => FEATURES.has(feature),
 
     creations: {
+      setStyleDeleted: async (expected,deleted) => {
+        const s=await store('platform_creations','readwrite');
+        const committed=txDone(s.transaction);
+        try{
+          const prior=await reqDone(s.get(expected.id));
+          const next=nextStyleDeleted(expected,deleted,prior);
+          await Promise.all([committed,reqDone(s.put(next))]);return next;
+        }catch(error){
+          try{s.transaction.abort();}catch(_){/* Already finished. */}
+          await committed.catch(()=>{});throw error;
+        }
+      },
       save: async (draft, expectedRevision) => {
         const s = await store('platform_creations', 'readwrite');
         const committed = txDone(s.transaction);

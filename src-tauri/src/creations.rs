@@ -118,6 +118,51 @@ pub fn creation_save(
     save(&mut conn, draft, expected_revision)
 }
 
+/// Imported styles may lack revision metadata. Recovery only changes the deletion flag and
+/// compares the complete original JSON, so removal/undo cannot clobber a subsequent repair.
+fn set_style_deleted(
+    conn: &mut Connection,
+    expected: Value,
+    deleted: bool,
+) -> Result<Value, String> {
+    if expected["kind"] != "style" {
+        return Err(INVALID.into());
+    }
+    let id = match &expected["id"] {
+        Value::String(id) => id.clone(),
+        Value::Number(id) => id.to_string(),
+        _ => return Err(INVALID.into()),
+    };
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let raw: Option<String> = tx
+        .query_row(
+            "SELECT data_json FROM platform_creations WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let prior: Value = serde_json::from_str(&raw.ok_or(CONFLICT)?).map_err(|_| INVALID)?;
+    if prior != expected {
+        return Err("样式记录已变化，请重新打开设置 / Style changed; reopen settings".into());
+    }
+    let mut next = prior;
+    next["deleted"] = json!(deleted);
+    data::upsert_record(&tx, "platform_creations", &next)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(next)
+}
+
+#[tauri::command]
+pub fn creation_style_set_deleted(
+    db: State<'_, Db>,
+    expected: Value,
+    deleted: bool,
+) -> Result<Value, String> {
+    let mut conn = db.0.lock().map_err(|_| "数据库锁中毒".to_string())?;
+    set_style_deleted(&mut conn, expected, deleted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +174,63 @@ mod tests {
     fn draft() -> Value {
         json!({"id":"cr_test","kind":"widget","title":"作品","projectId":"","deleted":false,
             "content":{"html":"<h1>中文</h1>"},"style":{},"source":{}})
+    }
+    #[test]
+    fn damaged_style_deletion_preserves_data_and_rejects_stale_snapshots() {
+        let mut c = setup();
+        let bad = json!({"id":"cr_bad_style","kind":"style","title":"损坏样式","deleted":false,"extra":{"keep":"原稿"}});
+        data::upsert_record(&c, "platform_creations", &bad).unwrap();
+        let removed = set_style_deleted(&mut c, bad.clone(), true).unwrap();
+        let mut expected = bad.clone();
+        expected["deleted"] = json!(true);
+        assert_eq!(removed, expected);
+        assert_eq!(
+            set_style_deleted(&mut c, removed.clone(), false).unwrap(),
+            bad
+        );
+        let mut repaired = bad.clone();
+        repaired["title"] = json!("后来的修改");
+        data::upsert_record(&c, "platform_creations", &repaired).unwrap();
+        assert!(set_style_deleted(&mut c, removed, false).is_err());
+        assert!(set_style_deleted(&mut c, bad, true).is_err());
+        assert_eq!(
+            data::get_record(&c, "platform_creations", "cr_bad_style")
+                .unwrap()
+                .unwrap(),
+            repaired
+        );
+        let other = draft();
+        data::upsert_record(&c, "platform_creations", &other).unwrap();
+        assert!(set_style_deleted(&mut c, other.clone(), true).is_err());
+        assert_eq!(
+            data::get_record(&c, "platform_creations", "cr_test")
+                .unwrap()
+                .unwrap(),
+            other
+        );
+    }
+    #[test]
+    fn damaged_style_failed_write_or_unreadable_prior_never_reports_success() {
+        let mut c = setup();
+        let bad = json!({"id":"cr_bad_style","kind":"style","deleted":false});
+        data::upsert_record(&c, "platform_creations", &bad).unwrap();
+        c.execute_batch("CREATE TRIGGER fail_style_write BEFORE INSERT ON platform_creations BEGIN SELECT RAISE(ABORT, 'cannot write'); END;").unwrap();
+        assert!(set_style_deleted(&mut c, bad.clone(), true)
+            .unwrap_err()
+            .contains("cannot write"));
+        assert_eq!(
+            data::get_record(&c, "platform_creations", "cr_bad_style")
+                .unwrap()
+                .unwrap(),
+            bad
+        );
+        c.execute_batch(
+            "DROP TRIGGER fail_style_write; UPDATE platform_creations SET data_json='broken';",
+        )
+        .unwrap();
+        assert!(set_style_deleted(&mut c, bad.clone(), true).is_err());
+        c.execute_batch("DROP TABLE platform_creations;").unwrap();
+        assert!(set_style_deleted(&mut c, bad, true).is_err());
     }
     #[test]
     fn edits_delete_restore_and_stale_writes() {

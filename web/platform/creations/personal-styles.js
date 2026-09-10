@@ -5,12 +5,21 @@ import {openCreationModal} from './modal.js';
 import {toast,toastUndo,errText} from '../shell/toast.js';
 import {STYLE_PRESETS,normalizeStyle} from './style.js';
 import {creationStylePreference,saveCreationStylePreference} from './style-preferences.js';
-import {newCreationId,saveCreation} from './store.js';
-import {creationDraft} from '../runtime/creation-model.js';
-/** @returns {Promise<import('../runtime/types').CreationRecord[]>} */
+import {newCreationId,saveCreation,creationsChanged} from './store.js';
+import {creationDraft,creationRecord} from '../runtime/creation-model.js';
+/** @param {import('../runtime/types').Record} raw */
+function describeStyle(raw){
+  /** @type {import('../runtime/types').CreationRecord|null} */let record=null;
+  try{record=creationRecord(raw);}catch{/* Keep the raw record available for reversible removal. */}
+  const title=typeof raw.title==='string'&&raw.title.trim()?raw.title.slice(0,200):tt('未命名样式','Untitled style');
+  const unavailable=!record?tt('样式数据损坏，无法应用；可移除并撤销','Damaged style data; cannot apply. Removal can be undone'):
+    record.style.theme==='auto'?tt('请重新保存为独立风格','Save again as an independent style'):'';
+  return {raw,record,title,unavailable};
+}
 export async function personalStyles(){
   const rows=await window.SeekerRT.db.list('platform_creations');
-  return /** @type {import('../runtime/types').CreationRecord[]} */(/** @type {unknown} */(rows.filter(r=>r.kind==='style'&&!r.deleted))).sort((a,b)=>b.updatedAt-a.updatedAt);
+  return rows.filter(r=>r&&r.kind==='style'&&!r.deleted).map(describeStyle)
+    .sort((a,b)=>(b.record?.updatedAt||0)-(a.record?.updatedAt||0));
 }
 /** Saving a style never changes defaults or another creation. @param {{[k:string]:unknown}} input */
 export function openSaveStyle(input){
@@ -27,10 +36,10 @@ export function openSaveStyle(input){
   }catch(e){const status=modal.querySelector('#personalStyleStatus');if(status)status.textContent=errText(e);}finally{save.disabled=false;name.disabled=false;}};
 }
 /** Keep legacy auto collections visible and removable, but never reuse them as independent styles.
- * @param {import('../runtime/types').CreationRecord} row @param {string} [prefix] */
+ * @param {ReturnType<typeof describeStyle>} row @param {string} [prefix] */
 function personalStyleOption(row,prefix=''){
-  const option=new Option(prefix+row.title,row.id);
-  if(row.style.theme==='auto'){option.disabled=true;option.textContent+=tt(' · 请重新保存为独立风格',' · Save again as an independent style');}
+  const option=new Option(prefix+row.title,String(row.raw.id));
+  if(row.unavailable){option.disabled=true;option.textContent+=' · '+row.unavailable;}
   return option;
 }
 /** @param {HTMLSelectElement} select @param {(style:import('./style').CreationStyle)=>void} apply */
@@ -38,7 +47,7 @@ export async function mountPersonalStylePicker(select,apply){
   try{const rows=await personalStyles();if(!select.isConnected)return;
     select.replaceChildren(new Option(tt('选择我的样式…','Choose a saved style…'),''));
     for(const row of rows)select.add(personalStyleOption(row));
-    select.onchange=()=>{const row=rows.find(r=>r.id===select.value);if(row&&row.style.theme!=='auto'){apply(normalizeStyle(row.style));select.value='';}};
+    select.onchange=()=>{const row=rows.find(r=>String(r.raw.id)===select.value);if(row?.record&&!row.unavailable){apply(normalizeStyle(row.record.style));select.value='';}};
   }catch{select.replaceChildren(new Option(tt('样式读取失败，请重新打开','Could not load styles; reopen'),''));}
 }
 /** Trusted settings surface, with reversible removal and an explicit copied default.
@@ -60,23 +69,37 @@ export async function renderCreationStyleSettings(host){
     const save=document.createElement('button');save.className='btn btn-accent';save.id='creationDefaultSave';save.textContent=tt('设为新作品默认样式','Set default for new creations');
     save.onclick=()=>{try{
       if(select.value==='default'){saveCreationStylePreference('',{});info.textContent=tt('默认样式：','Default style: ')+appDefault;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');return;}
-      const preset=STYLE_PRESETS.find(p=>'preset:'+p.id===select.value),row=rows.find(r=>r.id===select.value);
-      if(!preset&&!row)throw Error(tt('请先选择样式','Choose a style first'));
-      const name=preset?tt(preset.zh,preset.en):/** @type {NonNullable<typeof row>} */(row).title;
-      saveCreationStylePreference(name,preset?{preset:preset.id}:/** @type {NonNullable<typeof row>} */(row).style);info.textContent=tt('默认样式：','Default style: ')+name;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');
+      const preset=STYLE_PRESETS.find(p=>'preset:'+p.id===select.value),row=rows.find(r=>String(r.raw.id)===select.value);
+      const selected=preset?{name:tt(preset.zh,preset.en),style:{preset:preset.id}}:
+        row?.record&&!row.unavailable?{name:row.title,style:row.record.style}:null;
+      if(!selected)throw Error(row?.unavailable||tt('请先选择样式','Choose a style first'));
+      saveCreationStylePreference(selected.name,selected.style);info.textContent=tt('默认样式：','Default style: ')+selected.name;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');
     }catch(e){status.textContent=errText(e);}};
     const toolbar=document.createElement('div');toolbar.className='creation-toolbar';toolbar.append(select,save);host.append(toolbar,status);
     const heading=document.createElement('h3');heading.textContent=tt('我的样式','My styles');host.append(heading);
     if(!rows.length){const empty=document.createElement('p');empty.textContent=tt('在作品编辑页调整风格，再选择“保存到我的样式”。','Adjust a creation, then choose Save to My styles.');host.append(empty);}
     for(const row of rows){
-      const line=document.createElement('div');line.className='creation-toolbar';
+      const line=document.createElement('div');line.className='creation-toolbar';line.dataset.personalStyle=String(row.raw.id);
       const name=document.createElement('input');name.className='input';name.value=row.title;name.maxLength=100;name.setAttribute('aria-label',tt('样式名称','Style name'));
       const rename=document.createElement('button');rename.className='btn';rename.textContent=tt('保存名称','Save name');
       const remove=document.createElement('button');remove.className='btn';remove.textContent=tt('移除样式','Remove style');
-      const lock=(/** @type {boolean} */v)=>{name.disabled=v;rename.disabled=v;remove.disabled=v;};
-      rename.onclick=async()=>{lock(true);try{await saveCreation({...creationDraft(row),title:name.value.trim()},row.revision);await renderCreationStyleSettings(host);}catch(e){status.textContent=errText(e);}finally{lock(false);}};
-      remove.onclick=async()=>{lock(true);try{const removed=await saveCreation({...creationDraft(row),deleted:true},row.revision);await renderCreationStyleSettings(host);toastUndo(tt('样式已移除','Style removed'),async()=>{await saveCreation(creationDraft(row),removed.revision);await renderCreationStyleSettings(host);return true;});}catch(e){status.textContent=errText(e);}finally{lock(false);}};
-      line.append(name,rename,remove);host.append(line);
+      const record=row.record;
+      const lock=(/** @type {boolean} */v)=>{name.disabled=v||!record;rename.disabled=v||!record;remove.disabled=v;};lock(false);
+      rename.onclick=async()=>{if(!record)return;lock(true);try{await saveCreation({...creationDraft(record),title:name.value.trim()},record.revision);await renderCreationStyleSettings(host);}catch(e){status.textContent=errText(e);}finally{lock(false);}};
+      remove.onclick=async()=>{lock(true);try{
+        let restore;
+        if(record){
+          const removed=await saveCreation({...creationDraft(record),deleted:true},record.revision);
+          restore=()=>saveCreation(creationDraft(record),removed.revision);
+        }else{
+          const removed=await window.SeekerRT.creations.setStyleDeleted(row.raw,true);creationsChanged();
+          restore=async()=>{await window.SeekerRT.creations.setStyleDeleted(removed,false);creationsChanged();};
+        }
+        await renderCreationStyleSettings(host);toastUndo(tt('样式已移除','Style removed'),async()=>{await restore();await renderCreationStyleSettings(host);return true;});
+      }catch(e){status.textContent=errText(e);}finally{lock(false);}};
+      line.append(name,rename,remove);
+      if(!record){const issue=document.createElement('span');issue.textContent=row.unavailable;line.append(issue);}
+      host.append(line);
     }
   }catch(e){if(host.isConnected)host.textContent=errText(e);}
 }
