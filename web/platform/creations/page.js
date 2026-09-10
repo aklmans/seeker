@@ -149,7 +149,14 @@ function drawEditor(record){
   /** @type {HTMLSelectElement} */(host.querySelector('[data-style="font"]')).value=s.font;
   /** @type {HTMLSelectElement} */(host.querySelector('[data-style="edge"]')).value=s.edge;
   let style={...s};
-  const syncStyleControls=()=>{for(const node of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(node);el.disabled=style.theme==='auto';el.title=style.theme==='auto'?tt('选择独立风格后可自定义','Choose an independent style to customize'):'';}};
+  const saveStyle=button('保存到我的样式','Save to My styles',()=>openSaveStyle(style));
+  const styleHint=document.createElement('p');styleHint.id='creationPersonalStyleHint';
+  styleHint.textContent=tt('跟随主题时，配色由应用管理。选择独立风格后可保存到我的样式。','The app manages colors while following its theme. Choose an independent style to save to My styles.');
+  saveStyle.setAttribute('aria-describedby',styleHint.id);
+  const syncStyleControls=()=>{
+    saveStyle.disabled=style.theme==='auto';styleHint.hidden=style.theme!=='auto';
+    for(const node of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(node);el.disabled=style.theme==='auto';el.title=style.theme==='auto'?tt('选择独立风格后可自定义','Choose an independent style to customize'):'';}
+  };
   syncStyleControls();
   /** @type {ReturnType<typeof mountMindMapEditor>|null} */let mindEditor=null;
   /** @type {ReturnType<typeof mountStructuredEditor>|null} */let structuredEditor=null;
@@ -171,7 +178,8 @@ function drawEditor(record){
   void mountPersonalStylePicker(personalPicker,applyStyle);
   const refreshStyles=()=>{if(epoch===editorEpoch&&host.isConnected)void mountPersonalStylePicker(personalPicker,applyStyle);else window.removeEventListener('seeker-creations-changed',refreshStyles);};
   window.addEventListener('seeker-creations-changed',refreshStyles);
-  host.querySelector('#creationStyleActions')?.append(button('保存到我的样式','Save to My styles',()=>openSaveStyle(style)));
+  host.querySelector('#creationStyleActions')?.append(saveStyle);
+  host.querySelector('.creation-style-controls')?.before(styleHint);
   const editWithAI=(/** @type {'style'|'widget'} */action)=>{try{const original=draft(),stamp=JSON.stringify(original);openCreationEditAI(action,original,()=>epoch===editorEpoch&&JSON.stringify(draft())===stamp,next=>{if(action==='widget'){html.value=String(next.content.html);changed();}else applyStyle(normalizeStyle(next.style));});}catch(e){report(e);}};
   if(window.SeekerRT.available('textGeneration')){
     host.querySelector('#creationStyleActions')?.append(button('用文字调风格','Describe style change',()=>editWithAI('style')));

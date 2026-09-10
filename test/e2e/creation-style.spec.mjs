@@ -14,6 +14,59 @@ test('内置柔和默认样式在新作品和重启后保留预设身份、下�
   await page.reload();await page.locator('[data-id="creations"]').click();await page.locator('.creation-list-item').filter({hasText:'新知识卡片'}).click();
   await expect(page.locator('#creationPreset')).toHaveValue('soft');await expect(page.locator('#creationPreset option:checked')).toHaveText('柔和');await expect(page.locator('[data-style="radius"]')).toHaveValue('20');
 });
+test('跟随主题不能收藏，选择独立风格后可收藏并设为新 Widget 默认',async({page})=>{
+  await open(page);
+  await page.evaluate(async()=>{
+    const {saveGeneratedWidget}=await import('/platform/creations/store.js');
+    const record=await saveGeneratedWidget({id:'w_personal_auto',title:'跟随主题作品',html:'<p>样式验收</p>'},{});
+    await(await import('/platform/creations/page.js')).openCreation(record.id);
+  });
+  const saveStyle=page.getByRole('button',{name:'保存到我的样式',exact:true});
+  await expect(page.locator('#creationPreset')).toHaveValue('auto');await expect(saveStyle).toBeDisabled();
+  await expect(page.locator('#creationPersonalStyleHint')).toBeVisible();await expect(page.locator('#creationPersonalStyleHint')).toContainText('选择独立风格');
+  await page.locator('#creationPreset').selectOption('soft');await expect(saveStyle).toBeEnabled();await expect(page.locator('#creationPersonalStyleHint')).toBeHidden();
+  await page.locator('#creationPreset').selectOption('auto');await expect(saveStyle).toBeDisabled();
+  await page.locator('#creationPreset').selectOption('soft');await page.locator('[data-style="radius"]').fill('23');
+  await saveStyle.click();await page.locator('#personalStyleName').fill('独立柔和');await page.locator('#personalStyleSave').click();
+  await expect(page.locator('#creationPersonalStyle option')).toHaveCount(2);
+  const style=(await page.evaluate(()=>window.SeekerRT.db.list('platform_creations'))).find(r=>r.kind==='style');
+  expect(style.style).toMatchObject({preset:'soft',background:'#f5f0f7',radius:23});expect(style.style.theme).toBeUndefined();
+  // Discard restores the saved auto mode and its disabled entry.
+  await page.getByRole('button',{name:'放弃修改',exact:true}).click();await expect(saveStyle).toBeDisabled();
+  await page.locator('[data-id="settings"]').click();await page.locator('[data-stab="creations"]').click();
+  await page.locator('#creationDefaultStyle').selectOption(style.id);await page.locator('#creationDefaultSave').click();await expect(page.locator('#creationDefaultStatus')).toContainText('已保存');
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('seeker-creation-style')).style)).toEqual(style.style);
+  await page.reload();
+  await page.evaluate(async()=>{
+    const {saveGeneratedWidget}=await import('/platform/creations/store.js');
+    const record=await saveGeneratedWidget({id:'w_personal_fixed',title:'独立样式作品',html:'<p>固定配色</p>'},{});
+    await(await import('/platform/creations/page.js')).openCreation(record.id);
+  });
+  await expect(page.locator('#creationPreset')).toHaveValue('soft');await expect(page.locator('[data-style="radius"]')).toHaveValue('23');await expect(saveStyle).toBeEnabled();
+  const body=page.frameLocator('#creationPreview iframe').locator('body');await expect(body).toHaveCSS('background-color','rgb(245, 240, 247)');
+  await page.evaluate(()=>document.documentElement.dataset.theme='dark');await expect(body).toHaveCSS('background-color','rgb(245, 240, 247)');
+});
+
+test('旧跟随主题收藏不能作为个人默认，入口保护不会改写已有数据',async({page})=>{
+  await open(page);
+  const original=await page.evaluate(async()=>{
+    await window.SeekerRT.creations.save({id:'cr_legacy_auto_style',kind:'style',title:'跟随主题收藏',content:{},style:{theme:'auto'},source:{},projectId:'',deleted:false},0);
+    const value=JSON.stringify({name:'跟随主题收藏',style:{theme:'auto'}});localStorage.setItem('seeker-creation-style',value);return value;
+  });
+  await page.locator('[data-id="settings"]').click();await page.locator('[data-stab="creations"]').click();
+  await expect(page.locator('#creationDefaultStyle option[value="cr_legacy_auto_style"]')).toHaveJSProperty('disabled',true);
+  await expect(page.locator('#creationStyleSettings')).toContainText('Widget 跟随应用主题');
+  expect(await page.evaluate(async()=>{
+    try{(await import('/platform/creations/style-preferences.js')).saveCreationStylePreference('不应保存',{theme:'auto'});return 'accepted';}catch(e){return e.message;}
+  })).toContain('独立风格');
+  expect(await page.evaluate(()=>localStorage.getItem('seeker-creation-style'))).toBe(original);
+  await page.locator('[data-id="creations"]').click();await page.getByRole('button',{name:'+ 新建知识卡片',exact:true}).click();
+  await expect(page.locator('#creationPersonalStyle option[value="cr_legacy_auto_style"]')).toHaveJSProperty('disabled',true);
+  await page.evaluate(async()=>(await import('/platform/creations/personal-styles.js')).openSaveStyle({theme:'auto'}));
+  await expect(page.locator('#personalStyleName')).toHaveCount(0);await expect(page.locator('.toast').last()).toContainText('独立风格');
+  expect((await page.evaluate(()=>window.SeekerRT.db.get('platform_creations','cr_legacy_auto_style'))).style.theme).toBe('auto');
+});
+
 test('个人样式跨作品复用，默认值显式设置与重启保留，删除撤销及完整备份往返',async({page})=>{
   await open(page);await page.getByRole('button',{name:'+ 新建知识卡片',exact:true}).click();await page.locator('#creationPreset').selectOption('dark');await page.locator('[data-style="radius"]').fill('21');
   await page.getByRole('button',{name:'保存到我的样式',exact:true}).click();await page.locator('#personalStyleName').fill('夜间阅读');await page.locator('#personalStyleSave').click();await expect(page.locator('#creationPersonalStyle option')).toHaveCount(2);expect(await page.evaluate(()=>localStorage.getItem('seeker-creation-style'))).toBeNull();

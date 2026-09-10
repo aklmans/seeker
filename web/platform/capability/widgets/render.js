@@ -94,12 +94,14 @@ const followsTheme=style=>!style||style.theme==='auto';
 // ── 活跃端口注册表 + 主题广播(切深浅色时热推给所有 widget)──────
 /** @type {Set<MessagePort>} */
 const PORTS = new Set();
-/** @type {Map<MessagePort,HTMLIFrameElement>} */
-const FRAMES = new Map();
+/** Includes fixed-style widgets: their snapshot ports need the same lifetime as theme ports.
+ * @type {Map<MessagePort,{frame:HTMLIFrameElement,dispose:(reason:string)=>void}>} */
+const CHANNELS = new Map();
 /** @type {WeakMap<HTMLElement,( )=>Promise<{html:string,width:number}>>} */
 const SNAPSHOTS = new WeakMap();
 /** @param {HTMLElement} card */
 export async function requestWidgetSnapshot(card){
+  if(!card.isConnected)throw Error(closedWidgetMessage());
   let request=SNAPSHOTS.get(card);
   if(!request){
     const frame=card.querySelector('iframe');
@@ -116,13 +118,26 @@ export async function requestWidgetSnapshot(card){
 }
 /** @type {MutationObserver | null} */
 let themeObserver = null;
+/** @type {MutationObserver | null} */
+let removalObserver = null;
+const closedWidgetMessage=()=>tt('组件已关闭，请重新打开后导出','Widget closed; reopen it to export');
+
+/** A shared observer handles direct removal and ancestor replacement in the same DOM turn. */
+function ensureRemovalObserver(){
+  if(removalObserver)return;
+  removalObserver=new MutationObserver(()=>{
+    for(const {frame,dispose} of CHANNELS.values())if(!frame.isConnected)dispose(closedWidgetMessage());
+  });
+  removalObserver.observe(document.documentElement,{childList:true,subtree:true});
+}
 
 function broadcastTheme() {
   const vars = themeVarsObject();
   for (const port of PORTS) {
-    if(!FRAMES.get(port)?.isConnected){port.close();PORTS.delete(port);FRAMES.delete(port);continue;}
+    const channel=CHANNELS.get(port);
+    if(!channel?.frame.isConnected){channel?.dispose(closedWidgetMessage());continue;}
     try { port.postMessage({ type: 'theme', vars, mode:document.documentElement.dataset.theme==='dark'?'dark':'light' }); }
-    catch (_e) { PORTS.delete(port); }
+    catch (_e) { channel.dispose(tt('组件连接已关闭，请重新打开','Widget connection closed; reopen it')); }
   }
 }
 
@@ -269,15 +284,24 @@ export function renderWidget(payload, options = {}) {
   }
 
   // W2/W3:iframe 加载后建专属 MessageChannel,port2 交沙箱 bridge,port1 留父侧零信任处理入站。
+  /** @type {(reason?:string)=>void} */
   let clearChannel=()=>{};
   frame.addEventListener('load', () => {
     clearChannel();
     markReady(); // 内容已出,撤加载态
+    if(!card.isConnected||!card.contains(frame))return;
     try {
       const ch = new MessageChannel();
       /** @type {Map<string,{resolve:(v:{html:string,width:number})=>void,reject:(e:Error)=>void,timer:ReturnType<typeof setTimeout>}>} */
       const requests=new Map();
-      clearChannel=()=>{PORTS.delete(ch.port1);FRAMES.delete(ch.port1);ch.port1.close();for(const request of requests.values()){clearTimeout(request.timer);request.reject(Error(tt('组件已重新加载，请重试导出','Widget reloaded; retry export')));}requests.clear();};
+      clearChannel=(reason=tt('组件已重新加载，请重试导出','Widget reloaded; retry export'))=>{
+        PORTS.delete(ch.port1);CHANNELS.delete(ch.port1);SNAPSHOTS.delete(card);
+        ch.port1.onmessage=null;ch.port1.close();
+        for(const request of requests.values()){clearTimeout(request.timer);request.reject(Error(reason));}
+        requests.clear();clearChannel=()=>{};
+        if(!PORTS.size){themeObserver?.disconnect();themeObserver=null;}
+        if(!CHANNELS.size){removalObserver?.disconnect();removalObserver=null;}
+      };
       SNAPSHOTS.set(card,()=>new Promise((resolve,reject)=>{
         const requestId=crypto.randomUUID();
         const timer=setTimeout(()=>{requests.delete(requestId);reject(new Error(tt('组件未响应，请重新打开后重试','Widget did not respond; reopen and retry')));},8000);
@@ -313,13 +337,15 @@ export function renderWidget(payload, options = {}) {
           }
         }
       };
-      if(followsTheme(options.style)){PORTS.add(ch.port1);FRAMES.set(ch.port1,frame);ensureThemeObserver();}
+      CHANNELS.set(ch.port1,{frame,dispose:clearChannel});ensureRemovalObserver();
+      if(followsTheme(options.style)){PORTS.add(ch.port1);ensureThemeObserver();}
       if (frame.contentWindow) {
         frame.contentWindow.postMessage('__seeker_widget_port', '*', [ch.port2]);
         // Catch a theme change between srcdoc construction and port readiness.
         if(followsTheme(options.style))ch.port1.postMessage({type:'theme',vars:themeVarsObject(),mode:document.documentElement.dataset.theme==='dark'?'dark':'light'});
       }
     } catch (e) {
+      clearChannel();
       console.error('[widget] 端口建立失败', e);
     }
   });

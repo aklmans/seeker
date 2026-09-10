@@ -15,6 +15,7 @@ export async function personalStyles(){
 /** Saving a style never changes defaults or another creation. @param {{[k:string]:unknown}} input */
 export function openSaveStyle(input){
   const style=normalizeStyle(input);
+  if(style.theme==='auto'){toast(tt('请先选择独立风格，再保存到我的样式','Choose an independent style before saving to My styles'));return;}
   const modal=openCreationModal(tt('保存到我的样式','Save to My styles'),`<p>${tt('保存这一套颜色、字体和排版，之后可应用到其他作品。','Save these colors, fonts and layout controls to reuse in other creations.')}</p><label class="creation-label">${tt('样式名称','Style name')}<input class="input" id="personalStyleName" maxlength="100"></label><p id="personalStyleStatus" role="status"></p>`,`<button class="btn" data-close>${tt('取消','Cancel')}</button><button class="btn btn-accent" id="personalStyleSave">${tt('保存样式','Save style')}</button>`);
   if(!modal)return;
   const name=/** @type {HTMLInputElement} */(modal.querySelector('#personalStyleName'));
@@ -25,12 +26,19 @@ export function openSaveStyle(input){
     if(modal.isConnected)closeModal();toast(tt('已保存到我的样式','Saved to My styles'));
   }catch(e){const status=modal.querySelector('#personalStyleStatus');if(status)status.textContent=errText(e);}finally{save.disabled=false;name.disabled=false;}};
 }
+/** Keep legacy auto collections visible and removable, but never reuse them as independent styles.
+ * @param {import('../runtime/types').CreationRecord} row @param {string} [prefix] */
+function personalStyleOption(row,prefix=''){
+  const option=new Option(prefix+row.title,row.id);
+  if(row.style.theme==='auto'){option.disabled=true;option.textContent+=tt(' · 请重新保存为独立风格',' · Save again as an independent style');}
+  return option;
+}
 /** @param {HTMLSelectElement} select @param {(style:import('./style').CreationStyle)=>void} apply */
 export async function mountPersonalStylePicker(select,apply){
   try{const rows=await personalStyles();if(!select.isConnected)return;
     select.replaceChildren(new Option(tt('选择我的样式…','Choose a saved style…'),''));
-    for(const row of rows)select.add(new Option(row.title,row.id));
-    select.onchange=()=>{const row=rows.find(r=>r.id===select.value);if(row){apply(normalizeStyle(row.style));select.value='';}};
+    for(const row of rows)select.add(personalStyleOption(row));
+    select.onchange=()=>{const row=rows.find(r=>r.id===select.value);if(row&&row.style.theme!=='auto'){apply(normalizeStyle(row.style));select.value='';}};
   }catch{select.replaceChildren(new Option(tt('样式读取失败，请重新打开','Could not load styles; reopen'),''));}
 }
 /** Trusted settings surface, with reversible removal and an explicit copied default.
@@ -47,7 +55,7 @@ export async function renderCreationStyleSettings(host){
     select.add(new Option(tt('请选择…','Choose…'),''));
     select.add(new Option(tt('应用默认','App default'),'default'));
     for(const preset of STYLE_PRESETS)select.add(new Option(tt(preset.zh,preset.en),'preset:'+preset.id));
-    for(const row of rows)select.add(new Option(tt('我的样式 · ','My style · ')+row.title,row.id));
+    for(const row of rows)select.add(personalStyleOption(row,tt('我的样式 · ','My style · ')));
     const status=document.createElement('p');status.setAttribute('role','status');status.id='creationDefaultStatus';
     const save=document.createElement('button');save.className='btn btn-accent';save.id='creationDefaultSave';save.textContent=tt('设为新作品默认样式','Set default for new creations');
     save.onclick=()=>{try{
