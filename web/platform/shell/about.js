@@ -64,8 +64,8 @@ export function renderAbout() {
     <div class="sec">
       <p class="seclabel">— ${tt('项目', 'PROJECT')}</p>
       <p style="font-size:12.5px;color:var(--ink-3);line-height:1.9;max-width:640px;margin-top:10px;">${tt(
-        'Tauri 2(Rust 内核 + 系统 WebView),前端原生 HTML/CSS/JS、零框架。开源(MIT),由一名开发者与 AI 结对完成 —— 每条安全红线都用测试守住。当前 v0.4.0,正在收集真实使用反馈;用得顺手或别扭都欢迎告诉我。',
-        'Tauri 2 (Rust core + system WebView), with a framework-free HTML/CSS/JavaScript frontend. Open source (MIT), built by one developer pairing with AI, with tests guarding every security boundary. Now at v0.4.0 and collecting real-world feedback — rough edges are welcome.'
+        'Tauri 2(Rust 内核 + 系统 WebView),前端原生 HTML/CSS/JS、零框架。开源(MIT),由一名开发者与 AI 结对完成 —— 每条安全红线都用测试守住。当前 v0.4.1,正在收集真实使用反馈;用得顺手或别扭都欢迎告诉我。',
+        'Tauri 2 (Rust core + system WebView), with a framework-free HTML/CSS/JavaScript frontend. Open source (MIT), built by one developer pairing with AI, with tests guarding every security boundary. Now at v0.4.1 and collecting real-world feedback — rough edges are welcome.'
       )}</p>
       <button class="btn-text" id="aboutReplay" style="margin-top:10px;">${tt('重看新手引导 →', 'Replay the welcome tour →')}</button>
     </div>

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.4.0"
+version = "0.4.1"
 description = "Seeker（探索者）— 整合对话、资料、可编辑作品与任务 Agent 的本地优先个人 AI 工作空间"
 authors = ["Aklman <zhapar.dev@gmail.com>"]
 license = ""

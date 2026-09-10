@@ -1,6 +1,6 @@
 # 快速上手 · QUICKSTART
 
-本文对应 Seeker v0.4.0 的个人 AI 工作空间。公开 [Releases](https://github.com/aklmans/seeker/releases) 提供桌面安装包；在线体验适合了解界面与浏览器能力，文件、钥匙串、完整连接器和任务执行以桌面版为准。
+本文对应 Seeker v0.4.1 的个人 AI 工作空间。公开 [Releases](https://github.com/aklmans/seeker/releases) 提供桌面安装包；在线体验适合了解界面与浏览器能力，文件、钥匙串、完整连接器和任务执行以桌面版为准。
 
 ## 先做什么
 

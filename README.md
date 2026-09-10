@@ -11,7 +11,7 @@ Seeker 不是围绕单一场景组织的“求职工作台”，也不只是一�
 - **可编辑作品**：把内容变成知识卡片、思维导图、对比表和时间线，继续编辑、换风格、留版本并导出
 - **任务 Agent**：把多步骤工作交给受控状态机执行，支持暂停、继续、取消、退出恢复和机器验证
 
-**v0.4.0** 已包含上述个人工作空间主线，以及工作空间配置、数据管理、能力中心和可开关的求职应用。完整工程验收见 [第一轮验收](docs/ROUND-1-ACCEPTANCE.md) 与 [第二轮验收](docs/ROUND-2-ACCEPTANCE.md)。
+**v0.4.1** 已包含上述个人工作空间主线，以及工作空间配置、数据管理、能力中心和可开关的求职应用。完整工程验收见 [第一轮验收](docs/ROUND-1-ACCEPTANCE.md) 与 [第二轮验收](docs/ROUND-2-ACCEPTANCE.md)。
 
 [下载桌面版](https://github.com/aklmans/seeker/releases/latest) · [在线体验](https://aklmans.github.io/seeker/) · [快速开始](docs/QUICKSTART.md)
 
