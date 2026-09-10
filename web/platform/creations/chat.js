@@ -1,7 +1,7 @@
 // @ts-check
 import {tt} from '../shell/i18n.js';
 import {renderWidget,buildSrcDoc} from '../capability/widgets/render.js';
-import {defaultCreationStyle} from './style-preferences.js';
+import {defaultWidgetStyle} from './style-preferences.js';
 import {saveGeneratedWidget} from './store.js';
 import {openCreation} from './page.js';
 import {openExport} from './export.js';
@@ -14,7 +14,7 @@ export function appendCreationLink(host,id){
 }
 /** @param {import('../runtime/types').WidgetPayload} widget @param {{conversationId?:string,projectId?:string,turnId?:string}} scope */
 export function renderAndSaveWidget(widget,scope){
-  const style=defaultCreationStyle(),card=renderWidget(widget,{style});
+  const style=defaultWidgetStyle(),card=renderWidget(widget,{style});
   const bar=document.createElement('div');bar.className='creation-toolbar';card.appendChild(bar);
   const status=document.createElement('span');status.setAttribute('role','status');bar.appendChild(status);
   const exportButton=document.createElement('button');exportButton.className='btn';exportButton.textContent=tt('导出 / 分享','Export / Share');exportButton.onclick=()=>{void openExport(card,widget.title,undefined,{style,source:tt('AI 对话','AI chat'),offlineHTML:buildSrcDoc(widget.html,style)});};bar.appendChild(exportButton);

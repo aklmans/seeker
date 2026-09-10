@@ -36,6 +36,7 @@ test('同时编辑仅一方提交，事务失败不改变记录，完整备份�
 test('生成 Widget 自动保存且历史重开，沙箱和独立风格跨主题保留',async({page})=>{
   await open(page);
   await page.evaluate(async()=>{
+    (await import('/platform/creations/style-preferences.js')).saveCreationStylePreference('极简',{preset:'minimal'});
     const rt=window.SeekerRT;rt.ai.chatReady=()=>true;
     rt.ai.stream=(_req,h)=>{const done=(async()=>{h.onWidget({id:'w_1',title:'互动结果',html:'<h1>中文与数值</h1><button onclick="this.textContent=42">计算</button>'});h.onToken('这是一件作品');await h.onDone({text:'这是一件作品'});return {text:'这是一件作品'};})();return {done,cancel(){}};};
   });

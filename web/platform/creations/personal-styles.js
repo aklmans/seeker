@@ -40,15 +40,18 @@ export async function renderCreationStyleSettings(host){
   try{
     const rows=await personalStyles();if(!host.isConnected)return;host.replaceChildren();
     const current=creationStylePreference();
-    const info=document.createElement('p');info.textContent=tt('默认样式：','Default style: ')+(current.name||tt('极简','Minimal'));host.append(info);
-    const help=document.createElement('p');help.textContent=tt('选择后仅影响新作品。默认值是当前样式的副本，移除收藏不会改变它。AI 对话不能修改此设置。','Applies to new creations. The default is a copy; removing a saved style keeps it. AI chat cannot change this setting.');host.append(help);
+    const appDefault=tt('Widget 跟随应用主题，其他作品使用极简','Widgets follow the app theme; other creations use Minimal');
+    const info=document.createElement('p');info.textContent=tt('默认样式：','Default style: ')+(current.name||appDefault);host.append(info);
+    const help=document.createElement('p');help.textContent=tt('选择后仅影响新作品。个人默认样式保持独立配色；选择“应用默认”可让新 Widget 跟随深浅主题。移除收藏不会改变默认副本，AI 对话不能修改此设置。','Applies to new creations. Personal defaults keep their own colors; choose App default for new widgets to follow light/dark themes. Removing a saved style keeps the default copy. AI chat cannot change this setting.');host.append(help);
     const select=document.createElement('select');select.id='creationDefaultStyle';select.className='select';select.setAttribute('aria-label',tt('默认作品样式','Default creation style'));
     select.add(new Option(tt('请选择…','Choose…'),''));
+    select.add(new Option(tt('应用默认','App default'),'default'));
     for(const preset of STYLE_PRESETS)select.add(new Option(tt(preset.zh,preset.en),'preset:'+preset.id));
     for(const row of rows)select.add(new Option(tt('我的样式 · ','My style · ')+row.title,row.id));
     const status=document.createElement('p');status.setAttribute('role','status');status.id='creationDefaultStatus';
     const save=document.createElement('button');save.className='btn btn-accent';save.id='creationDefaultSave';save.textContent=tt('设为新作品默认样式','Set default for new creations');
     save.onclick=()=>{try{
+      if(select.value==='default'){saveCreationStylePreference('',{});info.textContent=tt('默认样式：','Default style: ')+appDefault;status.textContent=tt('已保存，仅影响之后的新作品','Saved; applies to new creations');return;}
       const preset=STYLE_PRESETS.find(p=>'preset:'+p.id===select.value),row=rows.find(r=>r.id===select.value);
       if(!preset&&!row)throw Error(tt('请先选择样式','Choose a style first'));
       const name=preset?tt(preset.zh,preset.en):/** @type {NonNullable<typeof row>} */(row).title;

@@ -1,0 +1,49 @@
+<h2>价格，如何找到平衡？</h2>
+<p>拖动参数，观察需求、供给与成交量如何变化。</p>
+<div class="sw-layout">
+  <section class="sw-chart" aria-label="市场变化">
+    <svg id="plot" viewBox="0 0 620 400" role="img" aria-label="需求与供给曲线，交点为市场均衡"></svg>
+    <div class="sw-legend"><span style="color:var(--chart-1)">D · 需求</span><span style="color:var(--chart-2)">S · 供给</span><span style="color:var(--chart-3)">E · 均衡点</span><span style="color:var(--chart-4)">虚线 · 当前价格</span></div>
+    <div class="sw-stats">
+      <div class="sw-stat"><small>均衡价格 P*</small><output id="peq">50.0</output></div>
+      <div class="sw-stat"><small>均衡数量 Q*</small><output id="qeq">50.0</output></div>
+      <div class="sw-stat"><small>当前需求量</small><output id="qd">50.0</output></div>
+      <div class="sw-stat"><small>当前供给量</small><output id="qs">50.0</output></div>
+    </div>
+    <p class="sw-note" id="status" role="status" aria-live="polite"></p>
+  </section>
+  <section class="sw-controls" aria-label="调整参数">
+    <label class="sw-field" for="dshift">需求变化 <output id="dv">0</output><input id="dshift" type="range" min="-20" max="30" value="0"><small>增大时，需求曲线向右移动</small></label>
+    <label class="sw-field" for="sshift">供给变化 <output id="sv">0</output><input id="sshift" type="range" min="-20" max="30" value="0"><small>增大时，供给曲线向右移动</small></label>
+    <label class="sw-field" for="dslope">需求价格敏感度 <output id="dslopev">1.0</output><input id="dslope" type="range" min="6" max="18" value="10"></label>
+    <label class="sw-field" for="sslope">供给价格敏感度 <output id="sslopev">1.0</output><input id="sslope" type="range" min="6" max="18" value="10"></label>
+    <label class="sw-field" for="price">当前价格 <output id="pv">50</output><input id="price" type="range" min="0" max="100" value="50"></label>
+    <button id="reset">恢复初始参数</button>
+    <details><summary>这个模型如何计算</summary><p>需求 Qd = 100 + 需求变化 − bP；供给 Qs = 供给变化 + dP。b、d 是价格敏感度，均衡时两者相等。负数量按 0 显示。这是简化的教学模型。</p></details>
+  </section>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id),ids=['dshift','sshift','dslope','sslope','price'];
+  const initial={dshift:0,sshift:0,dslope:10,sslope:10,price:50};
+  function render(){
+    const ds=Number($('dshift').value),ss=Number($('sshift').value),b=Number($('dslope').value)/10,d=Number($('sslope').value)/10,p=Number($('price').value);
+    const A=100+ds,C=ss,pe=(A-C)/(b+d),qe=C+d*pe,qd=Math.max(0,A-b*p),qs=Math.max(0,C+d*p);
+    for(const [id,value] of Object.entries({dv:ds,sv:ss,dslopev:b.toFixed(1),sslopev:d.toFixed(1),pv:p,peq:pe.toFixed(1),qeq:qe.toFixed(1),qd:qd.toFixed(1),qs:qs.toFixed(1)}))$(id).textContent=String(value);
+    $('status').textContent=qd-qs>1?'出现短缺：想买的数量多于想卖的数量，价格有上升压力。':qd-qs< -1?'出现过剩：供给多于需求，价格有下降压力。':'接近均衡：需求量与供给量相等，市场出清。';
+    const L=52,T=20,pw=544,ph=328,maxQ=150,maxP=110;
+    const X=q=>L+q/maxQ*pw,Y=v=>T+(maxP-v)/maxP*ph;
+    let out='<defs><clipPath id="plotClip"><rect x="52" y="20" width="544" height="328"/></clipPath></defs>';
+    for(let q=0;q<=150;q+=30)out+=`<line x1="${X(q)}" y1="${Y(0)}" x2="${X(q)}" y2="${Y(110)}" stroke="var(--border)"/><text x="${X(q)}" y="${Y(0)+22}" text-anchor="middle" fill="var(--ink-3)" font-size="12">${q}</text>`;
+    for(let p=0;p<=100;p+=20)out+=`<line x1="${X(0)}" y1="${Y(p)}" x2="${X(150)}" y2="${Y(p)}" stroke="var(--border)"/><text x="${X(0)-10}" y="${Y(p)+4}" text-anchor="end" fill="var(--ink-3)" font-size="12">${p}</text>`;
+    out+=`<text x="${X(150)}" y="392" text-anchor="end" fill="var(--ink-2)" font-size="12">数量 Q</text><text x="8" y="14" fill="var(--ink-2)" font-size="12">价格 P</text><g clip-path="url(#plotClip)">`;
+    out+=`<line data-curve="demand" x1="${X(A-b*110)}" y1="${Y(110)}" x2="${X(A)}" y2="${Y(0)}" stroke="var(--chart-1)" stroke-width="3"/><line data-curve="supply" x1="${X(C)}" y1="${Y(0)}" x2="${X(C+d*110)}" y2="${Y(110)}" stroke="var(--chart-2)" stroke-width="3"/>`;
+    out+=`<line x1="${X(qe)}" y1="${Y(0)}" x2="${X(qe)}" y2="${Y(pe)}" stroke="var(--chart-3)" stroke-dasharray="3 4"/><circle cx="${X(qe)}" cy="${Y(pe)}" r="5" fill="var(--chart-3)"/><text x="${X(qe)+10}" y="${Y(pe)-10}" fill="var(--chart-3)" font-size="13">E</text>`;
+    out+=`<line x1="${X(0)}" y1="${Y(p)}" x2="${X(150)}" y2="${Y(p)}" stroke="var(--chart-4)" stroke-width="1.5" stroke-dasharray="7 5"/><circle cx="${X(qd)}" cy="${Y(p)}" r="4" fill="var(--chart-1)"/><circle cx="${X(qs)}" cy="${Y(p)}" r="4" fill="var(--chart-2)"/></g>`;
+    $('plot').innerHTML=out;
+  }
+  ids.forEach(id=>$(id).addEventListener('input',render));
+  $('reset').addEventListener('click',()=>{ids.forEach(id=>$(id).value=initial[id]);render();});
+  render();
+})();
+</script>

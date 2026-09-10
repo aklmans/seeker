@@ -128,12 +128,12 @@ function drawEditor(record){
   const host=document.getElementById('creationEditor');if(!host)return;
   const epoch=++editorEpoch;
   dirty=false;
-  const s=normalizeStyle(record.style);
+  const s=normalizeStyle({...record.style,...(record.kind==='widget'?{}:{theme:undefined})});
   host.innerHTML=`<div class="creation-toolbar"><span class="eyebrow">v${record.revision}</span><div id="creationActions"></div></div>
     <label class="creation-label">${tt('作品名称','Creation title')}<input class="input" id="creationTitle" maxlength="200" value="${esc(record.title)}"></label>
     <p id="creationSaveStatus" role="status">${tt('已保存到本机','Saved on this device')}</p>
     <div class="creation-toolbar"><label>${tt('我的样式','My styles')} <select class="select" id="creationPersonalStyle"><option>${tt('读取中…','Loading…')}</option></select></label><div id="creationStyleActions"></div></div>
-    <div class="creation-style-controls"><label>${tt('风格','Style')}<select class="select" id="creationPreset">${STYLE_PRESETS.map(p=>`<option value="${p.id}">${tt(p.zh,p.en)}</option>`).join('')}</select></label>
+    <div class="creation-style-controls"><label>${tt('风格','Style')}<select class="select" id="creationPreset">${record.kind==='widget'?`<option value="auto">${tt('跟随应用主题','Follow app theme')}</option>`:''}${STYLE_PRESETS.map(p=>`<option value="${p.id}">${tt(p.zh,p.en)}</option>`).join('')}</select></label>
     ${[['background','背景','Background'],['foreground','文字','Text'],['accent','强调色','Accent'],['surface','卡片底色','Card background']].map(([k,zh,en])=>`<label>${tt(zh,en)}<input type="color" data-style="${k}" value="${esc(/** @type {any} */(s)[k])}"></label>`).join('')}
     <label>${tt('字体','Font')}<select class="select" data-style="font"><option value="sans">${tt('无衬线','Sans')}</option><option value="serif">${tt('衬线','Serif')}</option><option value="mono">${tt('等宽','Mono')}</option></select></label>
     <label ${record.kind==='mindmap'?'':'hidden'}>${tt('连线','Connectors')}<select class="select" data-style="edge"><option value="curve">${tt('曲线','Curves')}</option><option value="line">${tt('直线','Lines')}</option><option value="sketch">${tt('手绘虚线','Sketch')}</option></select></label>
@@ -145,10 +145,12 @@ function drawEditor(record){
   const title=/** @type {HTMLInputElement} */(host.querySelector('#creationTitle'));
   const text=/** @type {HTMLTextAreaElement} */(host.querySelector('#creationText'));
   const html=/** @type {HTMLTextAreaElement} */(host.querySelector('#creationHTML'));
-  const preset=/** @type {HTMLSelectElement} */(host.querySelector('#creationPreset'));preset.value=s.preset;
+  const preset=/** @type {HTMLSelectElement} */(host.querySelector('#creationPreset'));preset.value=s.theme==='auto'?'auto':s.preset;
   /** @type {HTMLSelectElement} */(host.querySelector('[data-style="font"]')).value=s.font;
   /** @type {HTMLSelectElement} */(host.querySelector('[data-style="edge"]')).value=s.edge;
   let style={...s};
+  const syncStyleControls=()=>{for(const node of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(node);el.disabled=style.theme==='auto';el.title=style.theme==='auto'?tt('选择独立风格后可自定义','Choose an independent style to customize'):'';}};
+  syncStyleControls();
   /** @type {ReturnType<typeof mountMindMapEditor>|null} */let mindEditor=null;
   /** @type {ReturnType<typeof mountStructuredEditor>|null} */let structuredEditor=null;
   const draft=()=>({...creationDraft(record),title:title.value,content:mindEditor?mindEditor.value():structuredEditor?structuredEditor.value():record.kind==='widget'?{...record.content,html:html.value}:{...record.content,text:text.value},style});
@@ -161,10 +163,10 @@ function drawEditor(record){
     const el=/** @type {HTMLInputElement} */(input);el.oninput=()=>{const key=el.dataset.style||'';style=normalizeStyle({...style,[key]:el.type==='number'?Number(el.value):el.value});changed();};
   }
   const applyStyle=(/** @type {import('./style').CreationStyle} */next)=>{
-    style=normalizeStyle(next);preset.value=style.preset;
-    for(const input of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(input);el.value=String(/** @type {any} */(style)[el.dataset.style||'']);}changed();
+    style=normalizeStyle({...next,...(record.kind==='widget'?{}:{theme:undefined})});preset.value=style.theme==='auto'?'auto':style.preset;
+    for(const input of host.querySelectorAll('[data-style]')){const el=/** @type {HTMLInputElement} */(input);el.value=String(/** @type {any} */(style)[el.dataset.style||'']);}syncStyleControls();changed();
   };
-  preset.onchange=()=>applyStyle(normalizeStyle({preset:preset.value}));
+  preset.onchange=()=>applyStyle(normalizeStyle(preset.value==='auto'?{...style,theme:'auto'}:{preset:preset.value}));
   const personalPicker=/** @type {HTMLSelectElement} */(host.querySelector('#creationPersonalStyle'));
   void mountPersonalStylePicker(personalPicker,applyStyle);
   const refreshStyles=()=>{if(epoch===editorEpoch&&host.isConnected)void mountPersonalStylePicker(personalPicker,applyStyle);else window.removeEventListener('seeker-creations-changed',refreshStyles);};

@@ -12,7 +12,8 @@
  * 自适应高度、主题热跟随、交互回流与**加载/错误兜底**。
  */
 
-import {styleCSS} from '../../creations/style.js';
+import {styleCSS,normalizeStyle} from '../../creations/style.js';
+import {WIDGET_CSS} from './design-system.js';
 import {tt} from '../../shell/i18n.js';
 import {snapshotWidget} from './snapshot.js';
 /** srcDoc 内 CSP:掐断网络;允许内联样式/脚本(widget 必需);图片仅 data:。 */
@@ -76,13 +77,19 @@ function themeVarsObject() {
       if (v) o[n] = v;
     }
   } catch (_e) { /* ignore */ }
+  Object.assign(o,chartVars(document.documentElement.dataset.theme==='dark'));
   return o;
 }
 
-/** @returns {string} `:root{...}` 内容(静态初值;后续热更新走端口)。 */
-function themeSnapshot() {
-  return Object.entries(themeVarsObject()).map(([n, v]) => `${n}:${v}`).join(';');
+/** Categorical colors are readable in both themes, independent from the single CTA accent.
+ * @param {boolean} dark */
+function chartVars(dark){
+  return {'--chart-1':dark?'#88afc4':'#476e87','--chart-2':dark?'#dba07e':'#a36543',
+    '--chart-3':dark?'#a9b99a':'#607a56','--chart-4':dark?'#b7a5ce':'#84699e',
+    '--widget-color-scheme':dark?'dark':'light','--widget-on-accent':dark?'#1a1a1a':'#ffffff'};
 }
+/** @param {{[key:string]:unknown}|undefined} style */
+const followsTheme=style=>!style||style.theme==='auto';
 
 // ── 活跃端口注册表 + 主题广播(切深浅色时热推给所有 widget)──────
 /** @type {Set<MessagePort>} */
@@ -114,7 +121,7 @@ function broadcastTheme() {
   const vars = themeVarsObject();
   for (const port of PORTS) {
     if(!FRAMES.get(port)?.isConnected){port.close();PORTS.delete(port);FRAMES.delete(port);continue;}
-    try { port.postMessage({ type: 'theme', vars }); }
+    try { port.postMessage({ type: 'theme', vars, mode:document.documentElement.dataset.theme==='dark'?'dark':'light' }); }
     catch (_e) { PORTS.delete(port); }
   }
 }
@@ -142,24 +149,29 @@ const BRIDGE = "(function(){var port=null,t=0,last=0,pendingErr=null;" + snapsho
   "if(e.data==='__seeker_widget_port'&&e.ports&&e.ports[0]){port=e.ports[0];" +
   "port.onmessage=function(ev){var d=ev.data;if(!d||typeof d!=='object')return;" +
   "if(d.type==='widget-snapshot'){try{send({type:'widget-snapshot',requestId:d.requestId,result:snapshotWidget()});}catch(e){send({type:'widget-snapshot',requestId:d.requestId,error:String(e)});}return;}" +
-  "if(d.type==='theme'&&d.vars){var r=document.documentElement;for(var k in d.vars){if(Object.prototype.hasOwnProperty.call(d.vars,k))r.style.setProperty(k,String(d.vars[k]));}}};" +
+  "if(d.type==='theme'&&d.vars){var r=document.documentElement;for(var k in d.vars){if(Object.prototype.hasOwnProperty.call(d.vars,k))r.style.setProperty(k,String(d.vars[k]));}r.dataset.theme=d.mode==='dark'?'dark':'light';window.dispatchEvent(new Event('seeker:themechange'));schedule();}};" +
   "report();if(pendingErr){send({type:'widget-error',message:pendingErr});}}});" +
   "if(window.ResizeObserver){try{new ResizeObserver(schedule).observe(document.documentElement);}catch(e){}}" +
+  "window.addEventListener('resize',function(){window.dispatchEvent(new Event('seeker:resize'));schedule();});" +
   "document.addEventListener('DOMContentLoaded',report);window.addEventListener('load',report);" +
   "})();";
 
 /**
  * 构造 srcDoc:可信外壳(CSP + reset + 主题 + bridge)包裹不可信 body。
  * @param {string} html 不可信(已 sanitize)HTML 片段
- * @param {{[key:string]:unknown}=} style Independent saved output style; omitted for legacy widgets.
+ * @param {{[key:string]:unknown}=} style Saved output style; omitted or theme=auto inherits the app.
  * @returns {string}
  */
 export function buildSrcDoc(html, style) {
-  const theme = style ? '' : themeSnapshot();
+  const auto=followsTheme(style),s=normalizeStyle(style);
+  const rgb=s.background.slice(1).match(/../g)?.map(v=>parseInt(v,16))||[255,255,255];
+  const dark=auto?document.documentElement.dataset.theme==='dark':(rgb[0]*.299+rgb[1]*.587+rgb[2]*.114)<128;
+  const vars=auto?themeVarsObject():chartVars(dark);
+  const theme=Object.entries(vars).map(([n,v])=>`${n}:${v}`).join(';');
   return (
-    '<!doctype html><html><head><meta charset="utf-8">' +
+    `<!doctype html><html data-theme="${dark?'dark':'light'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta http-equiv="Content-Security-Policy" content="${SRCDOC_CSP}">` +
-    `<style>:root{${theme};${FONT_VARS}}${BASE_CSS}${style ? styleCSS(style) : ''}</style></head><body>` +
+    `<style>:root{${theme};${FONT_VARS}}${BASE_CSS}${WIDGET_CSS}${auto ? '' : styleCSS(s)}</style></head><body>` +
     '<script>' + BRIDGE + '<\/script>' + // bridge 先于不可信内容,确保 window.seeker 就绪
     (html || '') +
     '</body></html>'
@@ -167,7 +179,7 @@ export function buildSrcDoc(html, style) {
 }
 
 /**
- * 渲染一张 widget 卡:可信外壳(标题栏 + SANDBOXED 标记)+ 隔离 iframe + 端口桥接 + 加载/错误兜底。
+ * 渲染一张 widget 卡:可信标题栏 + 隔离 iframe + 端口桥接 + 加载/错误兜底。
  * 返回卡片元素,由调用方(domain)插入对话流。
  * @param {import('../../runtime/types').WidgetPayload} payload
  * @param {{style?:{[key:string]:unknown}}} [options]
@@ -183,18 +195,19 @@ export function renderWidget(payload, options = {}) {
   card.className = 'widget-card';
   card.setAttribute('data-widget-id', id);
   card.setAttribute('role', 'group'); // a11y
-  card.setAttribute('aria-label', 'AI 组件 · ' + title);
+  card.setAttribute('aria-label', tt('AI 组件 · ','AI widget · ') + title);
   card.style.cssText =
     'border:0.5px solid var(--border-strong,#c0bfba);background:var(--bg-elevated,#fff);margin:10px 0;max-width:92%;overflow:hidden;';
 
-  // 可信 chrome:标题栏 + SANDBOXED 标记(沿用原型设计 token;静态内容,无注入面)。
+  // 可信标题栏(沿用应用设计 token;静态文案,无注入面)。
   const bar = document.createElement('div');
   bar.style.cssText =
     "display:flex;align-items:center;gap:7px;padding:7px 12px;border-bottom:0.5px solid var(--border,#e5e3de);background:var(--bg-subtle,#f5f2ec);font-family:var(--font-mono,monospace);";
   bar.innerHTML =
     '<span style="width:6px;height:6px;border-radius:50%;background:var(--accent,#c95f3d);flex:0 0 auto;"></span>' +
     '<span class="widget-title" style="font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3,#6b6b6b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>' +
-    '<span style="margin-left:auto;flex:0 0 auto;font-size:8.5px;letter-spacing:.08em;color:var(--ink-mute,#9a9a9a);border:0.5px solid var(--border,#e5e3de);padding:1px 5px;">SANDBOXED</span>';
+    '<span class="widget-kind" style="margin-left:auto;flex:0 0 auto;font-size:10px;letter-spacing:.04em;color:var(--ink-3,#6b6b6b);"></span>';
+  const kind=bar.querySelector('.widget-kind');if(kind)kind.textContent=tt('交互作品','Interactive');
   const titleEl = bar.querySelector('.widget-title'); // 标题来自 LLM → textContent 防注入
   if (titleEl) titleEl.textContent = title;
 
@@ -235,7 +248,7 @@ export function renderWidget(payload, options = {}) {
 
   // ── 错误兜底(沙箱内脚本异常)——展示一条安心提示,不影响主应用 ──
   let errShown = false;
-  function showError() {
+  function showError(/** @type {unknown} */message) {
     if (errShown) return;
     errShown = true;
     markReady();
@@ -244,17 +257,27 @@ export function renderWidget(payload, options = {}) {
     e.style.cssText =
       'padding:8px 12px;border-top:0.5px solid var(--border,#e5e3de);background:var(--bg-subtle,#f5f2ec);' +
       'color:var(--ink-3,#6b6b6b);font-size:12px;font-family:var(--font-sans,sans-serif);';
-    e.textContent = tt('组件运行出错(已隔离,不影响应用)。','Widget error (isolated from the app).');
+    e.setAttribute('role','status');
+    e.textContent = tt('部分内容未能显示。可以重新加载，或打开作品修复内容。','Some content could not be displayed. Reload, or open the creation to repair its content.');
+    const details=document.createElement('details'),summary=document.createElement('summary'),error=document.createElement('pre');
+    summary.textContent=tt('错误详情','Error details');error.textContent=typeof message==='string'?message.slice(0,200):tt('组件脚本出错','Widget script error');
+    error.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;';details.append(summary,error);
+    const retry=document.createElement('button');retry.className='btn';retry.textContent=tt('重新加载（重置交互）','Reload (reset interaction)');
+    retry.onclick=()=>{e.remove();errShown=false;frame.srcdoc=buildSrcDoc(html,options.style);};
+    e.append(details,retry);
     card.appendChild(e);
   }
 
   // W2/W3:iframe 加载后建专属 MessageChannel,port2 交沙箱 bridge,port1 留父侧零信任处理入站。
+  let clearChannel=()=>{};
   frame.addEventListener('load', () => {
+    clearChannel();
     markReady(); // 内容已出,撤加载态
     try {
       const ch = new MessageChannel();
       /** @type {Map<string,{resolve:(v:{html:string,width:number})=>void,reject:(e:Error)=>void,timer:ReturnType<typeof setTimeout>}>} */
       const requests=new Map();
+      clearChannel=()=>{PORTS.delete(ch.port1);FRAMES.delete(ch.port1);ch.port1.close();for(const request of requests.values()){clearTimeout(request.timer);request.reject(Error(tt('组件已重新加载，请重试导出','Widget reloaded; retry export')));}requests.clear();};
       SNAPSHOTS.set(card,()=>new Promise((resolve,reject)=>{
         const requestId=crypto.randomUUID();
         const timer=setTimeout(()=>{requests.delete(requestId);reject(new Error(tt('组件未响应，请重新打开后重试','Widget did not respond; reopen and retry')));},8000);
@@ -277,7 +300,7 @@ export function renderWidget(payload, options = {}) {
           frame.style.height = Math.max(40, Math.min(max, Math.ceil(msg.height))) + 'px';
           return;
         }
-        if (msg.type === 'widget-error') { showError(); return; }
+        if (msg.type === 'widget-error') { showError(msg.message); return; }
         if (msg.type === 'widget-action' && typeof msg.action === 'string') {
           // 零信任:widget_id 由**端口归属**(id)确定,绝不信任 iframe 自报;payload 仅当数据。
           // 一律交 domain 的 onAction —— 破坏性动作由其经 platform/guardrail(预览+确认+撤销)。
@@ -290,9 +313,11 @@ export function renderWidget(payload, options = {}) {
           }
         }
       };
-      if(!options.style){PORTS.add(ch.port1);FRAMES.set(ch.port1,frame);ensureThemeObserver();}
+      if(followsTheme(options.style)){PORTS.add(ch.port1);FRAMES.set(ch.port1,frame);ensureThemeObserver();}
       if (frame.contentWindow) {
         frame.contentWindow.postMessage('__seeker_widget_port', '*', [ch.port2]);
+        // Catch a theme change between srcdoc construction and port readiness.
+        if(followsTheme(options.style))ch.port1.postMessage({type:'theme',vars:themeVarsObject(),mode:document.documentElement.dataset.theme==='dark'?'dark':'light'});
       }
     } catch (e) {
       console.error('[widget] 端口建立失败', e);

@@ -8,13 +8,13 @@ export const STYLE_PRESETS = [
   {id:'editorial',zh:'杂志',en:'Editorial',background:'#f8f3e9',foreground:'#28221e',accent:'#ad492c',surface:'#eee5d6',font:'serif',size:18,spacing:28,radius:0,edge:'line'},
   {id:'dark',zh:'深色',en:'Dark',background:'#1e2530',foreground:'#edf1f5',accent:'#91bfde',surface:'#2b3543',font:'sans',size:16,spacing:22,radius:8,edge:'curve'},
 ];
-/** @typedef {{preset:string,background:string,foreground:string,accent:string,surface:string,font:string,size:number,spacing:number,radius:number,edge:string}} CreationStyle */
+/** @typedef {{preset:string,background:string,foreground:string,accent:string,surface:string,font:string,size:number,spacing:number,radius:number,edge:string,theme?:'auto'}} CreationStyle */
 /** @param {{[k:string]:unknown}} [input] @returns {CreationStyle} */
 export function normalizeStyle(input = {}) {
   const p = STYLE_PRESETS.find(p=>p.id===input.preset) || STYLE_PRESETS[0];
   const color = (/** @type {string} */ key) => typeof input[key] === 'string' && /^#[0-9a-f]{6}$/i.test(/** @type {string} */(input[key])) ? String(input[key]) : /** @type {any} */(p)[key];
   const num = (/** @type {string} */ key,/** @type {number} */ min,/** @type {number} */ max) => typeof input[key]==='number' && Number.isFinite(input[key]) ? Math.max(min,Math.min(max,Number(input[key]))) : Number(/** @type {any} */(p)[key]);
-  return {preset:p.id,background:color('background'),foreground:color('foreground'),accent:color('accent'),surface:color('surface'),
+  return {...(input.theme==='auto'?{theme:/** @type {const} */('auto')} : {}),preset:p.id,background:color('background'),foreground:color('foreground'),accent:color('accent'),surface:color('surface'),
     font:['sans','serif','mono'].includes(String(input.font))?String(input.font):p.font,size:num('size',12,28),spacing:num('spacing',8,48),radius:num('radius',0,32),edge:['curve','line','sketch'].includes(String(input.edge))?String(input.edge):p.edge};
 }
 /** @param {{[k:string]:unknown}} input */

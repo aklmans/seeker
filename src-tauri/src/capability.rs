@@ -593,7 +593,7 @@ impl Capability for ShowWidget {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "html": { "type": "string", "description": "自包含 HTML 片段(纯内联 HTML/CSS/JS,无外链)" },
+                    "html": { "type": "string", "description": include_str!("widget-design.md") },
                     "title": { "type": "string", "description": "卡片标题栏文案" },
                     "min_height": { "type": "number", "description": "初始最小高度 px,默认 80" }
                 },
