@@ -4,6 +4,8 @@ test('新安装以通用首页开始，求职可按需开启且偏好跨刷新�
   await page.goto('/');
   await page.locator('#obGo').click();
   await expect(page.locator('#page-home')).toBeVisible();
+  await expect(page.locator('.demo-note')).toContainText('已接真模型');
+  await expect(page.locator('[data-democode]')).toHaveCount(0);
   await expect(page.locator('.nav-item[data-id="jobs"]')).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.nav-item[data-id="jobs"]')).toHaveCount(0);
@@ -17,7 +19,6 @@ test('真实 Web 请求从持久化会话恢复完整上下文，新对话隔离
   const requests = [];
   await page.addInitScript(() => {
     localStorage.setItem('jh-onboarded', 'done');
-    localStorage.setItem('jh-democode', 'test-ticket');
   });
   await page.route('**/api/chat', async route => {
     requests.push(route.request().postDataJSON());
@@ -36,6 +37,7 @@ test('真实 Web 请求从持久化会话恢复完整上下文，新对话隔离
   await page.locator('#agentSend').click();
   await expect(page.locator('#agentMsgs')).toContainText('answer-2');
   expect(requests[1].messages.slice(0, 2)).toEqual([{ role: 'user', content: 'Remember my word: orange' }, { role: 'assistant', content: 'answer-1' }]);
+  expect(requests[1]).not.toHaveProperty('code');
   await expect(page.locator('#agentSend')).toBeEnabled();
   await page.locator('#agentNew').click();
   await expect(page.locator('#agentMsgs')).not.toContainText('orange');
@@ -96,7 +98,7 @@ test('旧项目历史升级后可找回，未完成提问不混进模型上下�
 
 test('流中断不保存假成功，重试只发送本次提问', async ({ page }) => {
   const requests=[];
-  await page.addInitScript(()=>{localStorage.setItem('jh-onboarded','done');localStorage.setItem('jh-democode','test');});
+  await page.addInitScript(()=>localStorage.setItem('jh-onboarded','done'));
   await page.route('**/api/chat',async route=>{
     requests.push(route.request().postDataJSON());
     await route.fulfill({contentType:'text/event-stream',body:requests.length===1 ? 'data: {"t":"partial"}\n\n' : 'data: {"t":"complete answer"}\n\ndata: {"done":true}\n\n'});

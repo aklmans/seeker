@@ -7,10 +7,11 @@
 #   DEPLOY_SSH_KEY   专用部署私钥(建议单独 ssh-keygen 一对,公钥进服务器 authorized_keys)
 #   DEPLOY_HOST      服务器 IP 或域名
 #   UPSTREAM_KEY     上游模型 API key(如 Kimi/Moonshot)
-#   ACCESS_CODES     访问码,逗号分隔(发给朋友的门票)
 # 可选 Secrets(有默认):
 #   DEPLOY_USER(root) DEPLOY_PATH(/opt/seeker-demo) UPSTREAM_BASE(https://api.moonshot.cn/v1)
-#   MODEL(moonshot-v1-8k) RATE_PER_MIN(6) DAILY_REQ_CAP(300) PORT(8787)
+#   MODEL(moonshot-v1-8k) ACCESS_CODES(访问码模式必填) RATE_PER_MIN(6) DAILY_REQ_CAP(300) PORT(8787)
+# 可选 Variables:
+#   PUBLIC_DEMO(false) 显式 true 时允许无访问码使用；仍保留每 IP 和每日总额限制。
 #
 # 未配 DEPLOY_HOST 时整个 job 安静跳过(fork / 未启用自部署的克隆不受影响)。
 name: deploy-demo
@@ -71,6 +72,7 @@ jobs:
           UPSTREAM_KEY: ${{ secrets.UPSTREAM_KEY }}
           MODEL: ${{ secrets.MODEL || 'moonshot-v1-8k' }}
           ACCESS_CODES: ${{ secrets.ACCESS_CODES }}
+          PUBLIC_DEMO: ${{ vars.PUBLIC_DEMO == 'true' && 'true' || 'false' }}
           RATE_PER_MIN: ${{ secrets.RATE_PER_MIN || '6' }}
           DAILY_REQ_CAP: ${{ secrets.DAILY_REQ_CAP || '300' }}
         run: |
@@ -82,6 +84,7 @@ jobs:
           UPSTREAM_KEY=$UPSTREAM_KEY
           MODEL=$MODEL
           ACCESS_CODES=$ACCESS_CODES
+          PUBLIC_DEMO=$PUBLIC_DEMO
           RATE_PER_MIN=$RATE_PER_MIN
           DAILY_REQ_CAP=$DAILY_REQ_CAP
           EOF

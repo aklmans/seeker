@@ -6,11 +6,11 @@
 ## 安全模型(为什么这样设计)
 
 - **上游 API key 只存服务器环境文件**,浏览器永远见不到、响应不回显、日志不打印;
-- 浏览器只持**访问码**(发给朋友的门票,低价值、可随时更换),存 localStorage;
-- **三道闸**:访问码 → 每 IP 每分钟限速 → 全局每日请求封顶(兵损可控);
+- 默认使用**访问码**(发给朋友的低价值门票,可随时更换)；显式开启公开演示时浏览器不持任何凭据;
+- 公开模式仍保留每 IP 每分钟限速与全局每日请求封顶；访问码模式再增加门票闸;
 - 系统提示服务端自持,客户端提交的 `system` 轮直接 400(白名单投影只收 user/assistant);
 - **不记录对话内容**(日志仅 时间/路由/状态/计数);
-- **fail-closed**:`ACCESS_CODES` 为空拒绝启动 —— 忘配门禁不会变成全网免费站。
+- **fail-closed**:`ACCESS_CODES` 为空且 `PUBLIC_DEMO` 未显式为 `true` 时拒绝启动，忘配门禁不会意外全网开放。
 
 ## 方式一(推荐)· GitHub Actions 自动部署:push 即上线
 
@@ -31,12 +31,14 @@ cat ~/.ssh/seeker_deploy                                   # 私钥全文 → �
 | `DEPLOY_SSH_KEY` | ✅ | 上面生成的**私钥全文**(含 BEGIN/END 行) |
 | `DEPLOY_HOST` | ✅ | 服务器 IP 或域名 |
 | `UPSTREAM_KEY` | ✅ | Kimi(Moonshot 开放平台 platform.moonshot.cn)创建的 API key |
-| `ACCESS_CODES` | ✅ | 逗号分隔访问码,如 `seeker-mz7kq4,seeker-xh92pd,seeker-qw48vn` |
+| `ACCESS_CODES` | 访问码模式必填 | 逗号分隔访问码,如 `seeker-mz7kq4,seeker-xh92pd,seeker-qw48vn` |
 | `DEPLOY_USER` | 可选 | 默认 `root` |
 | `DEPLOY_PATH` | 可选 | 默认 `/opt/seeker-demo` |
 | `UPSTREAM_BASE` | 可选 | 默认 `https://api.moonshot.cn/v1`(Kimi) |
 | `MODEL` | 可选 | 默认 `moonshot-v1-8k`(便宜;可换 128k 或 kimi 新款) |
 | `RATE_PER_MIN` / `DAILY_REQ_CAP` / `PORT` | 可选 | 默认 6 / 300 / 8787 |
+
+Repository Variable `PUBLIC_DEMO` 默认不设置或设为 `false`。临时公开展示时设为 `true` 并重新运行部署；恢复访问码只需改回 `false`，无需改代码。公开模式仍受 `RATE_PER_MIN` 与 `DAILY_REQ_CAP` 限制。
 
 ### 3)触发
 
@@ -65,6 +67,7 @@ UPSTREAM_BASE=https://api.deepseek.com
 UPSTREAM_KEY=<你的上游 key,自己填>
 MODEL=deepseek-chat
 ACCESS_CODES=seeker-xxxx,seeker-yyyy
+PUBLIC_DEMO=false
 RATE_PER_MIN=6
 DAILY_REQ_CAP=300
 ENV
@@ -108,7 +111,7 @@ server {
 ## 更新与运维
 
 - **更新**:`cd /opt/seeker && git pull && sudo systemctl restart seeker-demo`(静态直接生效,重启只为代理代码);
-- **换访问码 / 调额度**:改 `/etc/seeker-demo.env` → `systemctl restart seeker-demo`;
+- **切换公开/访问码、换访问码或调额度**:改 `/etc/seeker-demo.env` → `systemctl restart seeker-demo`；Actions 部署可直接修改 `PUBLIC_DEMO` Repository Variable 后重跑;
 - 限额计数在进程内存(重启清零)—— 演示场景足够,无需数据库;
 - 上游推荐:DeepSeek / Kimi 等 OpenAI 兼容端点(朋友级流量月成本一般在几元内)。
 
@@ -117,5 +120,6 @@ server {
 | 环境 | 顶栏标注 | Agent |
 |---|---|---|
 | GitHub Pages(无代理) | 演示版 + 下载链接 | 本地降级回复(canned) |
+| 自托管 · `PUBLIC_DEMO=true` | **已接真模型(限量额度)** | 无需访问码的真流式对话 |
 | 自托管 · 未填访问码 | 演示版 + **「输入访问码」入口** | canned |
 | 自托管 · 已填码 | **已接真模型(限量额度)** | 真流式对话(纯聊天;工具/记忆仍桌面端) |

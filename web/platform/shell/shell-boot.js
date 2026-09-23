@@ -84,7 +84,7 @@ function webDemoNote(){
   x.onclick=()=>{ n.remove(); try{ localStorage.setItem('jh-demonote','off'); }catch(_e){} };
   n.appendChild(x);
   document.body.appendChild(n);
-  // 文案三态:无代理(Pages)/ 有代理未填码 / 已接真模型。探活是异步的 → 先渲基础态,结果到再升级。
+  // 文案三态:无代理(Pages)/ 访问码模式未填码 / 已接真模型(公开或已填码)。探活异步 → 先渲基础态,结果到再升级。
   const ai=/** @type {any} */ (window).SeekerRT && /** @type {any} */ (window).SeekerRT.ai;
   let demoProxyProbe=false;   // 先于 render 声明(render 闭包引用它;声明滞后会 TDZ)
   const render=()=>{
@@ -102,7 +102,7 @@ function webDemoNote(){
     }
   };
   render();
-  // 与 runtime 共用单一探针；成功且未填码 → 升级出「输入访问码」入口。
+  // 与 runtime 共用单一探针；公开模式直接就绪，访问码模式未填码才显示入口。
   if(ai && typeof ai.probeChat==='function') ai.probeChat().then(ok=>{ if(ok){ demoProxyProbe=true; render(); } }).catch(()=>{});
   // 401 清码回滚:runtime 清掉无效码后广播 → 顶栏从「已接真模型」乐观态退回「输入访问码」入口(不留假状态)。
   window.addEventListener('seeker-demo-code-cleared', render);

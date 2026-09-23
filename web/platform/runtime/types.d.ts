@@ -215,7 +215,7 @@ export interface AiApi {
   /** 流式补全(SSE/chunk → 逐 token 回灌)。 */
   stream(req: AiRequest, handlers?: AiStreamHandlers): AiStream;
   /**
-   * 【仅 web 运行时】演示代理可聊 = 同源 /api/health 探活成功 ∧ 访问码在手(壳 aiChatAvailable 的 web 支)。
+   * 【仅 web 运行时】演示代理可聊 = 同源 /api/health 探活成功 ∧（公开模式或访问码在手）。
    * 桌面运行时不实现(桌面支先短路);纯聊天面 —— 工具/记忆/连接器仍是桌面能力。
    */
   chatReady?(): boolean;

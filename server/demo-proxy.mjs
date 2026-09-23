@@ -8,9 +8,9 @@
  * 红线(与桌面同源的纪律,落在服务端):
  *  - **上游 API key 只存服务器环境变量**,浏览器永远见不到、响应里不回显、日志不打印;
  *  - **不记录任何对话内容**(日志只有 时间/路由/状态/计数);
- *  - **fail-closed**:必需配置(UPSTREAM_* / MODEL / ACCESS_CODES)缺失即拒绝启动 ——
- *    尤其 ACCESS_CODES 为空不会「顺手全开」;
- *  - 三道闸:访问码(限朋友)→ 每 IP 每分钟限速 → 全局每日请求封顶(兵损可控)。
+ *  - **fail-closed**:必需配置(UPSTREAM_* / MODEL)缺失即拒绝启动；默认仍要求访问码，
+ *    只有显式 PUBLIC_DEMO=true 才进入公开演示模式;
+ *  - 公开模式保留每 IP 每分钟限速与全局每日请求封顶，访问码模式再多一道门票闸。
  *
  * 配置(环境变量):
  *   PORT=8787                 监听端口
@@ -19,6 +19,7 @@
  *   UPSTREAM_KEY=…            上游 API key(只在这里)
  *   MODEL=…                   模型名(如 deepseek-chat)
  *   ACCESS_CODES=a,b,c        访问码列表(逗号分隔,发给朋友)
+ *   PUBLIC_DEMO=false         显式 true 时允许无访问码使用(仍受频率和每日总额限制)
  *   RATE_PER_MIN=6            每 IP 每分钟请求上限
  *   DAILY_REQ_CAP=300         全局每日请求封顶(UTC 日切)
  *
@@ -38,14 +39,15 @@ const UPSTREAM_BASE = env('UPSTREAM_BASE', '').replace(/\/+$/, '');
 const UPSTREAM_KEY = env('UPSTREAM_KEY', '');
 const MODEL = env('MODEL', '');
 const ACCESS_CODES = new Set(env('ACCESS_CODES', '').split(',').map((s) => s.trim()).filter(Boolean));
+const PUBLIC_DEMO = env('PUBLIC_DEMO', 'false').trim().toLowerCase() === 'true';
 const RATE_PER_MIN = Number(env('RATE_PER_MIN', '6'));
 const DAILY_REQ_CAP = Number(env('DAILY_REQ_CAP', '300'));
 
-// fail-closed:关键配置缺一不起(空 ACCESS_CODES 绝不等于「无门禁」)。
+// fail-closed:关键配置缺一不起；空访问码只有在显式公开模式下才允许。
 for (const [k, v] of [['UPSTREAM_BASE', UPSTREAM_BASE], ['UPSTREAM_KEY', UPSTREAM_KEY], ['MODEL', MODEL]]) {
   if (!v) { console.error(`[demo-proxy] 缺少必需环境变量 ${k},拒绝启动`); process.exit(1); }
 }
-if (ACCESS_CODES.size === 0) { console.error('[demo-proxy] ACCESS_CODES 为空,拒绝启动(fail-closed)'); process.exit(1); }
+if (!PUBLIC_DEMO && ACCESS_CODES.size === 0) { console.error('[demo-proxy] ACCESS_CODES 为空且未显式开启 PUBLIC_DEMO,拒绝启动(fail-closed)'); process.exit(1); }
 
 // 服务端自持的系统提示(客户端提交的 system 轮一律拒收 —— 防把代理当免费通用 API 白嫖/越狱面收窄)。
 const SYSTEM_PROMPT = [
@@ -54,7 +56,7 @@ const SYSTEM_PROMPT = [
   '可以回答日常工作、学习和生活问题。不要声称已经执行当前演示环境不支持的操作。',
 ].join('\n');
 
-// ── 三道闸的账本(单进程内存态;重启清零,演示够用)────────────────
+// ── 限额账本(单进程内存态;重启清零,演示够用)────────────────────
 /** @type {Map<string, number[]>} */
 const rateBook = new Map(); // ip → 最近请求时间戳
 let dayKey = new Date().toISOString().slice(0, 10);
@@ -102,7 +104,7 @@ function json(res, code, obj) {
   res.end(b);
 }
 
-// ── /api/chat:校验 → 三道闸 → 转发上游(OpenAI 兼容,stream)→ 以简化 SSE 回推 ──
+// ── /api/chat:校验 → 访问策略/限额 → 转发上游(OpenAI 兼容,stream)→ 简化 SSE 回推 ──
 /** @param {http.IncomingMessage} req @param {http.ServerResponse} res */
 async function handleChat(req, res) {
   // 读体(≤128KB)
@@ -110,8 +112,10 @@ async function handleChat(req, res) {
   for await (const c of req) { size += c.length; if (size > 131072) { json(res, 413, { error: 'too_big' }); return; } chunks.push(c); }
   let body; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { json(res, 400, { error: 'bad_json' }); return; }
 
-  const code = typeof body.code === 'string' ? body.code.trim() : '';
-  if (!ACCESS_CODES.has(code)) { json(res, 401, { error: 'bad_code' }); return; }
+  if (!PUBLIC_DEMO) {
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    if (!ACCESS_CODES.has(code)) { json(res, 401, { error: 'bad_code' }); return; }
+  }
 
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
   if (!gateRate(ip)) { json(res, 429, { error: 'rate' }); return; }
@@ -199,7 +203,7 @@ const server = http.createServer(async (req, res) => {
     console.log(`[demo-proxy] ${new Date().toISOString()} ${req.method} ${url} → ${res.statusCode} ${Date.now() - started}ms day=${dayCount}/${DAILY_REQ_CAP}`);
   });
   try {
-    if (url === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true }); return; }
+    if (url === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true, chatAccess: PUBLIC_DEMO ? 'public' : 'code' }); return; }
     if (url === '/api/plaza' && req.method === 'GET') {
       // 技能广场导入信标(需求侧探针):只记精选技能 id 的计数,无任何用户内容;id 白名单字符防日志注入。
       const raw = new URL(req.url || '/', 'http://x').searchParams.get('skill') || '';
@@ -216,5 +220,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(PORT, () => {
-  console.log(`[demo-proxy] listening :${PORT}  web=${WEB_DIR}  model=${MODEL}  codes=${ACCESS_CODES.size}  rate=${RATE_PER_MIN}/min  daily=${DAILY_REQ_CAP}`);
+  console.log(`[demo-proxy] listening :${PORT}  web=${WEB_DIR}  model=${MODEL}  access=${PUBLIC_DEMO ? 'public' : 'code'}  rate=${RATE_PER_MIN}/min  daily=${DAILY_REQ_CAP}`);
 });

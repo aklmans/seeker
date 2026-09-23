@@ -142,7 +142,7 @@ export function agentChat(html){ agentAppend('ai','<span class="who">Agent</span
 export function agentCancel(){ agentChat('好的,已取消,什么都没动。'); }
 export function aiChatAvailable(){
   if(typeof isDesktop==='function' && isDesktop() && !!window.SeekerRT) return true;                 // 桌面:Rust 全能力
-  const ai=window.SeekerRT && /** @type {any} */ (window.SeekerRT).ai;                              // Web 演示代理支:纯聊天(runtime 自报 ready=代理探活+访问码在手;无代理/无码 → false 照旧 canned)
+  const ai=window.SeekerRT && /** @type {any} */ (window.SeekerRT).ai;                              // Web 演示代理支:纯聊天(runtime 自报 ready=公开模式或代理探活+访问码;未就绪照旧 canned)
   return !!(ai && typeof ai.chatReady==='function' && ai.chatReady());
 }
 export function agentScroll(){ const c=$('#agentMsgs'); if(c) c.scrollTop=c.scrollHeight; }

@@ -23,7 +23,7 @@ createServer(async (req, res) => {
         'content-type': 'application/json; charset=utf-8',
         'cache-control': 'no-store',
       });
-      res.end('{"ok":true}');
+      res.end('{"ok":true,"chatAccess":"public"}');
       return;
     }
     let file = resolve(root, `.${pathname}`);

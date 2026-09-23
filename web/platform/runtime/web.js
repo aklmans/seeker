@@ -218,11 +218,19 @@ async function clearWithBackup(collections) {
 // 单一探活:runtime 与顶部演示条共享同一个 Promise，避免重复请求和状态漂移。
 // 相对路径适配 Pages 子路径/自托管根；失败静默降级 canned，不制造应用日志噪音。
 let demoProxyOk = false;
+/** @type {'code'|'public'} */
+let demoProxyAccess = 'code';
 const demoProxyProbe = (() => {
   try {
     return fetch('api/health')
-      .then((response) => {
+      .then(async (response) => {
         demoProxyOk = !!(response && response.ok);
+        if (demoProxyOk) {
+          try {
+            const health = await response.json();
+            demoProxyAccess = health && health.chatAccess === 'public' ? 'public' : 'code';
+          } catch { demoProxyAccess = 'code'; }
+        }
         return demoProxyOk;
       })
       .catch(() => false);
@@ -251,11 +259,12 @@ async function demoChat(req, handlers, signal) {
       hist = conversationHistory(await listAll('messages'), c);
     }
     const messages = [...hist, { role: 'user', content: String(req.userText || '') }];
+    const payload = demoProxyAccess === 'public' ? { messages } : { code: demoCode(), messages };
     const res = await fetch('api/chat', {
       method: 'POST',
       signal,
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code: demoCode(), messages }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok || !res.body) {
       let err = 'proxy_' + res.status;
@@ -417,17 +426,17 @@ export function createWebRuntime() {
 
     ai: {
       // ★演示代理(#1 的「浏览器→自有后端代理”落地,纯聊天面):同源 /api/chat(SSE)。
-      //   密钥红线原样成立:**上游 key 只在服务端**,浏览器只持低价值访问码(限朋友的门票,非 API key)。
+      //   密钥红线原样成立:**上游 key 只在服务端**；公开模式不向浏览器发凭据，受限模式只持低价值访问码。
       //   纯聊天 = 无工具/无 widget/无长期记忆；选中会话的完整历史从 IndexedDB 恢复。
-      //   无代理或未填访问码时明确提示尚未连接，不伪装已经执行。
+      //   无代理，或受限模式未填访问码时明确提示尚未连接，不伪装已经执行。
       stream: (req, handlers = {}) => {
-        if (!demoProxyOk || !demoCode()) throw new NotImplementedError('rt.ai.stream', 'web');
+        if (!demoProxyOk || (demoProxyAccess !== 'public' && !demoCode())) throw new NotImplementedError('rt.ai.stream', 'web');
         const ac = new AbortController();
         const done = demoChat(req, handlers, ac.signal);
         return { cancel: () => ac.abort(), done };
       },
-      /** 演示代理探活结果 + 访问码在手 —— 壳层 aiChatAvailable 的 web 支(桌面运行时无此方法)。 */
-      chatReady: () => demoProxyOk && !!demoCode(),
+      /** 演示代理探活成功，且处于公开模式或访问码在手。 */
+      chatReady: () => demoProxyOk && (demoProxyAccess === 'public' || !!demoCode()),
       /** 与演示条共享模块级单一探活，不额外发起请求。 */
       probeChat: () => demoProxyProbe,
       /** 供壳层访问码入口写码(只存 localStorage;它是门票不是密钥)。 @param {string} v */
